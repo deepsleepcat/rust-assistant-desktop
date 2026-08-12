@@ -1,0 +1,665 @@
+{
+  "name": "值类型表",
+  "data": [
+    {
+      "name": "键",
+      "type": "key",
+      "rule": "^[^#:]+:",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "节",
+      "type": "section",
+      "rule": "^\\[.+\\]",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "整数",
+      "type": "int",
+      "rule": "^\\$\\{[^.]+\\.?[^.]+\\}|^-?\\d+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "不包含小数点的数，可以为负。"
+    },
+    {
+      "name": "布尔值",
+      "type": "boolean",
+      "rule": "true|false",
+      "external": ":",
+      "offset": "",
+      "list": "true,false",
+      "tag": "",
+      "describe": "布尔值又叫逻辑值，只能设置为“真”或“假”。"
+    },
+    {
+      "name": "路径",
+      "type": "path",
+      "rule": "\\S+\\.\\S+|ROOT:\\S+\\.\\S+",
+      "external": ":",
+      "offset": "",
+      "list": "@file(ini)",
+      "tag": "@file",
+      "describe": "文件名或者以ROOT开头的文件路径。"
+    },
+    {
+      "name": "代码",
+      "type": "code",
+      "rule": "[^:]+:.+",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "注释",
+      "type": "notes",
+      "rule": "^#.*",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "字符串",
+      "type": "string",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "常量",
+      "type": "constant",
+      "rule": ".+",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "资源",
+      "type": "resource",
+      "rule": ".+=-?\\d+|-?\\d+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "以“资源名=整数”的形式引用自定义资源，整数引用原版资金。"
+    },
+    {
+      "name": "浮点值",
+      "type": "float",
+      "rule": "^\\$\\{[^.]+\\.?[^.]+\\}|^-?\\d+\\.?\\d*",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "带有小数点的数，可以理解为小数。"
+    },
+    {
+      "name": "颜色",
+      "type": "color",
+      "rule": "#[\\dA-Fa-f]{8}|#[\\dA-Fa-f]{6}",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "以#号开头的颜色代码。"
+    },
+    {
+      "name": "共享",
+      "type": "share",
+      "rule": ".+\\.png",
+      "external": ":",
+      "offset": "",
+      "list": "@apk(/assets/units/shared/)",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "标签",
+      "type": "tags",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "队伍",
+      "type": "teams",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "own,neutral,allyNotOwn,ally,enemy,any",
+      "tag": "@lineRule",
+      "describe": ""
+    },
+    {
+      "name": "贴花图层",
+      "type": "decallayer",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "shadow,beforeBody,afterBody,onTop,beforeUI",
+      "tag": "@lineRule",
+      "describe": ""
+    },
+    {
+      "name": "图像",
+      "type": "image",
+      "rule": "NONE|AUTO|.+\\.png",
+      "external": ":",
+      "offset": "",
+      "list": "NONE,AUTO,SHARED,ROOT:,CORE,@file(png),@file(jpg)",
+      "tag": "@file",
+      "describe": "使用文件名或者以ROOT开头的路径引用图像，可设置为NONE（无）或者AUTO（自动）。"
+    },
+    {
+      "name": "音频",
+      "type": "audio",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "@file(ogg)",
+      "tag": "@file(apk{res/raw/}type{ogg,wav})",
+      "describe": "使用文件名或者以ROOT开头的路径引用音频。"
+    },
+    {
+      "name": "枚举",
+      "type": "enum",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "值",
+      "type": "value",
+      "rule": ":.+",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "逻辑条件",
+      "type": "logicBoolean",
+      "rule": "true|false|if.*",
+      "external": ":",
+      "offset": "",
+      "list": "true,false,if,@type(logicQuantityStatement),@type(logicTimeStatement),@type(simpleLogicalConditionStatement),@type(self.transportingCount),@type(self.isResourceLargerThan),@type(self.isOverPassableTile),@type(noParameterLogicStatement)",
+      "tag": "",
+      "describe": "以“真”或“假”，设置逻辑。也可以填写以“如果”开头的逻辑表达式。"
+    },
+    {
+      "name": "单位",
+      "type": "unit",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "@type(internalUnits),@customType(unitName)",
+      "tag": "",
+      "describe": "模组单位名或内置单位名。"
+    },
+    {
+      "name": "时间",
+      "type": "time",
+      "rule": "-?\\d+\\.?\\d*s?",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "以“s”结尾的秒数."
+    },
+    {
+      "name": "范围",
+      "type": "range",
+      "rule": "-?\\d+,-?\\d+,-?\\d+,-?\\d+",
+      "external": ":0,0,0,0",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "规定范围，必须是四组数字，在不同方向上延伸。"
+    },
+    {
+      "name": "效果",
+      "type": "effect",
+      "rule": "[nN][oO][nN][eE]|[cC][uU][sS][tT][oO][mM]:.+",
+      "external": ":",
+      "offset": "",
+      "list": "@section(effect)",
+      "tag": "@section(effect)",
+      "describe": "引用效果，可以是NONE(无)。"
+    },
+    {
+      "name": "炮塔",
+      "type": "turret",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "@section(turret)",
+      "tag": "@section(turret)",
+      "describe": "填炮塔节名。"
+    },
+    {
+      "name": "定义",
+      "type": "define",
+      "rule": "^@.+\\s[^:]+:.+",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "@define",
+      "describe": ""
+    },
+    {
+      "name": "引用",
+      "type": "quote",
+      "rule": "^\\$\\{.+\\}",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "@define",
+      "describe": "引用类型"
+    },
+    {
+      "name": "添加路径点动作类型",
+      "type": "addWaypoint_type",
+      "rule": "move|attackMove|guard|loadInto|loadUp|attack|reclaim|repair|touchTarget|build|follow",
+      "external": ":",
+      "offset": "",
+      "list": "move,attackMove,guard,loadInto,loadUp,attack,reclaim,repair,touchTarget,build,follow",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "移动类型",
+      "type": "movementType",
+      "rule": "NONE|LAND|BUILDING|AIR|WATER|HOVER|OVER_CLIFF|OVER_CLIFF_WATER",
+      "external": ":",
+      "offset": "",
+      "list": "NONE,LAND,BUILDING,AIR,WATER,HOVER,OVER_CLIFF,OVER_CLIFF_WATER",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "攻击移动类型",
+      "type": "attackMovement",
+      "rule": "normal|bomber",
+      "external": ":",
+      "offset": "",
+      "list": "normal,bomber",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "类",
+      "type": "class",
+      "rule": "CustomUnitMetadata",
+      "external": ":",
+      "offset": "",
+      "list": "CustomUnitMetadata",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "抛射体",
+      "type": "projectile",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "@section(projectile)",
+      "tag": "@section(projectile)",
+      "describe": ""
+    },
+    {
+      "name": "主体图像",
+      "type": "baseImage",
+      "rule": ".+\\.png|.+\\.jpg",
+      "external": ":",
+      "offset": "",
+      "list": "@file(png),@file(jpg)",
+      "tag": "@file",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "前缀键",
+      "type": "prefixKey",
+      "rule": "^[^#:]+_",
+      "external": "_",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "坐标",
+      "type": "position",
+      "rule": "-?\\d+,-?\\d+",
+      "external": "x,y",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "如果",
+      "type": "if",
+      "rule": ".+",
+      "external": " ",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "未知",
+      "type": "unknown",
+      "rule": ".+",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "未知类型"
+    },
+    {
+      "name": "宏",
+      "type": "macro",
+      "rule": ".+",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "批处理类型，宏"
+    },
+    {
+      "name": "内存",
+      "type": "memory",
+      "rule": ".+",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "内存特定类型"
+    },
+    {
+      "name": "内置单位",
+      "type": "internalUnits",
+      "rule": ".+",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "通常来源数据集内，可通过助手游戏同步功能扩充内置单位数据。此类型标识符不能更改！永远为internalUnits。"
+    },
+    {
+      "name": "友伤",
+      "type": "friendlyFire",
+      "rule": "only-ignoreEnemy|false|true",
+      "external": ":",
+      "offset": "",
+      "list": "only-ignoreEnemy,false,true",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "地图位置产生指定单位",
+      "type": "onNewMapSpawn",
+      "rule": "emptyResourcePools_asNeutral|emptyOrOccupiedResourcePools_asNeutral|mapCenter_asNeutral|mapCenter_eachActiveTeam|spawnPoint_eachActiveTeam",
+      "external": ":",
+      "offset": "",
+      "list": "emptyResourcePools_asNeutral,emptyOrOccupiedResourcePools_asNeutral,mapCenter_asNeutral,mapCenter_eachActiveTeam,spawnPoint_eachActiveTeam",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "逻辑数量语句",
+      "type": "logicQuantityStatement",
+      "rule": ".+",
+      "external": "()",
+      "offset": "@length(-1)",
+      "list": "withTag,greaterThan,lessThan,withinRange,incompleteBuildings,factoryQueue",
+      "tag": "",
+      "describe": "以“单位数量”结尾的逻辑语句常规提示。"
+    },
+    {
+      "name": "逻辑时间语句",
+      "type": "logicTimeStatement",
+      "rule": ".+",
+      "external": "()",
+      "offset": "@length(-1)",
+      "list": "withinSeconds,laterThanSeconds",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "简单逻辑条件语句",
+      "type": "simpleLogicalConditionStatement",
+      "rule": ".+",
+      "external": "()",
+      "offset": "@length(-1)",
+      "list": "greaterThan,lessThan,equalTo",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "逻辑条件语句",
+      "type": "logicalConditionStatement",
+      "rule": ".+",
+      "external": "()",
+      "offset": "@length(-1)",
+      "list": "greaterThan,lessThan,equalTo,empty,full",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "自身运输数量",
+      "type": "self.transportingCount",
+      "rule": ".+",
+      "external": "()",
+      "offset": "@length(-1)",
+      "list": "greaterThan,lessThan,equalTo,empty",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "自身资源大于",
+      "type": "self.isResourceLargerThan",
+      "rule": ".+",
+      "external": "()",
+      "offset": "@length(-1)",
+      "list": "source,compareTarget,byMoreThan,multiplyTargetBy",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "自身在地块类型上",
+      "type": "self.isOverPassableTile",
+      "rule": ".+",
+      "external": "()",
+      "offset": "@length(-1)",
+      "list": "NONE,LAND,BUILDING,AIR,WATER,HOVER,OVER_CLIFF,OVER_CLIFF_WATER",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "无参逻辑语句",
+      "type": "noParameterLogicStatement",
+      "rule": ".+",
+      "external": "()",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "逻辑常量",
+      "type": "logicConstants",
+      "rule": ".+",
+      "external": "=",
+      "offset": "",
+      "list": "true,false",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "无提示逻辑常量",
+      "type": "noPromptLogicConstant",
+      "rule": ".+",
+      "external": "=",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "有标签",
+      "type": "withTag",
+      "rule": ".+",
+      "external": "=",
+      "offset": "",
+      "list": "@type(tags)",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "距离",
+      "type": "distance",
+      "rule": "-?\\d+,-?\\d+,-?\\d+,-?\\d+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "距离，填写两个坐标(x1,y1,x2,y2)"
+    },
+    {
+      "name": "显示类型",
+      "type": "displayType",
+      "rule": "NONE|rally|upgrade|queueUnit|building|action|infoOnly|infoOnlyNoBox",
+      "external": ":",
+      "offset": "",
+      "list": "NONE,rally,upgrade,queueUnit,building,action,infoOnly,infoOnlyNoBox",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "语言",
+      "type": "language",
+      "rule": ".+",
+      "external": "_",
+      "offset": "",
+      "list": "@type(countryCode)",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "国家代码",
+      "type": "countryCode",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": ""
+    },
+    {
+      "name": "动画触发条件",
+      "type": "onActions",
+      "rule": "move|attack|idle|underConstruction|underConstructionWithLinkedBuiltTime|queuedUnits|Unknown",
+      "external": ":",
+      "offset": "",
+      "list": "move,attack,idle,underConstruction,underConstructionWithLinkedBuiltTime,queuedUnits,Unknown",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "提取资源队伍",
+      "type": "takeResources_includeUnitsWithinRange_team",
+      "rule": "own|neutral|ally|enemy|any|allyNotOwn",
+      "external": ":",
+      "offset": "",
+      "list": "own,neutral,ally,enemy,any,allyNotOwn",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "自动触发检查率",
+      "type": "autoTriggerCheckRate",
+      "rule": "everyFrame|every4Frames|every8Frames",
+      "external": ":",
+      "offset": "",
+      "list": "everyFrame,every4Frames,every8Frames",
+      "tag": "",
+      "describe": "@search(code)"
+    },
+    {
+      "name": "建造自语句",
+      "type": "buildFrom",
+      "rule": "#[\\dA-Fa-f]{8}|#[\\dA-Fa-f]{6}",
+      "external": "",
+      "offset": "",
+      "list": "",
+      "tag": "@lineRule",
+      "describe": "建造自代码格式提示"
+    },
+    {
+      "name": "覆盖单位",
+      "type": "copyDexunit",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "commandCenter,c_turret_t1,c_antiAirTurret,landFactory,seaFactory,airFactory,extractorT1,fabricatorT1,experimentalLandFactory,nukeLauncherC,antiNukeLauncherC,laboratory,outpostT1,laserDefence,repairbay,mechFactory,aaBeamGunship,amphibiousJet,bomber,c_interceptor,heavyInterceptor,c_helicopter,lightGunship,gunShip,dropship,missileAirship,fireBee,experimentalDropship,combatEngineer,c_laserTank,c_mammothTank,mechEngineer,missileTank,plasmaTank,scout,c_artillery,heavyArtillery,c_tank,builder,hoverTank,hovercraft,heavyTank,heavyHoverTank,mechGun,mechMissile,mechArtillery,mechBunker,mechFlame,mechHeavyMissile,mechLaser,mechLightning,mechMinigun,experimentalHoverTank,modularSpider,c_experimentalTank,experimentalSpider,experimentalGunship,creditsCrates,crystal_mid",
+      "tag": "@lineRule",
+      "describe": "覆盖单位补齐规则"      
+    },
+    {
+      "name": "标记",
+      "type": "marker",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "临时标记。"
+    },
+    {
+      "name": "自身腿",
+      "type": "leg",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "检查自身的腿作为逻辑条件"
+    },
+    {
+      "name": "自身炮塔",
+      "type": "turret",
+      "rule": ".+",
+      "external": ":",
+      "offset": "",
+      "list": "",
+      "tag": "",
+      "describe": "检查自身的炮塔作为逻辑条件"
+    }
+  ]
+}

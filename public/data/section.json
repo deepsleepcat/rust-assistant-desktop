@@ -1,0 +1,171 @@
+{
+  "name": "铁锈助手节名数据",
+  "data": [
+    {
+      "code": "core",
+      "translate": "核心",
+      "needName": false
+    },
+    {
+      "code": "graphics",
+      "translate": "图像",
+      "needName": false
+    },
+    {
+      "code": "attack",
+      "translate": "攻击",
+      "needName": false
+    },
+    {
+      "code": "turret",
+      "translate": "炮塔",
+      "needName": true
+    },
+    {
+      "code": "projectile",
+      "translate": "抛射体",
+      "needName": true
+    },
+    {
+      "code": "movement",
+      "translate": "运动",
+      "needName": false
+    },
+    {
+      "code": "ai",
+      "translate": "人机",
+      "needName": false
+    },
+    {
+      "code": "leg",
+      "translate": "腿",
+      "needName": true
+    },
+    {
+      "code": "arm",
+      "translate": "脚",
+      "needName": true
+    },
+    {
+      "code": "effect",
+      "translate": "效果",
+      "needName": true
+    },
+    {
+      "code": "animation",
+      "translate": "动画",
+      "needName": true
+    },
+    {
+      "code": "action",
+      "translate": "行动",
+      "needName": true
+    },
+    {
+      "code": "canBuild",
+      "translate": "可建造",
+      "needName": true
+    },
+    {
+      "code": "attachment",
+      "translate": "附属",
+      "needName": true
+    },
+    {
+      "code": "hiddenAction",
+      "translate": "隐藏行动",
+      "needName": true
+    },
+    {
+      "code": "global_resource",
+      "translate": "全局资源",
+      "needName": true,
+      "isVisible": "true"
+    },
+    {
+      "code": "template",
+      "translate": "模板",
+      "needName": true
+    },
+    {
+      "code": "resource",
+      "translate": "资源",
+      "needName": true,
+      "isVisible": true
+    },
+    {
+      "code": "placementRule",
+      "translate": "放置规则",
+      "needName": true,
+      "isVisible": true
+    },
+    {
+        "code": "vanillaUnit",
+        "translate": "原版单位对照表",
+        "needName": true,
+        "isVisible": true
+    },
+    {
+      "code": "vanillaDexUnit",
+      "translate": "特殊单位对照表",
+      "needName": true,
+      "isVisible": true
+  },
+    {
+      "code": "logicBoolean",
+      "translate": "逻辑值",
+      "needName": false,
+      "isAvailable": false,
+      "isVisible":true
+    },
+    {
+      "code": "comment",
+      "translate": "注解",
+      "needName": false,
+      "isAvailable": false,
+      "isVisible":false
+    },
+    {
+      "code": "boolean",
+      "translate": "布尔值",
+      "needName": false,
+      "isAvailable": false
+    },
+    {
+      "code": "Specific",
+      "translate": "特定值",
+      "needName": false,
+      "isAvailable": false
+    },
+    {
+      "code":"array",
+      "translate":"数组",
+      "needName": true,
+      "isVisible": true
+    },
+    {
+      "code":"memory",
+      "translate":"内存",
+      "needName": true,
+      "isVisible": true
+    },
+    {
+      "code":"reloadArmy",
+      "translate":"刷兵",
+      "needName": true,
+      "isVisible": false
+    },
+    {
+      "code":"decal",
+      "translate":"贴花",
+      "needName": true,
+      "isVisible": true
+    },
+    {
+      "code":"misc",
+      "translate":"杂项",
+      "needName": true,
+      "isVisible": false
+    }                           
+  ]
+}
