@@ -14,8 +14,18 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 
 .app { position: relative; height: 100%; display: flex; flex-direction: column; background: var(--canvas); }
-.backdrop { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .35; }
+.backdrop { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
 .backdrop-img, .backdrop-solid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.backdrop-img { transform: scale(1.04); }
+.backdrop-solid { opacity: .58; }
+.app > .backdrop ~ .app-body,
+.app > .backdrop ~ .titlebar,
+.app > .backdrop ~ .statusbar { background: transparent; }
+.app > .backdrop ~ .app-body .panel,
+.app > .backdrop ~ .titlebar,
+.app > .backdrop ~ .statusbar { background: color-mix(in srgb, var(--surface-0) 78%, transparent); }
+.app > .backdrop ~ .app-body .sidebar,
+.app > .backdrop ~ .app-body > section:last-child { background: color-mix(in srgb, var(--surface-1) 78%, transparent); }
 
 /* 顶部 chrome */
 .titlebar {

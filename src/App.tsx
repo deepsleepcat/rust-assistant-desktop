@@ -4,6 +4,7 @@
 import { useEffect } from 'react'
 import { useWorkspaceStore } from './stores/workspace'
 import { isElectron } from './services/bridge'
+import { Backdrop } from './components/Backdrop'
 import { TitleBar } from './components/TitleBar'
 import { StatusBar } from './components/StatusBar'
 import { ConfirmDialog } from './components/Modal'
@@ -77,6 +78,7 @@ export function App() {
 
   return (
     <div className="app">
+      <Backdrop />
       <TitleBar />
 
       <div className="app-body" style={{ gridTemplateColumns: `${settings.leftWidth}px 1fr ${settings.rightWidth}px` }}>
