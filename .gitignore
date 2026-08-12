@@ -32,3 +32,4 @@ Thumbs.db
 .playwright-mcp/
 
 ui-*.png
+.env.local

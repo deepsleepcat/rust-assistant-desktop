@@ -26,6 +26,9 @@
     "@codemirror/search": "^6.7.1",
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.8",
+    "@earendil-works/pi-agent-core": "file:vendor/pi/packages/agent",
+    "@earendil-works/pi-ai": "file:vendor/pi/packages/ai",
+    "@earendil-works/pi-telemetry": "file:vendor/pi/packages/telemetry",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.14"
