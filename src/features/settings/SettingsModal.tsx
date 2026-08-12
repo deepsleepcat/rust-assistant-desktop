@@ -321,14 +321,14 @@ export function SettingsModal() {
                   <div className="setting-row">
                     <span className="label">
                       模型
-                      <div className="desc">deepseek-chat 通用便宜；deepseek-reasoner 推理更强</div>
+                      <div className="desc">v4-flash 便宜快速；v4-pro 更强（价格见 DeepSeek 官网）</div>
                     </span>
                     <select
                       value={settings.ai.deepseekModel}
                       onChange={(e) => updateSettings({ ai: { ...settings.ai, deepseekModel: e.target.value } })}
                     >
-                      <option value="deepseek-chat">deepseek-chat（推荐）</option>
-                      <option value="deepseek-reasoner">deepseek-reasoner</option>
+                      <option value="deepseek-v4-flash">deepseek-v4-flash（推荐）</option>
+                      <option value="deepseek-v4-pro">deepseek-v4-pro</option>
                     </select>
                   </div>
                   <div className="setting-row">

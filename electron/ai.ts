@@ -24,10 +24,38 @@ interface DeepSeekConfig {
   model: string
 }
 
+/** DeepSeek V4 官方模型与定价（人民币/百万 tokens，来源 api-docs.deepseek.com） */
+const DEEPSEEK_MODELS = [
+  {
+    id: 'deepseek-v4-flash',
+    name: 'DeepSeek V4 Flash',
+    reasoning: false,
+    cost: { input: 1, output: 2, cacheRead: 0.02, cacheWrite: 1 },
+    contextWindow: 128000,
+    maxTokens: 8192,
+  },
+  {
+    id: 'deepseek-v4-pro',
+    name: 'DeepSeek V4 Pro',
+    reasoning: true,
+    cost: { input: 3, output: 6, cacheRead: 0.025, cacheWrite: 3 },
+    contextWindow: 128000,
+    maxTokens: 8192,
+  },
+]
+
+/** 旧模型名 → V4 迁移（deepseek-chat 已停推） */
+const MODEL_MIGRATION: Record<string, string> = {
+  'deepseek-chat': 'deepseek-v4-flash',
+  'deepseek-reasoner': 'deepseek-v4-pro',
+}
+
 /** 注册 DeepSeek provider（pi-ai 自定义 provider，离线注册） */
 async function createDeepSeekModel(config: DeepSeekConfig) {
   const { createModels, createProvider, envApiKeyAuth } = await loadPiAi()
   const { openAICompletionsApi } = await import('@earendil-works/pi-ai/api/openai-completions.lazy')
+  const modelId = MODEL_MIGRATION[config.model] ?? config.model ?? 'deepseek-v4-flash'
+  const spec = DEEPSEEK_MODELS.find((m) => m.id === modelId) ?? DEEPSEEK_MODELS[0]
   const models = createModels()
   models.setProvider(createProvider({
     id: 'deepseek',
@@ -36,19 +64,19 @@ async function createDeepSeekModel(config: DeepSeekConfig) {
     auth: { apiKey: envApiKeyAuth('DeepSeek API key', ['DEEPSEEK_API_KEY']) },
     api: openAICompletionsApi(),
     models: [{
-      id: config.model || 'deepseek-chat',
-      name: 'DeepSeek Chat',
+      id: spec.id,
+      name: spec.name,
       api: 'openai-completions' as const,
       provider: 'deepseek',
       baseUrl: 'https://api.deepseek.com',
-      reasoning: false,
+      reasoning: spec.reasoning,
       input: ['text'] as const,
-      cost: { input: 0.27, output: 1.1, cacheRead: 0.07, cacheWrite: 0.27 },
-      contextWindow: 128000,
-      maxTokens: 8192,
+      cost: spec.cost,
+      contextWindow: spec.contextWindow,
+      maxTokens: spec.maxTokens,
     }],
   }))
-  return { models, model: models.getModel('deepseek', config.model || 'deepseek-chat') }
+  return { models, model: models.getModel('deepseek', spec.id) }
 }
 
 /** DeepSeek 健康检查：真实请求一次极简对话 */

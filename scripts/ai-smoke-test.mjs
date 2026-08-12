@@ -31,7 +31,7 @@ models.setProvider(createProvider({
   auth: { apiKey: envApiKeyAuth('DeepSeek API key', ['DEEPSEEK_API_KEY']) },
   api: openAICompletionsApi(),
   models: [{
-    id: 'deepseek-chat', name: 'DeepSeek Chat',
+    id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash',
     api: 'openai-completions', provider: 'deepseek',
     baseUrl: 'https://api.deepseek.com',
     reasoning: false, input: ['text'],
@@ -40,7 +40,7 @@ models.setProvider(createProvider({
   }],
 }))
 
-const model = models.getModel('deepseek', 'deepseek-chat')
+const model = models.getModel('deepseek', 'deepseek-v4-flash')
 if (!model) throw new Error('模型注册失败')
 
 const prompt = process.argv[2] ?? '你好，请用一句话自我介绍'
@@ -51,5 +51,11 @@ const reply = await models.completeSimple(model, {
   messages: [{ role: 'user', content: prompt, timestamp: Date.now() }],
 }, { apiKey })
 
-console.log(`[AI] ${reply.content}`)
+const content = reply.content
+const text = typeof content === 'string'
+  ? content
+  : Array.isArray(content)
+    ? content.map((c) => (typeof c === 'object' && c && 'text' in c ? c.text : String(c))).join('')
+    : String(content)
+console.log(`[AI] ${text.trim()}`)
 console.log('\n✅ M4.1 最小对话验证通过')

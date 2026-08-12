@@ -34,7 +34,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai: {
     provider: 'deepseek',
     deepseekApiKey: '',
-    deepseekModel: 'deepseek-chat',
+    deepseekModel: 'deepseek-v4-flash',
     communityEndpoint: '',
     communityToken: '',
     communityModel: '',
@@ -81,9 +81,16 @@ function sanitizeAi(raw: unknown): AppSettings['ai'] {
   return {
     provider: AI_PROVIDERS.includes(input.provider as AiProviderType) ? (input.provider as AiProviderType) : DEFAULT_SETTINGS.ai.provider,
     deepseekApiKey: typeof input.deepseekApiKey === 'string' ? input.deepseekApiKey : '',
-    deepseekModel: typeof input.deepseekModel === 'string' && input.deepseekModel ? input.deepseekModel : DEFAULT_SETTINGS.ai.deepseekModel,
+    deepseekModel: typeof input.deepseekModel === 'string' && input.deepseekModel ? migrateModel(input.deepseekModel) : DEFAULT_SETTINGS.ai.deepseekModel,
     communityEndpoint: typeof input.communityEndpoint === 'string' ? input.communityEndpoint : '',
     communityToken: typeof input.communityToken === 'string' ? input.communityToken : '',
     communityModel: typeof input.communityModel === 'string' ? input.communityModel : '',
   }
+}
+
+/** 旧模型名迁移到 V4（deepseek-chat/deepseek-reasoner 已停推） */
+function migrateModel(model: string): string {
+  if (model === 'deepseek-chat') return 'deepseek-v4-flash'
+  if (model === 'deepseek-reasoner') return 'deepseek-v4-pro'
+  return model
 }
