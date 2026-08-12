@@ -167,7 +167,9 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('image:readAsDataUrl', async (_event, rootPath: string, imagePath: string) => {
-    requireInsideRoot(rootPath, imagePath)
+    // 项目资源必须限制在项目根目录；外观背景由用户通过系统选择器选取，允许空 rootPath。
+    if (rootPath) requireInsideRoot(rootPath, imagePath)
+    if (typeof imagePath !== 'string' || !path.isAbsolute(imagePath)) throw new Error('无效的图片路径')
     const ext = path.extname(imagePath).toLowerCase()
     const mimeByExt: Record<string, string> = {
       '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',

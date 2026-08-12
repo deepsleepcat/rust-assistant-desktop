@@ -16,7 +16,7 @@ export function Backdrop() {
     if (background.kind !== 'image' || !background.imagePath) return
     let alive = true
     getBridge()
-      .project.readImageAsDataUrl(project?.rootPath ?? '', background.imagePath)
+      .project.readImageAsDataUrl('', background.imagePath)
       .then((url) => alive && setImage({ path: background.imagePath ?? '', url }))
       .catch(() => {
         if (!alive) return
