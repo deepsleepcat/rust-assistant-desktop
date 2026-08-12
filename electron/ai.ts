@@ -141,9 +141,14 @@ export async function streamAgent(
   })
 
   agent.subscribe((event) => {
-    if (event.type === 'message_update' && (event.assistantMessageEvent as { type?: string }).type === 'text_delta') {
-      const delta = (event.assistantMessageEvent as { delta?: string }).delta ?? ''
-      emit({ type: 'delta', text: delta })
+    if (event.type === 'message_update') {
+      const assistantEvent = event.assistantMessageEvent as { type?: string; delta?: string }
+      if (assistantEvent.type === 'text_delta') {
+        emit({ type: 'delta', text: assistantEvent.delta ?? '' })
+      }
+      if (assistantEvent.type === 'thinking_delta') {
+        emit({ type: 'reasoning', text: assistantEvent.delta ?? '' })
+      }
     }
     if (event.type === 'tool_execution_start') {
       emit({ type: 'tool_start', name: (event as { toolName: string }).toolName, args: (event as { args: Record<string, unknown> }).args })

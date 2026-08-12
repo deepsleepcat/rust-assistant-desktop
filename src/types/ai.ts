@@ -58,6 +58,7 @@ export interface AiChatParams {
 export type AiStreamEvent =
   | { type: 'start'; requestId?: string }
   | { type: 'delta'; text: string; requestId?: string }
+  | { type: 'reasoning'; text: string; requestId?: string }
   | { type: 'done'; fullText: string; requestId?: string }
   | { type: 'error'; message: string; requestId?: string }
   | { type: 'tool_start'; name: string; args: Record<string, unknown> }

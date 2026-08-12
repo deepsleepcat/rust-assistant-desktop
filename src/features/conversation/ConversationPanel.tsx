@@ -228,9 +228,15 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
             ))}
             {messages.map((m) => (
               <div key={m.id} className={`msg msg-${m.role}`}>
+                {m.role === 'assistant' && m.reasoning && (
+                  <details className="msg-reasoning" open={m.content === ''}>
+                    <summary>{m.content === '' ? 'AI 思考中…' : '思考过程'}</summary>
+                    <div className="msg-reasoning-body">{m.reasoning}</div>
+                  </details>
+                )}
                 <div className="msg-bubble">
                   {m.content}
-                  {m.role === 'assistant' && m.content === '' && <span className="msg-streaming">正在思考…</span>}
+                  {m.role === 'assistant' && m.content === '' && !m.reasoning && <span className="msg-streaming">正在思考…</span>}
                 </div>
               </div>
             ))}

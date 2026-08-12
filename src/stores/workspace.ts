@@ -619,6 +619,15 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         await new Promise<void>((resolve) => {
           const unsubscribe = bridge.ai.onAiEvent((event: AiStreamEvent) => {
             if (event.type === 'delta') appendDelta(event.text)
+            if (event.type === 'reasoning') {
+              set({
+                conversations: get().conversations.map((c) =>
+                  c.id === conversationId
+                    ? { ...c, messages: c.messages.map((m) => (m.id === aiMessageId ? { ...m, reasoning: (m.reasoning ?? '') + event.text } : m)) }
+                    : c,
+                ),
+              })
+            }
             if (event.type === 'tool_start') {
               const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_start', name: event.name, createdAt: Date.now() }
               set({

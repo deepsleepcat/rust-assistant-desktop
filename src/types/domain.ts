@@ -69,6 +69,8 @@ export interface ConversationMessage {
   id: string
   role: MessageRole
   content: string
+  /** AI 思考过程（DeepSeek V4 思考型模型的 reasoning，界面灰色显示） */
+  reasoning?: string
   refPath?: string
   refStartLine?: number
   refEndLine?: number
