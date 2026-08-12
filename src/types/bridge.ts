@@ -44,6 +44,6 @@ export interface BridgeApi {
     createFolder(rootPath: string, dirPath: string, name: string): Promise<void>
     rename(rootPath: string, oldPath: string, newPath: string): Promise<void>
     delete(rootPath: string, targetPath: string): Promise<void>
-    readImageAsDataUrl(imagePath: string): Promise<string>
+    readImageAsDataUrl(rootPath: string, imagePath: string): Promise<string>
   }
 }

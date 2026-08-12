@@ -30,7 +30,7 @@ export function SettingsModal() {
     if (bg.kind !== 'image' || !bg.imagePath) return
     let alive = true
     getBridge()
-      .project.readImageAsDataUrl(bg.imagePath)
+      .project.readImageAsDataUrl('', bg.imagePath)
       .then((url) => alive && setImage({ path: bg.imagePath ?? '', url }))
       .catch(() => alive && setImage({ path: bg.imagePath ?? '', url: null }))
     return () => {

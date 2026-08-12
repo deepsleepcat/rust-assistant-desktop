@@ -25,7 +25,7 @@ const api: BridgeApi = {
     createFolder: (rootPath: string, dirPath: string, name: string) => ipcRenderer.invoke('fs:createFolder', rootPath, dirPath, name),
     rename: (rootPath: string, oldPath: string, newPath: string) => ipcRenderer.invoke('fs:rename', rootPath, oldPath, newPath),
     delete: (rootPath: string, targetPath: string) => ipcRenderer.invoke('fs:delete', rootPath, targetPath),
-    readImageAsDataUrl: (imagePath: string) => ipcRenderer.invoke('image:readAsDataUrl', imagePath),
+    readImageAsDataUrl: (rootPath: string, imagePath: string) => ipcRenderer.invoke('image:readAsDataUrl', rootPath, imagePath),
   },
 }
 

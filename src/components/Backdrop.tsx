@@ -8,6 +8,7 @@ import { getBridge } from '../services/bridge'
 
 export function Backdrop() {
   const background = useWorkspaceStore((s) => s.settings.background)
+  const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const notify = useWorkspaceStore((s) => s.notify)
   const [image, setImage] = useState<{ path: string; url: string | null }>({ path: '', url: null })
 
@@ -15,7 +16,7 @@ export function Backdrop() {
     if (background.kind !== 'image' || !background.imagePath) return
     let alive = true
     getBridge()
-      .project.readImageAsDataUrl(background.imagePath)
+      .project.readImageAsDataUrl(project?.rootPath ?? '', background.imagePath)
       .then((url) => alive && setImage({ path: background.imagePath ?? '', url }))
       .catch(() => {
         if (!alive) return
@@ -25,7 +26,7 @@ export function Backdrop() {
     return () => {
       alive = false
     }
-  }, [background.kind, background.imagePath, notify])
+  }, [background.kind, background.imagePath, notify, project?.rootPath])
 
   if (background.kind === 'none') return null
 

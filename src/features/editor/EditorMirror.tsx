@@ -12,6 +12,9 @@ import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
 import { search, searchKeymap } from '@codemirror/search'
 import { rustConfigLanguageSupport } from './rustLanguage'
 import { rustCompletionSource } from './completion'
+import { foldGutter, foldKeymap } from '@codemirror/language'
+import { colorDecorationExtension } from './colorDecorationsExtension'
+import { rustSectionFolding } from './sectionFolding'
 import { loadCodeData } from '../../services/codeData'
 
 interface EditorMirrorProps {
@@ -105,6 +108,9 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
       doc: value,
       extensions: [
         lineNumbers(),
+        foldGutter(),
+        rustSectionFolding,
+        colorDecorationExtension,
         highlightActiveLine(),
         highlightActiveLineGutter(),
         drawSelection(),
@@ -117,6 +123,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
           ...historyKeymap,
           ...searchKeymap,
           ...completionKeymap,
+          ...foldKeymap,
           indentWithTab,
           { key: 'Mod-s', run: () => { onSaveRef.current(); return true } },
         ]),

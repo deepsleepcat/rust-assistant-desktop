@@ -166,11 +166,18 @@ function registerIpc(): void {
     await shell.trashItem(targetPath)
   })
 
-  ipcMain.handle('image:readAsDataUrl', async (_event, imagePath: string) => {
-    if (typeof imagePath !== 'string' || !path.isAbsolute(imagePath)) throw new Error('无效的图片路径')
+  ipcMain.handle('image:readAsDataUrl', async (_event, rootPath: string, imagePath: string) => {
+    requireInsideRoot(rootPath, imagePath)
+    const ext = path.extname(imagePath).toLowerCase()
+    const mimeByExt: Record<string, string> = {
+      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp',
+    }
+    const mime = mimeByExt[ext]
+    if (!mime) throw new Error('不支持的图片格式')
+    const stat = await fs.stat(imagePath)
+    if (stat.size > 30 * 1024 * 1024) throw new Error('图片超过 30MB，暂不支持预览')
     const buf = await fs.readFile(imagePath)
-    const ext = path.extname(imagePath).toLowerCase().replace('.', '')
-    const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
     return `data:${mime};base64,${buf.toString('base64')}`
   })
 

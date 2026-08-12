@@ -232,7 +232,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         if (!dir || dir.kind !== 'dir') throw new Error('找不到要删除的项目')
         delete dir.children[parts[parts.length - 1]]
       },
-      readImageAsDataUrl: async () => MOCK_IMAGE_DATA_URL,
+      readImageAsDataUrl: async (_root, _imagePath) => MOCK_IMAGE_DATA_URL,
     },
   }
 }

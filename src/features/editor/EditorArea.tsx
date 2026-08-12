@@ -13,6 +13,8 @@ import { AppIcon } from '../../components/AppIcon'
 import { LogoR } from '../../components/LogoR'
 import { ConfirmBox } from '../../components/Modal'
 import { EditorMirror } from './EditorMirror'
+import { ImageViewer } from './ImageViewer'
+import { isPreviewableImage } from '../../utils/paths'
 
 export function EditorArea() {
   const tabs = useWorkspaceStore((s) => s.openTabs)
@@ -148,12 +150,16 @@ function EditorPane({ tabId }: { tabId: string }) {
   const tab = useWorkspaceStore((s) => s.openTabs.find((t) => t.id === tabId))
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
+  const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const toggleTranslation = useWorkspaceStore((s) => s.toggleTranslation)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
   const fontFamily = useWorkspaceStore((s) => s.settings.fontFamily)
   const fontSize = useWorkspaceStore((s) => s.settings.fontSize)
 
   if (!tab) return null
+  if (isPreviewableImage(tab.path) && project) {
+    return <ImageViewer path={tab.path} rootPath={project.rootPath} />
+  }
 
   return (
     <div className="editor-workspace">

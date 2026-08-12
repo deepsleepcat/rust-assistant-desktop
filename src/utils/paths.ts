@@ -17,7 +17,12 @@ export function extname(p: string): string {
 
 /** 判断是否是铁锈战争常见的配置文件扩展名 */
 export function isRustConfigFile(p: string): boolean {
-  return ['.txt', '.ini', '.cfg', '.conf', '.rc'].includes(extname(p))
+  return ['.txt', '.ini', '.cfg', '.conf', '.rc', '.template'].includes(extname(p))
+}
+
+/** M3 视觉阶段支持预览的图片格式 */
+export function isPreviewableImage(p: string): boolean {
+  return ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(extname(p))
 }
 
 /** 截断长路径用于展示（省略号计入长度） */
