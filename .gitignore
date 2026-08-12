@@ -37,6 +37,11 @@ Thumbs.db
 docs/
 CHANGELOG.md
 
+# AI 参考/说明素材（仅本地；modding-guide.md 构建必需，保留）
+assets/ai/README.md
+assets/ai/references/
+assets/ai/examples/
+
 .playwright-mcp/
 
 ui-*.png
