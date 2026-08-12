@@ -40,7 +40,10 @@ export function SettingsModal() {
 
   const imageUrl = image.path === bg.imagePath ? image.url : null
 
-  const previewStyle: React.CSSProperties = {}
+  const previewStyle: React.CSSProperties = {
+    opacity: bg.opacity / 100,
+    filter: bg.blur > 0 ? `blur(${bg.blur}px)` : undefined,
+  }
   if (bg.kind === 'color') previewStyle.backgroundColor = bg.color
   if (bg.kind === 'gradient') previewStyle.backgroundImage = bg.gradient
   if (bg.kind === 'image' && imageUrl) previewStyle.backgroundImage = `url(${imageUrl})`
@@ -86,7 +89,6 @@ export function SettingsModal() {
                   ...previewStyle,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
-                  opacity: 1,
                 }}
               />
               <div className="setting-row">
@@ -137,7 +139,7 @@ export function SettingsModal() {
                           height: 46,
                           borderRadius: 'var(--radius-sm)',
                           border: '1px solid var(--border)',
-                          background: g.value,
+                          backgroundImage: g.value,
                           cursor: 'pointer',
                           position: 'relative',
                           overflow: 'hidden',

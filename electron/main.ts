@@ -167,6 +167,7 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('image:readAsDataUrl', async (_event, imagePath: string) => {
+    if (typeof imagePath !== 'string' || !path.isAbsolute(imagePath)) throw new Error('无效的图片路径')
     const buf = await fs.readFile(imagePath)
     const ext = path.extname(imagePath).toLowerCase().replace('.', '')
     const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`

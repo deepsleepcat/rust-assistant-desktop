@@ -14,18 +14,25 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 
 .app { position: relative; height: 100%; display: flex; flex-direction: column; background: var(--canvas); }
-.backdrop { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.backdrop { position: fixed; inset: -48px; z-index: 0; pointer-events: none; overflow: hidden; }
 .backdrop-img, .backdrop-solid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.backdrop-img { transform: scale(1.04); }
+.backdrop-img { transform: scale(1.08); filter: var(--backdrop-filter, none); }
 .backdrop-solid { opacity: .58; }
-.app > .backdrop ~ .app-body,
-.app > .backdrop ~ .titlebar,
-.app > .backdrop ~ .statusbar { background: transparent; }
-.app > .backdrop ~ .app-body .panel,
-.app > .backdrop ~ .titlebar,
-.app > .backdrop ~ .statusbar { background: color-mix(in srgb, var(--surface-0) 78%, transparent); }
-.app > .backdrop ~ .app-body .sidebar,
-.app > .backdrop ~ .app-body > section:last-child { background: color-mix(in srgb, var(--surface-1) 78%, transparent); }
+.has-backdrop .titlebar,
+.has-backdrop .statusbar { background: rgba(255, 255, 255, .74); }
+.has-backdrop .app-body .panel,
+.has-backdrop .app-body .welcome,
+.has-backdrop .app-body .editor-workspace,
+.has-backdrop .app-body .editor-textarea,
+.has-backdrop .app-body .conversation-view,
+.has-backdrop .app-body .conv-messages { background: rgba(255, 255, 255, .74); }
+.has-backdrop .app-body .sidebar,
+.has-backdrop .app-body > section:last-child,
+.has-backdrop .app-body .conversation-list,
+.has-backdrop .app-body .conv-input-area { background: rgba(250, 250, 250, .78); }
+.has-backdrop .app-body .editor-gutter { background: rgba(245, 245, 245, .78); }
+.has-backdrop .app-body .editor-pathbar,
+.has-backdrop .app-body .tabbar { background: rgba(250, 250, 250, .8); }
 
 /* 顶部 chrome */
 .titlebar {

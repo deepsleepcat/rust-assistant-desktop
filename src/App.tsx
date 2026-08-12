@@ -77,7 +77,7 @@ export function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app${settings.background.kind !== 'none' ? ' has-backdrop' : ''}`}>
       <Backdrop />
       <TitleBar />
 
