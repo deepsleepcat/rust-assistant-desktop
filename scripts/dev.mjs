@@ -35,7 +35,17 @@ vite.on('exit', (code) => {
   process.exit(code ?? 0)
 })
 
+/** Electron 主进程和 preload 是 TypeScript，开发启动前必须先编译最新代码。 */
+async function buildElectron() {
+  const tscBin = require.resolve('typescript/bin/tsc')
+  await new Promise((resolve, reject) => {
+    const compiler = spawn(process.execPath, [tscBin, '-p', 'tsconfig.node.json'], { stdio: 'inherit' })
+    compiler.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`Electron 编译失败，退出码 ${code}`)))
+  })
+}
+
 waitForServer(devUrl)
+  .then(() => buildElectron())
   .then(() => {
     const electron = spawn(process.execPath, [electronBin, '.'], {
       stdio: 'inherit',
