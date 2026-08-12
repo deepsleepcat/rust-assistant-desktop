@@ -55,3 +55,6 @@ scripts/capture-promo.mjs
 probe*.mjs
 scripts/ai-smoke-test.mjs
 scripts/migrate-data.mjs
+
+# code-review-graph 图谱数据库（构建产物，不入库）
+.code-review-graph/
