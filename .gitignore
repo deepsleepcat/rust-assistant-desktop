@@ -31,6 +31,7 @@ Thumbs.db
 
 # 工具运行时状态
 .zcode/
+.claude/
 
 # 项目说明文档（仅本地，不随仓库分发）
 docs/
