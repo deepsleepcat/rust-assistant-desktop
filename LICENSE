@@ -1,13 +1,4 @@
-rust-assistant-desktop（铁锈助手 · 铁锈战争模组开发工作台）
-
-Copyright (C) 2026 猫猫（rust-assistant-desktop）
-
-本程序是自由软件：您可以依据自由软件基金会发布的 GNU 通用公共许可证
-第 3 版（或您选择的任何更新版本）的条款，重新分发和/或修改本程序。
-本程序分发时希望它有用，但不提供任何担保；甚至不提供适销性或特定用途
-适用性的暗示担保。详情请见 GNU 通用公共许可证。
-
-                    GNU GENERAL PUBLIC LICENSE
+GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
  Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
@@ -681,3 +672,10 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+
+----
+
+rust-assistant-desktop（铁锈助手 · 铁锈战争模组开发工作台）
+Copyright (C) 2026 猫猫（rust-assistant-desktop）
+本程序是自由软件，依照 GNU 通用公共许可证第 3 版（或更新版本）分发。
