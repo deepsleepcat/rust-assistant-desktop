@@ -4,6 +4,7 @@ node_modules/
 # 构建产物
 dist/
 dist-electron/
+release/
 *.tsbuildinfo
 # vendor 里的 Pi 引擎编译产物必须入库（file: 依赖，clone 后需要 dist 才能运行）
 !vendor/pi/packages/*/dist/
@@ -30,6 +31,9 @@ Thumbs.db
 
 # 工具运行时状态
 .zcode/
+
+# 项目说明文档（仅本地，不随仓库分发）
+docs/
 
 .playwright-mcp/
 
