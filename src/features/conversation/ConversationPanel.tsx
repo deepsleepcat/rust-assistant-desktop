@@ -223,13 +223,13 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
               <div key={t.id} className={`tool-card${t.type === 'tool_end' && !t.ok ? ' tool-card-error' : ''}`}>
                 {t.type === 'tool_start' ? (
                   <>
-                    <span className="tool-icon">🔧</span>
+                    <AppIcon name="tools" size={13} className="tool-icon" />
                     <span>正在{toolLabel(t.name)}…</span>
                     {typeof t.args?.path === 'string' && <code className="tool-path">{t.args.path}</code>}
                   </>
                 ) : (
                   <>
-                    <span className="tool-icon">{t.ok ? '✅' : '❌'}</span>
+                    <AppIcon name={t.ok ? 'check' : 'cross'} size={13} className="tool-icon" />
                     <span>{t.summary ?? toolLabel(t.name)}</span>
                   </>
                 )}

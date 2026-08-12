@@ -19,8 +19,12 @@ export function ProjectPanel() {
   const refreshTree = useWorkspaceStore((s) => s.refreshTree)
   const createFile = useWorkspaceStore((s) => s.createFile)
   const createFolder = useWorkspaceStore((s) => s.createFolder)
+  const setModDialog = useWorkspaceStore((s) => s.setModDialog)
+  const packModProject = useWorkspaceStore((s) => s.packModProject)
+  const checkModProject = useWorkspaceStore((s) => s.checkModProject)
   const [dialog, setDialog] = useState<null | { kind: 'file' | 'folder'; parent: string }>(null)
   const [renaming, setRenaming] = useState<null | TreeNode>(null)
+  const [modMenu, setModMenu] = useState(false)
 
   if (!project) {
     return (
@@ -60,6 +64,22 @@ export function ProjectPanel() {
         >
           <AppIcon name="add" size={13} />
         </button>
+        <div className="mod-tools-wrap">
+          <button className="icon-btn" title="模组工具" onClick={() => setModMenu((v) => !v)}>
+            <AppIcon name="tools" size={13} />
+          </button>
+          {modMenu && (
+            <>
+              <div className="mod-tools-menu">
+                <button onClick={() => { setModDialog('createMod'); setModMenu(false) }}>新建模组</button>
+                <button onClick={() => { setModDialog('createUnit'); setModMenu(false) }}>新建单位</button>
+                <button onClick={() => { setModMenu(false); void packModProject() }}>打包模组</button>
+                <button onClick={() => { setModMenu(false); void checkModProject() }}>检查模组</button>
+              </div>
+              <div className="mod-tools-mask" onClick={() => setModMenu(false)} />
+            </>
+          )}
+        </div>
       </div>
       {treeError ? (
         <div className="tree-error">无法读取项目：{treeError}</div>

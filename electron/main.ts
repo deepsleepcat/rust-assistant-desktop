@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto'
 import { createStore } from './store'
 import { isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
+import { checkMod, createMod, createUnit, packMod, packModBuffer } from './modTools'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
@@ -166,6 +167,43 @@ function registerIpc(): void {
     requireInsideRoot(rootPath, targetPath)
     // 优先移入系统回收站；回收站失败时不静默永久删除，直接报错
     await shell.trashItem(targetPath)
+  })
+
+  // M5 模组工具：新建模组 / 新建单位 / 打包 / 检查（全部限制在项目根目录内）
+  ipcMain.handle('mod:create', async (_event, rootPath: string, params: unknown) => {
+    requireInsideRoot(rootPath, rootPath)
+    return createMod(rootPath, params as import('./modTools').CreateModParams)
+  })
+
+  ipcMain.handle('mod:createUnit', async (_event, rootPath: string, params: unknown) => {
+    requireInsideRoot(rootPath, rootPath)
+    return createUnit(rootPath, params as { name: string; displayName?: string; folder?: string })
+  })
+
+  ipcMain.handle('mod:pack', async (_event, rootPath: string) => {
+    requireInsideRoot(rootPath, rootPath)
+    const { size, files } = await packMod(rootPath)
+    const suggested = path.join(path.dirname(rootPath), `${path.basename(rootPath)}.rwmod`)
+    const result = await dialog.showSaveDialog({
+      title: '保存打包文件',
+      defaultPath: suggested,
+      filters: [{ name: '铁锈战争模组包', extensions: ['rwmod'] }, { name: '压缩包', extensions: ['zip'] }],
+    })
+    if (result.canceled || !result.filePath) return { canceled: true }
+    await fs.writeFile(result.filePath, await packModBuffer(rootPath))
+    return { canceled: false, filePath: result.filePath, size, files }
+  })
+
+  ipcMain.handle('mod:packTo', async (_event, rootPath: string, destPath: string) => {
+    requireInsideRoot(rootPath, rootPath)
+    const buffer = await packModBuffer(rootPath)
+    await fs.writeFile(destPath, buffer)
+    return { size: buffer.byteLength }
+  })
+
+  ipcMain.handle('mod:check', async (_event, rootPath: string) => {
+    requireInsideRoot(rootPath, rootPath)
+    return checkMod(rootPath)
   })
 
   ipcMain.handle('image:readAsDataUrl', async (_event, rootPath: string, imagePath: string) => {

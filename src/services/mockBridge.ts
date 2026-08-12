@@ -238,6 +238,12 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       chooseLocal: async () => null,
       uploadCommunity: async () => ({ ok: false, message: '社区头像服务即将上线' }),
     },
+    mod: {
+      create: async () => ({ files: ['mod-info.txt', 'units/'] }),
+      createUnit: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
+      pack: async () => ({ canceled: true }),
+      check: async () => ({ issues: [], unitCount: 0, fileCount: 0 }),
+    },
     ai: {
       check: async (settings) => {
         if (settings.provider === 'deepseek') {

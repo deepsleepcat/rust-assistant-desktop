@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { IconChat, IconClose, IconFolder, IconGear } from '../../components/icons'
+import { AppIcon } from '../../components/AppIcon'
 
 interface CommandItem {
   id: string
@@ -20,6 +21,9 @@ export function CommandPalette() {
   const openProject = useWorkspaceStore((s) => s.openProject)
   const createConversation = useWorkspaceStore((s) => s.createConversation)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
+  const setModDialog = useWorkspaceStore((s) => s.setModDialog)
+  const packModProject = useWorkspaceStore((s) => s.packModProject)
+  const checkModProject = useWorkspaceStore((s) => s.checkModProject)
   const closeTab = useWorkspaceStore((s) => s.closeTab)
   const activeTabId = useWorkspaceStore((s) => s.activeTabId)
 
@@ -46,8 +50,12 @@ export function CommandPalette() {
         icon: <IconClose size={15} />,
         run: () => activeTabId && closeTab(activeTabId),
       },
+      { id: 'mod-create', title: '模组：新建模组…', icon: <AppIcon name="box" size={15} />, run: () => { setModDialog('createMod'); setOpen(false) } },
+      { id: 'mod-create-unit', title: '模组：新建单位…', icon: <AppIcon name="tower" size={15} />, run: () => { setModDialog('createUnit'); setOpen(false) } },
+      { id: 'mod-pack', title: '模组：打包（.rwmod）', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); void packModProject() } },
+      { id: 'mod-check', title: '模组：检查单位', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); void checkModProject() } },
     ],
-    [openProject, createConversation, setSettingsOpen, activeTabId, closeTab],
+    [openProject, createConversation, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen],
   )
 
   const filtered = useMemo(() => {

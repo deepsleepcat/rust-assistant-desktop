@@ -31,6 +31,12 @@ const api: BridgeApi = {
     chooseLocal: () => ipcRenderer.invoke('avatar:chooseLocal'),
     uploadCommunity: () => ipcRenderer.invoke('avatar:uploadCommunity'),
   },
+  mod: {
+    create: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:create', rootPath, params),
+    createUnit: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnit', rootPath, params),
+    pack: (rootPath: string) => ipcRenderer.invoke('mod:pack', rootPath),
+    check: (rootPath: string) => ipcRenderer.invoke('mod:check', rootPath),
+  },
   ai: {
     check: (settings) => ipcRenderer.invoke('ai:check', settings),
     info: () => ipcRenderer.invoke('ai:info'),

@@ -51,6 +51,13 @@ export interface BridgeApi {
     chooseLocal(): Promise<string | null>
     uploadCommunity(): Promise<{ ok: false; message: string }>
   }
+  /** M5 模组工具 */
+  mod: {
+    create(rootPath: string, params: { name: string; title: string; description?: string; author?: string; version?: string; thumbnail?: string }): Promise<{ files: string[] }>
+    createUnit(rootPath: string, params: { name: string; displayName?: string; folder?: string }): Promise<{ path: string }>
+    pack(rootPath: string): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number; files: number }>
+    check(rootPath: string): Promise<{ issues: Array<{ file: string; level: 'error' | 'warning'; message: string }>; unitCount: number; fileCount: number }>
+  }
   ai: {
     /** 健康检查：验证 Key/连接 */
     check(settings: AiSettings): Promise<AiCheckResult>

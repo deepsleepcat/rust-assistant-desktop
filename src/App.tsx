@@ -14,6 +14,7 @@ import { EditorArea } from './features/editor/EditorArea'
 import { ConversationPanel } from './features/conversation/ConversationPanel'
 import { SettingsModal } from './features/settings/SettingsModal'
 import { CommandPalette } from './features/workspace/CommandPalette'
+import { ModToolModals } from './features/modTools/ModToolModals'
 
 export function App() {
   const ready = useWorkspaceStore((s) => s.ready)
@@ -103,6 +104,7 @@ export function App() {
 
       {settingsOpen && <SettingsModal />}
       <CommandPalette />
+      <ModToolModals />
       <ConfirmDialog />
 
       {toast && <div className="toast">{toast}</div>}

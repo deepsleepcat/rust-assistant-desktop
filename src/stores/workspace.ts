@@ -54,6 +54,10 @@ interface WorkspaceStoreState {
   aiStreamingConversationId: string | null
   /** 待审批的写文件请求 */
   pendingApproval: { id: string; path: string; contentPreview: string } | null
+  /** M5：模组工具弹窗（null 表示关闭） */
+  modDialog: 'createMod' | 'createUnit' | 'check' | null
+  /** M5：单位检查结果 */
+  modCheckResult: { issues: Array<{ file: string; level: 'error' | 'warning'; message: string }>; unitCount: number; fileCount: number } | null
 }
 
 interface WorkspaceStoreActions {
@@ -91,6 +95,12 @@ interface WorkspaceStoreActions {
   /** M4：向 AI 发送消息（流式） */
   sendAiMessage(conversationId: string, text: string): Promise<void>
   respondApproval(approved: boolean): Promise<void>
+  /** M5：模组工具 */
+  setModDialog(kind: 'createMod' | 'createUnit' | 'check' | null): void
+  createModProject(params: { name: string; title: string; description?: string; author?: string; version?: string }): Promise<void>
+  createUnitFile(params: { name: string; displayName?: string }): Promise<void>
+  packModProject(): Promise<void>
+  checkModProject(): Promise<void>
 }
 
 export type WorkspaceStore = WorkspaceStoreState & WorkspaceStoreActions
@@ -158,6 +168,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       toast: null,
       aiStreamingConversationId: null,
       pendingApproval: null,
+      modDialog: null,
+      modCheckResult: null,
 
       async init() {
         const [settings, workspace, info] = await Promise.all([
@@ -702,6 +714,63 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       },
       dismissToast() {
         set({ toast: null })
+      },
+
+      // ── M5 模组工具 ─────────────────────────────────────────────
+      setModDialog(kind) {
+        set({ modDialog: kind })
+      },
+
+      async createModProject(params) {
+        const project = activeProject()
+        if (!project) return
+        try {
+          const { files } = await bridge.mod.create(project.rootPath, params)
+          await get().refreshTree()
+          get().notify(`模组已创建：${files.join('、')}`)
+        } catch (err) {
+          get().notify(`创建模组失败：${err instanceof Error ? err.message : String(err)}`)
+        }
+      },
+
+      async createUnitFile(params) {
+        const project = activeProject()
+        if (!project) return
+        try {
+          const { path: rel } = await bridge.mod.createUnit(project.rootPath, params)
+          await get().refreshTree()
+          get().notify(`已创建单位：${rel}`)
+        } catch (err) {
+          get().notify(`创建单位失败：${err instanceof Error ? err.message : String(err)}`)
+        }
+      },
+
+      async packModProject() {
+        const project = activeProject()
+        if (!project) return
+        get().notify('正在打包模组…')
+        try {
+          const result = await bridge.mod.pack(project.rootPath)
+          if ('canceled' in result && result.canceled) {
+            get().notify('已取消打包')
+            return
+          }
+          const mb = (result.size / 1024 / 1024).toFixed(2)
+          get().notify(`打包完成：${result.files} 个文件，${mb} MB → ${result.filePath}`)
+        } catch (err) {
+          get().notify(`打包失败：${err instanceof Error ? err.message : String(err)}`)
+        }
+      },
+
+      async checkModProject() {
+        const project = activeProject()
+        if (!project) return
+        try {
+          const result = await bridge.mod.check(project.rootPath)
+          set({ modCheckResult: result, modDialog: 'check' })
+        } catch (err) {
+          get().notify(`检查失败：${err instanceof Error ? err.message : String(err)}`)
+        }
       },
     }
   })

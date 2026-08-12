@@ -15,3 +15,25 @@
 .msg-reasoning { margin: 0 0 6px; padding: 6px 10px; border-left: 3px solid var(--border-strong); background: var(--surface-1); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 12px; color: var(--text-muted); }
 .msg-reasoning summary { cursor: pointer; user-select: none; font-size: 11px; color: var(--text-secondary); }
 .msg-reasoning-body { margin-top: 5px; white-space: pre-wrap; word-break: break-word; font-style: italic; max-height: 160px; overflow-y: auto; }
+
+/* ── M5 模组工具 ─────────────────────────────────────── */
+.mod-tools-wrap { position: relative; }
+.mod-tools-menu { position: absolute; top: 30px; right: 0; z-index: 60; display: flex; flex-direction: column; min-width: 150px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-0); box-shadow: var(--shadow-md); }
+.mod-tools-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: 12px var(--font-ui); text-align: left; cursor: pointer; }
+.mod-tools-menu button:hover { background: var(--surface-hover); }
+.mod-tools-mask { position: fixed; inset: 0; z-index: 55; }
+.mod-form { display: flex; flex-direction: column; gap: 10px; }
+.mod-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.mod-field span em { color: var(--danger); font-style: normal; }
+.mod-field input, .mod-field textarea { padding: 7px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-input); color: var(--text-primary); font: 12.5px var(--font-ui); outline: 0; resize: none; }
+.mod-field input:focus, .mod-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.mod-row { display: flex; gap: 10px; }
+.mod-row .mod-field { flex: 1; }
+.mod-tip { margin: 0; font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+.mod-check-body { display: flex; flex-direction: column; gap: 6px; }
+.mod-check-ok { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--success); }
+.mod-check-list { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.mod-check-list li { display: flex; align-items: flex-start; gap: 6px; padding: 6px 8px; border: 1px solid var(--divider); border-radius: var(--radius-sm); background: var(--surface-1); font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.mod-check-list li code { color: var(--text-primary); font-family: var(--font-mono); }
+.mod-check-error { border-color: rgba(197,34,31,.4); }
+.mod-check-warning { border-color: rgba(217,144,20,.4); }

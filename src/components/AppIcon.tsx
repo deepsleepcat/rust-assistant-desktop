@@ -7,7 +7,7 @@ import type { CSSProperties } from 'react'
 export type AppIconName =
   | 'search' | 'settings' | 'refresh' | 'close' | 'save' | 'delete'
   | 'add' | 'file' | 'folder' | 'font' | 'layout' | 'plus' | 'rename' | 'tools'
-  | 'palette' | 'text' | 'tools'
+  | 'palette' | 'text' | 'check' | 'cross' | 'warn' | 'zoom' | 'box' | 'tower'
 
 const ICONS: Record<AppIconName, string> = {
   search: '/icons/search.svg',
@@ -26,6 +26,12 @@ const ICONS: Record<AppIconName, string> = {
   palette: '/icons/palette.svg',
   text: '/icons/text.svg',
   tools: '/icons/tools.svg',
+  check: '/icons/check.svg',
+  cross: '/icons/cross.svg',
+  warn: '/icons/warn.svg',
+  zoom: '/icons/zoom.svg',
+  box: '/icons/box.svg',
+  tower: '/icons/tower.svg',
 }
 
 export function AppIcon({ name, size = 16, className, title }: { name: AppIconName; size?: number; className?: string; title?: string }) {
