@@ -236,9 +236,13 @@ export function createWorkspaceStore(bridge: BridgeApi) {
 
       removeProject(id: string) {
         const s = get()
+        // 同步清理该项目的“最后活跃对话”记录，避免残留占用
+        const lastActive = { ...s.lastActiveConversationByProject }
+        delete lastActive[id]
         set({
           projects: s.projects.filter((p) => p.id !== id),
           conversations: s.conversations.filter((c) => c.projectId !== id),
+          lastActiveConversationByProject: lastActive,
           openTabs: [],
           activeTabId: null,
           treeRoot: null,
@@ -659,6 +663,10 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             if (event.type === 'approval_request') {
               set({ pendingApproval: { id: event.id, path: event.path, contentPreview: event.contentPreview } })
             }
+            if (event.type === 'approval_expired') {
+              // 审批超时（用户未响应）：关闭弹窗，不打扰后续对话
+              set({ pendingApproval: get().pendingApproval?.id === event.id ? null : get().pendingApproval })
+            }
             if (event.type === 'done') {
               unsubscribe()
               set({ aiStreamingConversationId: null })
@@ -686,6 +694,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
                 messages,
               },
               settings,
+              // 显式传当前项目根：主进程持久化有 300ms 防抖，读 store 可能拿到旧项目
+              project.rootPath,
             )
             .catch((err) => {
               unsubscribe()

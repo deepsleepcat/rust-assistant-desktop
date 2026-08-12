@@ -168,6 +168,18 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
   const conversation = useWorkspaceStore((s) => s.conversations.find((c) => c.id === id))
   const messages = useMemo(() => conversation?.messages ?? [], [conversation])
   const toolEvents = useMemo(() => conversation?.toolEvents ?? [], [conversation])
+  // 时间线：消息与工具事件按时间穿插渲染（工具卡片不该堆在消息上方）
+  const timeline = useMemo(() => {
+    const items: Array<
+      | { key: string; at: number; kind: 'msg'; msg: (typeof messages)[number] }
+      | { key: string; at: number; kind: 'tool'; tool: (typeof toolEvents)[number] }
+    > = [
+      ...messages.map((m) => ({ key: `m-${m.id}`, at: m.createdAt, kind: 'msg' as const, msg: m })),
+      ...toolEvents.map((t) => ({ key: `t-${t.id}`, at: t.createdAt, kind: 'tool' as const, tool: t })),
+    ]
+    items.sort((a, b) => a.at - b.at)
+    return items
+  }, [messages, toolEvents])
   const sendAiMessage = useWorkspaceStore((s) => s.sendAiMessage)
   const aiStreaming = useWorkspaceStore((s) => s.aiStreamingConversationId === id)
   const aiSettings = useWorkspaceStore((s) => s.settings.ai)
@@ -218,38 +230,37 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
             )}
           </div>
         ) : (
-          <>
-            {toolEvents.map((t) => (
-              <div key={t.id} className={`tool-card${t.type === 'tool_end' && !t.ok ? ' tool-card-error' : ''}`}>
-                {t.type === 'tool_start' ? (
+          timeline.map((item) =>
+            item.kind === 'tool' ? (
+              <div key={item.key} className={`tool-card${item.tool.type === 'tool_end' && !item.tool.ok ? ' tool-card-error' : ''}`}>
+                {item.tool.type === 'tool_start' ? (
                   <>
                     <AppIcon name="tools" size={13} className="tool-icon" />
-                    <span>正在{toolLabel(t.name)}…</span>
-                    {typeof t.args?.path === 'string' && <code className="tool-path">{t.args.path}</code>}
+                    <span>正在{toolLabel(item.tool.name)}…</span>
+                    {typeof item.tool.args?.path === 'string' && <code className="tool-path">{item.tool.args.path}</code>}
                   </>
                 ) : (
                   <>
-                    <AppIcon name={t.ok ? 'check' : 'cross'} size={13} className="tool-icon" />
-                    <span>{t.summary ?? toolLabel(t.name)}</span>
+                    <AppIcon name={item.tool.ok ? 'check' : 'cross'} size={13} className="tool-icon" />
+                    <span>{item.tool.summary ?? toolLabel(item.tool.name)}</span>
                   </>
                 )}
               </div>
-            ))}
-            {messages.map((m) => (
-              <div key={m.id} className={`msg msg-${m.role}`}>
-                {m.role === 'assistant' && m.reasoning && (
-                  <details className="msg-reasoning" open={m.content === ''}>
-                    <summary>{m.content === '' ? 'AI 思考中…' : '思考过程'}</summary>
-                    <div className="msg-reasoning-body">{m.reasoning}</div>
+            ) : (
+              <div key={item.key} className={`msg msg-${item.msg.role}`}>
+                {item.msg.role === 'assistant' && item.msg.reasoning && (
+                  <details className="msg-reasoning" open={item.msg.content === ''}>
+                    <summary>{item.msg.content === '' ? 'AI 思考中…' : '思考过程'}</summary>
+                    <div className="msg-reasoning-body">{item.msg.reasoning}</div>
                   </details>
                 )}
                 <div className="msg-bubble">
-                  {m.role === 'assistant' ? renderAssistantText(m.content) : m.content}
-                  {m.role === 'assistant' && m.content === '' && !m.reasoning && <span className="msg-streaming">正在思考…</span>}
+                  {item.msg.role === 'assistant' ? renderAssistantText(item.msg.content) : item.msg.content}
+                  {item.msg.role === 'assistant' && item.msg.content === '' && !item.msg.reasoning && <span className="msg-streaming">正在思考…</span>}
                 </div>
               </div>
-            ))}
-          </>
+            ),
+          )
         )}
       </div>
 

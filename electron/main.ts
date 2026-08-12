@@ -265,19 +265,22 @@ function registerIpc(): void {
     return true
   })
 
-  ipcMain.handle('ai:stream', async (event, params: AiChatParams, settings: AiSettings) => {
+  ipcMain.handle('ai:stream', async (event, params: AiChatParams, settings: AiSettings, projectRoot: unknown) => {
     const webContents = event.sender
     // 固定通道：单窗口应用，事件只推给发起请求的窗口
     const channel = 'ai:stream'
-    const workspace = store.get('workspace') as { activeProjectId?: string; projects?: Array<{ id: string; rootPath: string }> } | null
-    const activeProject = workspace?.projects?.find((p) => p.id === workspace.activeProjectId)
+    // 项目根由渲染进程显式传入（持久化是防抖 300ms 写入，主进程读 store 可能拿到旧项目）。
+    // 路径不可信，但只能指向用户打开过并已登记的项目。
+    if (typeof projectRoot !== 'string' || !allowedRoots.has(normalizePath(projectRoot))) {
+      throw new Error('项目未登记，无法使用 AI 工具，请重新打开项目')
+    }
     if (settings.provider === 'deepseek') {
       await streamAgent(
         webContents as unknown as import('electron').WebContents,
         channel,
         params,
         { apiKey: settings.deepseekApiKey, model: settings.deepseekModel },
-        activeProject?.rootPath ?? '',
+        projectRoot,
         (resolve) => { pendingApproval = resolve },
       )
     } else {

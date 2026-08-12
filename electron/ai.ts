@@ -120,12 +120,29 @@ export async function streamAgent(
     const tools = createRustAgentTools()
 
     // 写文件审批：beforeToolCall 钩子里等待用户响应（Pi 官方做法）
+    // 用户 2 分钟未响应则自动拒绝并继续，避免 Agent 永久挂起、后续对话被阻塞
+    const APPROVAL_TIMEOUT_MS = 120_000
     const beforeToolCall = async (context: { toolCall: { name: string; id?: string }; args: unknown }) => {
       if (context.toolCall.name !== 'writeFile') return undefined
       const args = (context.args ?? {}) as { path?: string; content?: string }
+      const id = context.toolCall.id ?? randomUUID()
       const preview = String(args.content ?? '').slice(0, 400)
-      emit({ type: 'approval_request', id: context.toolCall.id ?? randomUUID(), tool: 'writeFile', path: args.path ?? '?', contentPreview: preview })
-      const response = await new Promise<AiApprovalResponse>((resolve) => approvalResolver(resolve))
+      emit({ type: 'approval_request', id, tool: 'writeFile', path: args.path ?? '?', contentPreview: preview })
+      const response = await new Promise<AiApprovalResponse>((resolve) => {
+        let settled = false
+        const finish = (approved: boolean) => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          resolve({ id, approved })
+        }
+        const timer = setTimeout(() => {
+          // 超时：通知界面关闭审批弹窗，按“拒绝”继续对话
+          if (!webContents.isDestroyed()) webContents.send(channel, { type: 'approval_expired', id })
+          finish(false)
+        }, APPROVAL_TIMEOUT_MS)
+        approvalResolver((r) => finish(r.approved))
+      })
       return response.approved
         ? undefined
         : { block: true, reason: '用户拒绝了此修改，请调整方案或询问用户' }
@@ -137,6 +154,21 @@ export async function streamAgent(
         systemPrompt: params.systemPrompt,
         model,
         tools: tools as AgentTool[],
+        // 预置多轮对话历史（Pi Agent 支持 initialState.messages）：
+        // 每轮对话都是新 Agent，不预置历史的话 AI 会“失忆”，不知道之前聊过什么。
+        // 最后一条用户消息由 prompt() 追加，避免重复。
+        // 注意：pi-ai 估算上下文时会读 assistant.usage.totalTokens，历史消息没有
+        // 真实用量，必须补零值占位，否则会抛 undefined 崩溃。
+        messages: params.messages.slice(0, -1).map((m) =>
+          m.role === 'assistant'
+            ? {
+                role: 'assistant',
+                content: [{ type: 'text', text: m.content }],
+                usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+                timestamp: Date.now(),
+              }
+            : { role: 'user', content: m.content, timestamp: Date.now() },
+        ) as never,
       },
       beforeToolCall: beforeToolCall as never,
       // Agent 循环不会把模型请求异常向外抛出，必须显式提供 API Key。

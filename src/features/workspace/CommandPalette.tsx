@@ -31,6 +31,16 @@ export function CommandPalette() {
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // 全局 Escape 关闭：与 Modal 一致，焦点在任何位置都能按 Esc 关闭面板
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, setOpen])
+
   // 打开时聚焦输入框（重新打开时保留上次的搜索词，与 VS Code 行为一致）
   useEffect(() => {
     if (!open) return
@@ -64,13 +74,6 @@ export function CommandPalette() {
     return commands.filter((c) => c.title.toLowerCase().includes(q) || (c.hint ?? '').toLowerCase().includes(q))
   }, [commands, query])
 
-  // 打开时聚焦输入框（重新打开时保留上次的搜索词，与 VS Code 行为一致）
-  useEffect(() => {
-    if (!open) return
-    const t = setTimeout(() => inputRef.current?.focus(), 10)
-    return () => clearTimeout(t)
-  }, [open])
-
   if (!open) return null
 
   return (
@@ -86,7 +89,7 @@ export function CommandPalette() {
             setIndex(0)
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setOpen(false)
+            // Escape 由全局监听处理（焦点不在输入框时也能关闭）
             if (e.key === 'ArrowDown') {
               e.preventDefault()
               setIndex((i) => Math.min(i + 1, filtered.length - 1))

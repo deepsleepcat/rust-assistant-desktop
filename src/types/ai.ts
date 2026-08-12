@@ -64,6 +64,7 @@ export type AiStreamEvent =
   | { type: 'tool_start'; name: string; args: Record<string, unknown> }
   | { type: 'tool_end'; name: string; ok: boolean; summary: string }
   | { type: 'approval_request'; id: string; tool: string; path: string; contentPreview: string }
+  | { type: 'approval_expired'; id: string }
 
 /** 审批响应（界面 → 主进程） */
 export interface AiApprovalResponse {

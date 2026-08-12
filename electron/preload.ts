@@ -40,7 +40,7 @@ const api: BridgeApi = {
   ai: {
     check: (settings) => ipcRenderer.invoke('ai:check', settings),
     info: () => ipcRenderer.invoke('ai:info'),
-    stream: (params, settings) => ipcRenderer.invoke('ai:stream', params, settings),
+    stream: (params, settings, projectRoot) => ipcRenderer.invoke('ai:stream', params, settings, projectRoot),
     approve: (response: { id: string; approved: boolean }) => ipcRenderer.invoke('ai:approval:respond', response),
     onAiEvent: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as never)
