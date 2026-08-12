@@ -35,6 +35,7 @@ Thumbs.db
 
 # 项目说明文档（仅本地，不随仓库分发）
 docs/
+CHANGELOG.md
 
 .playwright-mcp/
 
