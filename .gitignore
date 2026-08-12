@@ -28,3 +28,5 @@ Thumbs.db
 
 # 工具运行时状态
 .zcode/
+
+.playwright-mcp/
