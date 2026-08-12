@@ -15,6 +15,8 @@ import { ConfirmBox } from '../../components/Modal'
 import { EditorMirror } from './EditorMirror'
 import { ImageViewer } from './ImageViewer'
 import { isPreviewableImage } from '../../utils/paths'
+import { formatIni } from './iniFormatter'
+import { scanSections } from './outline'
 
 export function EditorArea() {
   const tabs = useWorkspaceStore((s) => s.openTabs)
@@ -153,6 +155,7 @@ function EditorPane({ tabId }: { tabId: string }) {
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const toggleTranslation = useWorkspaceStore((s) => s.toggleTranslation)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
+  const [outlineOpen, setOutlineOpen] = useState(false)
   const fontFamily = useWorkspaceStore((s) => s.settings.fontFamily)
   const fontSize = useWorkspaceStore((s) => s.settings.fontSize)
 
@@ -160,6 +163,9 @@ function EditorPane({ tabId }: { tabId: string }) {
   if (isPreviewableImage(tab.path) && project) {
     return <ImageViewer path={tab.path} rootPath={project.rootPath} />
   }
+
+  const sections = scanSections(tab.content)
+  const formatted = formatIni(tab.content)
 
   return (
     <div className="editor-workspace">
@@ -178,11 +184,27 @@ function EditorPane({ tabId }: { tabId: string }) {
         >
           {tab.translationEnabled ? '中文模式' : '英文模式'}
         </button>
+        {tab.externalChanged && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>⚠ 文件已被外部修改</span>}
         {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
+        <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => useWorkspaceStore.getState().updateTabContent(tab.id, formatted)} title="Ctrl+Shift+F">
+          格式化
+        </button>
+        <button className={outlineOpen ? 'btn primary' : 'btn'} style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => setOutlineOpen((open) => !open)}>
+          大纲 ({sections.length})
+        </button>
         <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => void saveTab(tab.id)}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="save" size={12} />保存</span>
         </button>
       </div>
+      {outlineOpen && sections.length > 0 && (
+        <div className="editor-outline">
+          {sections.map((section) => (
+            <button key={`${section.line}-${section.name}`} className="editor-outline-item" onClick={() => setEditorPos({ line: section.line, col: 1 })}>
+              <span>[{section.name}]</span><small>第 {section.line} 行</small>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="editor-body">
         <EditorMirror
           value={tab.content}

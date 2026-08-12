@@ -153,7 +153,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       path: dirPath + '\\' + name,
       isDirectory: child.kind === 'dir',
       size: child.kind === 'file' ? new TextEncoder().encode(child.content).length : 0,
-      mtimeMs: Date.now(),
+      mtimeMs: child.kind === 'file' ? child.content.length : 0,
     }))
     entries.sort((a, b) => {
       if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
@@ -169,7 +169,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     return {
       content,
       hasBom: node.hasBom,
-      mtimeMs: Date.now(),
+      mtimeMs: node.content.length,
       size: new TextEncoder().encode(node.content).length,
     }
   }

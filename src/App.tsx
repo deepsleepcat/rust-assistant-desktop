@@ -52,6 +52,13 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  // 外部文件修改轮询：只标记，不自动覆盖用户内容
+  useEffect(() => {
+    if (!ready) return
+    const timer = setInterval(() => void useWorkspaceStore.getState().checkExternalChanges(), 3000)
+    return () => clearInterval(timer)
+  }, [ready])
+
   // Toast 自动消失
   useEffect(() => {
     if (!toast) return

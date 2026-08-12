@@ -64,6 +64,7 @@ interface WorkspaceStoreActions {
   closeTab(id: string): void
   setActiveTabId(id: string): void
   toggleTranslation(id: string): void
+  checkExternalChanges(): Promise<void>
   createFile(parentPath: string, name: string): Promise<void>
   createFolder(parentPath: string, name: string): Promise<void>
   renameItem(targetPath: string, newName: string): Promise<void>
@@ -307,6 +308,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             dirty: false,
             translationEnabled,
             size: result.size,
+            mtimeMs: result.mtimeMs,
           }
           set({ openTabs: [...get().openTabs, tab], activeTabId: tab.id })
         } catch (err) {
@@ -325,13 +327,20 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         const tab = get().openTabs.find((t) => t.id === id)
         if (!project || !tab) return
         try {
+          const disk = await bridge.project.readFile(project.rootPath, tab.path)
+          if (disk.mtimeMs !== tab.mtimeMs || disk.size !== tab.size) {
+            set({ openTabs: get().openTabs.map((t) => t.id === id ? { ...t, externalChanged: true } : t) })
+            get().notify('文件已被外部修改，已阻止覆盖；请先重新加载或确认保留当前内容')
+            return
+          }
           // 翻译模式下：先把显示内容转回英文再写盘，并更新快照
           const dict = makeDict(getEnToZhDict(), getZhToEnDict())
           const toWrite = tab.translationEnabled ? zhToEn(tab.content, dict) : tab.content
           await bridge.project.writeFile(project.rootPath, tab.path, toWrite, { hasBom: tab.hasBom })
+          const savedMeta = await bridge.project.readFile(project.rootPath, tab.path)
           set({
             openTabs: get().openTabs.map((t) =>
-              t.id === id ? { ...t, original: toWrite, lastSavedView: t.content, dirty: false, size: new TextEncoder().encode(t.content).length } : t,
+              t.id === id ? { ...t, original: toWrite, lastSavedView: t.content, dirty: false, size: savedMeta.size, mtimeMs: savedMeta.mtimeMs, externalChanged: false } : t,
             ),
           })
           get().notify(`已保存 ${tab.name}`)
@@ -341,6 +350,21 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       },
 
       /** 切换翻译模式：基于当前显示内容转换，不丢失编辑（旧版 bug 的修复） */
+      async checkExternalChanges() {
+        const project = activeProject()
+        if (!project) return
+        for (const tab of get().openTabs) {
+          try {
+            const result = await bridge.project.readFile(project.rootPath, tab.path)
+            if (result.mtimeMs !== tab.mtimeMs || result.size !== tab.size) {
+              set({ openTabs: get().openTabs.map((t) => t.id === tab.id ? { ...t, externalChanged: true } : t) })
+            }
+          } catch {
+            set({ openTabs: get().openTabs.map((t) => t.id === tab.id ? { ...t, externalChanged: true } : t) })
+          }
+        }
+      },
+
       toggleTranslation(id: string) {
         const tab = get().openTabs.find((t) => t.id === id)
         if (!tab) return

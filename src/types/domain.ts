@@ -92,6 +92,9 @@ export interface EditorTab {
   translationEnabled: boolean
   /** 读取文件时的大小（仅供展示） */
   size: number
+  /** 磁盘快照时间与外部修改标记 */
+  mtimeMs: number
+  externalChanged?: boolean
 }
 
 /** 文件树节点 */
