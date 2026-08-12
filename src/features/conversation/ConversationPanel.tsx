@@ -10,6 +10,14 @@ import { formatRelativeTime } from '../../utils/conversation'
 import { IconArchive } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { PromptModal } from '../../components/Modal'
+
+function renderAssistantText(text: string) {
+  const parts = text.split(/(```[\\s\\S]*?```)/g)
+  return parts.map((part, index) =>
+    part.startsWith('```') ? <pre key={index} className="assistant-code">{part.replace(/^```[^\\n]*\\n?/, '').replace(/```$/, '')}</pre> : <span key={index}>{part}</span>,
+  )
+}
+
 export function ConversationPanel() {
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const activeConversationId = useWorkspaceStore((s) => s.activeConversationId)
@@ -235,7 +243,7 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
                   </details>
                 )}
                 <div className="msg-bubble">
-                  {m.content}
+                  {m.role === 'assistant' ? renderAssistantText(m.content) : m.content}
                   {m.role === 'assistant' && m.content === '' && !m.reasoning && <span className="msg-streaming">正在思考…</span>}
                 </div>
               </div>

@@ -153,7 +153,8 @@ body {
 .msg { margin-bottom: 12px; }
 .msg-bubble { max-width: 90%; padding: 8px 10px; border-radius: var(--radius); font-size: 12.5px; }
 .msg-user .msg-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
-.msg-assistant .msg-bubble { border: 1px solid var(--divider); background: var(--surface-0); border-bottom-left-radius: 3px; }
+.msg-assistant .msg-bubble { border: 1px solid var(--divider); background: var(--surface-0); border-bottom-left-radius: 3px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.assistant-code { margin: 8px 0; padding: 8px 10px; background: var(--surface-1); border: 1px solid var(--divider); border-radius: 5px; white-space: pre-wrap; overflow-x: auto; font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .conv-input-area { flex-shrink: 0; padding: 9px 10px 10px; border-top: 1px solid var(--divider); background: var(--surface-1); }
 .conv-input { min-height: 58px; width: 100%; resize: none; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius); outline: 0; background: var(--surface-0); color: var(--text-primary); font: 12.5px/1.5 var(--font-ui); }
 .conv-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
