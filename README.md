@@ -82,8 +82,12 @@ docs/                   架构与数据文档
 
 | 来源 | 用途 |
 | --- | --- |
-| 铁锈助手 Android 版（`rust-assistant-1.0.1`） | 功能清单、模组/代码数据结构参考 |
+| 铁锈助手 Android 版（`rust-assistant-1.0.1`，GPL-3.0） | 功能清单、模组/代码数据结构参考；`public/data/` 代码表与词库数据提取自该版本 |
 | 旧版 Python 工具（`tx`） | 文件树、翻译、补全等功能的思路 |
 | Pi Agent Harness（`pi`，MIT 协议） | 下一阶段 AI 对话的 Agent 核心 |
 
 图标库（`570+Icons-CN-v1.0.3`）与鼠标特效（`BASpark`，MIT）将在后续阶段按需选用，不整体打包。
+
+## 许可证
+
+本项目以 **GNU GPL v3.0** 发布（见根目录 `LICENSE`）。代码表与词库数据（`public/data/`）提取自 GPL-3.0 的铁锈助手 Android 版，随本项目一并以 GPL-3.0 分发。
