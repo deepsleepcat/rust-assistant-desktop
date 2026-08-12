@@ -1,0 +1,30 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+dist-electron/
+*.tsbuildinfo
+
+# 日志与缓存
+*.log
+.eslintcache
+.vite/
+
+# 用户数据与密钥（绝不提交）
+*.local
+.env
+.env.*
+!*.example
+*.pem
+*.key
+Thumbs.db
+.DS_Store
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 工具运行时状态
+.zcode/

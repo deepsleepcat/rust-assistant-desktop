@@ -1,0 +1,3 @@
+# 统一换行符为 LF，避免跨平台噪音
+* text=auto eol=lf
+*.bat text eol=crlf

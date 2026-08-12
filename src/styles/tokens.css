@@ -1,0 +1,71 @@
+/* ============================================================
+   设计令牌（Design Tokens）：整个界面的颜色、字体、尺寸源头。
+   浅色 / 深色两套主题，通过 html[data-theme] 切换。
+   ============================================================ */
+
+:root {
+  /* —— 字体 —— */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: Bahnschrift, "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, "Microsoft YaHei UI", monospace;
+
+  /* —— Google 彩虹四色（全部效果的源头）—— */
+  --g-blue: #4285f4;
+  --g-red: #ea4335;
+  --g-yellow: #fbbc04;
+  --g-green: #34a853;
+  --g-rainbow: linear-gradient(90deg, var(--g-blue), var(--g-red), var(--g-yellow), var(--g-green));
+
+  /* —— 圆角 —— */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+
+  /* —— 阴影 —— */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 6px 16px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 16px 48px rgba(16, 24, 40, 0.16);
+
+  /* —— 尺寸 —— */
+  --titlebar-h: 40px;
+  --statusbar-h: 26px;
+  --panel-gap: 8px;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg-app: #f6f7f9;
+  --bg-panel: rgba(255, 255, 255, 0.92);
+  --bg-panel-solid: #ffffff;
+  --bg-hover: #eef1f4;
+  --bg-active: #e8f0fe;
+  --bg-input: #f3f5f7;
+  --border: #e4e7ec;
+  --border-strong: #d3d8df;
+  --text-1: #1f2328;
+  --text-2: #57606a;
+  --text-3: #8b949e;
+  --accent: #1a73e8;
+  --accent-soft: #e8f0fe;
+  --scrollbar: rgba(31, 35, 40, 0.22);
+  --overlay: rgba(23, 26, 31, 0.45);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-app: #1b1d21;
+  --bg-panel: rgba(34, 37, 42, 0.94);
+  --bg-panel-solid: #22252a;
+  --bg-hover: #2c3036;
+  --bg-active: #25344d;
+  --bg-input: #26292e;
+  --border: #33383f;
+  --border-strong: #454c55;
+  --text-1: #e8eaed;
+  --text-2: #b3bac2;
+  --text-3: #7d8590;
+  --accent: #7db1ff;
+  --accent-soft: #25344d;
+  --scrollbar: rgba(232, 234, 237, 0.25);
+  --overlay: rgba(0, 0, 0, 0.55);
+}

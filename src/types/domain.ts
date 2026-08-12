@@ -1,0 +1,111 @@
+/**
+ * 领域模型：项目、文件、对话、设置的数据结构。
+ * 这些类型是「整个应用的地基」，界面、存储、未来的 AI 接入都围绕它们展开。
+ */
+
+/** 主题模式 */
+export type ThemeMode = 'light' | 'dark' | 'system'
+
+/** 背景类型 */
+export type BackgroundKind = 'none' | 'color' | 'gradient' | 'image'
+
+export interface BackgroundSettings {
+  kind: BackgroundKind
+  /** 纯色背景的颜色 */
+  color: string
+  /** 渐变背景的 CSS 值 */
+  gradient: string
+  /** 图片背景的文件路径（由 Electron 读取并转成 data URL 显示） */
+  imagePath: string | null
+  /** 背景透明度 0-100 */
+  opacity: number
+  /** 背景模糊 0-40 */
+  blur: number
+}
+
+export interface AppSettings {
+  theme: ThemeMode
+  /** 是否启用 Google 彩虹装饰效果 */
+  rainbow: boolean
+  background: BackgroundSettings
+  /** 编辑器字体族名称 */
+  fontFamily: string
+  /** 编辑器字号 12-20 */
+  fontSize: number
+  /** 左侧项目栏宽度 */
+  leftWidth: number
+  /** 右侧对话栏宽度 */
+  rightWidth: number
+  /** 文件树是否显示隐藏文件（以 . 开头） */
+  showHiddenFiles: boolean
+}
+
+/** 一个项目 = 一个铁锈战争模组目录 */
+export interface ProjectInfo {
+  id: string
+  name: string
+  rootPath: string
+  createdAt: number
+  lastOpenedAt: number
+}
+
+export type MessageRole = 'user' | 'assistant' | 'system'
+
+/** 对话中的一条消息；可引用某个文件的具体行 */
+export interface ConversationMessage {
+  id: string
+  role: MessageRole
+  content: string
+  refPath?: string
+  refStartLine?: number
+  refEndLine?: number
+  createdAt: number
+}
+
+/** 一段 AI 对话，永远属于某一个项目 */
+export interface Conversation {
+  id: string
+  projectId: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  archived: boolean
+  messages: ConversationMessage[]
+}
+
+/** 编辑器中打开的标签页 */
+export interface EditorTab {
+  id: string
+  path: string
+  name: string
+  content: string
+  /** 保存时的内容快照，用于判断是否有未保存修改 */
+  original: string
+  hasBom: boolean
+  dirty: boolean
+  /** 读取文件时的大小（仅供展示） */
+  size: number
+}
+
+/** 文件树节点 */
+export interface TreeNode {
+  name: string
+  path: string
+  isDirectory: boolean
+  size: number
+  mtimeMs: number
+  expanded: boolean
+  /** children === undefined 表示尚未加载（懒加载） */
+  children?: TreeNode[]
+  loading?: boolean
+  error?: string
+}
+
+/** 工作区状态（持久化到本地） */
+export interface WorkspaceState {
+  projects: ProjectInfo[]
+  activeProjectId: string | null
+  conversations: Conversation[]
+  /** 每个项目记住上次选中的对话 */
+  lastActiveConversationByProject: Record<string, string | null>
+}
