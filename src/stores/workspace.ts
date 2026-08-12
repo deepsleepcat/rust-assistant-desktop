@@ -52,6 +52,8 @@ interface WorkspaceStoreState {
   toast: string | null
   /** 当前正在流式回复的对话（null 表示没有） */
   aiStreamingConversationId: string | null
+  /** 待审批的写文件请求 */
+  pendingApproval: { id: string; path: string; contentPreview: string } | null
 }
 
 interface WorkspaceStoreActions {
@@ -88,6 +90,7 @@ interface WorkspaceStoreActions {
   dismissToast(): void
   /** M4：向 AI 发送消息（流式） */
   sendAiMessage(conversationId: string, text: string): Promise<void>
+  respondApproval(approved: boolean): Promise<void>
 }
 
 export type WorkspaceStore = WorkspaceStoreState & WorkspaceStoreActions
@@ -154,6 +157,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       confirm: null,
       toast: null,
       aiStreamingConversationId: null,
+      pendingApproval: null,
 
       async init() {
         const [settings, workspace, info] = await Promise.all([
@@ -547,6 +551,13 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         set({ commandOpen: open })
       },
 
+      async respondApproval(approved: boolean) {
+        const req = get().pendingApproval
+        if (!req) return
+        set({ pendingApproval: null })
+        await bridge.ai.approve({ id: req.id, approved })
+      },
+
       requestConfirm(req: ConfirmRequest) {
         set({ confirm: req })
       },
@@ -608,6 +619,25 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         await new Promise<void>((resolve) => {
           const unsubscribe = bridge.ai.onAiEvent((event: AiStreamEvent) => {
             if (event.type === 'delta') appendDelta(event.text)
+            if (event.type === 'tool_start') {
+              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_start', name: event.name, createdAt: Date.now() }
+              set({
+                conversations: get().conversations.map((c) =>
+                  c.id === conversationId ? { ...c, toolEvents: [...(c.toolEvents ?? []), toolEvent] } : c,
+                ),
+              })
+            }
+            if (event.type === 'tool_end') {
+              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_end', name: event.name, ok: event.ok, summary: event.summary, createdAt: Date.now() }
+              set({
+                conversations: get().conversations.map((c) =>
+                  c.id === conversationId ? { ...c, toolEvents: [...(c.toolEvents ?? []), toolEvent] } : c,
+                ),
+              })
+            }
+            if (event.type === 'approval_request') {
+              set({ pendingApproval: { id: event.id, path: event.path, contentPreview: event.contentPreview } })
+            }
             if (event.type === 'done') {
               unsubscribe()
               set({ aiStreamingConversationId: null })
@@ -617,6 +647,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
               unsubscribe()
               set({
                 aiStreamingConversationId: null,
+                pendingApproval: null,
                 conversations: get().conversations.map((c) => c.id === conversationId
                   ? { ...c, messages: c.messages.map((m) => m.id === aiMessageId ? { ...m, content: `AI 请求失败：${event.message}` } : m) }
                   : c),
@@ -640,6 +671,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
               const message = `AI 请求失败：${err instanceof Error ? err.message : String(err)}`
               set({
                 aiStreamingConversationId: null,
+                pendingApproval: null,
                 conversations: get().conversations.map((c) => c.id === conversationId
                   ? { ...c, messages: c.messages.map((m) => m.id === aiMessageId ? { ...m, content: message } : m) }
                   : c),

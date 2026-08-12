@@ -11,7 +11,7 @@ import fs from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { createStore } from './store'
 import { isPathInside, normalizePath } from './paths'
-import { checkCommunity, checkDeepSeek, communityInfo, streamDeepSeek } from './ai'
+import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
@@ -217,12 +217,31 @@ function registerIpc(): void {
     }
   })
 
+  // AI 审批：界面响应写文件请求（resolver 由 ai:stream 的 beforeToolCall 挂起等待）
+  let pendingApproval: ((response: import('../src/types/ai').AiApprovalResponse) => void) | null = null
+  ipcMain.handle('ai:approval:respond', (_event, response: import('../src/types/ai').AiApprovalResponse) => {
+    if (pendingApproval) {
+      pendingApproval(response)
+      pendingApproval = null
+    }
+    return true
+  })
+
   ipcMain.handle('ai:stream', async (event, params: AiChatParams, settings: AiSettings) => {
     const webContents = event.sender
     // 固定通道：单窗口应用，事件只推给发起请求的窗口
     const channel = 'ai:stream'
+    const workspace = store.get('workspace') as { activeProjectId?: string; projects?: Array<{ id: string; rootPath: string }> } | null
+    const activeProject = workspace?.projects?.find((p) => p.id === workspace.activeProjectId)
     if (settings.provider === 'deepseek') {
-      await streamDeepSeek(webContents as unknown as import('electron').WebContents, channel, params, { apiKey: settings.deepseekApiKey, model: settings.deepseekModel })
+      await streamAgent(
+        webContents as unknown as import('electron').WebContents,
+        channel,
+        params,
+        { apiKey: settings.deepseekApiKey, model: settings.deepseekModel },
+        activeProject?.rootPath ?? '',
+        (resolve) => { pendingApproval = resolve },
+      )
     } else {
       if (!webContents.isDestroyed()) webContents.send(channel, { type: 'error', message: '社区 AI 服务即将上线' })
     }

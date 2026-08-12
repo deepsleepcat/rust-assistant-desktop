@@ -4,7 +4,7 @@
  * - 第一阶段不接入 AI：输入框禁用、发送按钮置灰，但对话数据已按最终形态存储
  * - 支持：创建 / 切换 / 重命名 / 归档 / 删除
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore, useSortedConversations } from '../../stores/workspace'
 import { formatRelativeTime } from '../../utils/conversation'
 import { IconArchive } from '../../components/icons'
@@ -144,12 +144,28 @@ function ConversationItem({ id }: { id: string }) {
   )
 }
 
+function toolLabel(name: string): string {
+  const labels: Record<string, string> = {
+    listProject: '查看项目结构',
+    readFile: '读取文件',
+    searchInProject: '搜索项目',
+    codeTable: '查询代码表',
+    sectionOutline: '查看节大纲',
+    writeFile: '写入文件',
+  }
+  return labels[name] ?? name
+}
+
 function ConversationView({ id, title, onRename }: { id: string; title: string; onRename: () => void }) {
-  const messages = useWorkspaceStore((s) => s.conversations.find((c) => c.id === id)?.messages ?? [])
+  const conversation = useWorkspaceStore((s) => s.conversations.find((c) => c.id === id))
+  const messages = useMemo(() => conversation?.messages ?? [], [conversation])
+  const toolEvents = useMemo(() => conversation?.toolEvents ?? [], [conversation])
   const sendAiMessage = useWorkspaceStore((s) => s.sendAiMessage)
   const aiStreaming = useWorkspaceStore((s) => s.aiStreamingConversationId === id)
   const aiSettings = useWorkspaceStore((s) => s.settings.ai)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
+  const pendingApproval = useWorkspaceStore((s) => s.pendingApproval)
+  const respondApproval = useWorkspaceStore((s) => s.respondApproval)
   const [input, setInput] = useState('')
   const messagesRef = useRef<HTMLDivElement>(null)
 
@@ -194,16 +210,49 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
             )}
           </div>
         ) : (
-          messages.map((m) => (
-            <div key={m.id} className={`msg msg-${m.role}`}>
-              <div className="msg-bubble">
-                {m.content}
-                {m.role === 'assistant' && m.content === '' && <span className="msg-streaming">正在思考…</span>}
+          <>
+            {toolEvents.map((t) => (
+              <div key={t.id} className={`tool-card${t.type === 'tool_end' && !t.ok ? ' tool-card-error' : ''}`}>
+                {t.type === 'tool_start' ? (
+                  <>
+                    <span className="tool-icon">🔧</span>
+                    <span>正在{toolLabel(t.name)}…</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="tool-icon">{t.ok ? '✅' : '❌'}</span>
+                    <span>{t.summary ?? toolLabel(t.name)}</span>
+                  </>
+                )}
               </div>
-            </div>
-          ))
+            ))}
+            {messages.map((m) => (
+              <div key={m.id} className={`msg msg-${m.role}`}>
+                <div className="msg-bubble">
+                  {m.content}
+                  {m.role === 'assistant' && m.content === '' && <span className="msg-streaming">正在思考…</span>}
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
+
+      {pendingApproval && (
+        <div className="modal-overlay">
+          <div className="modal-card confirm-card">
+            <div className="modal-header">AI 请求修改文件</div>
+            <div className="modal-body">
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>文件：{pendingApproval.path}</p>
+              <pre className="approval-preview">{pendingApproval.contentPreview}</pre>
+            </div>
+            <div className="modal-footer">
+              <button className="btn" onClick={() => void respondApproval(false)}>拒绝</button>
+              <button className="btn primary" onClick={() => void respondApproval(true)}>允许写入</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="conv-input-area">
         <textarea

@@ -253,6 +253,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
           { type: 'community', name: '社区后端', description: '我们提供的社区 AI 服务（即将上线）', configured: false, available: false, models: [] },
         ],
       }),
+      approve: async () => true,
       stream: async (params) => {
         // 浏览器预览模式：模拟流式回复，便于界面联调
         void params

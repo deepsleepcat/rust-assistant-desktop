@@ -75,6 +75,16 @@ export interface ConversationMessage {
   createdAt: number
 }
 
+/** AI 工具调用记录（显示在对话里） */
+export interface ToolEvent {
+  id: string
+  type: 'tool_start' | 'tool_end'
+  name: string
+  summary?: string
+  ok?: boolean
+  createdAt: number
+}
+
 /** 一段 AI 对话，永远属于某一个项目 */
 export interface Conversation {
   id: string
@@ -84,6 +94,8 @@ export interface Conversation {
   updatedAt: number
   archived: boolean
   messages: ConversationMessage[]
+  /** AI 工具调用历史（按对话保存，界面展示卡片） */
+  toolEvents?: ToolEvent[]
 }
 
 /** 编辑器中打开的标签页 */

@@ -7,7 +7,10 @@
  * - 流式对话通过 webContents.send 推送事件给界面。
  */
 import type { WebContents } from 'electron'
-import type { AiCheckResult, AiChatParams, AiProviderType, AiStreamEvent } from '../src/types/ai'
+import { randomUUID } from 'node:crypto'
+import type { AiCheckResult, AiApprovalResponse, AiChatParams, AiProviderType, AiStreamEvent } from '../src/types/ai'
+import { createRustAgentTools, setAgentRoot } from './rustAgentTools'
+import type { AgentTool } from '@earendil-works/pi-agent-core'
 
 let piAi: typeof import('@earendil-works/pi-ai') | null = null
 
@@ -95,6 +98,66 @@ export async function checkDeepSeek(config: DeepSeekConfig): Promise<AiCheckResu
   } catch (err) {
     return { ok: false, message: toFriendlyError(err) }
   }
+}
+
+/** Agent 模式：带铁锈战争工具与写文件审批的完整对话循环 */
+export async function streamAgent(
+  webContents: WebContents,
+  channel: string,
+  params: AiChatParams,
+  config: DeepSeekConfig,
+  projectRoot: string,
+  approvalResolver: (resolve: (response: AiApprovalResponse) => void) => void,
+): Promise<void> {
+  const emit = (event: AiStreamEvent) => {
+    if (!webContents.isDestroyed()) webContents.send(channel, event)
+  }
+  const { Agent } = await import('@earendil-works/pi-agent-core')
+  const { models, model } = await createDeepSeekModel(config)
+  if (!model) throw new Error('模型注册失败')
+  setAgentRoot(projectRoot)
+  const tools = createRustAgentTools()
+
+  // 写文件审批：beforeToolCall 钩子里等待用户响应（Pi 官方做法）
+  const beforeToolCall = async (context: { toolCall: { name: string; id?: string }; args: unknown }) => {
+    if (context.toolCall.name !== 'writeFile') return undefined
+    const args = (context.args ?? {}) as { path?: string; content?: string }
+    const preview = String(args.content ?? '').slice(0, 400)
+    emit({ type: 'approval_request', id: context.toolCall.id ?? randomUUID(), tool: 'writeFile', path: args.path ?? '?', contentPreview: preview })
+    const response = await new Promise<AiApprovalResponse>((resolve) => approvalResolver(resolve))
+    return response.approved
+      ? undefined
+      : { block: true, reason: '用户拒绝了此修改，请调整方案或询问用户' }
+  }
+
+  const agent = new Agent({
+    streamFn: (m, ctx, opts) => models.streamSimple(m, ctx, opts),
+    initialState: {
+      systemPrompt: params.systemPrompt,
+      model,
+      tools: tools as AgentTool[],
+    },
+    beforeToolCall: beforeToolCall as never,
+  })
+
+  agent.subscribe((event) => {
+    if (event.type === 'message_update' && (event.assistantMessageEvent as { type?: string }).type === 'text_delta') {
+      const delta = (event.assistantMessageEvent as { delta?: string }).delta ?? ''
+      emit({ type: 'delta', text: delta })
+    }
+    if (event.type === 'tool_execution_start') {
+      emit({ type: 'tool_start', name: (event as { toolName: string }).toolName, args: (event as { args: Record<string, unknown> }).args })
+    }
+    if (event.type === 'tool_execution_end') {
+      const e = event as { toolName: string; result: { content?: Array<{ text?: string }> }; isError: boolean }
+      const summary = e.isError ? '执行失败' : (e.result?.content?.[0]?.text ?? '完成').slice(0, 120)
+      emit({ type: 'tool_end', name: e.toolName, ok: !e.isError, summary })
+    }
+  })
+
+  emit({ type: 'start' })
+  await agent.prompt(params.messages[params.messages.length - 1]?.content ?? '')
+  emit({ type: 'done', fullText: '' })
 }
 
 /** 流式对话：把事件推送给渲染进程 */

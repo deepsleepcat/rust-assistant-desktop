@@ -60,6 +60,15 @@ export type AiStreamEvent =
   | { type: 'delta'; text: string; requestId?: string }
   | { type: 'done'; fullText: string; requestId?: string }
   | { type: 'error'; message: string; requestId?: string }
+  | { type: 'tool_start'; name: string; args: Record<string, unknown> }
+  | { type: 'tool_end'; name: string; ok: boolean; summary: string }
+  | { type: 'approval_request'; id: string; tool: string; path: string; contentPreview: string }
+
+/** 审批响应（界面 → 主进程） */
+export interface AiApprovalResponse {
+  id: string
+  approved: boolean
+}
 
 /** 头像来源：community 为闭源社区后端上传预留 */
 export interface AvatarProvider {

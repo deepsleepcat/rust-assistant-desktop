@@ -58,6 +58,7 @@ export interface BridgeApi {
     info(): Promise<{ providers: AiProviderInfo[] }>
     /** 开始流式对话；返回事件通道，通过 onAiEvent 订阅 */
     stream(params: AiChatParams, settings: AiSettings): Promise<string>
+    approve(response: { id: string; approved: boolean }): Promise<boolean>
     onAiEvent(callback: (event: AiStreamEvent) => void): () => void
   }
 }
