@@ -1,7 +1,6 @@
 /**
  * 右侧「AI 对话」面板：
  * - 一个项目可创建多个对话，各自独立
- * - 第一阶段不接入 AI：输入框禁用、发送按钮置灰，但对话数据已按最终形态存储
  * - 支持：创建 / 切换 / 重命名 / 归档 / 删除
  */
 import { useEffect, useMemo, useRef, useState } from 'react'

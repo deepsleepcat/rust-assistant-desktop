@@ -140,9 +140,7 @@ function WelcomeView() {
             ))}
           </div>
         )}
-        <div className="welcome-footer">
-          第一阶段 · 界面与项目骨架已就绪 — AI 对话与模组工具将在后续阶段接入
-        </div>
+        <div className="welcome-footer">打开一个模组项目，开始 AI 辅助开发</div>
       </div>
     </div>
   )

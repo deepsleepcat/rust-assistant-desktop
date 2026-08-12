@@ -409,7 +409,7 @@ export function SettingsModal() {
                 <LogoR size="about" />
                 <div>
                   <div style={{ fontWeight: 600 }}>铁锈助手 Rust Assistant</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-2)' }}>版本 0.1.0 · 第一阶段（界面与项目骨架）</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)' }}>版本 0.1.0 · 编辑器 · AI 对话 · 模组工具</div>
                 </div>
               </div>
               <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.8, margin: 0 }}>
