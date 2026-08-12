@@ -1,0 +1,79 @@
+/**
+ * M0–M5 动画效果补全（animations.css）
+ * - 弹窗/命令面板：fade + scale 入场
+ * - Toast：底部滑入
+ * - 工具卡片：滑入
+ * - 消息：淡入上浮
+ * - 思考块：平滑展开
+ * - 按钮/条目：统一 hover 过渡
+ * - 尊重系统"减少动态效果"设置（prefers-reduced-motion）
+ */
+
+/* ── 关键帧 ─────────────────────────────────────────── */
+@keyframes ra-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ra-pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ra-rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ra-toast-in {
+  from { opacity: 0; transform: translate(-50%, 14px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes ra-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── 浮层：命令面板、设置、确认、M5 弹窗 ─────────────── */
+.modal-overlay, .command-overlay { animation: ra-fade-in .18s ease-out; }
+.modal-card, .command-card { animation: ra-pop-in .2s cubic-bezier(.2, .8, .25, 1); }
+.command-card { animation-duration: .18s; }
+
+/* ── Toast：底部滑入 ────────────────────────────────── */
+.toast { animation: ra-toast-in .24s cubic-bezier(.2, .8, .25, 1); }
+
+/* ── 工具卡片：逐个滑入 ─────────────────────────────── */
+.tool-card { animation: ra-rise-in .22s ease-out both; }
+
+/* ── 对话消息：淡入上浮 ─────────────────────────────── */
+.msg { animation: ra-rise-in .24s ease-out both; }
+.msg:nth-child(2) { animation-delay: .03s; }
+.msg:nth-child(3) { animation-delay: .06s; }
+.msg:nth-child(4) { animation-delay: .09s; }
+.msg:nth-child(n+5) { animation-delay: .12s; }
+
+/* ── 思考块：details 平滑展开（网格行高技巧） ────────── */
+.msg-reasoning-body { transition: max-height .22s ease, opacity .18s ease; }
+.msg-reasoning:not([open]) .msg-reasoning-body { opacity: 0; }
+
+/* ── 模组菜单：淡入 + 下坠 ──────────────────────────── */
+.mod-tools-menu { animation: ra-pop-in .16s ease-out; transform-origin: top right; }
+
+/* ── 按钮/条目 hover 过渡（统一节奏） ────────────────── */
+.btn, .icon-btn, .tab, .tree-row, .project-item, .conv-item, .command-item,
+.mod-tools-menu button, .editor-outline-item, .seg-group button {
+  transition: background .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.btn.primary, .btn { transition: background .15s ease, box-shadow .15s ease, transform .06s ease; }
+.btn.primary:active, .btn:active { transform: scale(.985); }
+
+/* ── 状态栏/标题栏小点缀 ────────────────────────────── */
+.avatar-btn:hover img { animation: ra-spin .5s ease; }
+
+/* ── 折叠箭头已有点击过渡（补动画时长统一） ───────────── */
+.tree-row .chev { transition: transform .18s ease; }
+
+/* ── 减少动态效果：全部降级为即时显示 ────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
