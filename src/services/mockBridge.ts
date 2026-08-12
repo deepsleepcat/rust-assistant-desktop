@@ -250,11 +250,23 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         ],
       }),
       stream: async (params) => {
-        // 浏览器预览模式：模拟一段回复，便于界面联调
+        // 浏览器预览模式：模拟流式回复，便于界面联调
         void params
+        const reply = '这是浏览器预览模式的模拟回复。\n\n配置真实的 DeepSeek API Key 后，这里会显示真实的 AI 回复。\n\n你可以：\n1. 在设置 → AI 中填写 API Key\n2. 然后问任何铁锈战争模组问题'
+        const chars = [...reply]
+        for (let i = 0; i < chars.length; i += 3) {
+          mockAiListeners.forEach((listener) => listener({ type: 'delta', text: chars.slice(i, i + 3).join('') }))
+          await new Promise((r) => setTimeout(r, 20))
+        }
+        mockAiListeners.forEach((listener) => listener({ type: 'done', fullText: reply }))
         return 'ai:stream'
       },
-      onAiEvent: () => () => undefined,
+      onAiEvent: (callback) => {
+        mockAiListeners.add(callback)
+        return () => mockAiListeners.delete(callback)
+      },
     },
   }
 }
+
+const mockAiListeners = new Set<(event: import("../types/ai").AiStreamEvent) => void>()

@@ -15,6 +15,8 @@ import { findTreeNode, updateTreeNode } from '../utils/tree'
 import { basename } from '../utils/paths'
 import { loadCodeData, getEnToZhDict, getZhToEnDict } from '../services/codeData'
 import { enToZh, makeDict, zhToEn } from '../services/translation'
+import { RUST_ASSISTANT_SYSTEM_PROMPT } from '../ai/rustSystemPrompt'
+import type { AiStreamEvent } from '../types/ai'
 
 export interface ConfirmRequest {
   title: string
@@ -48,6 +50,8 @@ interface WorkspaceStoreState {
   commandOpen: boolean
   confirm: ConfirmRequest | null
   toast: string | null
+  /** AI 对话是否正在流式回复 */
+  aiStreaming: boolean
 }
 
 interface WorkspaceStoreActions {
@@ -82,6 +86,8 @@ interface WorkspaceStoreActions {
   dismissConfirm(): void
   notify(message: string): void
   dismissToast(): void
+  /** M4：向 AI 发送消息（流式） */
+  sendAiMessage(conversationId: string, text: string): Promise<void>
 }
 
 export type WorkspaceStore = WorkspaceStoreState & WorkspaceStoreActions
@@ -147,6 +153,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       commandOpen: false,
       confirm: null,
       toast: null,
+      aiStreaming: false,
 
       async init() {
         const [settings, workspace, info] = await Promise.all([
@@ -545,6 +552,97 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       },
       dismissConfirm() {
         set({ confirm: null })
+      },
+
+      async sendAiMessage(conversationId: string, text: string) {
+        const s = get()
+        const conversation = s.conversations.find((c) => c.id === conversationId)
+        const project = s.projects.find((p) => p.id === s.activeProjectId)
+        if (!conversation || !project) return
+        const now = Date.now()
+        const settings = s.settings.ai
+        const trimmed = text.trim()
+        if (!trimmed) return
+        if (s.aiStreaming) {
+          get().notify('AI 正在回复中，请稍候')
+          return
+        }
+
+        // 1. 加入用户消息
+        const userMessage = { id: crypto.randomUUID(), role: 'user' as const, content: trimmed, createdAt: now }
+        set({
+          conversations: s.conversations.map((c) =>
+            c.id === conversationId ? { ...c, messages: [...c.messages, userMessage], updatedAt: now } : c,
+          ),
+          aiStreaming: true,
+        })
+        persist()
+
+        // 2. 加入空的 AI 消息（流式填充）
+        const aiMessageId = crypto.randomUUID()
+        set({
+          conversations: get().conversations.map((c) =>
+            c.id === conversationId
+              ? { ...c, messages: [...c.messages, { id: aiMessageId, role: 'assistant' as const, content: '', createdAt: Date.now() }] }
+              : c,
+          ),
+        })
+
+        // 3. 组装历史消息（包含本次用户消息与占位 AI 消息）
+        const history = get().conversations.find((c) => c.id === conversationId)?.messages ?? []
+        const messages = history
+          .filter((m) => m.content.length > 0)
+          .map((m) => ({ role: m.role, content: m.content }))
+
+        // 4. 流式请求：订阅事件，用 Promise 等待结束
+        const appendDelta = (delta: string) => {
+          set({
+            conversations: get().conversations.map((c) =>
+              c.id === conversationId
+                ? { ...c, messages: c.messages.map((m) => (m.id === aiMessageId ? { ...m, content: m.content + delta } : m)) }
+                : c,
+            ),
+          })
+        }
+
+        await new Promise<void>((resolve) => {
+          const unsubscribe = bridge.ai.onAiEvent((event: AiStreamEvent) => {
+            if (event.type === 'delta') appendDelta(event.text)
+            if (event.type === 'done') {
+              unsubscribe()
+              set({ aiStreaming: false })
+              resolve()
+            }
+            if (event.type === 'error') {
+              unsubscribe()
+              set({ aiStreaming: false })
+              get().notify(event.message)
+              resolve()
+            }
+          })
+          void bridge.ai
+            .stream(
+              {
+                provider: settings.provider,
+                model: settings.provider === 'deepseek' ? settings.deepseekModel : settings.communityModel,
+                systemPrompt: RUST_ASSISTANT_SYSTEM_PROMPT,
+                messages,
+              },
+              settings,
+            )
+            .catch((err) => {
+              unsubscribe()
+              set({ aiStreaming: false })
+              get().notify(`AI 请求失败：${err instanceof Error ? err.message : String(err)}`)
+              resolve()
+            })
+        })
+        set({
+          conversations: get().conversations.map((c) =>
+            c.id === conversationId ? { ...c, updatedAt: Date.now() } : c,
+          ),
+        })
+        persist()
       },
 
       notify(message: string) {

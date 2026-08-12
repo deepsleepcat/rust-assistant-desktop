@@ -4,7 +4,7 @@
  * - 第一阶段不接入 AI：输入框禁用、发送按钮置灰，但对话数据已按最终形态存储
  * - 支持：创建 / 切换 / 重命名 / 归档 / 删除
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useWorkspaceStore, useSortedConversations } from '../../stores/workspace'
 import { formatRelativeTime } from '../../utils/conversation'
 import { IconArchive } from '../../components/icons'
@@ -146,6 +146,27 @@ function ConversationItem({ id }: { id: string }) {
 
 function ConversationView({ id, title, onRename }: { id: string; title: string; onRename: () => void }) {
   const messages = useWorkspaceStore((s) => s.conversations.find((c) => c.id === id)?.messages ?? [])
+  const sendAiMessage = useWorkspaceStore((s) => s.sendAiMessage)
+  const aiStreaming = useWorkspaceStore((s) => s.aiStreaming)
+  const aiSettings = useWorkspaceStore((s) => s.settings.ai)
+  const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
+  const [input, setInput] = useState('')
+  const messagesRef = useRef<HTMLDivElement>(null)
+
+  const providerReady = aiSettings.provider === 'deepseek' ? aiSettings.deepseekApiKey.length > 0 : false
+
+  // 新消息自动滚动到底部
+  useEffect(() => {
+    const el = messagesRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages])
+
+  const send = () => {
+    const text = input.trim()
+    if (!text || !providerReady || aiStreaming) return
+    setInput('')
+    void sendAiMessage(id, text)
+  }
 
   return (
     <div className="conversation-view">
@@ -157,21 +178,28 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
         </button>
       </div>
 
-      <div className="conv-messages">
+      <div className="conv-messages" ref={messagesRef}>
         {messages.length === 0 ? (
           <div className="conv-empty">
-            <span className="emoji">✨</span>
             <div>这里是「{title}」的对话空间</div>
             <div className="stage-hint">
-              第一阶段暂未接入 AI。对话会保存在本地，
-              下一阶段接入铁锈战争专用 Agent 后，
-              你可以让它在整个项目里查找、分析和修改代码。
+              {providerReady
+                ? '输入你的模组需求，AI 会帮你分析、编写和修改铁锈战争代码。'
+                : 'AI 尚未配置：请先在 设置 → AI 中填写 DeepSeek API Key，然后回来开始对话。'}
             </div>
+            {!providerReady && (
+              <button className="btn" style={{ marginTop: 6 }} onClick={() => setSettingsOpen(true)}>
+                去配置 AI
+              </button>
+            )}
           </div>
         ) : (
           messages.map((m) => (
             <div key={m.id} className={`msg msg-${m.role}`}>
-              <div className="msg-bubble">{m.content}</div>
+              <div className="msg-bubble">
+                {m.content}
+                {m.role === 'assistant' && m.content === '' && <span className="msg-streaming">正在思考…</span>}
+              </div>
             </div>
           ))
         )}
@@ -180,16 +208,24 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
       <div className="conv-input-area">
         <textarea
           className="conv-input"
-          disabled
-          placeholder="AI 功能将在下一阶段接入…"
-          aria-label="对话输入框（暂不可用）"
+          value={input}
+          disabled={!providerReady || aiStreaming}
+          placeholder={providerReady ? '输入你的模组需求…（如：帮我做一个能隐身的侦察单位）' : '请先在设置中配置 AI'}
+          aria-label="对话输入框"
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              send()
+            }
+          }}
         />
         <div className="conv-input-row">
-          <span className="hint">按 Enter 发送 · Shift+Enter 换行</span>
-          <button className="btn" disabled title="下一阶段接入 AI 后开放">
+          <span className="hint">{aiStreaming ? 'AI 正在回复…' : 'Enter 发送 · Shift+Enter 换行'}</span>
+          <button className="btn" disabled={!providerReady || aiStreaming || !input.trim()} onClick={send}>
             <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
               <AppIcon name="add" size={13} />
-              发送
+              {aiStreaming ? '回复中' : '发送'}
             </span>
           </button>
         </div>
