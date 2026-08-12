@@ -4,7 +4,7 @@
  * - 无标签时显示欢迎页（最近项目 + 快捷操作）
  * - 有标签时显示简易代码编辑区（行号 + 文本编辑 + 保存）
  */
-import { useMemo, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { formatRelativeTime } from '../../utils/conversation'
 import { truncateMiddle } from '../../utils/paths'
@@ -12,6 +12,7 @@ import { FileTypeIcon, IconClose } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { LogoR } from '../../components/LogoR'
 import { ConfirmBox } from '../../components/Modal'
+import { EditorMirror } from './EditorMirror'
 
 export function EditorArea() {
   const tabs = useWorkspaceStore((s) => s.openTabs)
@@ -147,30 +148,12 @@ function EditorPane({ tabId }: { tabId: string }) {
   const tab = useWorkspaceStore((s) => s.openTabs.find((t) => t.id === tabId))
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
+  const toggleTranslation = useWorkspaceStore((s) => s.toggleTranslation)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
   const fontFamily = useWorkspaceStore((s) => s.settings.fontFamily)
   const fontSize = useWorkspaceStore((s) => s.settings.fontSize)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  const lineCount = useMemo(() => {
-    if (!tab) return 1
-    return Math.max(1, tab.content.split('\n').length)
-  }, [tab])
 
   if (!tab) return null
-
-  const monoFont = fontFamily === 'mono' ? 'var(--font-mono)' : fontFamily === 'kaiti' ? 'KaiTi, "楷体", serif' : 'var(--font-mono)'
-
-  const updatePos = () => {
-    const el = textareaRef.current
-    if (!el) return
-    const caret = el.selectionStart
-    const before = el.value.slice(0, caret)
-    const line = before.split('\n').length
-    const lastNl = before.lastIndexOf('\n')
-    const col = caret - lastNl
-    setEditorPos({ line, col })
-  }
 
   return (
     <div className="editor-workspace">
@@ -181,31 +164,27 @@ function EditorPane({ tabId }: { tabId: string }) {
         <span className="path" title={tab.path}>
           {truncateMiddle(tab.path, 80)}
         </span>
+        <button
+          className={tab.translationEnabled ? 'btn primary' : 'btn'}
+          style={{ padding: '2px 10px', fontSize: 11.5 }}
+          onClick={() => toggleTranslation(tab.id)}
+          title="切换中文显示层：显示中文，保存时自动转回英文"
+        >
+          {tab.translationEnabled ? '中文模式' : '英文模式'}
+        </button>
         {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
-        <button className="btn" style={{ padding: '3px 12px', fontSize: 12 }} onClick={() => void saveTab(tab.id)}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="save" size={13} />保存</span>
+        <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => void saveTab(tab.id)}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="save" size={12} />保存</span>
         </button>
       </div>
       <div className="editor-body">
-        <div className="editor-gutter" aria-hidden="true">
-          {Array.from({ length: lineCount }, (_, i) => i + 1).join('\n')}
-        </div>
-        <textarea
-          ref={textareaRef}
-          className="editor-textarea"
-          style={{ fontFamily: monoFont, fontSize }}
+        <EditorMirror
           value={tab.content}
-          spellCheck={false}
-          onChange={(e) => updateTabContent(tab.id, e.target.value)}
-          onKeyUp={updatePos}
-          onClick={updatePos}
-          onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-              e.preventDefault()
-              void saveTab(tab.id)
-            }
-          }}
-          placeholder="在此输入模组配置…"
+          onChange={(content) => updateTabContent(tab.id, content)}
+          onCursor={(line, col) => setEditorPos({ line, col })}
+          onSave={() => void saveTab(tab.id)}
+          fontFamily={fontFamily}
+          fontSize={fontSize}
         />
       </div>
     </div>

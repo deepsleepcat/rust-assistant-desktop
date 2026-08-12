@@ -13,6 +13,8 @@ import { DEFAULT_SETTINGS, sanitizeSettings } from '../utils/settings'
 import { nextConversationTitle, sortConversations } from '../utils/conversation'
 import { findTreeNode, updateTreeNode } from '../utils/tree'
 import { basename } from '../utils/paths'
+import { loadCodeData, getEnToZhDict, getZhToEnDict } from '../services/codeData'
+import { enToZh, makeDict, zhToEn } from '../services/translation'
 
 export interface ConfirmRequest {
   title: string
@@ -61,6 +63,7 @@ interface WorkspaceStoreActions {
   saveTab(id: string): Promise<void>
   closeTab(id: string): void
   setActiveTabId(id: string): void
+  toggleTranslation(id: string): void
   createFile(parentPath: string, name: string): Promise<void>
   createFolder(parentPath: string, name: string): Promise<void>
   renameItem(targetPath: string, newName: string): Promise<void>
@@ -288,15 +291,21 @@ export function createWorkspaceStore(bridge: BridgeApi) {
           return
         }
         try {
+          await loadCodeData()
           const result = await bridge.project.readFile(project.rootPath, path)
+          const translationEnabled = get().settings.translateMode
+          const original = result.content
+          const view = translationEnabled ? enToZh(original, makeDict(getEnToZhDict(), getZhToEnDict())) : original
           const tab: EditorTab = {
             id: crypto.randomUUID(),
             path,
             name: basename(path),
-            content: result.content,
-            original: result.content,
+            content: view,
+            original,
+            lastSavedView: view,
             hasBom: result.hasBom,
             dirty: false,
+            translationEnabled,
             size: result.size,
           }
           set({ openTabs: [...get().openTabs, tab], activeTabId: tab.id })
@@ -307,7 +316,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
 
       updateTabContent(id: string, content: string) {
         set({
-          openTabs: get().openTabs.map((t) => (t.id === id ? { ...t, content, dirty: content !== t.original } : t)),
+          openTabs: get().openTabs.map((t) => (t.id === id ? { ...t, content, dirty: content !== t.lastSavedView } : t)),
         })
       },
 
@@ -316,16 +325,32 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         const tab = get().openTabs.find((t) => t.id === id)
         if (!project || !tab) return
         try {
-          await bridge.project.writeFile(project.rootPath, tab.path, tab.content, { hasBom: tab.hasBom })
+          // 翻译模式下：先把显示内容转回英文再写盘，并更新快照
+          const dict = makeDict(getEnToZhDict(), getZhToEnDict())
+          const toWrite = tab.translationEnabled ? zhToEn(tab.content, dict) : tab.content
+          await bridge.project.writeFile(project.rootPath, tab.path, toWrite, { hasBom: tab.hasBom })
           set({
             openTabs: get().openTabs.map((t) =>
-              t.id === id ? { ...t, original: t.content, dirty: false, size: new TextEncoder().encode(t.content).length } : t,
+              t.id === id ? { ...t, original: toWrite, lastSavedView: t.content, dirty: false, size: new TextEncoder().encode(t.content).length } : t,
             ),
           })
           get().notify(`已保存 ${tab.name}`)
         } catch (err) {
           get().notify(`保存失败：${err instanceof Error ? err.message : String(err)}`)
         }
+      },
+
+      /** 切换翻译模式：基于当前显示内容转换，不丢失编辑（旧版 bug 的修复） */
+      toggleTranslation(id: string) {
+        const tab = get().openTabs.find((t) => t.id === id)
+        if (!tab) return
+        const dict = makeDict(getEnToZhDict(), getZhToEnDict())
+        const content = tab.translationEnabled ? zhToEn(tab.content, dict) : enToZh(tab.content, dict)
+        set({
+          openTabs: get().openTabs.map((t) =>
+            t.id === id ? { ...t, translationEnabled: !t.translationEnabled, content, dirty: content !== t.lastSavedView } : t,
+          ),
+        })
       },
 
       closeTab(id: string) {

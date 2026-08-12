@@ -28,6 +28,8 @@ export interface AppSettings {
   /** 是否启用 Google 彩虹装饰效果 */
   rainbow: boolean
   background: BackgroundSettings
+  /** 是否启用中文翻译显示层 */
+  translateMode: boolean
   /** 编辑器字体族名称 */
   fontFamily: string
   /** 编辑器字号 12-20 */
@@ -78,11 +80,16 @@ export interface EditorTab {
   id: string
   path: string
   name: string
+  /** 当前显示内容（翻译模式下为中文显示层） */
   content: string
-  /** 保存时的内容快照，用于判断是否有未保存修改 */
+  /** 磁盘上的英文原文快照（保存基准） */
   original: string
+  /** 上次保存/打开时的显示层快照，用于脏标记判断 */
+  lastSavedView: string
   hasBom: boolean
   dirty: boolean
+  /** 是否启用中文显示层（显示中文、保存转英文） */
+  translationEnabled: boolean
   /** 读取文件时的大小（仅供展示） */
   size: number
 }
