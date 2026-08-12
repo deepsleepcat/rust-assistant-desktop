@@ -50,8 +50,8 @@ interface WorkspaceStoreState {
   commandOpen: boolean
   confirm: ConfirmRequest | null
   toast: string | null
-  /** AI 对话是否正在流式回复 */
-  aiStreaming: boolean
+  /** 当前正在流式回复的对话（null 表示没有） */
+  aiStreamingConversationId: string | null
 }
 
 interface WorkspaceStoreActions {
@@ -153,7 +153,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       commandOpen: false,
       confirm: null,
       toast: null,
-      aiStreaming: false,
+      aiStreamingConversationId: null,
 
       async init() {
         const [settings, workspace, info] = await Promise.all([
@@ -563,7 +563,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         const settings = s.settings.ai
         const trimmed = text.trim()
         if (!trimmed) return
-        if (s.aiStreaming) {
+        if (s.aiStreamingConversationId) {
           get().notify('AI 正在回复中，请稍候')
           return
         }
@@ -574,7 +574,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
           conversations: s.conversations.map((c) =>
             c.id === conversationId ? { ...c, messages: [...c.messages, userMessage], updatedAt: now } : c,
           ),
-          aiStreaming: true,
+          aiStreamingConversationId: conversationId,
         })
         persist()
 
@@ -610,12 +610,17 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             if (event.type === 'delta') appendDelta(event.text)
             if (event.type === 'done') {
               unsubscribe()
-              set({ aiStreaming: false })
+              set({ aiStreamingConversationId: null })
               resolve()
             }
             if (event.type === 'error') {
               unsubscribe()
-              set({ aiStreaming: false })
+              set({
+                aiStreamingConversationId: null,
+                conversations: get().conversations.map((c) => c.id === conversationId
+                  ? { ...c, messages: c.messages.map((m) => m.id === aiMessageId ? { ...m, content: `AI 请求失败：${event.message}` } : m) }
+                  : c),
+              })
               get().notify(event.message)
               resolve()
             }
@@ -632,8 +637,14 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             )
             .catch((err) => {
               unsubscribe()
-              set({ aiStreaming: false })
-              get().notify(`AI 请求失败：${err instanceof Error ? err.message : String(err)}`)
+              const message = `AI 请求失败：${err instanceof Error ? err.message : String(err)}`
+              set({
+                aiStreamingConversationId: null,
+                conversations: get().conversations.map((c) => c.id === conversationId
+                  ? { ...c, messages: c.messages.map((m) => m.id === aiMessageId ? { ...m, content: message } : m) }
+                  : c),
+              })
+              get().notify(message)
               resolve()
             })
         })

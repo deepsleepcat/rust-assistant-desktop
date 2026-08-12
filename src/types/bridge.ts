@@ -47,6 +47,10 @@ export interface BridgeApi {
     delete(rootPath: string, targetPath: string): Promise<void>
     readImageAsDataUrl(rootPath: string, imagePath: string): Promise<string>
   }
+  avatar: {
+    chooseLocal(): Promise<string | null>
+    uploadCommunity(): Promise<{ ok: false; message: string }>
+  }
   ai: {
     /** 健康检查：验证 Key/连接 */
     check(settings: AiSettings): Promise<AiCheckResult>

@@ -187,6 +187,16 @@ function registerIpc(): void {
 
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }))
 
+  ipcMain.handle('avatar:chooseLocal', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title: '选择头像图片',
+      filters: [{ name: '头像图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
+    })
+    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]
+  })
+  ipcMain.handle('avatar:uploadCommunity', () => ({ ok: false, message: '社区头像服务即将上线' }))
+
   // ===== AI 服务（M4）=====
   ipcMain.handle('ai:check', async (_event, settings: AiSettings) => {
     if (settings.provider === 'deepseek') {
@@ -201,7 +211,7 @@ function registerIpc(): void {
   ipcMain.handle('ai:info', async () => {
     return {
       providers: [
-        { type: 'deepseek', name: 'DeepSeek', description: '使用你自己的 DeepSeek API Key', available: true, models: ['deepseek-chat', 'deepseek-reasoner'] },
+        { type: 'deepseek', name: 'DeepSeek', description: '使用你自己的 DeepSeek API Key', available: true, models: ['deepseek-v4-flash', 'deepseek-v4-pro'] },
         { ...communityInfo(), description: '我们提供的社区 AI 服务（即将上线）' },
       ],
     }

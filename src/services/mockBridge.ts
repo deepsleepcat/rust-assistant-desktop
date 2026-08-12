@@ -234,6 +234,10 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       },
       readImageAsDataUrl: async (_root, _imagePath) => MOCK_IMAGE_DATA_URL,
     },
+    avatar: {
+      chooseLocal: async () => null,
+      uploadCommunity: async () => ({ ok: false, message: '社区头像服务即将上线' }),
+    },
     ai: {
       check: async (settings) => {
         if (settings.provider === 'deepseek') {

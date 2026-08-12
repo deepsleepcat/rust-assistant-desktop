@@ -21,8 +21,10 @@ export function SettingsModal() {
   const settings = useWorkspaceStore((s) => s.settings)
   const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
-  const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'about'>('appearance')
+  const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'avatar' | 'about'>('appearance')
   const [aiCheck, setAiCheck] = useState<string | null>(null)
+  const [aiChecking, setAiChecking] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
 
   const bg = settings.background
   const [image, setImage] = useState<{ path: string; url: string | null }>({ path: '', url: null })
@@ -49,6 +51,13 @@ export function SettingsModal() {
   if (bg.kind === 'gradient') previewStyle.backgroundImage = bg.gradient
   if (bg.kind === 'image' && imageUrl) previewStyle.backgroundImage = `url(${imageUrl})`
 
+  useEffect(() => {
+    if (settings.avatar.source !== 'local' || !settings.avatar.localPath) return
+    let alive = true
+    void getBridge().project.readImageAsDataUrl('', settings.avatar.localPath).then((url) => alive && setAvatarUrl(url)).catch(() => alive && setAvatarUrl(null))
+    return () => { alive = false }
+  }, [settings.avatar.source, settings.avatar.localPath])
+
   const pickImage = async () => {
     const picked = await getBridge().project.openImageDialog()
     if (picked) updateSettings({ background: { ...bg, imagePath: picked, kind: 'image' } })
@@ -64,6 +73,7 @@ export function SettingsModal() {
           <SettingNavItem active={tab === 'editor'} onClick={() => setTab('editor')} icon={<AppIcon name="text" size={14} />} label="编辑器" />
           <SettingNavItem active={tab === 'layout'} onClick={() => setTab('layout')} icon={<AppIcon name="layout" size={14} />} label="布局" />
           <SettingNavItem active={tab === 'ai'} onClick={() => setTab('ai')} icon={<AppIcon name="tools" size={14} />} label="AI" />
+          <SettingNavItem active={tab === 'avatar'} onClick={() => setTab('avatar')} icon={<AppIcon name="file" size={14} />} label="头像" />
           <SettingNavItem active={tab === 'about'} onClick={() => setTab('about')} icon={<AppIcon name="tools" size={14} />} label="关于" />
         </nav>
 
@@ -335,12 +345,21 @@ export function SettingsModal() {
                     <span className="label">连接测试</span>
                     <button
                       className="btn"
+                      disabled={aiChecking}
                       onClick={async () => {
-                        const result = await getBridge().ai.check(settings.ai)
-                        setAiCheck(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`)
+                        setAiChecking(true)
+                        setAiCheck(null)
+                        try {
+                          const result = await getBridge().ai.check(settings.ai)
+                          setAiCheck(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`)
+                        } catch (err) {
+                          setAiCheck(`✗ 测试失败：${err instanceof Error ? err.message : String(err)}`)
+                        } finally {
+                          setAiChecking(false)
+                        }
                       }}
                     >
-                      测试连接
+                      {aiChecking ? '测试中…' : '测试连接'}
                     </button>
                     {aiCheck && <span style={{ fontSize: 12, color: aiCheck.startsWith('✓') ? 'var(--text-secondary)' : 'var(--danger)' }}>{aiCheck}</span>}
                   </div>
@@ -356,6 +375,30 @@ export function SettingsModal() {
                   <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>预留中</span>
                 </div>
               )}
+            </div>
+          )}
+
+          {tab === 'avatar' && (
+            <div className="setting-section">
+              <div className="setting-title">头像</div>
+              <div className="setting-row">
+                <span className="label">
+                  自定义头像
+                  <div className="desc">本地头像只保存在你的电脑；社区上传接口预留中</div>
+                </span>
+                {avatarUrl && <img src={avatarUrl} alt="头像预览" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }} />}
+                <button className="btn" onClick={async () => {
+                  const path = await getBridge().avatar.chooseLocal()
+                  if (path) {
+                    updateSettings({ avatar: { source: 'local', localPath: path, remoteUrl: null } })
+                  }
+                }}>选择图片</button>
+                <button className="btn" onClick={() => updateSettings({ avatar: { source: 'default', localPath: null, remoteUrl: null } })}>恢复默认</button>
+              </div>
+              <div className="setting-row">
+                <span className="label">社区头像上传</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>社区服务即将上线</span>
+              </div>
             </div>
           )}
 

@@ -30,6 +30,8 @@ export interface AppSettings {
   background: BackgroundSettings
   /** 是否启用中文翻译显示层 */
   translateMode: boolean
+  /** 头像配置（本地选择 / 社区后端上传预留） */
+  avatar: import('./ai').AvatarProvider
   /** AI 设置（M4） */
   ai: {
     provider: 'deepseek' | 'community'

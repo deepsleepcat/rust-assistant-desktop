@@ -27,6 +27,10 @@ const api: BridgeApi = {
     delete: (rootPath: string, targetPath: string) => ipcRenderer.invoke('fs:delete', rootPath, targetPath),
     readImageAsDataUrl: (rootPath: string, imagePath: string) => ipcRenderer.invoke('image:readAsDataUrl', rootPath, imagePath),
   },
+  avatar: {
+    chooseLocal: () => ipcRenderer.invoke('avatar:chooseLocal'),
+    uploadCommunity: () => ipcRenderer.invoke('avatar:uploadCommunity'),
+  },
   ai: {
     check: (settings) => ipcRenderer.invoke('ai:check', settings),
     info: () => ipcRenderer.invoke('ai:info'),

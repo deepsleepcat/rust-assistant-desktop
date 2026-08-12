@@ -147,7 +147,7 @@ function ConversationItem({ id }: { id: string }) {
 function ConversationView({ id, title, onRename }: { id: string; title: string; onRename: () => void }) {
   const messages = useWorkspaceStore((s) => s.conversations.find((c) => c.id === id)?.messages ?? [])
   const sendAiMessage = useWorkspaceStore((s) => s.sendAiMessage)
-  const aiStreaming = useWorkspaceStore((s) => s.aiStreaming)
+  const aiStreaming = useWorkspaceStore((s) => s.aiStreamingConversationId === id)
   const aiSettings = useWorkspaceStore((s) => s.settings.ai)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
   const [input, setInput] = useState('')

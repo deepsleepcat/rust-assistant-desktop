@@ -6,11 +6,24 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { AppIcon } from './AppIcon'
 import { LogoR } from './LogoR'
 import { truncateMiddle } from '../utils/paths'
+import { getBridge } from '../services/bridge'
+import { useEffect, useState } from 'react'
 
 export function TitleBar() {
   const activeProject = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const setCommandOpen = useWorkspaceStore((s) => s.setCommandOpen)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
+  const avatarSettings = useWorkspaceStore((s) => s.settings.avatar)
+  const [avatar, setAvatar] = useState<{ path: string; url: string | null }>({ path: '', url: null })
+
+  useEffect(() => {
+    if (avatarSettings.source !== 'local' || !avatarSettings.localPath) return
+    let alive = true
+    void getBridge().project.readImageAsDataUrl('', avatarSettings.localPath).then((url) => alive && setAvatar({ path: avatarSettings.localPath ?? '', url })).catch(() => alive && setAvatar({ path: avatarSettings.localPath ?? '', url: null }))
+    return () => { alive = false }
+  }, [avatarSettings.source, avatarSettings.localPath])
+
+  const avatarUrl = avatar.path === avatarSettings.localPath ? avatar.url : null
 
   return (
     <header className="titlebar">
@@ -34,7 +47,7 @@ export function TitleBar() {
         </div>
         <div className="titlebar-spacer" />
         <button className="avatar-btn glow-hover" title="打开设置" onClick={() => setSettingsOpen(true)}>
-          猫
+          {avatarUrl ? <img src={avatarUrl} alt="用户头像" /> : '猫'}
         </button>
       </div>
     </header>

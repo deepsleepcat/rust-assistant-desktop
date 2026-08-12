@@ -31,6 +31,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   leftWidth: 280,
   rightWidth: 340,
   showHiddenFiles: false,
+  avatar: { source: 'default', localPath: null, remoteUrl: null },
   ai: {
     provider: 'deepseek',
     deepseekApiKey: '',
@@ -68,10 +69,22 @@ export function sanitizeSettings(input: unknown): AppSettings {
     fontFamily: FONT_OPTIONS.some((f) => f.value === raw.fontFamily) ? (raw.fontFamily as string) : DEFAULT_SETTINGS.fontFamily,
     fontSize: clamp(typeof raw.fontSize === 'number' ? raw.fontSize : DEFAULT_SETTINGS.fontSize, 12, 20),
     translateMode: typeof raw.translateMode === 'boolean' ? raw.translateMode : DEFAULT_SETTINGS.translateMode,
+    avatar: sanitizeAvatar(raw.avatar),
     leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, 220, 420),
     rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, 260, 520),
     showHiddenFiles: typeof raw.showHiddenFiles === 'boolean' ? raw.showHiddenFiles : DEFAULT_SETTINGS.showHiddenFiles,
     ai: sanitizeAi(raw.ai),
+  }
+}
+
+/** 头像配置清洗：旧版本没有头像字段时使用默认头像 */
+function sanitizeAvatar(raw: unknown): AppSettings['avatar'] {
+  const input = (raw && typeof raw === 'object' ? raw : {}) as Partial<AppSettings['avatar']>
+  const source = input.source === 'local' || input.source === 'community' ? input.source : 'default'
+  return {
+    source,
+    localPath: typeof input.localPath === 'string' ? input.localPath : null,
+    remoteUrl: typeof input.remoteUrl === 'string' ? input.remoteUrl : null,
   }
 }
 

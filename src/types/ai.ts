@@ -56,10 +56,17 @@ export interface AiChatParams {
 
 /** 流式对话事件（从主进程推送到界面） */
 export type AiStreamEvent =
-  | { type: 'start' }
-  | { type: 'delta'; text: string }
-  | { type: 'done'; fullText: string }
-  | { type: 'error'; message: string }
+  | { type: 'start'; requestId?: string }
+  | { type: 'delta'; text: string; requestId?: string }
+  | { type: 'done'; fullText: string; requestId?: string }
+  | { type: 'error'; message: string; requestId?: string }
+
+/** 头像来源：community 为闭源社区后端上传预留 */
+export interface AvatarProvider {
+  source: 'default' | 'local' | 'community'
+  localPath: string | null
+  remoteUrl: string | null
+}
 
 /** 健康检查结果 */
 export interface AiCheckResult {
