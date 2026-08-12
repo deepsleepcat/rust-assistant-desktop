@@ -46,3 +46,7 @@ assets/ai/examples/
 
 ui-*.png
 .env.local
+
+# 宣传片制作工作目录（另一工作流产物）
+promo/
+scripts/capture-promo.mjs
