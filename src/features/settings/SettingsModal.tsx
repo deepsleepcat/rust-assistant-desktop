@@ -21,7 +21,8 @@ export function SettingsModal() {
   const settings = useWorkspaceStore((s) => s.settings)
   const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
-  const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'about'>('appearance')
+  const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'about'>('appearance')
+  const [aiCheck, setAiCheck] = useState<string | null>(null)
 
   const bg = settings.background
   const [image, setImage] = useState<{ path: string; url: string | null }>({ path: '', url: null })
@@ -62,6 +63,7 @@ export function SettingsModal() {
           <SettingNavItem active={tab === 'background'} onClick={() => setTab('background')} icon={<IconImage size={14} />} label="背景" />
           <SettingNavItem active={tab === 'editor'} onClick={() => setTab('editor')} icon={<AppIcon name="text" size={14} />} label="编辑器" />
           <SettingNavItem active={tab === 'layout'} onClick={() => setTab('layout')} icon={<AppIcon name="layout" size={14} />} label="布局" />
+          <SettingNavItem active={tab === 'ai'} onClick={() => setTab('ai')} icon={<AppIcon name="tools" size={14} />} label="AI" />
           <SettingNavItem active={tab === 'about'} onClick={() => setTab('about')} icon={<AppIcon name="tools" size={14} />} label="关于" />
         </nav>
 
@@ -280,6 +282,80 @@ export function SettingsModal() {
                   恢复默认
                 </button>
               </div>
+            </div>
+          )}
+
+          {tab === 'ai' && (
+            <div className="setting-section">
+              <div className="setting-title">AI 助手</div>
+              <div className="setting-row">
+                <span className="label">
+                  AI 提供者
+                  <div className="desc">DeepSeek 使用你自己的 API Key；社区后端为预留服务</div>
+                </span>
+                <div className="seg-group">
+                  <button className={settings.ai.provider === 'deepseek' ? 'active' : ''} onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
+                    DeepSeek
+                  </button>
+                  <button className={settings.ai.provider === 'community' ? 'active' : ''} onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'community' } })} title="即将上线">
+                    社区后端（即将上线）
+                  </button>
+                </div>
+              </div>
+
+              {settings.ai.provider === 'deepseek' && (
+                <>
+                  <div className="setting-row">
+                    <span className="label">
+                      API Key
+                      <div className="desc">在 platform.deepseek.com 获取，仅保存在本机</div>
+                    </span>
+                    <input
+                      type="password"
+                      style={{ width: 260 }}
+                      placeholder="sk-..."
+                      value={settings.ai.deepseekApiKey}
+                      onChange={(e) => updateSettings({ ai: { ...settings.ai, deepseekApiKey: e.target.value } })}
+                    />
+                  </div>
+                  <div className="setting-row">
+                    <span className="label">
+                      模型
+                      <div className="desc">deepseek-chat 通用便宜；deepseek-reasoner 推理更强</div>
+                    </span>
+                    <select
+                      value={settings.ai.deepseekModel}
+                      onChange={(e) => updateSettings({ ai: { ...settings.ai, deepseekModel: e.target.value } })}
+                    >
+                      <option value="deepseek-chat">deepseek-chat（推荐）</option>
+                      <option value="deepseek-reasoner">deepseek-reasoner</option>
+                    </select>
+                  </div>
+                  <div className="setting-row">
+                    <span className="label">连接测试</span>
+                    <button
+                      className="btn"
+                      onClick={async () => {
+                        const result = await getBridge().ai.check(settings.ai)
+                        setAiCheck(result.ok ? `✓ ${result.message}` : `✗ ${result.message}`)
+                      }}
+                    >
+                      测试连接
+                    </button>
+                    {aiCheck && <span style={{ fontSize: 12, color: aiCheck.startsWith('✓') ? 'var(--text-secondary)' : 'var(--danger)' }}>{aiCheck}</span>}
+                  </div>
+                </>
+              )}
+
+              {settings.ai.provider === 'community' && (
+                <div className="setting-row">
+                  <span className="label">
+                    社区后端
+                    <div className="desc">社区 AI 服务即将上线，届时将自动接入</div>
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>预留中</span>
+                </div>
+              )}
             </div>
           )}
 

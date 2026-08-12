@@ -30,6 +30,15 @@ export interface AppSettings {
   background: BackgroundSettings
   /** 是否启用中文翻译显示层 */
   translateMode: boolean
+  /** AI 设置（M4） */
+  ai: {
+    provider: 'deepseek' | 'community'
+    deepseekApiKey: string
+    deepseekModel: string
+    communityEndpoint: string
+    communityToken: string
+    communityModel: string
+  }
   /** 编辑器字体族名称 */
   fontFamily: string
   /** 编辑器字号 12-20 */

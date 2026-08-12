@@ -234,5 +234,27 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       },
       readImageAsDataUrl: async (_root, _imagePath) => MOCK_IMAGE_DATA_URL,
     },
+    ai: {
+      check: async (settings) => {
+        if (settings.provider === 'deepseek') {
+          return settings.deepseekApiKey
+            ? { ok: true, message: '连接成功（浏览器预览模式）' }
+            : { ok: false, message: '未配置 DeepSeek API Key，请在设置中填写' }
+        }
+        return { ok: false, message: '社区 AI 服务即将上线（内部预留）' }
+      },
+      info: async () => ({
+        providers: [
+          { type: 'deepseek', name: 'DeepSeek', description: '使用你自己的 DeepSeek API Key', configured: false, available: true, models: ['deepseek-chat', 'deepseek-reasoner'] },
+          { type: 'community', name: '社区后端', description: '我们提供的社区 AI 服务（即将上线）', configured: false, available: false, models: [] },
+        ],
+      }),
+      stream: async (params) => {
+        // 浏览器预览模式：模拟一段回复，便于界面联调
+        void params
+        return 'ai:stream'
+      },
+      onAiEvent: () => () => undefined,
+    },
   }
 }

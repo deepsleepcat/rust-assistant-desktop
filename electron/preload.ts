@@ -27,6 +27,16 @@ const api: BridgeApi = {
     delete: (rootPath: string, targetPath: string) => ipcRenderer.invoke('fs:delete', rootPath, targetPath),
     readImageAsDataUrl: (rootPath: string, imagePath: string) => ipcRenderer.invoke('image:readAsDataUrl', rootPath, imagePath),
   },
+  ai: {
+    check: (settings) => ipcRenderer.invoke('ai:check', settings),
+    info: () => ipcRenderer.invoke('ai:info'),
+    stream: (params, settings) => ipcRenderer.invoke('ai:stream', params, settings),
+    onAiEvent: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as never)
+      ipcRenderer.on('ai:stream', listener)
+      return () => ipcRenderer.removeListener('ai:stream', listener)
+    },
+  },
 }
 
 void ipcRenderer.invoke('app:info').then((info: { version: string }) => {

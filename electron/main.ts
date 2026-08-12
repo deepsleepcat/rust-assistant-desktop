@@ -11,6 +11,8 @@ import fs from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { createStore } from './store'
 import { isPathInside, normalizePath } from './paths'
+import { checkCommunity, checkDeepSeek, communityInfo, streamDeepSeek } from './ai'
+import type { AiChatParams, AiSettings } from '../src/types/ai'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
 
@@ -184,6 +186,38 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }))
+
+  // ===== AI 服务（M4）=====
+  ipcMain.handle('ai:check', async (_event, settings: AiSettings) => {
+    if (settings.provider === 'deepseek') {
+      return checkDeepSeek({ apiKey: settings.deepseekApiKey, model: settings.deepseekModel })
+    }
+    if (settings.provider === 'community') {
+      return checkCommunity({ endpoint: settings.communityEndpoint, token: settings.communityToken })
+    }
+    return { ok: false, message: '未知的 AI 提供者' }
+  })
+
+  ipcMain.handle('ai:info', async () => {
+    return {
+      providers: [
+        { type: 'deepseek', name: 'DeepSeek', description: '使用你自己的 DeepSeek API Key', available: true, models: ['deepseek-chat', 'deepseek-reasoner'] },
+        { ...communityInfo(), description: '我们提供的社区 AI 服务（即将上线）' },
+      ],
+    }
+  })
+
+  ipcMain.handle('ai:stream', async (event, params: AiChatParams, settings: AiSettings) => {
+    const webContents = event.sender
+    // 固定通道：单窗口应用，事件只推给发起请求的窗口
+    const channel = 'ai:stream'
+    if (settings.provider === 'deepseek') {
+      await streamDeepSeek(webContents as unknown as import('electron').WebContents, channel, params, { apiKey: settings.deepseekApiKey, model: settings.deepseekModel })
+    } else {
+      if (!webContents.isDestroyed()) webContents.send(channel, { type: 'error', message: '社区 AI 服务即将上线' })
+    }
+    return channel
+  })
 }
 
 app.whenReady().then(() => {

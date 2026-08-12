@@ -2,6 +2,7 @@
  * 界面进程（React）与主进程（Electron）之间的通信契约。
  * 所有文件操作都必须携带 rootPath（项目根目录），主进程会校验路径范围。
  */
+import type { AiChatParams, AiCheckResult, AiProviderInfo, AiSettings, AiStreamEvent } from './ai'
 
 export interface DirEntry {
   name: string
@@ -45,5 +46,14 @@ export interface BridgeApi {
     rename(rootPath: string, oldPath: string, newPath: string): Promise<void>
     delete(rootPath: string, targetPath: string): Promise<void>
     readImageAsDataUrl(rootPath: string, imagePath: string): Promise<string>
+  }
+  ai: {
+    /** 健康检查：验证 Key/连接 */
+    check(settings: AiSettings): Promise<AiCheckResult>
+    /** 提供者信息列表（设置面板展示） */
+    info(): Promise<{ providers: AiProviderInfo[] }>
+    /** 开始流式对话；返回事件通道，通过 onAiEvent 订阅 */
+    stream(params: AiChatParams, settings: AiSettings): Promise<string>
+    onAiEvent(callback: (event: AiStreamEvent) => void): () => void
   }
 }

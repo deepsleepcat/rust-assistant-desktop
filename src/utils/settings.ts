@@ -3,6 +3,7 @@
  * 防止损坏的数据进入应用。
  */
 import type { AppSettings, BackgroundKind } from '../types/domain'
+import type { AiProviderType } from '../types/ai'
 
 export const FONT_OPTIONS = [
   { label: '系统默认', value: 'system' },
@@ -30,7 +31,17 @@ export const DEFAULT_SETTINGS: AppSettings = {
   leftWidth: 280,
   rightWidth: 340,
   showHiddenFiles: false,
+  ai: {
+    provider: 'deepseek',
+    deepseekApiKey: '',
+    deepseekModel: 'deepseek-chat',
+    communityEndpoint: '',
+    communityToken: '',
+    communityModel: '',
+  },
 }
+
+const AI_PROVIDERS: AiProviderType[] = ['deepseek', 'community']
 
 const BACKGROUND_KINDS: BackgroundKind[] = ['none', 'color', 'gradient', 'image']
 
@@ -60,5 +71,19 @@ export function sanitizeSettings(input: unknown): AppSettings {
     leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, 220, 420),
     rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, 260, 520),
     showHiddenFiles: typeof raw.showHiddenFiles === 'boolean' ? raw.showHiddenFiles : DEFAULT_SETTINGS.showHiddenFiles,
+    ai: sanitizeAi(raw.ai),
+  }
+}
+
+/** AI 设置清洗：兼容旧配置，保证字段完整 */
+function sanitizeAi(raw: unknown): AppSettings['ai'] {
+  const input = (raw && typeof raw === 'object' ? raw : {}) as Partial<AppSettings['ai']>
+  return {
+    provider: AI_PROVIDERS.includes(input.provider as AiProviderType) ? (input.provider as AiProviderType) : DEFAULT_SETTINGS.ai.provider,
+    deepseekApiKey: typeof input.deepseekApiKey === 'string' ? input.deepseekApiKey : '',
+    deepseekModel: typeof input.deepseekModel === 'string' && input.deepseekModel ? input.deepseekModel : DEFAULT_SETTINGS.ai.deepseekModel,
+    communityEndpoint: typeof input.communityEndpoint === 'string' ? input.communityEndpoint : '',
+    communityToken: typeof input.communityToken === 'string' ? input.communityToken : '',
+    communityModel: typeof input.communityModel === 'string' ? input.communityModel : '',
   }
 }
