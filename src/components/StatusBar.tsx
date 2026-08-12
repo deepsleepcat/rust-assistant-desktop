@@ -26,7 +26,7 @@ export function StatusBar() {
         行 {editorPos.line}，列 {editorPos.col}
       </span>
       {dirtyCount > 0 && (
-        <span className="sb-item" style={{ color: 'var(--g-red)' }}>
+        <span className="sb-item" style={{ color: 'var(--text-secondary)' }}>
           未保存 {dirtyCount}
         </span>
       )}

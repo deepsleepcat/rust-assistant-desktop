@@ -27,7 +27,7 @@ body {
 }
 .titlebar-inner { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; }
 .titlebar-inner > * { -webkit-app-region: no-drag; }
-.titlebar-logo { width: 24px; height: 24px; border-radius: 6px; display: grid; place-items: center; color: #fff; font: 700 14px var(--font-display); flex-shrink: 0; }
+.titlebar-logo { display: contents; color: var(--text-primary); }
 .titlebar-name { font: 600 13px var(--font-display); white-space: nowrap; }
 .titlebar-project { max-width: 220px; color: var(--text-secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .titlebar-sep { color: var(--text-muted); }
@@ -60,7 +60,7 @@ body {
 .project-item:hover, .conv-item:hover { background: rgba(26, 115, 232, .07); }
 .project-item.active, .conv-item.active { color: var(--text-primary); background: var(--accent-soft); }
 .project-item.active::before, .conv-item.active::before { content: ""; position: absolute; left: 0; top: 5px; bottom: 5px; width: 2px; border-radius: 2px; background: var(--accent); }
-.project-item .proj-icon { color: var(--g-yellow); display: grid; }
+.project-item .proj-icon { color: var(--text-primary); display: grid; }
 .proj-name, .conv-info, .tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-name, .conv-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-time, .conv-time { color: var(--text-muted); font-size: 11px; }
@@ -69,13 +69,10 @@ body {
 .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 12px; }
 .empty-state .emoji { display: none; }
 .empty-state::before { content: ""; width: 28px; height: 28px; border: 1px solid var(--border-strong); border-radius: 8px; opacity: .7; }
-.btn, .btn-rainbow { height: 32px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--text-primary); font: 500 13px var(--font-ui); cursor: pointer; box-shadow: none; }
+.btn { height: 32px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--text-primary); font: 500 13px var(--font-ui); cursor: pointer; box-shadow: none; }
 .btn:hover { background: var(--surface-hover); border-color: var(--accent); }
 .btn.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
 .btn.primary:hover { background: var(--accent-hover); }
-.btn-rainbow { border-color: var(--accent); color: var(--accent); }
-.btn-rainbow:hover { background: var(--accent-soft); color: var(--accent-hover); transform: none; box-shadow: none; }
-.btn-rainbow::before, .btn-rainbow::after { display: none; }
 
 .tree-toolbar { padding: 0 8px 4px; }
 .tree-row { position: relative; display: flex; align-items: center; gap: 6px; height: 28px; padding-right: 5px; border-radius: var(--radius-xs); color: var(--text-secondary); cursor: pointer; font-size: 12.5px; }
@@ -98,9 +95,8 @@ body {
 .tab .tab-close { margin-left: auto; width: 22px; height: 22px; }
 .dirty-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--accent); }
 .welcome { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 36px; background: var(--editor); text-align: center; }
-.welcome-logo { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; background: var(--g-rainbow); color: #fff; font: 700 25px var(--font-display); box-shadow: var(--shadow-sm); }
+.welcome-logo { width: 50px; height: 34px; display: grid; place-items: center; color: var(--text-primary); }
 .welcome h1 { margin: 6px 0 0; color: var(--text-primary); font: 650 24px var(--font-display); }
-.welcome .rainbow-text { color: var(--text-primary); background: none; animation: none; }
 .welcome .subtitle { margin: 0; color: var(--text-secondary); font-size: 13px; }
 .welcome-actions { display: flex; gap: 8px; margin-top: 16px; }
 .welcome-footer { margin-top: 20px; color: var(--text-muted); font-size: 11px; }

@@ -7,15 +7,8 @@
 import { useState } from 'react'
 import { useWorkspaceStore, useSortedConversations } from '../../stores/workspace'
 import { formatRelativeTime } from '../../utils/conversation'
-import {
-  IconArchive,
-  IconChat,
-  IconPlus,
-  IconRename,
-  IconSend,
-  IconSparkle,
-  IconTrash,
-} from '../../components/icons'
+import { IconArchive, IconPlus } from '../../components/icons'
+import { AppIcon } from '../../components/AppIcon'
 import { PromptModal } from '../../components/Modal'
 export function ConversationPanel() {
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
@@ -32,7 +25,7 @@ export function ConversationPanel() {
   return (
     <section className="panel" style={{ minWidth: 0 }}>
       <div className="panel-header">
-        <IconSparkle size={13} style={{ color: 'var(--g-yellow)' }} />
+        <AppIcon name="tools" size={13} />
         AI 对话
         <span className="grow" />
         <button className="icon-btn" title="新建对话" disabled={!project} onClick={() => createConversation()}>
@@ -49,7 +42,7 @@ export function ConversationPanel() {
         <div className="empty-state" style={{ padding: '20px 14px' }}>
           <span className="emoji">💬</span>
           <div>还没有对话</div>
-          <button className="btn-rainbow" onClick={() => createConversation()}>
+          <button className="btn" onClick={() => createConversation()}>
             新建对话
           </button>
         </div>
@@ -106,14 +99,14 @@ function ConversationItem({ id }: { id: string }) {
         className={`conv-item${conv.id === activeConversationId ? ' active' : ''}${conv.archived ? ' archived' : ''}`}
         onClick={() => selectConversation(conv.id)}
       >
-        <IconChat size={14} style={{ flexShrink: 0, opacity: 0.8 }} />
+        <AppIcon name="file" size={14} />
         <span className="conv-info">
           <span className="conv-title">{conv.title}</span>
           <span className="conv-time">{formatRelativeTime(conv.updatedAt)}</span>
         </span>
         <span className="row-actions" onClick={(e) => e.stopPropagation()}>
           <button className="icon-btn" title="重命名" onClick={() => setRenaming(true)}>
-            <IconRename size={12} />
+            <AppIcon name="rename" size={12} />
           </button>
           <button className="icon-btn" title={conv.archived ? '取消归档' : '归档'} onClick={() => toggleArchive(conv.id)}>
             <IconArchive size={12} />
@@ -131,7 +124,7 @@ function ConversationItem({ id }: { id: string }) {
               })
             }
           >
-            <IconTrash size={12} />
+            <AppIcon name="delete" size={12} />
           </button>
         </span>
       </div>
@@ -157,10 +150,10 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
   return (
     <div className="conversation-view">
       <div className="conv-view-header">
-        <IconSparkle size={13} style={{ color: 'var(--g-yellow)' }} />
+        <AppIcon name="tools" size={13} />
         <span className="title">{title}</span>
         <button className="icon-btn" title="重命名对话" onClick={onRename}>
-          <IconRename size={13} />
+          <AppIcon name="rename" size={13} />
         </button>
       </div>
 
@@ -193,9 +186,9 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
         />
         <div className="conv-input-row">
           <span className="hint">按 Enter 发送 · Shift+Enter 换行</span>
-          <button className="btn-rainbow" disabled title="下一阶段接入 AI 后开放">
+          <button className="btn" disabled title="下一阶段接入 AI 后开放">
             <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-              <IconSend size={13} />
+              <AppIcon name="add" size={13} />
               发送
             </span>
           </button>

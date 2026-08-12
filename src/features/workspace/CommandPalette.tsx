@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { IconChat, IconClose, IconFolder, IconGear, IconMoon, IconSun } from '../../components/icons'
+import { IconChat, IconClose, IconFolder, IconGear } from '../../components/icons'
 
 interface CommandItem {
   id: string
@@ -20,8 +20,6 @@ export function CommandPalette() {
   const openProject = useWorkspaceStore((s) => s.openProject)
   const createConversation = useWorkspaceStore((s) => s.createConversation)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
-  const settings = useWorkspaceStore((s) => s.settings)
-  const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const closeTab = useWorkspaceStore((s) => s.closeTab)
   const activeTabId = useWorkspaceStore((s) => s.activeTabId)
 
@@ -40,12 +38,6 @@ export function CommandPalette() {
     () => [
       { id: 'open-project', title: '打开项目…', hint: 'Ctrl+O', icon: <IconFolder size={15} />, run: () => void openProject() },
       { id: 'new-conversation', title: '新建 AI 对话', hint: 'Ctrl+Shift+C', icon: <IconChat size={15} />, run: () => createConversation() },
-      {
-        id: 'toggle-theme',
-        title: settings.theme === 'dark' ? '切换为浅色主题' : '切换为深色主题',
-        icon: settings.theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />,
-        run: () => updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' }),
-      },
       { id: 'open-settings', title: '打开设置', hint: 'Ctrl+,', icon: <IconGear size={15} />, run: () => setSettingsOpen(true) },
       {
         id: 'close-tab',
@@ -55,7 +47,7 @@ export function CommandPalette() {
         run: () => activeTabId && closeTab(activeTabId),
       },
     ],
-    [openProject, createConversation, setSettingsOpen, updateSettings, settings.theme, activeTabId, closeTab],
+    [openProject, createConversation, setSettingsOpen, activeTabId, closeTab],
   )
 
   const filtered = useMemo(() => {

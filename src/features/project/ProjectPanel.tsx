@@ -8,7 +8,8 @@
 import { useState } from 'react'
 import type { TreeNode } from '../../types/domain'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { FileTypeIcon, FolderIcon, IconChevronRight, IconFilePlus, IconFolderPlus, IconRefresh, IconRename, IconTrash } from '../../components/icons'
+import { FileTypeIcon, FolderIcon, IconChevronRight } from '../../components/icons'
+import { AppIcon } from '../../components/AppIcon'
 import { PromptModal } from '../../components/Modal'
 
 export function ProjectPanel() {
@@ -43,21 +44,21 @@ export function ProjectPanel() {
         {project.name}
         <span className="grow" />
         <button className="icon-btn" title="刷新" onClick={() => void refreshTree()}>
-          <IconRefresh size={13} />
+          <AppIcon name="refresh" size={13} />
         </button>
         <button
           className="icon-btn"
           title="新建文件"
           onClick={() => setDialog({ kind: 'file', parent: project.rootPath })}
         >
-          <IconFilePlus size={13} />
+          <AppIcon name="add" size={13} />
         </button>
         <button
           className="icon-btn"
           title="新建文件夹"
           onClick={() => setDialog({ kind: 'folder', parent: project.rootPath })}
         >
-          <IconFolderPlus size={13} />
+          <AppIcon name="add" size={13} />
         </button>
       </div>
       {treeError ? (
@@ -97,7 +98,7 @@ export function ProjectPanel() {
 }
 
 function IconFolderOpen2({ size }: { size?: number }) {
-  return <span style={{ display: 'grid', color: 'var(--g-yellow)' }}>{<FolderIcon size={size ?? 13} />}</span>
+  return <span style={{ display: 'grid', color: 'var(--text-secondary)' }}>{<FolderIcon size={size ?? 13} />}</span>
 }
 
 function TreeRow({
@@ -135,7 +136,7 @@ function TreeRow({
           <span className="tree-name">{node.name}</span>
           <span className="row-actions">
             <button className="icon-btn" title="重命名" onClick={(e) => { e.stopPropagation(); onRename(node) }}>
-              <IconRename size={12} />
+              <AppIcon name="rename" size={12} />
             </button>
             <button
               className="icon-btn"
@@ -145,7 +146,7 @@ function TreeRow({
                 onNewIn({ kind: 'file', parent: node.path })
               }}
             >
-              <IconFilePlus size={12} />
+              <AppIcon name="add" size={12} />
             </button>
             <button
               className="icon-btn"
@@ -155,7 +156,7 @@ function TreeRow({
                 onNewIn({ kind: 'folder', parent: node.path })
               }}
             >
-              <IconFolderPlus size={12} />
+              <AppIcon name="add" size={12} />
             </button>
             <button
               className="icon-btn"
@@ -171,7 +172,7 @@ function TreeRow({
                 })
               }}
             >
-              <IconTrash size={12} />
+              <AppIcon name="delete" size={12} />
             </button>
           </span>
         </div>
@@ -207,7 +208,7 @@ function TreeRow({
       <span className="tree-name">{node.name}</span>
       <span className="row-actions">
         <button className="icon-btn" title="重命名" onClick={() => onRename(node)}>
-          <IconRename size={12} />
+          <AppIcon name="rename" size={12} />
         </button>
         <button
           className="icon-btn"
@@ -222,7 +223,7 @@ function TreeRow({
             })
           }
         >
-          <IconTrash size={12} />
+          <AppIcon name="delete" size={12} />
         </button>
       </span>
     </div>

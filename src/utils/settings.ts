@@ -2,7 +2,7 @@
  * 设置：默认值与清洗逻辑。所有外部输入（本地存储、界面操作）都必须先经过清洗，
  * 防止损坏的数据进入应用。
  */
-import type { AppSettings, BackgroundKind, ThemeMode } from '../types/domain'
+import type { AppSettings, BackgroundKind } from '../types/domain'
 
 export const FONT_OPTIONS = [
   { label: '系统默认', value: 'system' },
@@ -12,6 +12,7 @@ export const FONT_OPTIONS = [
 
 export const DEFAULT_SETTINGS: AppSettings = {
   // 白色 Google Material 是默认主视觉，深色仅作为备用主题。
+  // 保留字段以兼容旧配置，但界面始终采用白色主题。
   theme: 'light',
   rainbow: true,
   background: {
@@ -30,7 +31,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showHiddenFiles: false,
 }
 
-const THEMES: ThemeMode[] = ['light', 'dark', 'system']
 const BACKGROUND_KINDS: BackgroundKind[] = ['none', 'color', 'gradient', 'image']
 
 export function clamp(value: number, min: number, max: number): number {
@@ -43,7 +43,7 @@ export function sanitizeSettings(input: unknown): AppSettings {
   const bgRaw = (raw.background && typeof raw.background === 'object' ? raw.background : {}) as Partial<AppSettings['background']>
 
   return {
-    theme: THEMES.includes(raw.theme as ThemeMode) ? (raw.theme as ThemeMode) : DEFAULT_SETTINGS.theme,
+    theme: 'light',
     rainbow: typeof raw.rainbow === 'boolean' ? raw.rainbow : DEFAULT_SETTINGS.rainbow,
     background: {
       kind: BACKGROUND_KINDS.includes(bgRaw.kind as BackgroundKind) ? (bgRaw.kind as BackgroundKind) : DEFAULT_SETTINGS.background.kind,

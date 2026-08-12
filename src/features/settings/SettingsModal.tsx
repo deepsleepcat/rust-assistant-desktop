@@ -6,15 +6,15 @@ import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { DEFAULT_SETTINGS, FONT_OPTIONS } from '../../utils/settings'
 import { getBridge } from '../../services/bridge'
-import { IconImage, IconLayout, IconSparkle, IconSun, IconType } from '../../components/icons'
+import { IconImage } from '../../components/icons'
+import { AppIcon } from '../../components/AppIcon'
+import { LogoR } from '../../components/LogoR'
 import { Modal } from '../../components/Modal'
 
 const GRADIENT_PRESETS = [
-  { name: '谷歌晴空', value: 'linear-gradient(135deg, #e8f0fe 0%, #fce8e6 33%, #fef7e0 66%, #e6f4ea 100%)' },
-  { name: '黎明薄雾', value: 'linear-gradient(135deg, #fdfbfb 0%, #ebedee 50%, #e3f2fd 100%)' },
-  { name: '樱色黄昏', value: 'linear-gradient(135deg, #ffe9ec 0%, #ffe3d0 45%, #fef3d8 100%)' },
-  { name: '极地蓝调', value: 'linear-gradient(135deg, #e7f0fd 0%, #dbe9f8 50%, #eef4fb 100%)' },
-  { name: '薄荷晨光', value: 'linear-gradient(135deg, #e6f4ea 0%, #e4f7f0 50%, #eefbf3 100%)' },
+  { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
+  { name: '雾灰', value: 'linear-gradient(135deg, #fafafa 0%, #e5e5e5 100%)' },
+  { name: '墨色边缘', value: 'linear-gradient(135deg, #ffffff 0%, #eeeeee 70%, #d8d8d8 100%)' },
 ]
 
 export function SettingsModal() {
@@ -51,15 +51,15 @@ export function SettingsModal() {
   }
 
   return (
-    <Modal title={<span className="rainbow-text">设置</span>} onClose={() => setSettingsOpen(false)} wide>
+      <Modal title="设置" onClose={() => setSettingsOpen(false)} wide>
       <div style={{ display: 'flex', gap: 20, minHeight: 380 }}>
         {/* 左侧导航 */}
         <nav style={{ width: 130, flexShrink: 0 }}>
-          <SettingNavItem active={tab === 'appearance'} onClick={() => setTab('appearance')} icon={<IconSun size={14} />} label="外观" />
+          <SettingNavItem active={tab === 'appearance'} onClick={() => setTab('appearance')} icon={<AppIcon name="settings" size={14} />} label="外观" />
           <SettingNavItem active={tab === 'background'} onClick={() => setTab('background')} icon={<IconImage size={14} />} label="背景" />
-          <SettingNavItem active={tab === 'editor'} onClick={() => setTab('editor')} icon={<IconType size={14} />} label="编辑器" />
-          <SettingNavItem active={tab === 'layout'} onClick={() => setTab('layout')} icon={<IconLayout size={14} />} label="布局" />
-          <SettingNavItem active={tab === 'about'} onClick={() => setTab('about')} icon={<IconSparkle size={14} />} label="关于" />
+          <SettingNavItem active={tab === 'editor'} onClick={() => setTab('editor')} icon={<AppIcon name="text" size={14} />} label="编辑器" />
+          <SettingNavItem active={tab === 'layout'} onClick={() => setTab('layout')} icon={<AppIcon name="layout" size={14} />} label="布局" />
+          <SettingNavItem active={tab === 'about'} onClick={() => setTab('about')} icon={<AppIcon name="tools" size={14} />} label="关于" />
         </nav>
 
         {/* 内容 */}
@@ -69,27 +69,10 @@ export function SettingsModal() {
               <div className="setting-title">外观</div>
               <div className="setting-row">
                 <span className="label">
-                  主题
-                  <div className="desc">浅色、深色或跟随系统</div>
+                  黑白专业主题
+                  <div className="desc">白色工作区、黑色文字与操作，不使用彩色装饰</div>
                 </span>
-                <div className="seg-group">
-                  <button className={settings.theme === 'light' ? 'active' : ''} onClick={() => updateSettings({ theme: 'light' })}>
-                    浅色
-                  </button>
-                  <button className={settings.theme === 'dark' ? 'active' : ''} onClick={() => updateSettings({ theme: 'dark' })}>
-                    深色
-                  </button>
-                  <button className={settings.theme === 'system' ? 'active' : ''} onClick={() => updateSettings({ theme: 'system' })}>
-                    跟随系统
-                  </button>
-                </div>
-              </div>
-              <div className="setting-row">
-                <span className="label">
-                  Google 彩虹装饰
-                  <div className="desc">顶部渐变线、彩虹按钮、彩虹 Logo</div>
-                </span>
-                <Switch checked={settings.rainbow} onChange={(v) => updateSettings({ rainbow: v })} />
+                <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>已固定</span>
               </div>
             </div>
           )}
@@ -143,7 +126,7 @@ export function SettingsModal() {
                 <div className="setting-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
                   <span className="label">
                     预设渐变
-                    <div className="desc">选择一款柔和的多彩渐变</div>
+                    <div className="desc">选择一款黑白灰阶渐变</div>
                   </span>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
                     {GRADIENT_PRESETS.map((g) => (
@@ -302,9 +285,7 @@ export function SettingsModal() {
             <div className="setting-section">
               <div className="setting-title">关于</div>
               <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 12 }}>
-                <div className="titlebar-logo" style={{ width: 42, height: 42, borderRadius: 12, fontSize: 24 }}>
-                  R
-                </div>
+                <LogoR size="about" />
                 <div>
                   <div style={{ fontWeight: 600 }}>铁锈助手 Rust Assistant</div>
                   <div style={{ fontSize: 12, color: 'var(--text-2)' }}>版本 0.1.0 · 第一阶段（界面与项目骨架）</div>
@@ -349,12 +330,3 @@ function SettingNavItem({ active, onClick, icon, label }: { active: boolean; onC
   )
 }
 
-function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="switch">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <span className="track" />
-      <span className="thumb" />
-    </label>
-  )
-}

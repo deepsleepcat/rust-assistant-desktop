@@ -4,7 +4,6 @@
 import { useEffect } from 'react'
 import { useWorkspaceStore } from './stores/workspace'
 import { isElectron } from './services/bridge'
-import { Backdrop } from './components/Backdrop'
 import { TitleBar } from './components/TitleBar'
 import { StatusBar } from './components/StatusBar'
 import { ConfirmDialog } from './components/Modal'
@@ -14,14 +13,6 @@ import { EditorArea } from './features/editor/EditorArea'
 import { ConversationPanel } from './features/conversation/ConversationPanel'
 import { SettingsModal } from './features/settings/SettingsModal'
 import { CommandPalette } from './features/workspace/CommandPalette'
-import type { ThemeMode } from './types/domain'
-
-function resolveTheme(mode: ThemeMode): 'light' | 'dark' {
-  if (mode === 'system') {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  }
-  return mode
-}
 
 export function App() {
   const ready = useWorkspaceStore((s) => s.ready)
@@ -30,28 +21,17 @@ export function App() {
   const toast = useWorkspaceStore((s) => s.toast)
   const dismissToast = useWorkspaceStore((s) => s.dismissToast)
 
-  const theme = resolveTheme(settings.theme)
 
   // 初始化：读取本地设置与工作区
   useEffect(() => {
     void useWorkspaceStore.getState().init()
   }, [])
 
-  // 跟随系统主题变化
+  // 白色主视觉固定；旧设置中的主题字段只为兼容数据，不再改变界面。
   useEffect(() => {
-    if (settings.theme !== 'system') return
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => useWorkspaceStore.getState().updateSettings({ theme: 'system' })
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [settings.theme])
-
-  // 设置 html 主题属性 + Electron 标记（用于避开系统窗口按钮）
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    document.documentElement.dataset.rainbow = settings.rainbow ? 'on' : 'off'
+    document.documentElement.dataset.theme = 'light'
     document.body.classList.toggle('electron', isElectron)
-  }, [theme, settings.rainbow])
+  }, [])
 
   // 全局快捷键
   useEffect(() => {
@@ -97,8 +77,6 @@ export function App() {
 
   return (
     <div className="app">
-      <div className="rainbow-bar" />
-      <Backdrop />
       <TitleBar />
 
       <div className="app-body" style={{ gridTemplateColumns: `${settings.leftWidth}px 1fr ${settings.rightWidth}px` }}>

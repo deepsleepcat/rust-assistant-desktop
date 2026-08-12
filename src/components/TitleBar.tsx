@@ -3,7 +3,8 @@
  * 在 Electron 中作为可拖拽区域（窗口控制按钮由系统渲染在右侧）。
  */
 import { useWorkspaceStore } from '../stores/workspace'
-import { IconSearch } from './icons'
+import { AppIcon } from './AppIcon'
+import { LogoR } from './LogoR'
 import { truncateMiddle } from '../utils/paths'
 
 export function TitleBar() {
@@ -14,7 +15,7 @@ export function TitleBar() {
   return (
     <header className="titlebar">
       <div className="titlebar-inner">
-        <div className="titlebar-logo">R</div>
+        <LogoR size="header" />
         <span className="titlebar-name">铁锈助手</span>
         {activeProject && (
           <>
@@ -25,7 +26,7 @@ export function TitleBar() {
           </>
         )}
         <div className="titlebar-search" onClick={() => setCommandOpen(true)} role="search" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setCommandOpen(true)}>
-          <IconSearch size={14} />
+          <AppIcon name="search" size={14} />
           <span>搜索命令、打开项目…</span>
           <span className="hint">
             <kbd>Ctrl</kbd> <kbd>K</kbd>

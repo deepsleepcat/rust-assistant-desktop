@@ -3,7 +3,7 @@
  */
 import { useWorkspaceStore } from '../../stores/workspace'
 import { formatRelativeTime } from '../../utils/conversation'
-import { IconClose, IconFolder, IconPlus, IconProject } from '../../components/icons'
+import { AppIcon } from '../../components/AppIcon'
 
 export function WorkspaceSidebar() {
   const projects = useWorkspaceStore((s) => s.projects)
@@ -16,18 +16,18 @@ export function WorkspaceSidebar() {
   return (
     <section className="panel" style={{ minHeight: 0 }}>
       <div className="panel-header">
-        <IconProject size={13} />
+        <AppIcon name="folder" size={13} />
         项目
         <span className="grow" />
         <button className="icon-btn" title="打开项目（文件夹）" onClick={() => void openProject()}>
-          <IconPlus size={14} />
+          <AppIcon name="plus" size={14} />
         </button>
       </div>
       {projects.length === 0 ? (
         <div className="empty-state" style={{ padding: '18px 14px' }}>
           <span className="emoji">📁</span>
           <div>还没有项目</div>
-          <button className="btn-rainbow" onClick={() => void openProject()}>
+          <button className="btn" onClick={() => void openProject()}>
             打开项目
           </button>
         </div>
@@ -41,7 +41,7 @@ export function WorkspaceSidebar() {
               title={p.rootPath}
             >
               <span className="proj-icon">
-                <IconFolder size={15} />
+                <AppIcon name="folder" size={15} />
               </span>
               <span className="proj-name">{p.name}</span>
               <span className="proj-time">{formatRelativeTime(p.lastOpenedAt)}</span>
@@ -59,7 +59,7 @@ export function WorkspaceSidebar() {
                 }}
               >
                 <button className="icon-btn" title="从列表移除">
-                  <IconClose size={13} />
+                  <AppIcon name="close" size={13} />
                 </button>
               </span>
             </div>

@@ -8,7 +8,9 @@ import { useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { formatRelativeTime } from '../../utils/conversation'
 import { truncateMiddle } from '../../utils/paths'
-import { FileTypeIcon, IconClose, IconSparkle } from '../../components/icons'
+import { FileTypeIcon, IconClose } from '../../components/icons'
+import { AppIcon } from '../../components/AppIcon'
+import { LogoR } from '../../components/LogoR'
 import { ConfirmBox } from '../../components/Modal'
 
 export function EditorArea() {
@@ -102,13 +104,13 @@ function WelcomeView() {
   return (
     <div className="welcome">
       <div className="stagger" style={{ display: 'contents' }}>
-        <div className="welcome-logo">R</div>
+        <div className="welcome-logo"><LogoR size="welcome" /></div>
         <h1>
-          <span className="rainbow-text">铁锈助手</span>
+          <span>铁锈助手</span>
         </h1>
         <p className="subtitle">铁锈战争 · 模组开发工作台</p>
         <div className="welcome-actions">
-          <button className="btn-rainbow" onClick={() => void openProject()}>
+          <button className="btn" onClick={() => void openProject()}>
             打开项目
           </button>
           <button className="btn" onClick={() => createConversation()}>
@@ -173,15 +175,15 @@ function EditorPane({ tabId }: { tabId: string }) {
   return (
     <div className="editor-workspace">
       <div className="editor-pathbar">
-        <span style={{ color: 'var(--g-blue)', display: 'grid' }}>
-          <IconSparkle size={13} />
+        <span style={{ color: 'var(--text-secondary)', display: 'grid' }}>
+          <AppIcon name="file" size={13} />
         </span>
         <span className="path" title={tab.path}>
           {truncateMiddle(tab.path, 80)}
         </span>
-        {tab.dirty && <span style={{ color: 'var(--g-red)', fontSize: 11.5 }}>● 未保存</span>}
+        {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
         <button className="btn" style={{ padding: '3px 12px', fontSize: 12 }} onClick={() => void saveTab(tab.id)}>
-          保存
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="save" size={13} />保存</span>
         </button>
       </div>
       <div className="editor-body">
