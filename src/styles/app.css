@@ -61,7 +61,12 @@ body {
 .avatar-btn { width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface-1); color: var(--text-secondary); font: 600 12px var(--font-ui); cursor: pointer; }
 .avatar-btn:hover { background: var(--surface-hover); color: var(--accent); border-color: var(--accent); }
 
-.app-body { position: relative; z-index: 1; flex: 1; display: grid; min-height: 0; padding: 0; gap: 0; }
+.app-body {
+  position: relative; z-index: 1; flex: 1; display: grid; min-height: 0; padding: 0; gap: 0;
+  /* 关键：grid 行高必须锁死为剩余视口高度，否则内容会把整行撑高并溢出 */
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
 .panel { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--surface-0); border: 0; border-radius: 0; box-shadow: none; }
 .sidebar { background: var(--surface-1); border-right: 1px solid var(--divider); }
 .app-body > .conversation-panel, .app-body > section:last-child { background: var(--surface-1); border-left: 1px solid var(--divider); }
