@@ -64,6 +64,7 @@
       "dist/**",
       "dist-electron/**",
       "public/**",
+      "vendor/pi/LICENSE",
       "package.json"
     ],
     "win": {
