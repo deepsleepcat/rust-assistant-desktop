@@ -5,6 +5,8 @@ node_modules/
 dist/
 dist-electron/
 *.tsbuildinfo
+# vendor 里的 Pi 引擎编译产物必须入库（file: 依赖，clone 后需要 dist 才能运行）
+!vendor/pi/packages/*/dist/
 
 # 日志与缓存
 *.log
