@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   fontSize: 14,
   translateMode: true,
   leftWidth: 280,
-  rightWidth: 340,
+  rightWidth: 430,
   showHiddenFiles: false,
   avatar: { source: 'default', localPath: null, remoteUrl: null },
   ai: {
@@ -71,7 +71,7 @@ export function sanitizeSettings(input: unknown): AppSettings {
     translateMode: typeof raw.translateMode === 'boolean' ? raw.translateMode : DEFAULT_SETTINGS.translateMode,
     avatar: sanitizeAvatar(raw.avatar),
     leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, 220, 420),
-    rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, 260, 520),
+    rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, 260, 640),
     showHiddenFiles: typeof raw.showHiddenFiles === 'boolean' ? raw.showHiddenFiles : DEFAULT_SETTINGS.showHiddenFiles,
     ai: sanitizeAi(raw.ai),
   }

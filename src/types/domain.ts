@@ -82,6 +82,8 @@ export interface ToolEvent {
   id: string
   type: 'tool_start' | 'tool_end'
   name: string
+  /** 工具参数（界面展示路径等信息） */
+  args?: Record<string, unknown>
   summary?: string
   ok?: boolean
   createdAt: number

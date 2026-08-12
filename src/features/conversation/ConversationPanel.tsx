@@ -225,6 +225,7 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
                   <>
                     <span className="tool-icon">🔧</span>
                     <span>正在{toolLabel(t.name)}…</span>
+                    {typeof t.args?.path === 'string' && <code className="tool-path">{t.args.path}</code>}
                   </>
                 ) : (
                   <>

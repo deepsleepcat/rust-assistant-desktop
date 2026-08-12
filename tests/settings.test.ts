@@ -11,7 +11,7 @@ describe('设置清洗', () => {
   it('数字被限制在合法范围', () => {
     const s = sanitizeSettings({ leftWidth: 5, rightWidth: 9999, fontSize: 99, background: { opacity: 150, blur: -5 } })
     expect(s.leftWidth).toBe(220)
-    expect(s.rightWidth).toBe(520)
+    expect(s.rightWidth).toBe(640)
     expect(s.fontSize).toBe(20)
     expect(s.background.opacity).toBe(100)
     expect(s.background.blur).toBe(0)

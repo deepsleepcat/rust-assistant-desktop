@@ -629,7 +629,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
               })
             }
             if (event.type === 'tool_start') {
-              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_start', name: event.name, createdAt: Date.now() }
+              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_start', name: event.name, args: event.args, createdAt: Date.now() }
               set({
                 conversations: get().conversations.map((c) =>
                   c.id === conversationId ? { ...c, toolEvents: [...(c.toolEvents ?? []), toolEvent] } : c,

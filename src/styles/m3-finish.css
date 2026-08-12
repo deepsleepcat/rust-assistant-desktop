@@ -8,6 +8,7 @@
 .image-hover-tooltip img { display: block; max-width: 260px; max-height: 180px; object-fit: contain; }
 .image-hover-tooltip small { display: block; margin-top: 6px; color: var(--text-secondary); font-size: 11px; }
 .tool-card { display: flex; align-items: center; gap: 7px; margin: 6px 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); color: var(--text-secondary); font-size: 12px; }
+.tool-path { font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--accent); background: var(--surface-0); border: 1px solid var(--divider); border-radius: 3px; padding: 1px 5px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tool-card-error { border-color: rgba(197,34,31,.4); color: var(--danger); }
 .tool-icon { flex-shrink: 0; }
 .approval-preview { margin: 8px 0 0; padding: 8px 10px; max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); color: var(--text-secondary); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-all; }

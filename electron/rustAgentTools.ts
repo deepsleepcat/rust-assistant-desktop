@@ -117,6 +117,7 @@ export function createWriteFileTool(): AgentTool {
     async execute(_id, params) {
       const p = params as { path: string; content: string }
       const file = resolveInside(getAgentRoot(), p.path)
+      const existed = await fs.access(file).then(() => true).catch(() => false)
       await fs.mkdir(path.dirname(file), { recursive: true })
       const tmp = path.join(path.dirname(file), `.${path.basename(file)}.ai-${randomUUID()}.tmp`)
       try {
@@ -127,7 +128,7 @@ export function createWriteFileTool(): AgentTool {
         throw err
       }
       return {
-        content: [{ type: 'text', text: `已写入 ${p.path}（${p.content.length} 字符）` }],
+        content: [{ type: 'text', text: `${existed ? '已修改' : '已新增'} ${p.path}（${p.content.length} 字符）` }],
         details: { path: p.path },
       }
     },

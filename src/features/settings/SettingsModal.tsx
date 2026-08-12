@@ -275,7 +275,7 @@ export function SettingsModal() {
                 <input
                   type="range"
                   min={260}
-                  max={520}
+                  max={640}
                   value={settings.rightWidth}
                   onChange={(e) => updateSettings({ rightWidth: Number(e.target.value) })}
                 />
