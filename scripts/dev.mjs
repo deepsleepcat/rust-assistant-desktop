@@ -7,9 +7,11 @@
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import process from 'node:process'
+import path from 'node:path'
 
 const require = createRequire(import.meta.url)
-const viteBin = require.resolve('vite/bin/vite.js')
+const vitePackage = require.resolve('vite/package.json')
+const viteBin = path.join(path.dirname(vitePackage), 'bin', 'vite.js')
 const electronBin = require.resolve('electron/cli.js')
 const port = 5173
 const devUrl = `http://localhost:${port}`

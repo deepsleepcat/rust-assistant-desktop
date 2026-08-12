@@ -6,7 +6,7 @@ import type { CSSProperties } from 'react'
 
 export type AppIconName =
   | 'search' | 'settings' | 'refresh' | 'close' | 'save' | 'delete'
-  | 'add' | 'file' | 'folder' | 'font' | 'layout' | 'plus' | 'rename'
+  | 'add' | 'file' | 'folder' | 'font' | 'layout' | 'plus' | 'rename' | 'tools'
   | 'palette' | 'text' | 'tools'
 
 const ICONS: Record<AppIconName, string> = {

@@ -25,7 +25,7 @@ export function WorkspaceSidebar() {
       </div>
       {projects.length === 0 ? (
         <div className="empty-state" style={{ padding: '18px 14px' }}>
-          <span className="emoji">📁</span>
+          <AppIcon name="folder" size={28} />
           <div>还没有项目</div>
           <button className="btn" onClick={() => void openProject()}>
             打开项目

@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useWorkspaceStore, useSortedConversations } from '../../stores/workspace'
 import { formatRelativeTime } from '../../utils/conversation'
-import { IconArchive, IconPlus } from '../../components/icons'
+import { IconArchive } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { PromptModal } from '../../components/Modal'
 export function ConversationPanel() {
@@ -29,18 +29,18 @@ export function ConversationPanel() {
         AI 对话
         <span className="grow" />
         <button className="icon-btn" title="新建对话" disabled={!project} onClick={() => createConversation()}>
-          <IconPlus size={14} />
+          <AppIcon name="plus" size={14} />
         </button>
       </div>
 
       {!project ? (
         <div className="empty-state">
-          <span className="emoji">🤖</span>
+          <AppIcon name="tools" size={28} />
           <div>打开项目后即可创建 AI 对话</div>
         </div>
       ) : conversations.length === 0 ? (
         <div className="empty-state" style={{ padding: '20px 14px' }}>
-          <span className="emoji">💬</span>
+          <AppIcon name="file" size={28} />
           <div>还没有对话</div>
           <button className="btn" onClick={() => createConversation()}>
             新建对话

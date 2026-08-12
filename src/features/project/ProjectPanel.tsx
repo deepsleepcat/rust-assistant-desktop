@@ -30,7 +30,7 @@ export function ProjectPanel() {
           文件
         </div>
         <div className="empty-state">
-          <span className="emoji">🗂️</span>
+          <AppIcon name="folder" size={28} />
           <div>打开一个项目后<br />这里会显示项目文件</div>
         </div>
       </section>
@@ -98,7 +98,7 @@ export function ProjectPanel() {
 }
 
 function IconFolderOpen2({ size }: { size?: number }) {
-  return <span style={{ display: 'grid', color: 'var(--text-secondary)' }}>{<FolderIcon size={size ?? 13} />}</span>
+  return <AppIcon name="folder" size={size ?? 13} />
 }
 
 function TreeRow({
