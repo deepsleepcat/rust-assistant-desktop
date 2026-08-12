@@ -49,8 +49,9 @@ export function App() {
   // 设置 html 主题属性 + Electron 标记（用于避开系统窗口按钮）
   useEffect(() => {
     document.documentElement.dataset.theme = theme
+    document.documentElement.dataset.rainbow = settings.rainbow ? 'on' : 'off'
     document.body.classList.toggle('electron', isElectron)
-  }, [theme])
+  }, [theme, settings.rainbow])
 
   // 全局快捷键
   useEffect(() => {

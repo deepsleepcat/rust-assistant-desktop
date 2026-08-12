@@ -11,7 +11,8 @@ export const FONT_OPTIONS = [
 ] as const
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'system',
+  // 白色 Google Material 是默认主视觉，深色仅作为备用主题。
+  theme: 'light',
   rainbow: true,
   background: {
     kind: 'none',

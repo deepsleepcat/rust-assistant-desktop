@@ -19,7 +19,7 @@ describe('设置清洗', () => {
 
   it('非法主题和背景类型回退默认值', () => {
     const s = sanitizeSettings({ theme: 'neon', background: { kind: 'weird' } })
-    expect(s.theme).toBe('system')
+    expect(s.theme).toBe('light')
     expect(s.background.kind).toBe('none')
   })
 

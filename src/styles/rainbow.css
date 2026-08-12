@@ -1,123 +1,28 @@
-/* ============================================================
-   Google 彩虹效果：顶部渐变条、彩虹按钮、彩虹文字、彩虹焦点。
-   通过 html[data-rainbow="off"] 一键关闭。
-   ============================================================ */
-
-/* 顶部彩虹细线：缓慢流动的渐变 */
+/* Google 彩虹只作为品牌微点缀，不参与主要交互 */
 .rainbow-bar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 1px;
   z-index: 300;
-  background: linear-gradient(90deg, var(--g-blue), var(--g-red), var(--g-yellow), var(--g-green), var(--g-blue));
-  background-size: 200% 100%;
-  animation: rainbow-flow 8s linear infinite;
+  background: var(--g-rainbow);
   pointer-events: none;
 }
 
-@keyframes rainbow-flow {
-  to { background-position: 200% 0; }
-}
-
-/* 彩虹文字（Logo 等） */
-.rainbow-text {
-  background: var(--g-rainbow);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: rainbow-flow 8s linear infinite;
-}
-
-/* 彩虹按钮（Google 风格）：白底彩边，悬停时彩底白字 */
-.btn-rainbow {
-  position: relative;
-  isolation: isolate;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 7px 18px;
-  font: 500 14px var(--font-ui);
-  color: var(--text-1);
-  background: var(--bg-panel-solid);
-  box-shadow: var(--shadow-sm);
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, color 0.2s ease;
-}
-
-.btn-rainbow::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  padding: 1.5px;
-  background: var(--g-rainbow);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0.9;
-  transition: opacity 0.2s ease;
-}
-
-.btn-rainbow::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  border-radius: inherit;
-  background: var(--g-rainbow);
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.btn-rainbow:hover {
-  color: #fff;
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-rainbow:hover::after { opacity: 1; }
-.btn-rainbow:hover::before { opacity: 0; }
-
-.btn-rainbow:active { transform: translateY(0); }
-.btn-rainbow:disabled { cursor: not-allowed; opacity: 0.45; transform: none; box-shadow: none; }
-.btn-rainbow:disabled:hover { color: var(--text-1); }
-.btn-rainbow:disabled:hover::after { opacity: 0; }
-.btn-rainbow:disabled:hover::before { opacity: 0.9; }
-
-/* 彩虹聚焦光环 */
-:focus-visible {
-  outline: 2px solid var(--g-blue);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-/* 选中列表项左侧的彩虹条 */
-.rainbow-accent-l::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 3px;
+.titlebar-logo {
   background: var(--g-rainbow);
 }
 
-/* 按钮光晕（头像等圆形元素悬停） */
-.glow-hover {
-  transition: box-shadow 0.25s ease;
-}
-.glow-hover:hover {
-  box-shadow: 0 0 0 4px rgba(66, 133, 244, 0.12), 0 0 0 8px rgba(234, 67, 53, 0.06), 0 0 0 12px rgba(251, 188, 4, 0.04);
-}
-
-html[data-rainbow="off"] .rainbow-bar,
-html[data-rainbow="off"] .rainbow-text,
-html[data-rainbow="off"] .rainbow-accent-l::before,
-html[data-rainbow="off"] .btn-rainbow::before,
-html[data-rainbow="off"] .btn-rainbow::after {
+/* 关闭时真正隐藏品牌线，但保留 Logo 的单色可用状态 */
+html[data-rainbow="off"] .rainbow-bar {
   display: none;
+}
+html[data-rainbow="off"] .titlebar-logo,
+html[data-rainbow="off"] .welcome-logo {
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }

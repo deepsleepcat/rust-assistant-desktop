@@ -26,7 +26,7 @@ describe('工作区 store 业务流', () => {
     expect(s.ready).toBe(false)
     await s.init()
     expect(store.getState().ready).toBe(true)
-    expect(store.getState().settings.theme).toBe('system')
+    expect(store.getState().settings.theme).toBe('light')
   })
 
   it('打开项目后文件树可读取（含中文路径）', async () => {
