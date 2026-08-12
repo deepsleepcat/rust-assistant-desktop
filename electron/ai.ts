@@ -139,8 +139,11 @@ export async function streamAgent(
         tools: tools as AgentTool[],
       },
       beforeToolCall: beforeToolCall as never,
+      // Agent 循环不会把模型请求异常向外抛出，必须显式提供 API Key。
+      getApiKey: () => config.apiKey,
     })
 
+    let agentError: string | null = null
     agent.subscribe((event) => {
       if (event.type === 'message_update') {
         const assistantEvent = event.assistantMessageEvent as { type?: string; delta?: string }
@@ -159,11 +162,18 @@ export async function streamAgent(
         const summary = e.isError ? '执行失败' : (e.result?.content?.[0]?.text ?? '完成').slice(0, 120)
         emit({ type: 'tool_end', name: e.toolName, ok: !e.isError, summary })
       }
+      if (event.type === 'message_end' && event.message.role === 'assistant' && event.message.stopReason === 'error') {
+        agentError = event.message.errorMessage ?? 'AI 请求失败'
+      }
     })
 
     emit({ type: 'start' })
     await agent.prompt(params.messages[params.messages.length - 1]?.content ?? '')
-    emit({ type: 'done', fullText: '' })
+    if (agentError) {
+      emit({ type: 'error', message: toFriendlyError(agentError) })
+    } else {
+      emit({ type: 'done', fullText: '' })
+    }
   } catch (err) {
     emit({ type: 'error', message: toFriendlyError(err) })
   }
