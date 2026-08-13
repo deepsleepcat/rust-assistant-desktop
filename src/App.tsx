@@ -90,7 +90,7 @@ export function App() {
       <Backdrop />
       <TitleBar />
 
-      {settings.cursorEffect && <CursorEffect intensity={settings.cursorEffectIntensity} />}
+      {settings.cursorEffect && <CursorEffect intensity={settings.cursorEffectIntensity} color={settings.cursorEffectColor} />}
 
       <div className="app-body" style={{ gridTemplateColumns: `${settings.leftWidth}px 1fr ${settings.rightWidth}px` }}>
         <aside className="sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--panel-gap)', minWidth: 0 }}>

@@ -11,6 +11,13 @@ export const FONT_OPTIONS = [
   { label: '楷体', value: 'kaiti' },
 ] as const
 
+/** 鼠标特效颜色预设：默认黑（贴合黑白主题）+ 樱花粉 + 浅海蓝，另支持自定义 */
+export const CURSOR_EFFECT_COLORS = [
+  { label: '黑色', value: '#000000' },
+  { label: '樱花粉', value: '#FFB7C5' },
+  { label: '浅海蓝', value: '#A5D8F3' },
+] as const
+
 export const DEFAULT_SETTINGS: AppSettings = {
   // 白色 Google Material 是默认主视觉，深色仅作为备用主题。
   // 保留字段以兼容旧配置，但界面始终采用白色主题。
@@ -33,6 +40,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showHiddenFiles: false,
   cursorEffect: false,
   cursorEffectIntensity: 1,
+  cursorEffectColor: '#000000',
   avatar: { source: 'default', localPath: null, remoteUrl: null },
   ai: {
     provider: 'deepseek',
@@ -81,6 +89,10 @@ export function sanitizeSettings(input: unknown): AppSettings {
       1,
       3,
     ),
+    cursorEffectColor:
+      typeof raw.cursorEffectColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.cursorEffectColor)
+        ? raw.cursorEffectColor
+        : DEFAULT_SETTINGS.cursorEffectColor,
     ai: sanitizeAi(raw.ai),
   }
 }

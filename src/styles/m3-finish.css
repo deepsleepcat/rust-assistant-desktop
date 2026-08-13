@@ -77,3 +77,23 @@
   transform: translateX(18px);
   background: #fff;
 }
+
+/* ── M6 特效颜色预设 ────────────────────────────── */
+.color-presets { display: flex; align-items: center; gap: 8px; }
+.color-swatch {
+  width: 22px; height: 22px; padding: 0;
+  border: 2px solid var(--surface-0);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--border);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.color-swatch:hover { transform: scale(1.12); }
+.color-swatch.active { box-shadow: 0 0 0 2px var(--accent); }
+.color-custom {
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-0);
+  cursor: pointer;
+}

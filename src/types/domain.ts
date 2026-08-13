@@ -55,6 +55,8 @@ export interface AppSettings {
   cursorEffect: boolean
   /** M6：鼠标粒子特效强度 1-3（粒子数量） */
   cursorEffectIntensity: number
+  /** M6：鼠标粒子特效颜色（hex，默认黑，可选樱花粉/浅海蓝等预设） */
+  cursorEffectColor: string
 }
 
 /** 一个项目 = 一个铁锈战争模组目录 */

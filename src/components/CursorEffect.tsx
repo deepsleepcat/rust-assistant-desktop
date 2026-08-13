@@ -5,6 +5,7 @@
  * - 鼠标移动时产生少量微小光点，缓慢上浮并淡出
  * - prefers-reduced-motion 或窗口失焦时自动停用，节省性能
  * - 强度（intensity 1-3）控制每次生成的光点数量
+ * - 颜色（color，hex）可自定义，默认黑
  */
 import { useEffect, useRef } from 'react'
 
@@ -18,14 +19,26 @@ interface Particle {
   size: number
 }
 
-export function CursorEffect({ intensity = 1 }: { intensity?: number }) {
+/** hex 颜色（#RRGGBB）转 rgb 三元组；非法值回退白色 */
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim())
+  if (!m) return { r: 255, g: 255, b: 255 }
+  const n = Number.parseInt(m[1], 16)
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff }
+}
+
+export function CursorEffect({ intensity = 1, color = '#000000' }: { intensity?: number; color?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const particlesRef = useRef<Particle[]>([])
   const intensityRef = useRef(intensity)
-  // 强度变化时同步到 ref（渲染期间不写 ref，交给 effect）
+  const colorRef = useRef(hexToRgb(color))
+  // 强度/颜色变化时同步到 ref（渲染期间不写 ref，交给 effect）
   useEffect(() => {
     intensityRef.current = intensity
   }, [intensity])
+  useEffect(() => {
+    colorRef.current = hexToRgb(color)
+  }, [color])
 
   useEffect(() => {
     // 减少动态效果偏好：直接不启动
@@ -100,9 +113,10 @@ export function CursorEffect({ intensity = 1 }: { intensity?: number }) {
           continue
         }
         const alpha = 1 - p.life / p.maxLife
+        const { r, g, b } = colorRef.current
         ctx.beginPath()
         ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(255,255,255,${(alpha * 0.55).toFixed(3)})`
+        ctx.fillStyle = `rgba(${r},${g},${b},${(alpha * 0.55).toFixed(3)})`
         ctx.fill()
       }
       ctx.restore()

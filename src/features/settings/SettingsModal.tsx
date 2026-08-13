@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { DEFAULT_SETTINGS, FONT_OPTIONS } from '../../utils/settings'
+import { CURSOR_EFFECT_COLORS, DEFAULT_SETTINGS, FONT_OPTIONS } from '../../utils/settings'
 import { getBridge } from '../../services/bridge'
 import { IconImage } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
@@ -124,6 +124,33 @@ export function SettingsModal() {
                         {level === 1 ? '弱' : level === 2 ? '中' : '强'}
                       </button>
                     ))}
+                  </div>
+                </div>
+              )}
+              {settings.cursorEffect && (
+                <div className="setting-row">
+                  <span className="label">
+                    特效颜色
+                    <div className="desc">黑色为默认，也可选樱花粉 / 浅海蓝或自定义</div>
+                  </span>
+                  <div className="color-presets">
+                    {CURSOR_EFFECT_COLORS.map((c) => (
+                      <button
+                        key={c.value}
+                        className={`color-swatch${settings.cursorEffectColor.toLowerCase() === c.value.toLowerCase() ? ' active' : ''}`}
+                        title={c.label}
+                        aria-label={c.label}
+                        onClick={() => updateSettings({ cursorEffectColor: c.value })}
+                        style={{ background: c.value }}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      className="color-custom"
+                      aria-label="自定义颜色"
+                      value={settings.cursorEffectColor}
+                      onChange={(e) => updateSettings({ cursorEffectColor: e.target.value })}
+                    />
                   </div>
                 </div>
               )}

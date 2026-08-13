@@ -38,15 +38,18 @@ describe('设置清洗', () => {
     expect(s.rightWidth).toBe(400)
   })
 
-  it('M6 鼠标特效字段：默认关闭、强度限制在 1-3', () => {
+  it('M6 鼠标特效字段：默认关闭、强度限制在 1-3、颜色默认黑', () => {
     expect(DEFAULT_SETTINGS.cursorEffect).toBe(false)
     expect(DEFAULT_SETTINGS.cursorEffectIntensity).toBe(1)
-    const s = sanitizeSettings({ cursorEffect: true, cursorEffectIntensity: 9 })
+    expect(DEFAULT_SETTINGS.cursorEffectColor).toBe('#000000')
+    const s = sanitizeSettings({ cursorEffect: true, cursorEffectIntensity: 9, cursorEffectColor: '#FFB7C5' })
     expect(s.cursorEffect).toBe(true)
     expect(s.cursorEffectIntensity).toBe(3)
-    const off = sanitizeSettings({ cursorEffect: 'yes' as never, cursorEffectIntensity: 0 })
+    expect(s.cursorEffectColor).toBe('#FFB7C5')
+    const off = sanitizeSettings({ cursorEffect: 'yes' as never, cursorEffectIntensity: 0, cursorEffectColor: 'red; x' })
     expect(off.cursorEffect).toBe(false)
     expect(off.cursorEffectIntensity).toBe(1)
+    expect(off.cursorEffectColor).toBe('#000000')
   })
 
   it('clamp 正确处理 NaN 与边界', () => {
