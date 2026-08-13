@@ -367,6 +367,27 @@ export async function packModBuffer(projectRoot: string): Promise<Buffer> {
   return buffer
 }
 
+/** 导入 .rwmod：把 zip 内容解压到目标目录（防 zip-slip 路径穿越） */
+export async function importModBuffer(rwmodBuffer: Buffer, destDir: string): Promise<{ files: number }> {
+  const zip = await JSZip.loadAsync(rwmodBuffer)
+  const root = path.resolve(destDir)
+  let fileCount = 0
+  for (const entry of Object.values(zip.files)) {
+    if (entry.dir) continue
+    const rel = entry.name.replace(/\\/g, '/')
+    // 拒绝绝对路径与 ../ 穿越
+    const abs = path.resolve(root, rel)
+    if (abs !== root && !abs.startsWith(root + path.sep)) {
+      throw new Error(`导入包内包含非法路径：${rel}（已中止导入）`)
+    }
+    const content = await entry.async('nodebuffer')
+    await fs.mkdir(path.dirname(abs), { recursive: true })
+    await fs.writeFile(abs, content)
+    fileCount++
+  }
+  return { files: fileCount }
+}
+
 async function packModBufferWithCount(projectRoot: string): Promise<{ buffer: Buffer; files: number }> {
   const root = resolveInside(projectRoot, '.')
   const zip = new JSZip()

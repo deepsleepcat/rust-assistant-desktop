@@ -101,10 +101,6 @@
    "zh": "也播放音效"
   },
   {
-   "en": "alsoTriggerAction",
-   "zh": "x"
-  },
-  {
    "en": "altNames",
    "zh": "别名"
   },
@@ -287,10 +283,6 @@
   {
    "en": "attackMovement:bomber\"",
    "zh": "string"
-  },
-  {
-   "en": "attackMovement:normal",
-   "zh": "/"
   },
   {
    "en": "attacking",
@@ -775,10 +767,6 @@
   {
    "en": "drawLayer",
    "zh": "绘制图层"
-  },
-  {
-   "en": "drawLayer:experimentals",
-   "zh": "/"
   },
   {
    "en": "drawLegWhenZoomedOut",
@@ -1291,10 +1279,6 @@
   {
    "en": "image_middle_teamColors",
    "zh": "-腿图像阵营色"
-  },
-  {
-   "en": "image_offsetH",
-   "zh": "-"
   },
   {
    "en": "image_offsetX",
@@ -2133,14 +2117,6 @@
    "zh": "自身弹药包括队列"
   },
   {
-   "en": "self.builtAmount()",
-   "zh": "-"
-  },
-  {
-   "en": "self.completed()",
-   "zh": "-"
-  },
-  {
    "en": "self.customTimer()",
    "zh": "自身自定义计时器"
   },
@@ -2329,28 +2305,12 @@
    "zh": "自身护盾"
   },
   {
-   "en": "self.speed()",
-   "zh": "-"
-  },
-  {
    "en": "self.tags()",
    "zh": "自身有标签"
   },
   {
-   "en": "self.teamDefeatedTech",
-   "zh": "-"
-  },
-  {
    "en": "self.teamId()",
    "zh": "自身队伍id"
-  },
-  {
-   "en": "self.teamVictory",
-   "zh": "-"
-  },
-  {
-   "en": "self.teamWipedOut",
-   "zh": "-"
   },
   {
    "en": "self.timeAlive()",
@@ -2687,10 +2647,6 @@
   {
    "en": "tags",
    "zh": "标签"
-  },
-  {
-   "en": "takeResources_triggerActionIfAnyCollected",
-   "zh": "x"
   },
   {
    "en": "targetGround",
@@ -3127,6 +3083,242 @@
   {
    "en": "false",
    "zh": "假"
+  },
+  {
+   "en": "text_{LANG}",
+   "zh": "文本{LANG}"
+  },
+  {
+   "en": "description_{LANG}",
+   "zh": "描述{LANG}"
+  },
+  {
+   "en": "id",
+   "zh": "ID"
+  },
+  {
+   "en": "autoTriggerOnEventRecursionLimit",
+   "zh": "事件自动触发递归限制"
+  },
+  {
+   "en": "setHeight",
+   "zh": "设置高度"
+  },
+  {
+   "en": "setCustomTarget1",
+   "zh": "设置自定义目标1"
+  },
+  {
+   "en": "setCustomTarget2",
+   "zh": "设置自定义目标2"
+  },
+  {
+   "en": "sendMessageTo",
+   "zh": "发送消息到"
+  },
+  {
+   "en": "sendMessageWithTags",
+   "zh": "带标签发送消息"
+  },
+  {
+   "en": "sendMessageWithData",
+   "zh": "带数据发送消息"
+  },
+  {
+   "en": "refundAllQueuedItems",
+   "zh": "退还所有排队项目"
+  },
+  {
+   "en": "removeAllQueuedItemsWithoutRefund",
+   "zh": "移除所有排队项目无退款"
+  },
+  {
+   "en": "alsoTriggerOrQueueActionWithTarget",
+   "zh": "也触发或排队动作带目标"
+  },
+  {
+   "en": "alsoTriggerActionRepeat",
+   "zh": "也触发动作重复"
+  },
+  {
+   "en": "fireTurretXAtGround_showGuideDecals",
+   "zh": "向地面开火炮塔X显示引导贴花"
+  },
+  {
+   "en": "teleportTo",
+   "zh": "传送到"
+  },
+  {
+   "en": "transportTargetNow",
+   "zh": "立即运输目标"
+  },
+  {
+   "en": "switchToTeam",
+   "zh": "切换到队伍"
+  },
+  {
+   "en": "takeResources_triggerActionForEach",
+   "zh": "获取资源为每个触发动作"
+  },
+  {
+   "en": "takeResources_searchOnly",
+   "zh": "获取资源仅搜索"
+  },
+  {
+   "en": "showMessageToPlayer_{LANG}",
+   "zh": "向玩家显示消息{LANG}"
+  },
+  {
+   "en": "arm#_[time]",
+   "zh": "手臂关键帧"
+  },
+  {
+   "en": "leg#_[time]",
+   "zh": "腿部关键帧"
+  },
+  {
+   "en": "body_[time]",
+   "zh": "主体关键帧"
+  },
+  {
+   "en": "direction_units",
+   "zh": "方向单位"
+  },
+  {
+   "en": "onConvertKeepExistingUnitInSameSlot",
+   "zh": "转换时保持现有单位在同一槽位"
+  },
+  {
+   "en": "unloadInCurrentPosition",
+   "zh": "在当前位置卸载"
+  },
+  {
+   "en": "isLockedMessage_es",
+   "zh": "锁定消息(西班牙语)"
+  },
+  {
+   "en": "borrowResourcesWhileBuilt",
+   "zh": "建造时借用资源"
+  },
+  {
+   "en": "displayText_es",
+   "zh": "显示文本(西班牙语)"
+  },
+  {
+   "en": "displayDescription_es",
+   "zh": "显示描述(西班牙语)"
+  },
+  {
+   "en": "allowCaptureWhenNeutralByAI",
+   "zh": "中立时允许AI捕获"
+  },
+  {
+   "en": "resourceReclaimMultiplier",
+   "zh": "资源回收倍数"
+  },
+  {
+   "en": "nanoUnbuildSpeed",
+   "zh": "纳米拆解速度"
+  },
+  {
+   "en": "nanoReclaimSpeed",
+   "zh": "纳米回收速度"
+  },
+  {
+   "en": "autoTriggerCheckWhileNotBuilt",
+   "zh": "未建造时自动触发检查"
+  },
+  {
+   "en": "onlyOnBodyFrameOf",
+   "zh": "仅在身体帧上"
+  },
+  {
+   "en": "addBodyFrameMultipliedBy",
+   "zh": "添加身体帧乘以"
+  },
+  {
+   "en": "basePositionFromTurret",
+   "zh": "从炮塔的基础位置"
+  },
+  {
+   "en": "imageShadow",
+   "zh": "图像阴影"
+  },
+  {
+   "en": "appendResourceInHUD",
+   "zh": "在HUD中追加资源"
+  },
+  {
+   "en": "displayPostfixInHUD",
+   "zh": "HUD中显示后缀"
+  },
+  {
+   "en": "includeInStats",
+   "zh": "包含在统计中"
+  },
+  {
+   "en": "valueInStats",
+   "zh": "统计中的值"
+  },
+  {
+   "en": "displayInHud",
+   "zh": "在HUD中显示"
+  },
+  {
+   "en": "displayDigitGrouping",
+   "zh": "数字分组显示"
+  },
+  {
+   "en": "displayTextAppendResource",
+   "zh": "在文本中追加资源"
+  },
+  {
+   "en": "displayPos",
+   "zh": "显示位置"
+  },
+  {
+   "en": "displayWithRounding",
+   "zh": "带舍入显示"
+  },
+  {
+   "en": "displayTextPrefix",
+   "zh": "文本显示前缀"
+  },
+  {
+   "en": "displayTextPostfix",
+   "zh": "文本显示后缀"
+  },
+  {
+   "en": "image_offsetH",
+   "zh": "图像偏移H"
+  },
+  {
+   "en": "image_floatingPointSize",
+   "zh": "图像浮点大小"
+  },
+  {
+   "en": "icon_build",
+   "zh": "建造图标"
+  },
+  {
+   "en": "default_frame",
+   "zh": "默认帧"
+  },
+  {
+   "en": "showSelectionIndicator",
+   "zh": "显示选择指示器"
+  },
+  {
+   "en": "liftingHeightOffset",
+   "zh": "提升高度偏移"
+  },
+  {
+   "en": "targetHeightRelative",
+   "zh": "目标高度相对"
+  },
+  {
+   "en": "stackHorizontal",
+   "zh": "水平堆叠"
   }
  ]
 }

@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto'
 import { createStore } from './store'
 import { isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
-import { checkMod, createMod, createUnit, createUnitFromTemplate, listTemplates, packMod, packModBuffer } from './modTools'
+import { checkMod, createMod, createUnit, createUnitFromTemplate, importModBuffer, listTemplates, packMod, packModBuffer } from './modTools'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
@@ -253,6 +253,28 @@ function registerIpc(): void {
       ],
     })
     return result.canceled ? [] : result.filePaths
+  })
+
+  // M6.5 导入 .rwmod：选文件 → 选目标目录 → 解压 → 注册为项目
+  ipcMain.handle('mod:import', async () => {
+    const pick = await dialog.showOpenDialog({
+      title: '选择要导入的模组包',
+      properties: ['openFile'],
+      filters: [{ name: '铁锈战争模组包', extensions: ['rwmod'] }, { name: '压缩包', extensions: ['zip'] }],
+    })
+    if (pick.canceled || pick.filePaths.length === 0) return null
+    const src = pick.filePaths[0]
+    const dest = await dialog.showOpenDialog({
+      title: '选择导入位置（将解压到该目录下的新文件夹）',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (dest.canceled || dest.filePaths.length === 0) return null
+    const baseName = path.basename(src, path.extname(src)).replace(/[/:*?"<>|]/g, '-') || 'imported-mod'
+    const destRoot = path.join(dest.filePaths[0], baseName)
+    const buf = await fs.readFile(src)
+    const { files } = await importModBuffer(buf, destRoot)
+    registerRoot(destRoot)
+    return { rootPath: destRoot, name: baseName, files }
   })
 
   ipcMain.handle('image:readAsDataUrl', async (_event, rootPath: string, imagePath: string) => {

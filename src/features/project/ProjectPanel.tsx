@@ -22,6 +22,7 @@ export function ProjectPanel() {
   const setModDialog = useWorkspaceStore((s) => s.setModDialog)
   const packModProject = useWorkspaceStore((s) => s.packModProject)
   const checkModProject = useWorkspaceStore((s) => s.checkModProject)
+  const importModProject = useWorkspaceStore((s) => s.importModProject)
   const [dialog, setDialog] = useState<null | { kind: 'file' | 'folder'; parent: string }>(null)
   const [renaming, setRenaming] = useState<null | TreeNode>(null)
   const [modMenu, setModMenu] = useState(false)
@@ -73,6 +74,7 @@ export function ProjectPanel() {
               <div className="mod-tools-menu">
                 <button onClick={() => { setModDialog('createMod'); setModMenu(false) }}>新建模组</button>
                 <button onClick={() => { setModDialog('createUnit'); setModMenu(false) }}>新建单位</button>
+                <button onClick={() => { setModMenu(false); void importModProject() }}>导入模组 (.rwmod)</button>
                 <button onClick={() => { setModMenu(false); void packModProject() }}>打包模组</button>
                 <button onClick={() => { setModMenu(false); void checkModProject() }}>检查模组</button>
               </div>

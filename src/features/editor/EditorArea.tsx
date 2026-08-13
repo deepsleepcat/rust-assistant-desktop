@@ -104,6 +104,7 @@ function WelcomeView() {
   const projects = useWorkspaceStore((s) => s.projects)
   const selectProject = useWorkspaceStore((s) => s.selectProject)
   const openProject = useWorkspaceStore((s) => s.openProject)
+  const importModProject = useWorkspaceStore((s) => s.importModProject)
   const createConversation = useWorkspaceStore((s) => s.createConversation)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
 
@@ -117,7 +118,10 @@ function WelcomeView() {
         <p className="subtitle">铁锈战争 · 模组开发工作台</p>
         <div className="welcome-actions">
           <button className="btn" onClick={() => void openProject()}>
-            打开项目
+            打开模组
+          </button>
+          <button className="btn" onClick={() => void importModProject()}>
+            导入 .rwmod
           </button>
           <button className="btn" onClick={() => createConversation()}>
             新建对话
@@ -128,7 +132,7 @@ function WelcomeView() {
         </div>
         {projects.length > 0 && (
           <div className="welcome-recent">
-            <div className="label">最近项目</div>
+            <div className="label">最近模组</div>
             {projects.slice(0, 4).map((p) => (
               <div key={p.id} className="recent-card" onClick={() => void selectProject(p.id)}>
                 <FileTypeIcon name={p.name} size={16} />

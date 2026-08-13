@@ -70,6 +70,7 @@ interface WorkspaceStoreState {
 interface WorkspaceStoreActions {
   init(): Promise<void>
   openProject(): Promise<void>
+  importModProject(): Promise<void>
   selectProject(id: string): Promise<void>
   removeProject(id: string): void
   refreshTree(): Promise<void>
@@ -238,6 +239,36 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         })
         await get().refreshTree()
         persist()
+      },
+
+      /** M6.5 导入 .rwmod：选包+目标目录 → 解压 → 注册为模组项目 */
+      async importModProject() {
+        try {
+          const imported = await bridge.mod.import()
+          if (!imported) return
+          const project: ProjectInfo = {
+            id: crypto.randomUUID(),
+            name: imported.name,
+            rootPath: imported.rootPath,
+            createdAt: Date.now(),
+            lastOpenedAt: Date.now(),
+          }
+          const others = get().projects.filter((p) => p.rootPath !== imported.rootPath)
+          set({
+            projects: [project, ...others],
+            activeProjectId: project.id,
+            openTabs: [],
+            activeTabId: null,
+            treeRoot: null,
+            treeError: null,
+            activeConversationId: null,
+          })
+          await get().refreshTree()
+          persist()
+          get().notify(`已导入模组：${imported.name}（${imported.files} 个文件）`)
+        } catch (err) {
+          get().notify(`导入模组失败：${err instanceof Error ? err.message : String(err)}`)
+        }
       },
 
       async selectProject(id: string) {

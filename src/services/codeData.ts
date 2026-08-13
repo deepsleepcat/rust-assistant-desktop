@@ -91,7 +91,15 @@ export function loadCodeData(): Promise<void> {
         const translations = (transRaw.words ?? transRaw.data ?? []) as Array<{ en?: string; zh?: string }>
         const vocab = (vocabRaw.words ?? vocabRaw.data ?? []) as VocabularyItem[]
 
-        // 翻译词典：手机版 code→translate + 旧版 en↔zh + 节名（section）翻译
+        // 翻译词典构建顺序：先并入补充词条（translations.json），
+        // 再并入主数据（code.json / section.json）——主数据优先，
+        // 防止补充词条里的垃圾值覆盖正确翻译。
+        for (const t of translations) {
+          if (t.en && t.zh) {
+            enToZhDict.set(t.en.toLowerCase(), t.zh)
+            zhToEnDict.set(t.zh, t.en)
+          }
+        }
         for (const c of codes) {
           if (c.code && c.translate) {
             enToZhDict.set(c.code.toLowerCase(), c.translate)
@@ -103,12 +111,6 @@ export function loadCodeData(): Promise<void> {
           if (s.code && s.translate) {
             enToZhDict.set(s.code.toLowerCase(), s.translate)
             zhToEnDict.set(s.translate, s.code)
-          }
-        }
-        for (const t of translations) {
-          if (t.en && t.zh) {
-            enToZhDict.set(t.en.toLowerCase(), t.zh)
-            zhToEnDict.set(t.zh, t.en)
           }
         }
         vocabulary = vocab

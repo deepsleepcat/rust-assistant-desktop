@@ -65,6 +65,8 @@ export interface BridgeApi {
     create(rootPath: string, params: { name: string; title: string; description?: string; author?: string; version?: string; thumbnail?: string; musicFiles?: string[]; musicExclusive?: boolean }): Promise<{ files: string[] }>
     /** M6.5 选择背景音乐（多选，返回绝对路径列表；取消返回空数组） */
     chooseMusic(): Promise<string[]>
+    /** M6.5 导入 .rwmod：选文件+目标目录并解压注册；取消返回 null */
+    import(): Promise<{ rootPath: string; name: string; files: number } | null>
     createUnit(rootPath: string, params: { name: string; displayName?: string; folder?: string }): Promise<{ path: string }>
     pack(rootPath: string): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number; files: number }>
     check(rootPath: string): Promise<{ issues: Array<{ file: string; level: 'error' | 'warning'; message: string }>; unitCount: number; fileCount: number }>

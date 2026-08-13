@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import JSZip from 'jszip'
 import {
   buildModInfo,
   buildUnitSkeleton,
@@ -13,6 +14,7 @@ import {
   createMod,
   createUnit,
   createUnitFromTemplate,
+  importModBuffer,
   listTemplates,
   buildFileFromTemplate,
   packModBuffer,
@@ -187,6 +189,38 @@ describe('M6.5 模板系统', () => {
       expect(content).toContain('[graphics]')
       // 已存在时报错
       await expect(createUnitFromTemplate(dir, { name: 'my-tank', templateKey: 'base_tank_template', values: {} })).rejects.toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('M6.5 导入 .rwmod', () => {
+  it('打包 → 导入往返一致，且拒绝 zip-slip', async () => {
+    const dir = makeTempProject()
+    try {
+      // 造一个模组目录并打包
+      mkdirSync(path.join(dir, 'units', 'tank'), { recursive: true })
+      writeFileSync(path.join(dir, 'mod-info.txt'), '[mod]\ntitle: 测试模组\n')
+      writeFileSync(path.join(dir, 'units', 'tank', 'tank.ini'), '[core]\nname: 坦克\n')
+      const buffer = await packModBuffer(dir)
+
+      // 导入到新目录
+      const dest = path.join(dir, 'imported')
+      const { files } = await importModBuffer(buffer, dest)
+      expect(files).toBe(2)
+      expect(readFileSync(path.join(dest, 'mod-info.txt'), 'utf8')).toContain('title: 测试模组')
+      expect(readFileSync(path.join(dest, 'units', 'tank', 'tank.ini'), 'utf8')).toContain('name: 坦克')
+
+      // zip-slip 防护：../evil.txt 会被 JSZip 读取时规范化为 evil.txt（不会越界写盘）
+      const evil = new JSZip()
+      evil.file('../evil.txt', 'bad')
+      const evilBuf = await evil.generateAsync({ type: 'nodebuffer' })
+      const evilDest = path.join(dir, 'evil')
+      await importModBuffer(Buffer.from(evilBuf), evilDest)
+      // 文件只出现在目标目录内（被规范化为 evil.txt），父目录无残留
+      expect(readFileSync(path.join(evilDest, 'evil.txt'), 'utf8')).toBe('bad')
+      expect(() => readFileSync(path.join(dir, 'evil.txt'))).toThrow()
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
