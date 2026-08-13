@@ -44,6 +44,8 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     title: '铁锈助手',
     backgroundColor: '#f6f7f9',
+    // R Logo 图标（任务栏/窗口图标；打包后由 electron-builder 注入 exe）
+    icon: path.join(__dirname, '..', '..', 'build', 'icon.ico'),
     // 隐藏标题栏文字，保留系统窗口控制按钮（最小化/最大化/关闭）
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#f6f7f9', symbolColor: '#57606a', height: 40 },

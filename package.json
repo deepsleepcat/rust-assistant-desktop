@@ -60,6 +60,7 @@
   "build": {
     "appId": "com.deepsleepcat.rust-assistant-desktop",
     "productName": "铁锈助手",
+    "icon": "build/icon.ico",
     "directories": {
       "output": "release"
     },
@@ -67,6 +68,7 @@
       "dist/**",
       "dist-electron/**",
       "public/**",
+      "build/icon.ico",
       "vendor/pi/LICENSE",
       "package.json"
     ],
