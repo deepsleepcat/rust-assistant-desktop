@@ -1,0 +1,45 @@
+{
+    "name": "建筑模板-工厂",
+    "name_en": "Building Template-Factory",
+    "name_ja": "けんちくテンプレート-ファクトリー",
+    "name_zh_TW": "建築模板-工廠",
+    "data": "#注释是一些提示，请结合助手的代码表使用该工厂模板\n[core]\nname: mechFactoryTemplate\nclass: CustomUnitMetadata\nprice: 1000\nmaxHp: 1800\nmass: 9000\n\n#单位的覆盖面积 (左, 上, 右, 下)\nfootprint: -1,-1,1,1\n\n#用于放置，以及放置其他建筑物\nconstructionFootprint: -1,-1,1,3\n\n#单位标题\ndisplayText:示范工厂\n\n#单位描述\ndisplayDescription:可以生产单位的工厂模板，请参考ini里面的注释和结合代码表使用。\n\n#科技等级\ntechLevel: 1\n\n#建造速度\nbuildSpeed: 0.001\n#availableInDemo: true\n\n#半径\nradius: 35\n\n#实际半径 可选\n#displayRadius: 25\n\n#是生物\nisBio: false\n\n#是建筑\nisBuilding: true\n\n#死亡时的爆炸效果\nexplodeTypeOnDeath: building\n\n#工厂生成单位的出厂坐标\nexit_x:0\nexit_y:-1\nexit_moveAwayAmount:120\n\n#可建造的单位\ncanBuild_1_name: setRally\ncanBuild_1_pos:  0.1\n\ncanBuild_2_name: builder\ncanBuild_2_pos:  1\n\n#canBuild_3_name: scout\n#canBuild_3_pos:  1\n\n#canBuild_4_name: hoverTank\n#canBuild_4_pos:  1\n\n\n\n#在哪生成\nbuiltFrom_1_name: builder\nbuiltFrom_1_pos:  6.5\n\nbuiltFrom_3_name: experimentalSpider\nbuiltFrom_3_pos:  0.5\n\n\n[graphics]\ntotal_frames: 1\n#由于目前助手无法外嵌资源，这里使用的CORE协议。\n#有关于这些代码的参考，请参考代码表中的图像。\nimage:         CORE:mech_factory/mechFactoryTop.png\nimage_back:    CORE:mech_factory/mechFactoryBottom.png\nimage_wreak:   CORE:mech_factory/mechFactoryDead.png\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\nmaxAttackRange: 0\n\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nmaxTurnSpeed: 0\nturnAcceleration: 0.1\n\n\n#ARM框架 实际就是门()\n[arm_1]\nx:0\ny:5\nimage_end: CORE:mech_factory/mechFactoryDoor.png\n#y:16\n\n#动画执行节\n[animation_openDoor]\n\nonActions: queuedUnits\nonActionsQueuedUnitPlayAt: 0.8\n\nblendIn: 1s\nblendOut: 4s\n\narm1_0: {x:0, y:16}\n#arm1_0ms: {x:0, y:0}\n#arm1_1400ms: {x:10, y:-8}\n\n#AI组 玄学组 请结合助手代码表参考\n[ai]\n\nbuildPriority: 0.03\n\nnoneInBaseExtraPriority: 0.04\n\nnoneGlobalExtraPriority: 0.1\n\nmaxEachBase: 1\nmaxGlobal: 5\n",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        }
+    ]
+}

@@ -105,7 +105,7 @@ interface WorkspaceStoreActions {
   /** M5：模组工具 */
   setModDialog(kind: 'createMod' | 'createUnit' | 'check' | null): void
   createModProject(params: { name: string; title: string; description?: string; author?: string; version?: string }): Promise<void>
-  createUnitFile(params: { name: string; displayName?: string }): Promise<void>
+  createUnitFile(params: { name: string; templateKey: string; values: Record<string, string> }): Promise<void>
   packModProject(): Promise<void>
   checkModProject(): Promise<void>
   /** M6：自动更新 */
@@ -795,7 +795,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         const project = activeProject()
         if (!project) return
         try {
-          const { path: rel } = await bridge.mod.createUnit(project.rootPath, params)
+          const { path: rel } = await bridge.mod.createUnitFromTemplate(project.rootPath, params)
           await get().refreshTree()
           get().notify(`已创建单位：${rel}`)
         } catch (err) {

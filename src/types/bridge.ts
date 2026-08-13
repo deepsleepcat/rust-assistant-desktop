@@ -64,6 +64,9 @@ export interface BridgeApi {
     createUnit(rootPath: string, params: { name: string; displayName?: string; folder?: string }): Promise<{ path: string }>
     pack(rootPath: string): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number; files: number }>
     check(rootPath: string): Promise<{ issues: Array<{ file: string; level: 'error' | 'warning'; message: string }>; unitCount: number; fileCount: number }>
+    /** M6.5 模板系统 */
+    listTemplates(): Promise<import('./mod').TemplateMeta[]>
+    createUnitFromTemplate(rootPath: string, params: { name: string; folder?: string; templateKey: string; values: Record<string, string> }): Promise<{ path: string }>
   }
   ai: {
     /** 健康检查：验证 Key/连接 */

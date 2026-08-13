@@ -249,6 +249,10 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       createUnit: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
       pack: async () => ({ canceled: true }),
       check: async () => ({ issues: [], unitCount: 0, fileCount: 0 }),
+      listTemplates: async () => [
+        { key: 'mock-tank', name: '基础模板-坦克-陆军模板', nameEn: 'Base-Template(Tank)LAND', actions: [{ label: '名称', key: 'name', section: 'core', tag: 'name-core', type: 'input' }], defaults: { 'name-core': '基础坦克' } },
+      ],
+      createUnitFromTemplate: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
     },
     ai: {
       check: async (settings) => {

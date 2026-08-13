@@ -1,0 +1,76 @@
+{
+    "name": "进阶模板-重型战舰-海军模板",
+    "name_en": "Base-Template(heavyBettership)SEA",
+    "name_ja": "基本テンプレート - 重戦闘艦 - 海軍テンプレート",
+    "name_zh_TW":"基礎模板-重型戰艦-海軍模板",
+    "data": "[core]\nname: heavyBattleshiptemPlate\nclass: CustomUnitMetadata\nprice: 6000\nmaxHp: 4000\nmass: 40000\n\ntechLevel: 2\nbuildSpeed: 0.0004\navailableInDemo: true\n\nradius: 40\n#displayRadius: 11\n\n#单位标题\ndisplayText:示范重型战舰\n\n#单位描述\ndisplayDescription:重型战舰海军模板，请参考ini里面的注释和结合代码表使用。\n\ntransportSlotsNeeded: 3\n\n\nisBio: false\n#softCollisionOnAll: 3\n\n\nbuiltFrom_1_name: seaFactory\nbuiltFrom_1_pos:  5.1\n\n\n\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/heavy_battleship/heavy_battleship.png\nimage_wreak:  CORE:/heavy_battleship/heavy_battleship_dead.png\nimage_turret: SHARED:large_turret.png\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\nimage_shadow: AUTO\nshadowOffsetX:4\nshadowOffsetY:4\n\n\nsplastEffect: true\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: true\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: true\n\nturretSize: 17\nturretTurnSpeed: 1.8\n\n\n\nmaxAttackRange: 290\nshootDelay: 160\n\nturretMultiTargeting: true\n\n[turret_1]\n\n#forward turret\nx: 0\ny: 26\n\nshoot_sound:large_gun_fire2\nshoot_sound_vol:0.3\nshoot_flame:large\nshoot_light:#FFEECCCC\n\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\nprojectile: 1\n\n\nrecoilOffset: -3\n\nidleDir:0\nidleDirReversing: -145\n\n[turret_2]\n#back turret\ncopyFrom: 1\n\nx: 0\ny: 0\nwarmup:30\nprojectile: 1\n#linkDelayWithTurret:1\n\nidleDir:0\nidleDirReversing: 125\n\n[turret_3]\n#torpedo\ninvisible: true\nx: 0\ny: 0\nidleDir:0\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: true\nprojectile: 2\nsize: 1\nturnSpeed: 15\ndelay: 180\n\n[turret_4]\n#missile\ninvisible: true\nx: 0\ny: -20\nidleDir:0\n\nshoot_sound:missile_fire\nshoot_sound_vol:0.1\nshoot_light:#FFEECCCC\n\ncanAttackFlyingUnits: true\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\nprojectile: 3\nsize: 1\nturnSpeed: 15\n\n\n[turret_5]\n#missile 2\ncopyFrom: 4\ninvisible: true\nattachedTo: 4\nx: 0\ny: 0\nidleDir:0\nwarmup:30\nprojectile: 3\nlinkDelayWithTurret:4\n\n\n\n\n[projectile_1]\n#main turret projectile\n#directDamage: 0 #no directDamage with targetGround\nlife: 150\nspeed: 4\nlargeHitEffect: true\nframe: 2\ntargetGround: true\nareaDamage: 110\nareaRadius: 45\n\nlightColor: #ffe92b\nlightSize: 0.6\n\n[projectile_2]\n#torpedo\ndirectDamage: 65\nlife: 250\nspeed: 0.15\ntargetSpeed: 1.2\ndrawSize: 1\ncolor: #1E1E96\ntrailEffect: true\nlargeHitEffect: true\n\ndeflectionPower: -1\n\n[projectile_3]\n#missile\ndirectDamage: 50\nlife: 240\nspeed: 0.3\ntargetSpeed: 3\ntrailEffect: true\nlargeHitEffect: true\nballistic: true\nballistic_delaymove_height:0\nballistic_height: 4\nframe: 4\n\n\n\n\n\n[movement]\nmovementType: WATER\nmoveSpeed: 0.7\nmoveAccelerationSpeed: 0.02\nmoveDecelerationSpeed: 0.05\n\nreverseSpeedPercentage:1\n\nmaxTurnSpeed: 1.0\nturnAcceleration: 0.05\n\n#moveSlidingMode :false\n#moveIgnoringBody:false\n#moveSlidingDir:  45",
+    "language": "ALL",
+    "icon":  "\/template\/tank-template-icon.png",
+    "attachFile": [
+        "\/resource\/tank.png",
+        "\/resource\/tank_dead.png",
+        "\/resource\/tank_turret.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_en": "name",
+            "name_ja": "名前",
+            "name_zh_TW":"名稱",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW":"血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_en":"price",
+            "name_ja":"価格",
+            "name_zh_TW":"價格",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "直接伤害",
+            "name_en":"directDamage",
+            "name_ja":"直接傷害",
+            "name_zh_TW":"直接傷害",
+            "key": "directDamage",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        },
+        {
+            "name": "范围伤害",
+            "name_en":"areaDamage",
+            "name_ja":"範囲ダメージ",
+            "name_zh_TW":"範圍傷害",
+            "key": "areaDamage",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        },
+        {
+            "name": "范围半径",
+            "name_en":"areaRadius",
+            "name_ja":"レンジ半径",
+            "name_zh_TW":"範圍半徑",
+            "key": "areaRadius",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        }
+    ]
+}

@@ -10,8 +10,10 @@
 
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { existsSync } from 'node:fs'
 import JSZip from 'jszip'
 import { isPathInside } from './paths'
+import type { TemplateAction, TemplateMeta } from '../src/types/mod'
 
 /** 把相对路径解析为项目内绝对路径（越界抛错） */
 function resolveInside(projectRoot: string, rel: string): string {
@@ -155,6 +157,143 @@ export async function createUnit(
   }
   await fs.mkdir(path.dirname(file), { recursive: true })
   await fs.writeFile(file, buildUnitSkeleton(safeName, params.displayName), 'utf8')
+  return { path: rel }
+}
+
+// ── M6.5 模板系统（移植手机版 baseTemplate_v2.0）────────────────
+
+/** 原始模板 JSON 结构（public/data/templates/*.json） */
+export interface RawTemplate {
+  name?: string
+  name_en?: string
+  data?: string
+  action?: Array<{ name?: string; key?: string; section?: string; tag?: string; type?: string }>
+}
+
+function templatesDir(): string {
+  // 编译后 __dirname = dist-electron/electron（两级到项目根）；
+  // vitest 直跑源码 __dirname = electron/（一级到项目根）。两个都试。
+  const candidates = [
+    path.join(__dirname, '..', '..', 'public', 'data', 'templates'),
+    path.join(__dirname, '..', 'public', 'data', 'templates'),
+  ]
+  for (const c of candidates) {
+    if (existsSync(c)) return c
+  }
+  return candidates[0]
+}
+
+async function loadTemplateRaw(key: string): Promise<RawTemplate | null> {
+  const safe = key.replace(/[^a-zA-Z0-9_-]/g, '')
+  const file = path.join(templatesDir(), `${safe}.json`)
+  if (!isPathInside(templatesDir(), file)) return null
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf8')) as RawTemplate
+  } catch {
+    return null
+  }
+}
+
+/** 从模板 data 文本提取 [section] 节的 key 当前值 */
+function extractDefaults(data: string | undefined, actions: TemplateAction[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!data) return out
+  let current = ''
+  for (const rawLine of data.split(/\r?\n/)) {
+    const line = rawLine.replace(/#.*$/, '').trim()
+    const sectionMatch = line.match(/^\[(.+)\]$/)
+    if (sectionMatch) {
+      current = sectionMatch[1]
+      continue
+    }
+    const kv = line.match(/^([^:]+):\s*(.*)$/)
+    if (kv) {
+      const key = kv[1].trim()
+      const action = actions.find((a) => a.key === key && a.section === current)
+      if (action && out[action.tag] === undefined) out[action.tag] = kv[2].trim()
+    }
+  }
+  return out
+}
+
+function toTemplateMeta(key: string, raw: RawTemplate): TemplateMeta {
+  const actions: TemplateAction[] = (raw.action ?? []).map((a) => ({
+    label: a.name ?? a.key ?? '',
+    key: a.key ?? '',
+    section: a.section ?? '',
+    tag: a.tag ?? '',
+    type: a.type ?? 'input',
+  }))
+  return {
+    key,
+    name: raw.name ?? key,
+    nameEn: raw.name_en ?? '',
+    actions,
+    defaults: extractDefaults(raw.data, actions),
+  }
+}
+
+/** 列出全部模板元数据（主进程读 public/data/templates/*.json） */
+export async function listTemplates(): Promise<TemplateMeta[]> {
+  const dir = templatesDir()
+  let files: string[] = []
+  try {
+    files = await fs.readdir(dir)
+  } catch {
+    return []
+  }
+  const metas: TemplateMeta[] = []
+  for (const f of files.filter((f) => f.endsWith('.json'))) {
+    const raw = JSON.parse(await fs.readFile(path.join(dir, f), 'utf8')) as RawTemplate
+    metas.push(toTemplateMeta(path.basename(f, '.json'), raw))
+  }
+  return metas.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
+}
+
+/** 用用户输入替换模板 data 中对应 [section] 节的 key 值（未填的保留默认） */
+export function buildFileFromTemplate(raw: RawTemplate, values: Record<string, string>): string {
+  const data = raw.data ?? ''
+  let current = ''
+  return data
+    .split(/\r?\n/)
+    .map((line) => {
+      const sectionMatch = line.match(/^\[(.+)\]$/)
+      if (sectionMatch) {
+        current = sectionMatch[1]
+        return line
+      }
+      // 跳过注释/节外行；只替换模板声明的字段
+      if (line.trim().startsWith('#') || !line.trim()) return line
+      const kv = line.match(/^(\s*)([^#:]+?)\s*:\s*(.*)$/)
+      if (!kv) return line
+      const key = kv[2].trim()
+      const action = (raw.action ?? []).find((a) => a.key === key && a.section === current)
+      const input = action?.tag ? values[action.tag] : undefined
+      if (action && input !== undefined && String(input).trim() !== '') {
+        return `${kv[1]}${key}: ${String(input).trim()}`
+      }
+      return line
+    })
+    .join('\n')
+}
+
+/** 基于模板创建单位：units/<英文名>/<英文名>.ini（已存在报错） */
+export async function createUnitFromTemplate(
+  projectRoot: string,
+  params: { name: string; folder?: string; templateKey: string; values: Record<string, string> },
+): Promise<{ path: string }> {
+  const root = resolveInside(projectRoot, '.')
+  const safeName = params.name.trim().replace(/[\\/:*?"<>|]/g, '-') || 'unit'
+  const folder = (params.folder ?? 'units').replace(/^\/+|\/+$/g, '')
+  const rel = path.posix.join(folder, safeName, `${safeName}.ini`)
+  const file = resolveInside(root, rel)
+  if (await exists(file)) {
+    throw new Error(`单位文件已存在：${rel}（不会覆盖已有文件）`)
+  }
+  const raw = await loadTemplateRaw(params.templateKey)
+  if (!raw) throw new Error(`模板不存在：${params.templateKey}`)
+  await fs.mkdir(path.dirname(file), { recursive: true })
+  await fs.writeFile(file, buildFileFromTemplate(raw, params.values ?? {}), 'utf8')
   return { path: rel }
 }
 

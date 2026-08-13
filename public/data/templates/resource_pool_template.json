@@ -1,0 +1,50 @@
+{
+    "name": "资源池模板",
+    "name_en": "Resource Pool Template",
+    "data": "[core]\nmass: 9000\nname: extractorTemplate\nprice: 700\nmaxHp: 800\ntechLevel: 1\nbuildSpeed: 0.0010\n\n#单位标题\ndisplayText:示范资源提取器模板\n\n#单位描述\ndisplayDescription:可以生产资金的资源提前器，只能在资源池上面建造。请参考ini里面的注释和结合代码表使用。\n\n#生产资金\ngeneration_resources: credits=8\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: 0,0,0,0\n\n#used for placement, and placement of other buildings\nconstructionFootprint: 0,0,0,0\n\nbuildingSelectionOffset:4\n\nradius: 18\ndisplayRadius:20\n\nisBuilding: true\n\n#只能在资源池上面使用 为false就随便哪里建就可以了\nplaceOnlyOnResPool: true\n\n#死亡的残骸数量\nnumBitsOnDeath: 16\n\n#隐藏烧焦标记\nhideScorchMark: true\n\n[animation_idle]\nonActions : idle\nbody_0s: {frame:0}\nbody_0.8s: {frame:3}\nbody_1.0s: {frame:3}\n\npingPong:true\n\n[graphics]\ntotal_frames: 4\nimage:        CORE:/extractor/extractor.png\nimage_back:   CORE:/extractor/extractor_back.png\nimage_back_always_use_full_image: true\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\nmaxAttackRange: 0\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nmaxTurnSpeed: 0\nturnAcceleration: 0.1\n\n[ai]\n#ai adds extra rules for placeOnlyOnResPool type units\n#AI对建造资源池的单位优先级总是最高\nbuildPriority: 0.4\n\nrecommendedInEachBasePriorityIfUnmet:0.55\nrecommendedInEachBaseNum: 2\n\nnoneInBaseExtraPriority: 0.43\n\n#noneGlobalExtraPriority: 0.3\n\nmaxEachBase: 99",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "资源获取",
+            "key": "generation_resources",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        }
+    ]
+}

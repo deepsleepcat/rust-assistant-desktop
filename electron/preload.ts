@@ -46,6 +46,8 @@ const api: BridgeApi = {
     createUnit: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnit', rootPath, params),
     pack: (rootPath: string) => ipcRenderer.invoke('mod:pack', rootPath),
     check: (rootPath: string) => ipcRenderer.invoke('mod:check', rootPath),
+    listTemplates: () => ipcRenderer.invoke('mod:listTemplates'),
+    createUnitFromTemplate: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnitFromTemplate', rootPath, params),
   },
   ai: {
     check: (settings) => ipcRenderer.invoke('ai:check', settings),

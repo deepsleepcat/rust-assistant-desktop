@@ -1,0 +1,10 @@
+{
+    "name": "空白文件",
+    "name_en": "Empty Template",
+    "name_ja": "空っぽの",
+    "name_zh_TW":"空白文件",
+    "data": "",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "action": []
+}

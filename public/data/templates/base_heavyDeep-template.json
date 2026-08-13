@@ -1,0 +1,54 @@
+{
+    "name": "进阶模板-重型潜艇-海军模板",
+    "name_en": "Base-Template(heavySub)SEA",
+    "data": "#进阶模板-重型潜艇-海军模板\n[core]\nname: heavySubTemplate\nclass: CustomUnitMetadata\nprice: 5500\nmaxHp: 1000\nmass: 40000\n\ntechLevel: 2\nbuildSpeed: 0.0004\navailableInDemo: false\n\nradius: 25\n#displayRadius: 11\n\n#多语言\ndisplayText: heavySub(Template)\ndisplayDescription: -Attack only Sea units\n\ndisplayText_zh: 示范重型潜艇\ndisplayDescription_zh: -只能攻击海上单位\n\ntransportSlotsNeeded: 3\n\nisBio: false\n#softCollisionOnAll: 3\n\n\nbuiltFrom_1_name: seaFactory\nbuiltFrom_1_pos:  6.1\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/heavy_sub/base.png\nimage_wreak:  CORE:/heavy_sub/base_dead.png\nimage_turret: NONE\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\nimage_shadow: AUTO\nshadowOffsetX:2\nshadowOffsetY:2\n\nmovementEffect:        CUSTOM:splash\nmovementEffectReverse: CUSTOM:splash\nmovementEffectReverseFlipEffects: true\nmovementEffectRate: 8\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: true\ncanAttackNotTouchingWaterUnits:false\n\nturretSize: 20\nturretTurnSpeed: 1.5\n\n\n\nmaxAttackRange: 210\nshootDelay: 100\n\n[turret_1]\n#torpedo\ninvisible: true\nx: 10\ny: 0\nidleDir:0\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: true\ncanAttackNotTouchingWaterUnits: false\n\nprojectile: torpedo\nsize: 1.1\n#turnSpeed: 15\n\nturnSpeed: 0\ncanAttackMaxAngle: 181\n\n\n[turret_2]\n#back turret\ncopyFrom: 1\nx: -10\ny: 0\nidleDir:0\nwarmup:30\nprojectile: torpedo\nlinkDelayWithTurret:1\n\n\n[projectile_torpedo]\n#torpedo\ndirectDamage: 95\nlife: 30\nspeed: 1.2\ntargetSpeed: 2.0\ntargetSpeedAcceleration: 0.05\n\ndrawSize: 1\ncolor: #1E1E96\ntrailEffect: true\nlargeHitEffect: true\n\ndeflectionPower: -1\n\nwobbleAmplitude: 0.4\nwobbleFrequency: 0.8s\n\nturnSpeed:2\n\n#startingTurnSpeed:1\n#targetTurnSpeed:3\n\nlightSize:0.2\n\n#spawnProjectilesOnEndOfLife: torpedo_split(offsetDir=90), torpedo_split(offsetDir=-90), torpedo_split(offsetDir=00)\nspawnProjectilesOnEndOfLife: torpedoLocked\n\n[projectile_torpedoLocked]\n@copyFromSection: projectile_torpedo\nlife: 300\nturnSpeed:6\nspawnProjectilesOnEndOfLife: NONE\n\n[comment_projectile_torpedo_split]\n#torpedo split\n\ndirectDamage: 95\nlife: 250\nspeed: 1\ntargetSpeed: 2.0\ntargetSpeedAcceleration: 0.03\n\ndrawSize: 1\ncolor: #1E1E96\ntrailEffect: true\nlargeHitEffect: true\n\ndeflectionPower: -1\n\n#加一点花里胡哨的弹道效果\nwobbleAmplitude: 0.2\nwobbleFrequency: 0.8s\n\nturnSpeed:3\n\n#startingTurnSpeed:1\n#targetTurnSpeed:3\n\nlightSize:0.2\n\n\n[movement]\nmovementType: WATER\nmoveSpeed: 0.85\nmoveAccelerationSpeed: 0.015\nmoveDecelerationSpeed: 0.05\n\n\n#moveSlidingMode :false\n#moveIgnoringBody:false\n#moveSlidingDir:  45\n\n#潜水艇其实就是高度为负数 并且移动类型为WATER\ntargetHeight: -8\ntargetHeightDrift: 0.3\n\nmaxTurnSpeed: 1.5\nturnAcceleration: 0.05\n\n[effect_splash]\n\nlife: 70\nstripIndex: effects\nframeIndex: 13\n\nscaleFrom: 0.9\nscaleTo: 1.3\nalpha: 0.4\natmospheric:true\n\nfadeInTime: 3\nfadeOut:true\n\ndirOffsetRandom:180\n\nxSpeedAbsoluteRandom: 0.1\nySpeedAbsoluteRandom: 0.1\nySpeedRelative:-0.2\n#hSpeed:0.1\n\nyOffsetRelative:-28\n\nattachedToUnit: false\ndrawUnderUnits:true",
+    "language": "ALL",
+    "icon":  "\/template\/tank-template-icon.png",
+    "attachFile": [
+        "\/resource\/tank.png",
+        "\/resource\/tank_dead.png",
+        "\/resource\/tank_turret.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_en": "name",
+            "name_ja": "名前",
+            "name_zh_TW":"名稱",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW":"血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_en":"price",
+            "name_ja":"価格",
+            "name_zh_TW":"價格",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "直接伤害",
+            "name_en":"directDamage",
+            "name_ja":"直接傷害",
+            "name_zh_TW":"直接傷害",
+            "key": "directDamage",
+            "section": "projectile_torpedo",
+            "type": "input",
+            "tag": "projectile-core"
+        }
+    ]
+}

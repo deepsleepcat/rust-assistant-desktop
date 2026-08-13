@@ -1,11 +1,24 @@
 /**
  * M5 模组工具测试：模板内容、打包排除规则、单位检查逻辑。
+ * M6.5：模板系统（listTemplates / buildFileFromTemplate / createUnitFromTemplate）。
  */
 import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { buildModInfo, buildUnitSkeleton, isExcluded, createMod, createUnit, packModBuffer, checkMod } from '../electron/modTools'
+import {
+  buildModInfo,
+  buildUnitSkeleton,
+  isExcluded,
+  createMod,
+  createUnit,
+  createUnitFromTemplate,
+  listTemplates,
+  buildFileFromTemplate,
+  packModBuffer,
+  checkMod,
+} from '../electron/modTools'
+import type { RawTemplate } from '../electron/modTools'
 
 function makeTempProject(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'rust-modtools-'))
@@ -128,6 +141,54 @@ describe('M5 单位检查', () => {
       expect(result.issues.every((i) => i.level === 'error')).toBe(true)
     } finally {
       rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('M6.5 模板系统', () => {
+  it('listTemplates 返回全部模板（≥16 个）', async () => {
+    const metas = await listTemplates()
+    expect(metas.length).toBeGreaterThanOrEqual(16)
+    expect(metas[0]).toHaveProperty('key')
+    expect(metas[0]).toHaveProperty('name')
+    expect(metas[0]).toHaveProperty('actions')
+    // 模板 data 中的默认值已提取
+    const tank = metas.find((m) => m.key === 'base_tank_template')
+    expect(tank).toBeDefined()
+    expect(tank?.defaults['name-core']).toBe('基础坦克')
+  })
+
+  it('buildFileFromTemplate 用用户输入替换对应节字段，保留其余默认', () => {
+    const raw: RawTemplate = {
+      name: '测试模板',
+      data: '[core]\nname: 基础坦克\nprice: 350\n\n[graphics]\nimage: tank.png',
+      action: [
+        { name: '名称', key: 'name', section: 'core', tag: 'name-core', type: 'input' },
+        { name: '价格', key: 'price', section: 'core', tag: 'price-core', type: 'input' },
+      ],
+    }
+    const out = buildFileFromTemplate(raw, { 'name-core': '侦察坦克', 'price-core': '500' })
+    expect(out).toContain('name: 侦察坦克')
+    expect(out).toContain('price: 500')
+    expect(out).toContain('image: tank.png')
+  })
+
+  it('createUnitFromTemplate 写盘且不覆盖已有文件', async () => {
+    const dir = makeTempProject()
+    try {
+      const { path: rel } = await createUnitFromTemplate(dir, {
+        name: 'my-tank',
+        templateKey: 'base_tank_template',
+        values: { 'name-core': '我的坦克' },
+      })
+      expect(rel).toBe('units/my-tank/my-tank.ini')
+      const content = readFileSync(path.join(dir, rel), 'utf8')
+      expect(content).toContain('name: 我的坦克')
+      expect(content).toContain('[graphics]')
+      // 已存在时报错
+      await expect(createUnitFromTemplate(dir, { name: 'my-tank', templateKey: 'base_tank_template', values: {} })).rejects.toThrow()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
     }
   })
 })

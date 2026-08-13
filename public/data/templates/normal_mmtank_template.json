@@ -1,0 +1,52 @@
+{
+    "name": "进阶模板-猛犸坦克",
+    "data": "#进阶模板\n[core]\nname: mammoth_tank_Template\n\n#直接调用原版猛犸坦克描述 请和下方多语言任选一个 去注释即可使用\n\n#displayLocaleKey: mammothTank\n\n#多语言\ndisplayText: mammoth_tank(Template)\ndisplayDescription: -The mighty Mammoth tank can only hit the ground, causing lightning attacks that can break shields.\n\ndisplayText_zh: 示范猛犸坦克\ndisplayDescription_zh: -强大的猛犸坦克，只能对地，造成的闪电攻击能破盾。\n\n#若取消下行注释则替换游戏内部猛犸坦克\n#overrideAndReplace: mammothTank\n\nclass: CustomUnitMetadata\n#price: 4200\nprice: 3900\n\n#maxHp: 3200\nmaxHp: 2600\n\nmass: 14000\n\nexperimental: true\n\ntechLevel: 2\nbuildSpeed: 0.0006\n#availableInDemo: true\n\nradius: 22\ndisplayRadius: 20\n\nisBio: false\nsoftCollisionOnAll: 0\n\n\nbuiltFrom_1_name: landFactory\nbuiltFrom_1_pos:  8.1\n\n\n[graphics]\ntotal_frames: 3\n\nimage:        CORE:/mammoth_tank/mammoth_tank.png\nimage_wreak:  CORE:/mammoth_tank/mammoth_tank_dead.png\nimage_turret: CORE:/mammoth_tank/mammoth_tank_turret.png\n\nimage_shadow: AUTO\nshadowOffsetX:2\nshadowOffsetY:2\n\n\nanimation_moving_start: 0\nanimation_moving_end: 2\nanimation_moving_speed: 2.85\n\n\ndustEffect: true\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nturretSize: 20\nturretTurnSpeed: 4\n\nmaxAttackRange: 190\n\n#shootDelay:140 #original\nshootDelay: 50\n\n[turret_1]\n#coil\nx: 0\ny: 0\nattachedTo: 2\nslave: true\n\nprojectile: 1\n\nturnSpeed: 0\nturnSpeedAcceleration: 0\n\nshoot_sound:lighting_burst\nshoot_sound_vol:0.3\nshoot_flame:CUSTOM:sparks2*3\nshoot_light:#FFcceeee\n\ncanShoot: true\n\nwarmup:30\n\nimage: CORE:/mammoth_tank/mammoth_tank_coil.png\n\nchargeEffectImage: SHARED:lighting_charge.png\n\nrecoilOffset: -1.5\nrecoilOutTime: 3\nrecoilReturnTime: 17\n\n\n[turret_2]\n#turret\nx: 0\ny: 0\n\ncanShoot: false\n\nturnSpeed: 2.5\nturnSpeedAcceleration: 0.18\nturnSpeedDeceleration: 0.35\n\nrecoilOffset: -0.75\nrecoilOutTime: 3\nrecoilReturnTime: 17\n\n[projectile_1]\n#directDamage: 310\ndirectDamage: 130\n\nlife: 25\n#瞬间命中\ninstant: true\n#闪电效果\nlightingEffect: true\nlargeHitEffect: true\n\n#对于护盾是满伤，也就是直接绕过护盾\nshieldDamageMultiplier: 1\n\nshieldDefectionMultiplier: 0.1\n\n#对于建筑单位则只有1/2的伤害\nbuildingDamageMultiplier: 0.5\n\n#抛射体爆炸效果\nexplodeEffect:CUSTOM:lightningShock, CUSTOM:sparks*8\n\n#抛射体在护盾上的爆炸效果\nexplodeEffectOnShield:CUSTOM:lightningShock*1, CUSTOM:hitLightFlash\n\n#效果组\n[effect_hitLightFlash]\npriority:high\n\nimage: SHARED:light_50.png\nlife: 17\nfadeOut: true\nattachedToUnit: false\ncolor: #63e6e8\n\nscaleFrom: 1.8\nscaleTo: 1.8\nalpha: 0.6\ndrawUnderUnits:false\n\n\n[effect_lightningShock]\nlife: 60\n\n\nhOffset: 0\ndirOffset: 0\n\nfadeInTime: 0\nfadeOut: false\n\nattachedToUnit: true\n\n\nimage: SHARED:lightning_shock.png\ntotal_frames: 14\nanimateFrameStart: 0\nanimateFrameEnd: 13\nanimateFramePingPong: false\nanimateFrameSpeed: 0.5\n\n\n[effect_sparks]\nattachedToUnit: false\nlife: 150\nphysics: true\nxSpeedRelativeRandom: 1.6\nySpeedRelativeRandom: 1.6\nhSpeed: 2\nimage: SHARED:spark.png\npriority: verylow\n\n[effect_sparks2]\nattachedToUnit: false\nlife: 150\nphysics: true\nxSpeedRelativeRandom: 0.5\nySpeedRelativeRandom: 0.5\nhSpeed: 1\nimage: SHARED:spark.png\npriority: verylow\n\n[movement]\nmovementType: LAND\nmoveSpeed: 0.6\nmoveAccelerationSpeed: 0.04\nmoveDecelerationSpeed: 0.06\n\nreverseSpeedPercentage:1.0\n\nmaxTurnSpeed: 1.4\nturnAcceleration: 0.15\n\nmoveSlidingMode :false\nmoveIgnoringBody:false",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "直接伤害",
+            "name_en":"directDamage",
+            "name_ja":"直接傷害",
+            "name_zh_TW":"直接傷害",
+            "key": "directDamage",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        }
+    ]
+}

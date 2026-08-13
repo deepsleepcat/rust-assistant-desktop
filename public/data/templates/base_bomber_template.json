@@ -1,0 +1,76 @@
+{
+    "name": "基础模板-轰炸机-空军模板",
+    "name_en": "Base-Template(Bomber)AIR",
+    "name_ja": "基本テンプレート-爆撃機-航空機テンプレート",
+    "name_zh_TW":"基礎模板-轟炸機-空軍模板",
+    "data": "#注释是一些提示，请结合助手的代码表使用该轰炸机模板\n[core]\nname: bomberTemplate\nclass: CustomUnitMetadata\nprice: 4000\nmaxHp: 3000\nmass: 20000\n\ntechLevel: 2\nbuildSpeed: 0.00025\navailableInDemo: true\n\nradius: 16\ndisplayRadius: 19\nisBio: false\n#softCollisionOnAll: 3\nsoftCollisionOnAll:24\n\n\nselfRegenRate:0.1\n\n#单位标题\ndisplayText:示范轰炸机\n\n#单位描述\ndisplayDescription:轰炸机空军模板，请参考ini里面的注释和结合代码表使用。\n\n\nbuiltFrom_1_name: airFactory\nbuiltFrom_1_pos:  6.1\n\n#能量最大值\nenergyMax: 3\n#能量恢复\nenergyRegen: 0.002\n#能量必须充满后才能使用\nenergyNeedsToRechargeToFull: true\n\n\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/bomber/base.png\nimage_wreak:  CORE:/bomber/base_dead.png\nimage_turret: NONE\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\nimage_shadow: AUTO\nshadowOffsetX:1\nshadowOffsetY:1\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: true\n\nturretSize: 20\nturretTurnSpeed: 1.5\n\nmaxAttackRange: 45\nshootDelay: 30\n\n#攻击移动方式：轰炸机\nattackMovement: bomber\n\n\n\n[turret_1]\n#bomber\ninvisible: true\nx: 0\ny: 0\nidleDir:0\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\n\nprojectile: 1\nsize: 1.1\nturnSpeed: 20\n\n#消耗能量\nenergyUsage: 1\n\n\n[projectile_1]\n#bomb\n\n#cannot use directDamage with targetGround\n#directDamage: 195\n\nlife: 250\nspeed: 0.3\ntargetSpeed: 1.7\ndrawSize: 1\ncolor: #000000\ntrailEffect: false\n\n\n#大冲击效果\nlargeHitEffect: true\n\n#目标为地面\ntargetGround: true\n\n#范围伤害\nareaDamage: 370\nareaRadius: 65\n\n#for laser defence\ndeflectionPower: 3\n#激光拦截该炮弹需要的能量\n\n[turret_2]\n#anti-sub\ninvisible: true\nx: 0\ny: 0\nidleDir:0\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: true\n\nprojectile: 2\nsize: 1.1\nturnSpeed: 20\n\nenergyUsage: 1\n\n[projectile_2]\n#bomb anti-sub\n\ndirectDamage: 70\n\nlife: 250\nspeed: 0.3\ntargetSpeed: 1.7\ndrawSize: 1\ncolor: #000000\ntrailEffect: false\nlargeHitEffect: false\n\ntargetGround: false\n\n#for laser defence\ndeflectionPower: 3\n\n[movement]\nmovementType: AIR\nmoveSpeed: 0.85\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\n#着陆条件：闲置\nlandOnGround: onlyIdle\n\n#joinsGroupFormations=false可能会导致非飞行单位的速度减慢。\njoinsGroupFormations: false\n\nmaxTurnSpeed: 1.2\nturnAcceleration: 0.04\n\nmoveSlidingMode :false\nmoveIgnoringBody:false\nmoveSlidingDir:  25\n\n#死亡坠落\nslowDeathFall: true\n",
+    "language": "ALL",
+    "icon":  "\/template\/tank-template-icon.png",
+    "attachFile": [
+        "\/resource\/tank.png",
+        "\/resource\/tank_dead.png",
+        "\/resource\/tank_turret.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_en": "name",
+            "name_ja": "名前",
+            "name_zh_TW":"名稱",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW":"血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_en":"price",
+            "name_ja":"価格",
+            "name_zh_TW":"價格",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "直接伤害",
+            "name_en":"directDamage",
+            "name_ja":"直接傷害",
+            "name_zh_TW":"直接傷害",
+            "key": "directDamage",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        },
+        {
+            "name": "范围伤害",
+            "name_en":"areaDamage",
+            "name_ja":"範囲ダメージ",
+            "name_zh_TW":"範圍傷害",
+            "key": "areaDamage",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        },
+        {
+            "name": "范围半径",
+            "name_en":"areaRadius",
+            "name_ja":"レンジ半径",
+            "name_zh_TW":"範圍半徑",
+            "key": "areaRadius",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        }
+    ]
+}

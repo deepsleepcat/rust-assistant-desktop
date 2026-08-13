@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto'
 import { createStore } from './store'
 import { isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
-import { checkMod, createMod, createUnit, packMod, packModBuffer } from './modTools'
+import { checkMod, createMod, createUnit, createUnitFromTemplate, listTemplates, packMod, packModBuffer } from './modTools'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
@@ -181,6 +181,13 @@ function registerIpc(): void {
   ipcMain.handle('mod:createUnit', async (_event, rootPath: string, params: unknown) => {
     requireInsideRoot(rootPath, rootPath)
     return createUnit(rootPath, params as { name: string; displayName?: string; folder?: string })
+  })
+
+  // M6.5 模板系统：模板列表 / 基于模板创建单位
+  ipcMain.handle('mod:listTemplates', async () => listTemplates())
+  ipcMain.handle('mod:createUnitFromTemplate', async (_event, rootPath: string, params: unknown) => {
+    requireInsideRoot(rootPath, rootPath)
+    return createUnitFromTemplate(rootPath, params as { name: string; folder?: string; templateKey: string; values: Record<string, string> })
   })
 
   ipcMain.handle('mod:pack', async (_event, rootPath: string) => {

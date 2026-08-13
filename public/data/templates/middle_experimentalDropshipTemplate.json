@@ -1,0 +1,49 @@
+{
+    "name": "中级模板-飞行堡垒",
+    "data": "#注释是一些提示，请结合助手的代码表使用该中级模板\n[core]\nname: experimentalDropshipTemplate\nclass: CustomUnitMetadata\nprice: 30000\nmaxHp: 8000\nmass: 90000\n\n#单位标题\ndisplayText:示范飞行堡垒\n\n#单位描述\ndisplayDescription:强大的飞行堡垒，可以对空对地，有自我修复，能生产和运输单位。请参考ini里面的注释和结合代码表使用。\n\n#设定为初始单位 在游戏的初始单位那个选项卡里面可见\nisPickableStartingUnit: true\n\n#开局从天而降\nstartFallingWhenStartingUnit: true\n\n#科技等级\ntechLevel: 1\n\n#实验单位\nexperimental: true\n\nbuildSpeed: 0.0002\n#availableInDemo: true\n\nradius: 25\n#displayRadius: 25\n\nisBio: false\nsoftCollisionOnAll: 3\n\n#最大运输量\nmaxTransportingUnits: 12\n\n#工厂生成单位速度变快3倍\nnanoFactorySpeed:3\n\n#每秒资金\ngeneration_credits: 4\ngeneration_delay: 40\n\n#回血速度\nselfRegenRate:0.4\n\n#transportUnitsKillOnDeath: if self.isOverLiquid()\n#transportUnitsHealBy: 1\n\n#生成位置与地点\nbuiltFrom_1_name: experimentalLandFactory\nbuiltFrom_1_pos:  5.1\n\n\n#可生成什么\ncanBuild_1_name: builder, scout\ncanBuild_1_pos:  1\n\ncanBuild_2_name: combatEngineer\ncanBuild_2_pos:  1\n\ncanBuild_3_name: tank, hoverTank\ncanBuild_3_pos:  2\n\ncanBuild_4_name: heavyTank, plasmaTank, mammothTank, missileTank\ncanBuild_4_pos:  3\n\ncanBuild_5_name: laserTank\ncanBuild_5_pos:  4\n\n\nexit_x:0\nexit_y:10\n\nexit_dirOffset:0\nexit_moveAwayAmount:140\n\n\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/experimental_dropship/experimental_dropship.png\nimage_wreak:  CORE:/experimental_dropship/experimental_dropship_dead.png\nimage_turret: SHARED:small_laser_turret.png\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#imageScale: 1.5\n\nimage_shadow: AUTO\nshadowOffsetX:1\nshadowOffsetY:1\n\n#movementEffect: CUSTOM:engineTrail\n#movementEffectRate: 6\n\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: true\n#在没有飞起来的时候才能攻击敌人 动态逻辑\ncanAttackLandUnits:   if not self.flying\ncanAttackUnderwaterUnits: false\n\nturretSize: 18\nturretTurnSpeed: 4\nmaxAttackRange: 210\nshootDelay: 25\n\nturretMultiTargeting: true\n\n\n[turret_1]\nx: -20\ny: -17\n\nshoot_sound:plasma_fire\nshoot_sound_vol:0.05\nshoot_flame:small\nshoot_light:#FFccCCEE\n\nrecoilOffset: -1\nrecoilOutTime: 4\nrecoilReturnTime: 6\n\n[turret_2]\n#复制炮塔1的数据\ncopyFrom: 1\nx: 20\ny: -17\nwarmup:7\n#链接炮塔1\nlinkDelayWithTurret:1\n\n#抛射体\n[projectile_1]\ndirectDamage: 35\nlife: 70\nspeed: 7\n\n#索引\nframe: 11\n\n#你也可以直接使用自己的图片\n#image:example.png\n\nlightColor: #FFccCCEE\nlightSize: 0.4\n\n#移动方式\n[movement]\nmovementType: AIR\nmoveSpeed: 1.1\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nlandOnGround: true\n\n\nmaxTurnSpeed: 1.3\nturnAcceleration: 0.05\n\nmoveSlidingMode :true\nmoveIgnoringBody:true\nmoveSlidingDir:  45\n\nslowDeathFall: true\n\n#效果组\n[effect_engineTrail]\n\n#createWhenOverLiquid: false\n\ncreateWhenZoomedOut: false\npriority:low\n\nlife: 20\nfadeOut: true\nattachedToUnit: false\ncolor: #FFEE22\nfadeInTime:3\nscaleFrom: 0.3\nscaleTo: 0.8\nalpha: 1.1\n#drawUnderUnits:true\n\nySpeedRelative:-0.7\nxSpeedRelativeRandom:0.2\n\nyOffsetRelative: -40\n\natmospheric: true\n\nstripIndex:effects\nframeIndex: 0\n",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "运输数量",
+            "key": "maxTransportingUnits",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        }
+    ]
+}

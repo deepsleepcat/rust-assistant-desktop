@@ -1,0 +1,66 @@
+{
+    "name": "基础模板-战斗工程师-建造者模板",
+    "name_en": "Base-Template(WAR-Builder)Builder",
+    "name_ja": "基本テンプレート-Combat Engineer-Builder Template",
+    "name_zh_TW":"基礎模板-戰鬥工程師-建造者模板",
+    "data": "\n\n[core]\nname: combatEngineerTemplate\nclass: CustomUnitMetadata\nprice: 3500\nmaxHp: 1000\nmass: 4000\n\ntechLevel: 2\n\nbuildSpeed: 0.0005\navailableInDemo: false\n\nselfRegenRate:0.1\n\nradius: 17\ndisplayRadius: 18\n\nisBio: false\nisBuilder: true\n\nbuiltFrom_1_name: landFactory\nbuiltFrom_1_pos:  6.1\n#builtFrom_1_techLevel: 2\n\nbuiltFrom_2_name: experimentalLandFactory\nbuiltFrom_2_pos:  1.1\n\n#单位标题\ndisplayText:示范战斗工程师\n\n#单位描述\ndisplayDescription:战斗工程师模板，请参考ini里面的注释和结合代码表使用。\n\ncanRepairBuildings: true\ncanRepairUnits : true\n\n\ncanReclaimResources: true\n\n\ntransportSlotsNeeded: 2\n\ngeneration_credits: 1\ngeneration_delay: 40\n\nnanoRange: 95\nnanoBuildSpeed: 2\n\n#注解组 没有任何作用 仅作为注解使用\n[comment_test]\n\nA comment section\nnothing here is read\ncomment sections start with a _comment_ \nor start a line with # for a single line comment\n\n[canBuild_1]\nname: heavyTank\npos:  1\nforceNano: true\n\n[canBuild_2]\nname: AmphibiousJet\npos:  2\nforceNano: true\n\n[canBuild_3]\nname: extractorT2\npos:  3\n#tech: 2\n\n\n[canBuild_4]\nname: landFactory, airFactory\npos:  4\ntech: 2\n\n[canBuild_5]\nname: mechFactoryT2\npos:  5\n\n[canBuild_6]\nname: seaFactory\npos:  6\ntech: 2\n\n[canBuild_7]\nname: fabricator\npos:  7\n\n[canBuild_8]\nname: repairBay\npos:  8\n\n[canBuild_9]\nname: builder\npos:  2.1\nforceNano: true\n\n[canBuild_10]\nname: turretT2, turret, c_turret_t1_lightning\npos:  3.1\n\n[canBuild_11]\nname: antiAirTurret\npos:  3.2\n\n[canBuild_12]\nname: laserDefence, outpostT1\npos:  12\n\n[canBuild_13]\nname: experimentalLandFactory\npos:  13\n\n[canBuild_14]\nname: antiNukeLaucher\npos:  14\n\n[canBuild_15]\nname: nukeLaucher\npos:  15\n\n[canBuild_16]\nname: extractor\npos:  2.9\ntech: 1\n\n[canBuild_17]\nname: reclaim\npos:  -1\n\n\n\n[graphics]\n\ntotal_frames: 1\nimage:        CORE:/combat_engineer/base.png\nimage_wreak:  CORE:/combat_engineer/base_dead.png\nimage_turret: NONE\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: AUTO\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n\n\n[attack]\n\ncanAttack: true\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: true\n\nisFixedFiring: true\n\nturretSize: 3\nturretTurnSpeed: 3\n\n\nmaxAttackRange: 170\nshootDelay: 50\n\n\nturretRotateWithBody: false\n\n\n[turret_1]\n#nano turret (nano must be slot 1)\nx: 0\ny: 0\ninvisible: true\nwarmup:30\n\ncanShoot: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\n\nturnSpeedAcceleration: 0.08\n\n\n[turret_2]\nx: 0\ny: -0\ninvisible: true\n\nshoot_sound:plasma_fire\nshoot_sound_vol:0.05\nshoot_flame:small\nshoot_light:#FFccCCEE\n\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\n[turret_3]\n#torpedo\ninvisible: true\nx: 0\ny: 0\nidleDir:0\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: true\n\ncanAttackCondition: if self.overwater\n\nprojectile: 2\nsize: 1\nturnSpeed: 15\ndelay: 150\n\n\n[projectile_1]\ndirectDamage: 30\nlife: 70\nspeed: 7\nframe: 11\n\nlightColor: #FFccCCEE\nlightSize: 0.4\n\n[projectile_2]\n#torpedo\ndirectDamage: 45\nlife: 250\nspeed: 0.4\ntargetSpeed: 1.3\ndrawSize: 1\ncolor: #1E1E96\ntrailEffect: true\nlargeHitEffect: true\n\n\n[movement]\nmovementType: HOVER\nmoveSpeed: 1.0\nmoveAccelerationSpeed: 0.03\nmoveDecelerationSpeed: 0.08\n\n\ntargetHeight: 4\ntargetHeightDrift: 1.5\n\nmaxTurnSpeed: 3.5\nturnAcceleration: 0.05\n\nmoveSlidingMode :true\nmoveIgnoringBody:true\nmoveSlidingDir:  181\n\n\n[ai]\nuseAsBuilder: true",
+    "language": "ALL",
+    "icon":  "\/template\/tank-template-icon.png",
+    "attachFile": [
+        "\/resource\/tank.png",
+        "\/resource\/tank_dead.png",
+        "\/resource\/tank_turret.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_en": "name",
+            "name_ja": "名前",
+            "name_zh_TW":"名稱",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW":"血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_en":"price",
+            "name_ja":"価格",
+            "name_zh_TW":"價格",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "建造范围",
+            "name_en":"nanoRange",
+            "name_ja":"施工範囲",
+            "name_zh_TW":"建造範圍",
+            "key": "nanoRange",
+            "section": "core",
+            "type": "input",
+            "tag": "nanoRange-core"
+        },
+        {
+            "name": "建造速度",
+            "name_en":"nanoBuildSpeed",
+            "name_ja":"施工スピード",
+            "name_zh_TW":"建造速度",
+            "key": "nanoBuildSpeed",
+            "section": "core",
+            "type": "input",
+            "tag": "nanoBuildSpeed-core"
+        }
+    ]
+}
