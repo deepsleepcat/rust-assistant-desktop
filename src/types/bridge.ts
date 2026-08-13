@@ -33,6 +33,13 @@ export interface BridgeApi {
   platform: string
   version: string
   appInfo(): Promise<{ version: string; platform: string }>
+  /** M6 自动更新（更新包托管在 GitHub Releases） */
+  app: {
+    checkUpdate(): Promise<{ skipped: boolean; message?: string }>
+    downloadUpdate(): Promise<{ skipped: boolean }>
+    installUpdate(): Promise<boolean>
+    onUpdateEvent(callback: (event: import('./ai').UpdateEvent) => void): () => void
+  }
   store: StoreApi
   project: {
     openFolderDialog(): Promise<OpenedProject | null>

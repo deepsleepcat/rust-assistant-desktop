@@ -13,6 +13,7 @@ import { createStore } from './store'
 import { isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import { checkMod, createMod, createUnit, packMod, packModBuffer } from './modTools'
+import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
@@ -225,6 +226,26 @@ function registerIpc(): void {
 
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }))
 
+  // ===== M6 自动更新（更新包托管在 GitHub Releases）=====
+  // 事件统一推送到 'app:update' 通道；dev 模式下检查会返回提示
+  setupUpdater(() => BrowserWindow.getAllWindows()[0]?.webContents ?? null)
+  ipcMain.handle('app:checkUpdate', async () => {
+    if (!isPackaged()) {
+      return { skipped: true, message: '开发模式不检查更新' }
+    }
+    await checkForUpdates()
+    return { skipped: false }
+  })
+  ipcMain.handle('app:downloadUpdate', async () => {
+    if (!isPackaged()) return { skipped: true }
+    await downloadUpdate()
+    return { skipped: false }
+  })
+  ipcMain.handle('app:installUpdate', () => {
+    quitAndInstall()
+    return true
+  })
+
   ipcMain.handle('avatar:chooseLocal', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
@@ -293,6 +314,13 @@ function registerIpc(): void {
 app.whenReady().then(() => {
   registerIpc()
   createWindow()
+
+  // M6：生产环境启动后延迟自动检查一次更新（静默，有新版本只在界面提示）
+  if (isPackaged()) {
+    setTimeout(() => {
+      void checkForUpdates().catch(() => undefined)
+    }, 5000)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

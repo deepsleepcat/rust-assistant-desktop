@@ -20,7 +20,8 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run test",
     "pack": "npm run build && electron-builder --win",
-    "pack:dir": "npm run build && electron-builder --dir"
+    "pack:dir": "npm run build && electron-builder --dir",
+    "pack:release": "npm run build && electron-builder --win --publish always"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -32,6 +33,7 @@
     "@earendil-works/pi-agent-core": "file:vendor/pi/packages/agent",
     "@earendil-works/pi-ai": "file:vendor/pi/packages/ai",
     "@earendil-works/pi-telemetry": "file:vendor/pi/packages/telemetry",
+    "electron-updater": "^6.8.9",
     "jszip": "^3.10.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -70,8 +72,20 @@
     ],
     "win": {
       "target": [
+        "nsis",
         "portable"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "铁锈助手"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "deepsleepcat",
+      "repo": "rust-assistant-desktop"
     }
   }
 }

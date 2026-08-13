@@ -9,6 +9,16 @@ const api: BridgeApi = {
   platform: process.platform,
   version: '',
   appInfo: () => ipcRenderer.invoke('app:info'),
+  app: {
+    checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
+    downloadUpdate: () => ipcRenderer.invoke('app:downloadUpdate'),
+    installUpdate: () => ipcRenderer.invoke('app:installUpdate'),
+    onUpdateEvent: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as never)
+      ipcRenderer.on('app:update', listener)
+      return () => ipcRenderer.removeListener('app:update', listener)
+    },
+  },
   store: {
     get: (key: string) => ipcRenderer.invoke('store:get', key),
     set: (key: string, value: unknown) => ipcRenderer.invoke('store:set', key, value),
