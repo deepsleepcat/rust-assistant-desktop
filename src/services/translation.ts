@@ -21,6 +21,18 @@ export function enToZh(text: string, dict: TranslationDict): string {
   return text.replace(EN_WORD_RE, (word) => {
     // 全大写且长度 > 1：视为常量/引用标识符，不翻译，避免保存时信息丢失
     if (word.length > 1 && word === word.toUpperCase()) return word
+    // 带编号后缀的词（如 projectile_1）：整体查不到时剥掉 _数字 再查基础词，
+    // 翻译后把编号拼回（projectile_1 → 抛射体_1）
+    const numbered = /^(.+?)_(\d+)$/.exec(word)
+    if (numbered) {
+      const baseZh = dict.enToZh.get(numbered[1].toLowerCase())
+      if (baseZh) {
+        const styled = /^[A-Z]/.test(numbered[1]) && !/^[A-Z]/.test(baseZh)
+          ? baseZh.charAt(0).toUpperCase() + baseZh.slice(1)
+          : baseZh
+        return styled + '_' + numbered[2]
+      }
+    }
     const zh = dict.enToZh.get(word.toLowerCase())
     if (!zh) return word
     if (/^[A-Z]/.test(word) && !/^[A-Z]/.test(zh)) {

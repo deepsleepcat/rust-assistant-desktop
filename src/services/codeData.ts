@@ -88,11 +88,18 @@ export function loadCodeData(): Promise<void> {
         const translations = (transRaw.data ?? []) as Array<{ en?: string; zh?: string }>
         const vocab = (vocabRaw.data ?? []) as VocabularyItem[]
 
-        // 翻译词典：手机版 code→translate + 旧版 en↔zh
+        // 翻译词典：手机版 code→translate + 旧版 en↔zh + 节名（section）翻译
         for (const c of codes) {
           if (c.code && c.translate) {
             enToZhDict.set(c.code.toLowerCase(), c.translate)
             zhToEnDict.set(c.translate, c.code)
+          }
+        }
+        // 节名（[core]→[核心] 等）必须进词典，否则中文模式下节头不翻译
+        for (const s of sections) {
+          if (s.code && s.translate) {
+            enToZhDict.set(s.code.toLowerCase(), s.translate)
+            zhToEnDict.set(s.translate, s.code)
           }
         }
         for (const t of translations) {
