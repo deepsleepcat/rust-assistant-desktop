@@ -3319,6 +3319,50 @@
   {
    "en": "stackHorizontal",
    "zh": "水平堆叠"
+  },
+  {
+   "en": "title",
+   "zh": "标题"
+  },
+  {
+   "en": "thumbnail",
+   "zh": "缩略图"
+  },
+  {
+   "en": "version",
+   "zh": "版本"
+  },
+  {
+   "en": "author",
+   "zh": "作者"
+  },
+  {
+   "en": "minVersion",
+   "zh": "最低版本"
+  },
+  {
+   "en": "mod",
+   "zh": "模组"
+  },
+  {
+   "en": "builtFrom",
+   "zh": "建造自"
+  },
+  {
+   "en": "tooltip",
+   "zh": "提示"
+  },
+  {
+   "en": "icon",
+   "zh": "图标"
+  },
+  {
+   "en": "category",
+   "zh": "分类"
+  },
+  {
+   "en": "sortOrder",
+   "zh": "排序"
   }
  ]
 }

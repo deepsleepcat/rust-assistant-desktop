@@ -34,6 +34,18 @@ export function enToZh(text: string, dict: TranslationDict): string {
       const styled = lookupBase(word.slice(0, -1), dict)
       if (styled) return styled + '_'
     }
+    // 宏字段分段翻译：builtFrom_1_name / canBuild_2_tooltip 这类
+    // 「前缀_数字_后缀」占位字段，整体查不到时按段翻译（builtFrom→建造自，1 保留，name→名称）
+    if (word.includes('_')) {
+      const segments = word.split('_')
+      const translated = segments.map((seg) => {
+        if (/^\d+$/.test(seg)) return seg
+        const styled = lookupBase(seg, dict)
+        return styled || seg
+      })
+      const joined = translated.join('_')
+      if (joined !== word) return joined
+    }
 
     const zh = dict.enToZh.get(word.toLowerCase())
     if (!zh) return word
