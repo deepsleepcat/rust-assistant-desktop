@@ -53,6 +53,8 @@ export interface BridgeApi {
     rename(rootPath: string, oldPath: string, newPath: string): Promise<void>
     delete(rootPath: string, targetPath: string): Promise<void>
     readImageAsDataUrl(rootPath: string, imagePath: string): Promise<string>
+    /** M6.5 音频预览：读音频为 data URL（限项目内） */
+    readAudioAsDataUrl(rootPath: string, audioPath: string): Promise<string>
   }
   avatar: {
     chooseLocal(): Promise<string | null>
@@ -60,7 +62,9 @@ export interface BridgeApi {
   }
   /** M5 模组工具 */
   mod: {
-    create(rootPath: string, params: { name: string; title: string; description?: string; author?: string; version?: string; thumbnail?: string }): Promise<{ files: string[] }>
+    create(rootPath: string, params: { name: string; title: string; description?: string; author?: string; version?: string; thumbnail?: string; musicFiles?: string[]; musicExclusive?: boolean }): Promise<{ files: string[] }>
+    /** M6.5 选择背景音乐（多选，返回绝对路径列表；取消返回空数组） */
+    chooseMusic(): Promise<string[]>
     createUnit(rootPath: string, params: { name: string; displayName?: string; folder?: string }): Promise<{ path: string }>
     pack(rootPath: string): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number; files: number }>
     check(rootPath: string): Promise<{ issues: Array<{ file: string; level: 'error' | 'warning'; message: string }>; unitCount: number; fileCount: number }>

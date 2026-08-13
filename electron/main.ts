@@ -34,6 +34,32 @@ function requireInsideRoot(rootPath: string, targetPath: string): void {
   }
 }
 
+/** 图片 MIME 白名单 */
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp',
+}
+
+/** 音频 MIME 白名单（M6.5 音频预览） */
+const AUDIO_MIME: Record<string, string> = {
+  '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4', '.flac': 'audio/flac',
+}
+
+/** 读取图片/音频为 data URL：限项目内 + 扩展名白名单 + 大小上限 */
+async function readMediaAsDataUrl(rootPath: string, mediaPath: string, mimeByExt: Record<string, string>): Promise<string> {
+  // 项目资源必须限制在项目根目录；外观背景由用户通过系统选择器选取，允许空 rootPath。
+  if (rootPath) requireInsideRoot(rootPath, mediaPath)
+  if (typeof mediaPath !== 'string' || !path.isAbsolute(mediaPath)) throw new Error('无效的文件路径')
+  const ext = path.extname(mediaPath).toLowerCase()
+  const mime = mimeByExt[ext]
+  if (!mime) throw new Error('不支持的文件格式')
+  const stat = await fs.stat(mediaPath)
+  if (stat.size > 100 * 1024 * 1024) throw new Error('文件超过 100MB，暂不支持预览')
+  const buf = await fs.readFile(mediaPath)
+  return `data:${mime};base64,${buf.toString('base64')}`
+}
+
 const store = createStore(path.join(app.getPath('userData'), 'app-state.json'))
 
 function createWindow(): BrowserWindow {
@@ -216,21 +242,26 @@ function registerIpc(): void {
     return checkMod(rootPath)
   })
 
+  // M6.5 背景音乐：多选音频文件（mp3/wav/flac/m4a/ogg，转码在 createMod 时进行）
+  ipcMain.handle('mod:chooseMusic', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '选择背景音乐（可多选，将转换为 ogg）',
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: '音频文件', extensions: ['mp3', 'wav', 'flac', 'm4a', 'ogg'] },
+        { name: '所有文件', extensions: ['*'] },
+      ],
+    })
+    return result.canceled ? [] : result.filePaths
+  })
+
   ipcMain.handle('image:readAsDataUrl', async (_event, rootPath: string, imagePath: string) => {
-    // 项目资源必须限制在项目根目录；外观背景由用户通过系统选择器选取，允许空 rootPath。
-    if (rootPath) requireInsideRoot(rootPath, imagePath)
-    if (typeof imagePath !== 'string' || !path.isAbsolute(imagePath)) throw new Error('无效的图片路径')
-    const ext = path.extname(imagePath).toLowerCase()
-    const mimeByExt: Record<string, string> = {
-      '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-      '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp',
-    }
-    const mime = mimeByExt[ext]
-    if (!mime) throw new Error('不支持的图片格式')
-    const stat = await fs.stat(imagePath)
-    if (stat.size > 30 * 1024 * 1024) throw new Error('图片超过 30MB，暂不支持预览')
-    const buf = await fs.readFile(imagePath)
-    return `data:${mime};base64,${buf.toString('base64')}`
+    return readMediaAsDataUrl(rootPath, imagePath, IMAGE_MIME)
+  })
+
+  // M6.5 音频预览：与图片同一套安全校验（限项目内 + 白名单 + 大小上限）
+  ipcMain.handle('media:readAsDataUrl', async (_event, rootPath: string, mediaPath: string) => {
+    return readMediaAsDataUrl(rootPath, mediaPath, AUDIO_MIME)
   })
 
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), platform: process.platform }))
@@ -255,8 +286,7 @@ function registerIpc(): void {
     return true
   })
 
-  ipcMain.handle('avatar:chooseLocal', async () => {
-    const result = await dialog.showOpenDialog({
+  ipcMain.handle('avatar:chooseLocal', async () => {    const result = await dialog.showOpenDialog({
       properties: ['openFile'],
       title: '选择头像图片',
       filters: [{ name: '头像图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],

@@ -109,3 +109,15 @@
 .template-item:hover { border-color: var(--accent); background: var(--surface-hover); transform: translateY(-1px); }
 .template-name { font-weight: 600; }
 .template-en { font-size: 11px; color: var(--text-3); word-break: break-all; }
+
+/* ── M6.5 音频播放器 ─────────────────────────────── */
+.audio-viewer { flex: 1; display: grid; place-items: center; background: var(--surface-0); }
+.audio-viewer audio { width: min(480px, 80%); }
+.audio-loading, .audio-error { color: var(--text-secondary); font-size: 13px; }
+.audio-error { color: var(--danger, #c5221f); }
+
+/* ── M6.5 背景音乐选择 ───────────────────────────── */
+.music-picker { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.music-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.music-list li { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); font-size: 12px; color: var(--text-secondary); }
+.music-list li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

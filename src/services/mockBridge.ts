@@ -239,6 +239,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         delete dir.children[parts[parts.length - 1]]
       },
       readImageAsDataUrl: async (_root, _imagePath) => MOCK_IMAGE_DATA_URL,
+      readAudioAsDataUrl: async (_root, _audioPath) => 'data:audio/ogg;base64,T2dnUw==',
     },
     avatar: {
       chooseLocal: async () => null,
@@ -246,6 +247,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     },
     mod: {
       create: async () => ({ files: ['mod-info.txt', 'units/'] }),
+      chooseMusic: async () => [],
       createUnit: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
       pack: async () => ({ canceled: true }),
       check: async () => ({ issues: [], unitCount: 0, fileCount: 0 }),

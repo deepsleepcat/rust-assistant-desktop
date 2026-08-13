@@ -25,6 +25,11 @@ export function isPreviewableImage(p: string): boolean {
   return ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].includes(extname(p))
 }
 
+/** M6.5 支持播放的音频格式（模组内音效/背景音乐） */
+export function isPreviewableAudio(p: string): boolean {
+  return ['.ogg', '.mp3', '.wav', '.m4a', '.flac'].includes(extname(p))
+}
+
 /** 截断长路径用于展示（省略号计入长度） */
 export function truncateMiddle(p: string, max = 60): string {
   if (p.length <= max) return p

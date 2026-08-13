@@ -36,6 +36,7 @@ const api: BridgeApi = {
     rename: (rootPath: string, oldPath: string, newPath: string) => ipcRenderer.invoke('fs:rename', rootPath, oldPath, newPath),
     delete: (rootPath: string, targetPath: string) => ipcRenderer.invoke('fs:delete', rootPath, targetPath),
     readImageAsDataUrl: (rootPath: string, imagePath: string) => ipcRenderer.invoke('image:readAsDataUrl', rootPath, imagePath),
+    readAudioAsDataUrl: (rootPath: string, audioPath: string) => ipcRenderer.invoke('media:readAsDataUrl', rootPath, audioPath),
   },
   avatar: {
     chooseLocal: () => ipcRenderer.invoke('avatar:chooseLocal'),
@@ -43,6 +44,7 @@ const api: BridgeApi = {
   },
   mod: {
     create: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:create', rootPath, params),
+    chooseMusic: () => ipcRenderer.invoke('mod:chooseMusic'),
     createUnit: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnit', rootPath, params),
     pack: (rootPath: string) => ipcRenderer.invoke('mod:pack', rootPath),
     check: (rootPath: string) => ipcRenderer.invoke('mod:check', rootPath),

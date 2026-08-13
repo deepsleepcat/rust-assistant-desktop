@@ -14,7 +14,8 @@ import { LogoR } from '../../components/LogoR'
 import { ConfirmBox } from '../../components/Modal'
 import { EditorMirror } from './EditorMirror'
 import { ImageViewer } from './ImageViewer'
-import { isPreviewableImage } from '../../utils/paths'
+import { AudioViewer } from './AudioViewer'
+import { isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
 import { formatIni } from './iniFormatter'
 import { scanSections } from './outline'
 
@@ -160,6 +161,10 @@ function EditorPane({ tabId }: { tabId: string }) {
   if (!tab) return null
   if (isPreviewableImage(tab.path) && project) {
     return <ImageViewer path={tab.path} rootPath={project.rootPath} />
+  }
+  // M6.5：音频文件走播放器（不再当文本打开显示乱码）
+  if (isPreviewableAudio(tab.path) && project) {
+    return <AudioViewer rootPath={project.rootPath} path={tab.path} />
   }
 
   const sections = scanSections(tab.content)

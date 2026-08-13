@@ -54,12 +54,15 @@ export function ModToolModals() {
   return <CreateModModal onClose={() => setModDialog(null)} onSubmit={createModProject} />
 }
 
-function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { name: string; title: string; description?: string; author?: string; version?: string }) => void }) {
+function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { name: string; title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean }) => void }) {
   const [name, setName] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [author, setAuthor] = useState('')
   const [version, setVersion] = useState('1.0')
+  // M6.5 背景音乐：源文件绝对路径列表 + 独占播放开关
+  const [musicFiles, setMusicFiles] = useState<string[]>([])
+  const [musicExclusive, setMusicExclusive] = useState(true)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -67,11 +70,30 @@ function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: 
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const chooseMusic = async () => {
+    try {
+      const files = await getBridge().mod.chooseMusic()
+      if (files.length > 0) setMusicFiles((prev) => [...prev, ...files.filter((f) => !prev.includes(f))])
+    } catch {
+      /* 用户取消或失败：保持原状 */
+    }
+  }
+
   const submit = () => {
     if (!name.trim() || !title.trim()) return
-    onSubmit({ name: name.trim(), title: title.trim(), description: description.trim() || undefined, author: author.trim() || undefined, version: version.trim() || undefined })
+    onSubmit({
+      name: name.trim(),
+      title: title.trim(),
+      description: description.trim() || undefined,
+      author: author.trim() || undefined,
+      version: version.trim() || undefined,
+      musicFiles: musicFiles.length > 0 ? musicFiles : undefined,
+      musicExclusive: musicFiles.length > 0 ? musicExclusive : undefined,
+    })
     onClose()
   }
+
+  const musicNames = musicFiles.map((f) => f.split(/[\\/]/).pop() ?? f)
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -100,6 +122,43 @@ function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: 
               <input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="1.0" />
             </label>
           </div>
+          <div className="mod-field">
+            <span>背景音乐（可选）</span>
+            <div className="music-picker">
+              <button type="button" className="btn" onClick={() => void chooseMusic()}>
+                选择音乐…
+              </button>
+              {musicNames.length > 0 && (
+                <ul className="music-list">
+                  {musicNames.map((n, i) => (
+                    <li key={`${n}-${i}`}>
+                      <span title={musicFiles[i]}>{n}</span>
+                      <button type="button" className="icon-btn" title="移除" onClick={() => setMusicFiles((prev) => prev.filter((_, j) => j !== i))}>
+                        <AppIcon name="close" size={12} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="mod-tip">支持 mp3 / wav / flac / m4a / ogg，将自动转换为 ogg 并放入 music/ 目录。</div>
+          </div>
+          {musicFiles.length > 0 && (
+            <div className="setting-row">
+              <span className="label">
+                独占播放
+                <div className="desc">使用本模组单位时独占播放背景音乐（手机版同款选项）</div>
+              </span>
+              <button
+                className={`switch${musicExclusive ? ' on' : ''}`}
+                role="switch"
+                aria-checked={musicExclusive}
+                onClick={() => setMusicExclusive(!musicExclusive)}
+              >
+                <span className="knob" />
+              </button>
+            </div>
+          )}
           <p className="mod-tip">将在项目里生成 mod-info.txt、units/ 目录和一个示例单位（可直接改造成你的单位）。</p>
         </div>
         <div className="modal-footer">

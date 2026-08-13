@@ -11,6 +11,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { existsSync } from 'node:fs'
+import { execFile } from 'node:child_process'
 import JSZip from 'jszip'
 import { isPathInside } from './paths'
 import type { TemplateAction, TemplateMeta } from '../src/types/mod'
@@ -58,6 +59,10 @@ export interface CreateModParams {
   version?: string
   /** 缩略图相对路径（可选） */
   thumbnail?: string
+  /** M6.5 背景音乐：用户选择的源音频绝对路径列表（任意格式，转 ogg 后进 music/） */
+  musicFiles?: string[]
+  /** M6.5 使用本模组单位时独占播放（写入 [music] 节） */
+  musicExclusive?: boolean
 }
 
 function escapeIniComment(text: string): string {
@@ -115,6 +120,45 @@ moveSpeed: 50
 `
 }
 
+/**
+ * 把任意音频转成 ogg（背景音乐用）。优先用 ffmpeg-static（随应用打包），
+ * 找不到时退回系统 PATH 的 ffmpeg。失败抛错，由调用方降级提示。
+ */
+export async function transcodeToOgg(srcPath: string, destDir: string): Promise<string> {
+  const ext = path.extname(srcPath).toLowerCase()
+  const base = path.basename(srcPath, ext)
+  const dest = path.join(destDir, `${base}.ogg`)
+  if (ext === '.ogg') {
+    // 本来就是 ogg：直接复制
+    await fs.copyFile(srcPath, dest)
+    return dest
+  }
+  const ffmpeg = await findFfmpeg()
+  if (!ffmpeg) throw new Error('未找到 ffmpeg，无法转换音频（可自行安装 ffmpeg 后重试）')
+  await new Promise<void>((resolve, reject) => {
+    execFile(ffmpeg, ['-y', '-i', srcPath, '-c:a', 'libvorbis', '-q:a', '5', dest], (err) => {
+      if (err) reject(new Error(`音频转换失败：${err.message}`))
+      else resolve()
+    })
+  })
+  return dest
+}
+
+function findFfmpeg(): Promise<string | null> {
+  return new Promise((resolve) => {
+    // 1) ffmpeg-static（随应用打包）
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const staticPath = require('ffmpeg-static') as string | null
+      if (staticPath && existsSync(staticPath)) return resolve(staticPath)
+    } catch {
+      /* 未安装 ffmpeg-static */
+    }
+    // 2) 系统 PATH
+    execFile('ffmpeg', ['-version'], (err) => resolve(err ? null : 'ffmpeg'))
+  })
+}
+
 /** 新建模组：在项目根目录生成标准结构；已存在内容时不覆盖 */
 export async function createMod(projectRoot: string, params: CreateModParams): Promise<{ files: string[] }> {
   const root = resolveInside(projectRoot, '.')
@@ -130,6 +174,20 @@ export async function createMod(projectRoot: string, params: CreateModParams): P
   const unitsDir = path.join(root, 'units')
   await fs.mkdir(unitsDir, { recursive: true })
   created.push('units/')
+
+  // M6.5 背景音乐：任意格式转 ogg 进 music/（转换失败时跳过并继续，不影响建模组）
+  if (params.musicFiles && params.musicFiles.length > 0) {
+    const musicDir = path.join(root, 'music')
+    await fs.mkdir(musicDir, { recursive: true })
+    for (const src of params.musicFiles) {
+      try {
+        const dest = await transcodeToOgg(src, musicDir)
+        created.push(`music/${path.basename(dest)}`)
+      } catch {
+        // 单曲失败不阻断整个模组创建，文件列表里不包含即可
+      }
+    }
+  }
 
   // 示例单位：展示最小骨架（不会覆盖已有同名文件）
   const examplePath = path.join(unitsDir, safeName, `${safeName}.ini`)
