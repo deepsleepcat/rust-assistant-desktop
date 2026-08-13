@@ -21,18 +21,20 @@ export function enToZh(text: string, dict: TranslationDict): string {
   return text.replace(EN_WORD_RE, (word) => {
     // 全大写且长度 > 1：视为常量/引用标识符，不翻译，避免保存时信息丢失
     if (word.length > 1 && word === word.toUpperCase()) return word
-    // 带编号后缀的词（如 projectile_1）：整体查不到时剥掉 _数字 再查基础词，
-    // 翻译后把编号拼回（projectile_1 → 抛射体_1）
+
+    // 兜底链：①带编号后缀（projectile_1 → projectile）
+    // ②以 _ 结尾的节名前缀（global_resource_聚能 → global_resource_ → global_resource）
+    // 均翻译基础词后拼回原文后缀
     const numbered = /^(.+?)_(\d+)$/.exec(word)
     if (numbered) {
-      const baseZh = dict.enToZh.get(numbered[1].toLowerCase())
-      if (baseZh) {
-        const styled = /^[A-Z]/.test(numbered[1]) && !/^[A-Z]/.test(baseZh)
-          ? baseZh.charAt(0).toUpperCase() + baseZh.slice(1)
-          : baseZh
-        return styled + '_' + numbered[2]
-      }
+      const styled = lookupBase(numbered[1], dict)
+      if (styled) return styled + '_' + numbered[2]
     }
+    if (word.endsWith('_')) {
+      const styled = lookupBase(word.slice(0, -1), dict)
+      if (styled) return styled + '_'
+    }
+
     const zh = dict.enToZh.get(word.toLowerCase())
     if (!zh) return word
     if (/^[A-Z]/.test(word) && !/^[A-Z]/.test(zh)) {
@@ -40,6 +42,13 @@ export function enToZh(text: string, dict: TranslationDict): string {
     }
     return zh
   })
+}
+
+/** 查基础词翻译并保留首字母大写风格（找不到返回空） */
+function lookupBase(base: string, dict: TranslationDict): string {
+  const zh = dict.enToZh.get(base.toLowerCase())
+  if (!zh) return ''
+  return /^[A-Z]/.test(base) && !/^[A-Z]/.test(zh) ? zh.charAt(0).toUpperCase() + zh.slice(1) : zh
 }
 
 /** 连续汉字 → 英文（按最长匹配优先，防止短词先替换） */

@@ -9,9 +9,10 @@ export function formatIni(text: string, newline = text.includes('\r\n') ? '\r\n'
     const key = trimmed.slice(0, separator.index).trim()
     const value = trimmed.slice(separator.index + 1).trim()
     if (!key || !value) return line.trimEnd()
-    // 铁锈战争 INI 惯例：冒号前无空格，只规范冒号后一个空格
-    // （修复旧实现“key : value”把空格写进文件的 bug）
-    return `${key}${separator.char} ${value}`
+    // 铁锈战争 INI 惯例：冒号前无空格。冒号后保留原风格——
+    // 原文有空格则保留一个，没有就不加（避免 名称:零级限制 变成 名称: 零级限制）
+    const hadSpace = /\s/.test(trimmed.charAt(separator.index + 1))
+    return `${key}${separator.char}${hadSpace ? ' ' : ''}${value}`
   }).join(newline)
 }
 

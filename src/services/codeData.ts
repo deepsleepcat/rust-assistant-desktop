@@ -47,6 +47,8 @@ export interface VocabularyItem {
 interface RawDataset {
   name?: string
   data?: unknown[]
+  /** translations.json / vocabulary.json 用的是 words 顶层键 */
+  words?: unknown[]
 }
 
 let loaded: Promise<void> | null = null
@@ -85,8 +87,9 @@ export function loadCodeData(): Promise<void> {
         codes = (codeRaw.data ?? []) as CodeInfo[]
         sections = (sectionRaw.data ?? []) as SectionInfo[]
         valueTypes = (valueRaw.data ?? []) as ValueTypeInfo[]
-        const translations = (transRaw.data ?? []) as Array<{ en?: string; zh?: string }>
-        const vocab = (vocabRaw.data ?? []) as VocabularyItem[]
+        // translations/vocabulary 的顶层键是 words（不是 data），两边都兼容
+        const translations = (transRaw.words ?? transRaw.data ?? []) as Array<{ en?: string; zh?: string }>
+        const vocab = (vocabRaw.words ?? vocabRaw.data ?? []) as VocabularyItem[]
 
         // 翻译词典：手机版 code→translate + 旧版 en↔zh + 节名（section）翻译
         for (const c of codes) {

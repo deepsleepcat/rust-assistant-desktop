@@ -155,6 +155,8 @@ function EditorPane({ tabId }: { tabId: string }) {
   const toggleTranslation = useWorkspaceStore((s) => s.toggleTranslation)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
   const [outlineOpen, setOutlineOpen] = useState(false)
+  // 大纲跳转请求：{ line, seq }，seq 递增触发 EditorMirror 定位
+  const [jumpRequest, setJumpRequest] = useState<{ line: number; seq: number } | null>(null)
   const fontFamily = useWorkspaceStore((s) => s.settings.fontFamily)
   const fontSize = useWorkspaceStore((s) => s.settings.fontSize)
 
@@ -202,7 +204,15 @@ function EditorPane({ tabId }: { tabId: string }) {
       {outlineOpen && sections.length > 0 && (
         <div className="editor-outline">
           {sections.map((section) => (
-            <button key={`${section.line}-${section.name}`} className="editor-outline-item" onClick={() => setEditorPos({ line: section.line, col: 1 })}>
+            <button
+              key={`${section.line}-${section.name}`}
+              className="editor-outline-item"
+              onClick={() => {
+                // 大纲跳转：更新状态栏位置 + 触发编辑器滚动定位（seq 递增保证重复点击同节也生效）
+                setEditorPos({ line: section.line, col: 1 })
+                setJumpRequest((prev) => ({ line: section.line, seq: (prev?.seq ?? 0) + 1 }))
+              }}
+            >
               <span>[{section.name}]</span><small>第 {section.line} 行</small>
             </button>
           ))}
@@ -216,6 +226,7 @@ function EditorPane({ tabId }: { tabId: string }) {
           onSave={() => void saveTab(tab.id)}
           fontFamily={fontFamily}
           fontSize={fontSize}
+          jumpTo={jumpRequest}
         />
       </div>
     </div>

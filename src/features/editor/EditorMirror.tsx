@@ -24,6 +24,8 @@ interface EditorMirrorProps {
   onSave: () => void
   fontFamily: string
   fontSize: number
+  /** 大纲跳转请求：line 为 1 基行号；seq 递增保证同节重复点击也触发 */
+  jumpTo?: { line: number; seq: number } | null
 }
 
 const editorTheme = EditorView.theme({
@@ -85,7 +87,7 @@ const editorTheme = EditorView.theme({
   '.cm-matchingBracket': { backgroundColor: 'rgba(0,0,0,.08)' },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, jumpTo }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -159,6 +161,21 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
       })
     }
   }, [value])
+
+  // 大纲跳转：把光标定位到目标行首并滚动到视口中央
+  useEffect(() => {
+    if (!jumpTo) return
+    const view = viewRef.current
+    if (!view) return
+    const doc = view.state.doc
+    if (jumpTo.line < 1 || jumpTo.line > doc.lines) return
+    const pos = doc.line(jumpTo.line).from
+    view.dispatch({
+      selection: { anchor: pos, head: pos },
+      effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+    })
+    view.focus()
+  }, [jumpTo])
 
   const monoFont = fontFamily === 'mono' ? 'var(--font-mono)' : fontFamily === 'kaiti' ? 'KaiTi, "楷体", serif' : 'var(--font-mono)'
   return (
