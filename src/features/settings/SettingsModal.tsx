@@ -21,6 +21,11 @@ export function SettingsModal() {
   const settings = useWorkspaceStore((s) => s.settings)
   const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
+  const updateState = useWorkspaceStore((s) => s.updateState)
+  const checkUpdate = useWorkspaceStore((s) => s.checkUpdate)
+  const downloadUpdate = useWorkspaceStore((s) => s.downloadUpdate)
+  const installUpdate = useWorkspaceStore((s) => s.installUpdate)
+  const version = useWorkspaceStore((s) => s.version)
   const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'avatar' | 'about'>('appearance')
   const [aiCheck, setAiCheck] = useState<string | null>(null)
   const [aiChecking, setAiChecking] = useState(false)
@@ -89,6 +94,39 @@ export function SettingsModal() {
                 </span>
                 <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>已固定</span>
               </div>
+              <div className="setting-row">
+                <span className="label">
+                  鼠标粒子特效
+                  <div className="desc">移动鼠标时出现柔和光点尾迹（跟随指针，不影响操作）</div>
+                </span>
+                <button
+                  className={`switch${settings.cursorEffect ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={settings.cursorEffect}
+                  onClick={() => updateSettings({ cursorEffect: !settings.cursorEffect })}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+              {settings.cursorEffect && (
+                <div className="setting-row">
+                  <span className="label">
+                    特效强度
+                    <div className="desc">光点数量：弱 / 中 / 强</div>
+                  </span>
+                  <div className="seg-group">
+                    {([1, 2, 3] as const).map((level) => (
+                      <button
+                        key={level}
+                        className={settings.cursorEffectIntensity === level ? 'active' : ''}
+                        onClick={() => updateSettings({ cursorEffectIntensity: level })}
+                      >
+                        {level === 1 ? '弱' : level === 2 ? '中' : '强'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -409,14 +447,65 @@ export function SettingsModal() {
                 <LogoR size="about" />
                 <div>
                   <div style={{ fontWeight: 600 }}>铁锈助手 Rust Assistant</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-2)' }}>版本 0.1.0 · 编辑器 · AI 对话 · 模组工具</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)' }}>版本 v{version} · 编辑器 · AI 对话 · 模组工具</div>
                 </div>
               </div>
-              <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.8, margin: 0 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.8, margin: '0 0 16px' }}>
                 面向《铁锈战争》模组开发的桌面工作台。
                 本项目参考了开源 Pi Agent Harness、铁锈助手 Android 版与旧版 Python 工具的设计与数据，
-                遵循各自开源许可。第三方资源来源见 docs/THIRD-PARTY.md。
+                遵循各自开源许可。
               </p>
+              <div className="setting-row">
+                <span className="label">
+                  自动更新
+                  <div className="desc">更新包托管在 GitHub Releases，免费下载安装</div>
+                </span>
+                <button
+                  className="btn"
+                  disabled={updateState.status === 'checking' || updateState.status === 'downloading'}
+                  onClick={() => void checkUpdate()}
+                >
+                  {updateState.status === 'checking' ? '检查中…' : updateState.status === 'downloading' ? `下载中 ${updateState.percent ?? 0}%` : '检查更新'}
+                </button>
+              </div>
+              {updateState.status === 'available' && (
+                <div className="setting-row">
+                  <span className="label">
+                    发现新版本 v{updateState.version}
+                    <div className="desc">下载完成后可立即安装并重启</div>
+                  </span>
+                  <button className="btn primary" onClick={() => void downloadUpdate()}>
+                    <AppIcon name="download" size={13} />
+                    下载更新
+                  </button>
+                </div>
+              )}
+              {updateState.status === 'downloaded' && (
+                <div className="setting-row">
+                  <span className="label">
+                    新版本 v{updateState.version} 已就绪
+                    <div className="desc">安装会关闭当前应用并自动重启</div>
+                  </span>
+                  <button className="btn primary" onClick={() => installUpdate()}>
+                    立即安装
+                  </button>
+                </div>
+              )}
+              {updateState.status === 'not_available' && (
+                <div className="setting-row">
+                  <span className="label">
+                    <AppIcon name="check" size={13} />
+                    {updateState.message ?? '已是最新版本'}
+                  </span>
+                </div>
+              )}
+              {updateState.status === 'error' && (
+                <div className="setting-row">
+                  <span className="label" style={{ color: 'var(--text-secondary)' }}>
+                    检查更新失败：{updateState.message}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

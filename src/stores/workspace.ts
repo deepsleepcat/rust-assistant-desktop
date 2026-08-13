@@ -58,6 +58,13 @@ interface WorkspaceStoreState {
   modDialog: 'createMod' | 'createUnit' | 'check' | null
   /** M5：单位检查结果 */
   modCheckResult: { issues: Array<{ file: string; level: 'error' | 'warning'; message: string }>; unitCount: number; fileCount: number } | null
+  /** M6：自动更新状态（设置 → 关于 展示） */
+  updateState: {
+    status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not_available' | 'error'
+    version?: string
+    percent?: number
+    message?: string
+  }
 }
 
 interface WorkspaceStoreActions {
@@ -101,6 +108,10 @@ interface WorkspaceStoreActions {
   createUnitFile(params: { name: string; displayName?: string }): Promise<void>
   packModProject(): Promise<void>
   checkModProject(): Promise<void>
+  /** M6：自动更新 */
+  checkUpdate(): Promise<void>
+  downloadUpdate(): Promise<void>
+  installUpdate(): void
 }
 
 export type WorkspaceStore = WorkspaceStoreState & WorkspaceStoreActions
@@ -170,6 +181,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       pendingApproval: null,
       modDialog: null,
       modCheckResult: null,
+      updateState: { status: 'idle' },
 
       async init() {
         const [settings, workspace, info] = await Promise.all([
@@ -193,6 +205,15 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         await bridge.project.registerRoots(roots)
         await get().refreshTree()
         set({ ready: true })
+
+        // M6：订阅主进程的自动更新事件（设置 → 关于 展示状态）
+        bridge.app.onUpdateEvent((event) => {
+          if (event.type === 'update_available') set({ updateState: { status: 'available', version: event.version } })
+          if (event.type === 'update_not_available') set({ updateState: { status: 'not_available', message: `已是最新版本（v${event.currentVersion}）` } })
+          if (event.type === 'download_progress') set({ updateState: { status: 'downloading', percent: event.percent } })
+          if (event.type === 'downloaded') set({ updateState: { status: 'downloaded', version: event.version } })
+          if (event.type === 'update_error') set({ updateState: { status: 'error', message: event.message } })
+        })
       },
 
       async openProject() {
@@ -724,6 +745,33 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       },
       dismissToast() {
         set({ toast: null })
+      },
+
+      // ── M6 自动更新 ─────────────────────────────────────────────
+      async checkUpdate() {
+        set({ updateState: { status: 'checking' } })
+        try {
+          const result = await bridge.app.checkUpdate()
+          if (result.skipped) {
+            set({ updateState: { status: 'not_available', message: result.message ?? '开发模式不检查更新' } })
+          }
+          // 未 skipped：结果由 onUpdateEvent 事件推送更新
+        } catch (err) {
+          set({ updateState: { status: 'error', message: err instanceof Error ? err.message : String(err) } })
+        }
+      },
+
+      async downloadUpdate() {
+        try {
+          await bridge.app.downloadUpdate()
+          set({ updateState: { status: 'downloading', percent: 0 } })
+        } catch (err) {
+          set({ updateState: { status: 'error', message: err instanceof Error ? err.message : String(err) } })
+        }
+      },
+
+      installUpdate() {
+        void bridge.app.installUpdate()
       },
 
       // ── M5 模组工具 ─────────────────────────────────────────────

@@ -72,6 +72,14 @@ export interface AiApprovalResponse {
   approved: boolean
 }
 
+/** M6：自动更新事件（主进程 → 界面，设置 → 关于 展示） */
+export type UpdateEvent =
+  | { type: 'update_available'; version: string }
+  | { type: 'update_not_available'; currentVersion: string }
+  | { type: 'download_progress'; percent: number }
+  | { type: 'downloaded'; version: string }
+  | { type: 'update_error'; message: string }
+
 /** 头像来源：community 为闭源社区后端上传预留 */
 export interface AvatarProvider {
   source: 'default' | 'local' | 'community'

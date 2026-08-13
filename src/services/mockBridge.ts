@@ -195,6 +195,12 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     platform: 'mock',
     version: '0.1.0',
     appInfo: async () => ({ version: '0.1.0', platform: 'mock' }),
+    app: {
+      checkUpdate: async () => ({ skipped: true, message: '浏览器预览模式不检查更新' }),
+      downloadUpdate: async () => ({ skipped: true }),
+      installUpdate: async () => true,
+      onUpdateEvent: () => () => undefined,
+    },
     store: {
       get: async (key) => {
         if (key === 'settings') return sanitizeSettings(loadState('settings', DEFAULT_SETTINGS))

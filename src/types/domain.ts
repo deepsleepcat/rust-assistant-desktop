@@ -51,6 +51,10 @@ export interface AppSettings {
   rightWidth: number
   /** 文件树是否显示隐藏文件（以 . 开头） */
   showHiddenFiles: boolean
+  /** M6：鼠标粒子特效开关 */
+  cursorEffect: boolean
+  /** M6：鼠标粒子特效强度 1-3（粒子数量） */
+  cursorEffectIntensity: number
 }
 
 /** 一个项目 = 一个铁锈战争模组目录 */

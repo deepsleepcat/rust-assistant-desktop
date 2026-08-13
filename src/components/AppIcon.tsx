@@ -8,6 +8,7 @@ export type AppIconName =
   | 'search' | 'settings' | 'refresh' | 'close' | 'save' | 'delete'
   | 'add' | 'file' | 'folder' | 'font' | 'layout' | 'plus' | 'rename' | 'tools'
   | 'palette' | 'text' | 'check' | 'cross' | 'warn' | 'zoom' | 'box' | 'tower'
+  | 'sparkle' | 'download'
 
 const ICONS: Record<AppIconName, string> = {
   search: '/icons/search.svg',
@@ -32,6 +33,8 @@ const ICONS: Record<AppIconName, string> = {
   zoom: '/icons/zoom.svg',
   box: '/icons/box.svg',
   tower: '/icons/tower.svg',
+  sparkle: '/icons/sparkle.svg',
+  download: '/icons/download.svg',
 }
 
 export function AppIcon({ name, size = 16, className, title }: { name: AppIconName; size?: number; className?: string; title?: string }) {

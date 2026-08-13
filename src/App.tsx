@@ -15,6 +15,7 @@ import { ConversationPanel } from './features/conversation/ConversationPanel'
 import { SettingsModal } from './features/settings/SettingsModal'
 import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
+import { CursorEffect } from './components/CursorEffect'
 
 export function App() {
   const ready = useWorkspaceStore((s) => s.ready)
@@ -88,6 +89,8 @@ export function App() {
     <div className={`app${settings.background.kind !== 'none' ? ' has-backdrop' : ''}`}>
       <Backdrop />
       <TitleBar />
+
+      {settings.cursorEffect && <CursorEffect intensity={settings.cursorEffectIntensity} />}
 
       <div className="app-body" style={{ gridTemplateColumns: `${settings.leftWidth}px 1fr ${settings.rightWidth}px` }}>
         <aside className="sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--panel-gap)', minWidth: 0 }}>

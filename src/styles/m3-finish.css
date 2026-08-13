@@ -37,3 +37,43 @@
 .mod-check-list li code { color: var(--text-primary); font-family: var(--font-mono); }
 .mod-check-error { border-color: rgba(197,34,31,.4); }
 .mod-check-warning { border-color: rgba(217,144,20,.4); }
+
+/* ── M6 鼠标粒子特效层 ─────────────────────────── */
+.cursor-effect {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  pointer-events: none;
+}
+
+/* ── M6 设置开关（黑白主题） ─────────────────────── */
+.switch {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  cursor: pointer;
+  padding: 0;
+  transition: background .18s ease, border-color .18s ease;
+  flex-shrink: 0;
+}
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: transform .18s ease, background .18s ease;
+}
+.switch.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch.on .knob {
+  transform: translateX(18px);
+  background: #fff;
+}

@@ -7,14 +7,9 @@
  */
 import { autoUpdater } from 'electron-updater'
 import type { WebContents } from 'electron'
+import type { UpdateEvent } from '../src/types/ai'
 
-/** 界面收到的更新状态事件 */
-export type UpdateEvent =
-  | { type: 'update_available'; version: string }
-  | { type: 'update_not_available'; currentVersion: string }
-  | { type: 'download_progress'; percent: number }
-  | { type: 'downloaded'; version: string }
-  | { type: 'update_error'; message: string }
+export type { UpdateEvent }
 
 const CHANNEL = 'app:update'
 

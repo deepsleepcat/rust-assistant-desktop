@@ -31,6 +31,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   leftWidth: 280,
   rightWidth: 430,
   showHiddenFiles: false,
+  cursorEffect: false,
+  cursorEffectIntensity: 1,
   avatar: { source: 'default', localPath: null, remoteUrl: null },
   ai: {
     provider: 'deepseek',
@@ -73,6 +75,12 @@ export function sanitizeSettings(input: unknown): AppSettings {
     leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, 220, 420),
     rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, 260, 640),
     showHiddenFiles: typeof raw.showHiddenFiles === 'boolean' ? raw.showHiddenFiles : DEFAULT_SETTINGS.showHiddenFiles,
+    cursorEffect: typeof raw.cursorEffect === 'boolean' ? raw.cursorEffect : DEFAULT_SETTINGS.cursorEffect,
+    cursorEffectIntensity: clamp(
+      typeof raw.cursorEffectIntensity === 'number' ? raw.cursorEffectIntensity : DEFAULT_SETTINGS.cursorEffectIntensity,
+      1,
+      3,
+    ),
     ai: sanitizeAi(raw.ai),
   }
 }
