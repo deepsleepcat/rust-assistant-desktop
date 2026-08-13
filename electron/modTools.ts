@@ -236,7 +236,7 @@ function toTemplateMeta(key: string, raw: RawTemplate): TemplateMeta {
 /** 列出全部模板元数据（主进程读 public/data/templates/*.json） */
 export async function listTemplates(): Promise<TemplateMeta[]> {
   const dir = templatesDir()
-  let files: string[] = []
+  let files: string[]
   try {
     files = await fs.readdir(dir)
   } catch {
