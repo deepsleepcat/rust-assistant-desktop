@@ -80,7 +80,11 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "铁锈助手"
+      "shortcutName": "铁锈助手",
+      "artifactName": "rust-assistant-desktop-setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "rust-assistant-desktop-${version}-portable.${ext}"
     },
     "publish": {
       "provider": "github",
