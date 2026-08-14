@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { EditorTab } from '../../../types/domain'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import { getBridge } from '../../../services/bridge'
+import { getEnToZhDict } from '../../../services/codeData'
 import { findUnitGroup, UNIT_FORM_GROUPS, type UnitFieldDef } from './unitFormFields'
 import { applyUnitFormValue, fillDefaults, parseUnitForm, validateFormValue, type UnitFormState } from './unitFormSync'
 
@@ -66,20 +67,41 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
 
   // 表单状态：内容变化（含外部编辑/撤销）重新解析，本地草稿失效
   const formState: UnitFormState = useMemo(() => fillDefaults(parseUnitForm(tab.content)), [tab.content])
+  // 内容外部变更（格式化/重新加载/撤销）后清空草稿与错误——否则旧草稿覆盖新内容显示
+  useEffect(() => {
+    setDraft(null)
+    setErrors({})
+  }, [tab.content])
 
-  /** 提交表单值到文件（实时双向同步） */
+  /** 提交表单值到文件（实时双向同步；中文显示层新键写回中文键名） */
   const commit = (groupSection: string, field: UnitFieldDef, value: string) => {
     const err = validateFormValue(field, value)
     setErrors((prev) => ({ ...prev, [`${groupSection}.${field.key}`]: err ?? '' }))
     if (err) return // 非法值不写回（代码保持上一次合法值，表单显示红框）
     setDraft((prev) => ({ ...(prev ?? {}), [`${groupSection}.${field.key}`]: value }))
-    updateTabContent(tab.id, applyUnitFormValue(tab.content, groupSection, field.key, value.trim()))
+    const enToZh = tab.translationEnabled ? (k: string) => getEnToZhDict().get(k) : undefined
+    updateTabContent(tab.id, applyUnitFormValue(tab.content, groupSection, field.key, value.trim(), { enToZh }))
   }
 
   /** 资源选择：从项目内文件里选（相对单位文件目录） */
   const pickResource = (groupSection: string, field: UnitFieldDef) => {
     setPicking(`${groupSection}.${field.key}`)
   }
+
+  // 必填字段缺失检测（加载即提示，不等待编辑）
+  const missingRequired = useMemo(() => {
+    const missing: Array<{ groupLabel: string; key: string }> = []
+    for (const group of UNIT_FORM_GROUPS) {
+      const values = formState[group.section] ?? []
+      for (const f of group.fields) {
+        if (f.required) {
+          const v = values.find((x) => x.key.toLowerCase() === f.key.toLowerCase())
+          if (!v || !v.present || !v.value.trim()) missing.push({ groupLabel: group.label, key: f.key })
+        }
+      }
+    }
+    return missing
+  }, [formState])
 
   const fileDir = tab.path.includes('/') ? tab.path.slice(0, tab.path.lastIndexOf('/')) : ''
 
@@ -89,6 +111,11 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
         <span>单位表单 · {tab.name}</span>
         <span className="unit-form-hint">修改即时同步到代码；切回代码模式可继续手写</span>
       </div>
+      {missingRequired.length > 0 && (
+        <div className="unit-form-missing">
+          缺少必填字段：{missingRequired.map((m) => `${m.groupLabel}.${m.key}`).join('、')}——单位可能无法正常注册
+        </div>
+      )}
       <div className="unit-form-body">
         {UNIT_FORM_GROUPS.map((group) => {
           const values = formState[group.section] ?? []

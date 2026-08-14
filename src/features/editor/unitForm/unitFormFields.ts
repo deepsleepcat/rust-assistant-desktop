@@ -55,9 +55,6 @@ const BOOLEAN_OPTIONS: Record<string, string> = { true: '是', false: '否' }
 
 /** 图片资源扩展名 */
 const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']
-/** 音效资源扩展名 */
-const AUDIO_EXTS = ['ogg', 'wav', 'mp3']
-
 /** 单位表单五组字段（按官方单位文件常用键编排） */
 export const UNIT_FORM_GROUPS: UnitFieldGroup[] = [
   {
@@ -95,7 +92,7 @@ export const UNIT_FORM_GROUPS: UnitFieldGroup[] = [
     fields: [
       { key: 'canAttack', label: '可以攻击', type: 'enum', options: BOOLEAN_OPTIONS, defaultValue: 'true', description: '是否具备攻击能力' },
       { key: 'maxAttackRange', label: '最大攻击距离', type: 'number', defaultValue: '200', min: 1, description: '攻击最大射程（像素）' },
-      { key: 'shootDelay', label: '射击间隔', type: 'number', defaultValue: '20', min: 1, description: '两次攻击之间的间隔（帧）' },
+      { key: 'shootDelay', label: '射击间隔', type: 'text', defaultValue: '20', description: '两次攻击之间的间隔（帧或秒，如 20 或 5s）' },
       { key: 'turretTurnSpeed', label: '炮塔转向速度', type: 'number', defaultValue: '1', min: 0, description: '炮塔旋转速度' },
       { key: 'turretSize', label: '炮塔尺寸', type: 'number', defaultValue: '10', min: 1, description: '炮塔碰撞/显示尺寸' },
     ],
@@ -121,7 +118,7 @@ export const UNIT_FORM_GROUPS: UnitFieldGroup[] = [
       { key: 'projectile', label: '弹体', type: 'text', recommended: true, defaultValue: '1', description: '弹体引用（编号 1-3 或自定义弹体名，需定义 [projectile_xxx] 节）' },
       { key: 'size', label: '炮塔尺寸', type: 'number', defaultValue: '10', min: 1, description: '炮塔显示尺寸' },
       { key: 'idleDir', label: '待机朝向', type: 'number', defaultValue: '0', description: '待机时炮塔朝向（角度）' },
-      { key: 'shoot_sound', label: '开火音效', type: 'resource', resourceExts: AUDIO_EXTS, description: '开火音效文件（相对单位目录）' },
+      { key: 'shoot_sound', label: '开火音效', type: 'text', description: '开火音效码名（如 missile_fire / cannon_firing）或项目内音效文件路径；NONE = 无声' },
     ],
   },
 ]
@@ -136,7 +133,11 @@ export function findUnitField(key: string): UnitFieldDef | undefined {
   return undefined
 }
 
-/** 按节名找组（节名小写匹配） */
+/** 按节名找组：精确匹配；炮塔组前缀匹配（官方节名是 [turret_1]/[turret_2]/[turret_body] 等编号/命名变体） */
 export function findUnitGroup(section: string): UnitFieldGroup | undefined {
-  return UNIT_FORM_GROUPS.find((g) => g.section.toLowerCase() === section.toLowerCase())
+  const lower = section.toLowerCase()
+  const exact = UNIT_FORM_GROUPS.find((g) => g.section.toLowerCase() === lower)
+  if (exact) return exact
+  if (lower.startsWith('turret')) return UNIT_FORM_GROUPS.find((g) => g.section === 'turret')
+  return undefined
 }

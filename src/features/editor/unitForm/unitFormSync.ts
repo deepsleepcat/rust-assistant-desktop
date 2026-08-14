@@ -116,6 +116,9 @@ export function applyUnitFormValue(content: string, groupSection: string, key: s
   const crlf = content.includes('\r\n')
   const lines = content.split(/\r?\n/)
   const targetSection = groupSection.toLowerCase()
+  // 炮塔组：目标节按前缀匹配（[turret_1]/[turret_2]/[turret_body] 等）
+  const isTurretGroup = targetSection === 'turret'
+  const matchSection = (name: string) => (isTurretGroup ? name.startsWith('turret') : name === targetSection)
 
   // 找目标节与键的位置
   let sectionLine = -1
@@ -125,15 +128,12 @@ export function applyUnitFormValue(content: string, groupSection: string, key: s
     const sec = SECTION_RE.exec(lines[i])
     if (sec) {
       const name = toEnKey(sec[1].trim(), zhToEn).toLowerCase()
-      if (name === targetSection) {
-        sectionLine = i
-        sectionEnd = lines.length
-        continue
-      }
       if (sectionLine >= 0) {
+        // 已找到目标节：遇到下一个节即结束
         sectionEnd = i
         break
       }
+      if (matchSection(name)) sectionLine = i
     } else if (sectionLine >= 0 && keyLine < 0) {
       const kv = KV_RE.exec(lines[i])
       if (kv && toEnKey(kv[1].trim(), zhToEn).toLowerCase() === key.toLowerCase()) {
@@ -143,12 +143,21 @@ export function applyUnitFormValue(content: string, groupSection: string, key: s
   }
 
   const newLine = `${key}: ${value}`
+  const isEmpty = value.trim() === ''
 
   if (keyLine >= 0) {
-    // 替换整行，保留缩进与行内注释
-    const indent = /^(\s*)/.exec(lines[keyLine])?.[1] ?? ''
-    const comment = /[ \t]+(#.*)$/.exec(lines[keyLine])?.[1]
-    lines[keyLine] = `${indent}${newLine}${comment ? ` ${comment}` : ''}`
+    if (isEmpty) {
+      // 清空非必填字段 → 删除该行（游戏对空值行行为未知，不留空值）
+      lines.splice(keyLine, 1)
+    } else {
+      // 替换整行，保留缩进与行内注释
+      const indent = /^(\s*)/.exec(lines[keyLine])?.[1] ?? ''
+      const comment = /[ \t]+(#.*)$/.exec(lines[keyLine])?.[1]
+      lines[keyLine] = `${indent}${newLine}${comment ? ` ${comment}` : ''}`
+    }
+  } else if (isEmpty) {
+    // 键不存在且清空：无操作（不创建空值行）
+    return content
   } else if (sectionLine >= 0) {
     // 节存在：插入到节内最后一个非空行之后（保留节间空行分隔）
     let insertAt = sectionEnd

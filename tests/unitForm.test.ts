@@ -107,3 +107,40 @@ describe('validateFormValue', () => {
     expect(validateFormValue(field, 'sound.ogg')).toContain('扩展名')
   })
 })
+
+describe('M14 审查修复回归', () => {
+  it('[turret_1] 前缀节解析与写回（官方真实节名）', () => {
+    const content = '[core]\nname: t\n[turret_1]\nx: -14\ny: 5\nprojectile: 1\n'
+    const state = parseUnitForm(content)
+    expect(state['turret']?.find((v) => v.key === 'x')?.value).toBe('-14')
+    // 写回 turret_1 的 x（不是新建 [turret] 节）
+    const out = applyUnitFormValue(content, 'turret', 'x', '10')
+    expect(out).toContain('[turret_1]')
+    expect(out).toContain('x: 10')
+    expect(out).not.toContain('\n[turret]\n')
+  })
+
+  it('shootDelay 接受官方 Ns 格式（text 类型）', () => {
+    const field = findUnitField('shootDelay')!
+    expect(field.type).toBe('text')
+    expect(validateFormValue(field, '5s')).toBeNull()
+    expect(validateFormValue(field, '20')).toBeNull()
+  })
+
+  it('shoot_sound 接受音效码名（text 类型）', () => {
+    const field = findUnitField('shoot_sound')!
+    expect(field.type).toBe('text')
+    expect(validateFormValue(field, 'missile_fire')).toBeNull()
+    expect(validateFormValue(field, 'NONE')).toBeNull()
+  })
+
+  it('清空非必填字段删除该行（不留空值行）', () => {
+    const out = applyUnitFormValue('[core]\nname: x\nprice: 300\n', 'core', 'price', '')
+    expect(out).toBe('[core]\nname: x\n')
+  })
+
+  it('键不存在且清空：无操作', () => {
+    const out = applyUnitFormValue('[core]\nname: x\n', 'graphics', 'image', '')
+    expect(out).toBe('[core]\nname: x\n')
+  })
+})

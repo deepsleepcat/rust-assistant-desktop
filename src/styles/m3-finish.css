@@ -326,3 +326,4 @@
 .unit-form-picker-item { text-align: left; padding: 3px 6px; border-radius: var(--radius-xs); font-size: 11.5px; font-family: var(--font-mono); color: var(--text-1); background: transparent; cursor: pointer; }
 .unit-form-picker-item:hover { background: var(--surface-hover); }
 .unit-form-picker-empty { color: var(--text-muted); font-size: 11.5px; padding: 4px; }
+.unit-form-missing { margin: 8px 14px 0; padding: 6px 10px; border: 1px solid rgba(197,34,31,.4); border-radius: var(--radius-xs); background: rgba(197,34,31,.08); color: var(--danger); font-size: 12px; }
