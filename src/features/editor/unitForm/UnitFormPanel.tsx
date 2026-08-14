@@ -37,8 +37,9 @@ export function isUnitFile(content: string): boolean {
 
 export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
-  // 表单值（每次内容变化重新解析；本地编辑态缓存）
-  const [draft, setDraft] = useState<Record<string, string> | null>(null)
+  // 表单值（每次内容变化重新解析；本地编辑态缓存带内容快照——
+  // 内容外部变更（格式化/重新加载）后旧草稿自动失效，不覆盖新内容）
+  const [draft, setDraft] = useState<Record<string, { value: string; content: string }> | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [resources, setResources] = useState<{ images: string[]; audios: string[] }>({ images: [], audios: [] })
   const [picking, setPicking] = useState<string | null>(null)
@@ -67,18 +68,12 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
 
   // 表单状态：内容变化（含外部编辑/撤销）重新解析，本地草稿失效
   const formState: UnitFormState = useMemo(() => fillDefaults(parseUnitForm(tab.content)), [tab.content])
-  // 内容外部变更（格式化/重新加载/撤销）后清空草稿与错误——否则旧草稿覆盖新内容显示
-  useEffect(() => {
-    setDraft(null)
-    setErrors({})
-  }, [tab.content])
-
   /** 提交表单值到文件（实时双向同步；中文显示层新键写回中文键名） */
   const commit = (groupSection: string, field: UnitFieldDef, value: string) => {
     const err = validateFormValue(field, value)
     setErrors((prev) => ({ ...prev, [`${groupSection}.${field.key}`]: err ?? '' }))
     if (err) return // 非法值不写回（代码保持上一次合法值，表单显示红框）
-    setDraft((prev) => ({ ...(prev ?? {}), [`${groupSection}.${field.key}`]: value }))
+    setDraft((prev) => ({ ...(prev ?? {}), [`${groupSection}.${field.key}`]: { value, content: tab.content } }))
     const enToZh = tab.translationEnabled ? (k: string) => getEnToZhDict().get(k) : undefined
     updateTabContent(tab.id, applyUnitFormValue(tab.content, groupSection, field.key, value.trim(), { enToZh }))
   }
@@ -130,7 +125,8 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
                 if (!field) return null
                 const key = `${group.section}.${field.key}`
                 const err = errors[key] ?? ''
-                const draftValue = draft?.[key]
+                const draftEntry = draft?.[key]
+                const draftValue = draftEntry && draftEntry.content === tab.content ? draftEntry.value : undefined
                 const value = draftValue !== undefined ? draftValue : v.value
                 const isResourcePicker = picking === key
                 const pool = field.resourceExts?.includes('ogg') || field.resourceExts?.includes('wav') ? resources.audios : resources.images
