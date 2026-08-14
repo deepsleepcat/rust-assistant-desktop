@@ -202,14 +202,23 @@ function EditorPane({ tabId }: { tabId: string }) {
   // 大纲跳转请求：{ line, seq }，seq 递增触发 EditorMirror 定位
   const [jumpRequest, setJumpRequest] = useState<{ line: number; seq: number } | null>(null)
   // M9：质检清单「定位」按钮的外部跳转请求（store.editorJump）。
-  // 外部跳转优先于大纲跳转；EditorMirror 跳转完成后通过 onJumpDone 消费请求
-  //（置 null）——切标签重挂载/再次打开同一文件时不会重复触发陈旧跳转
+  // 外部跳转优先于大纲跳转；EditorMirror 处理完（含失败）回传来源，只有 external
+  // 来源才消费请求（置 null）并清掉本地大纲跳转——防止：① 切标签重挂载后陈旧跳转
+  // 重复触发；② 外部跳转执行后回弹到大纲位置；③ 大纲跳转误消费未执行的待跳文件
   const editorJump = useWorkspaceStore((s) => s.editorJump)
   const consumeEditorJump = useWorkspaceStore((s) => s.consumeEditorJump)
   const jumpTo = useMemo(() => {
-    if (editorJump && tab && editorJump.path === tab.path) return { line: editorJump.line, seq: editorJump.seq }
+    if (editorJump && tab && editorJump.path === tab.path) {
+      return { line: editorJump.line, seq: editorJump.seq, external: true }
+    }
     return jumpRequest
   }, [editorJump, tab, jumpRequest])
+  const handleJumpDone = (executed: { line: number; seq: number; external?: boolean }) => {
+    if (!executed.external) return
+    consumeEditorJump()
+    // 外部跳转已消费：清掉本地大纲跳转（否则 memo 回落后旧大纲请求会再跳一次）
+    setJumpRequest(null)
+  }
   const fontFamily = useWorkspaceStore((s) => s.settings.fontFamily)
   const fontSize = useWorkspaceStore((s) => s.settings.fontSize)
 
@@ -313,7 +322,7 @@ function EditorPane({ tabId }: { tabId: string }) {
           chineseMode={tab.translationEnabled}
           translationMap={tab.translationMap}
           jumpTo={jumpTo}
-          onJumpDone={consumeEditorJump}
+          onJumpDone={handleJumpDone}
         />
       </div>
       {templateName !== null && (

@@ -121,31 +121,31 @@ function capLines(lines: DiffLine[], max: number): DiffLine[] {
     ]
   }
 
-  // 改动行全保留；same/omit 行压缩到剩余预算（保留首尾，中间折叠）
-  //（此处 rest.length 必大于 budget：lines.length = addDel + rest > max 已成立）
+  // 改动行全保留；same/omit 行只保留首尾各一半预算，中间折叠为一个信息标记。
+  // 被折叠内容按「代表行数」累计：same 行 = 1 行，omit 标记按其文本中的行数计——
+  // 否则「省略 794 行」的标记被当成 1 行折叠，审批预览会低估未改动内容的规模。
+  // 标记只放一个（信息性，位置不影响「改动行全可见」的契约），输出严格 ≤ max：
+  // addDel + keepCount + 1（标记） = addDel + budget = max
   const budget = max - addDel.length
-  const half = Math.floor(budget / 2)
-  const kept = new Set([...rest.slice(0, half), ...rest.slice(rest.length - (budget - half))])
-  const out: DiffLine[] = []
-  let omitted = 0
-  for (const l of lines) {
-    if (l.type === 'add' || l.type === 'del') {
-      if (omitted > 0) {
-        out.push({ type: 'omit', text: `… 省略 ${omitted} 行未改动内容 …` })
-        omitted = 0
-      }
-      out.push(l)
-    } else if (kept.has(l)) {
-      if (omitted > 0) {
-        out.push({ type: 'omit', text: `… 省略 ${omitted} 行未改动内容 …` })
-        omitted = 0
-      }
-      out.push(l)
-    } else {
-      omitted++
-    }
+  const keepCount = Math.max(0, budget - 1) // 折叠标记占 1 行输出预算
+  const half = Math.floor(keepCount / 2)
+  const kept = new Set([...rest.slice(0, half), ...rest.slice(rest.length - (keepCount - half))])
+  const representedLines = (l: DiffLine): number => {
+    if (l.type === 'same') return 1
+    const m = /省略 (\d+)/.exec(l.text)
+    return m ? Number(m[1]) : 1
   }
-  if (omitted > 0) out.push({ type: 'omit', text: `… 省略 ${omitted} 行未改动内容 …` })
+  let omittedLines = 0
+  for (const l of rest) {
+    if (!kept.has(l)) omittedLines += representedLines(l)
+  }
+  const out: DiffLine[] = []
+  for (const l of lines) {
+    if (l.type === 'add' || l.type === 'del' || kept.has(l)) out.push(l)
+  }
+  if (omittedLines > 0) {
+    out.splice(Math.floor(out.length / 2), 0, { type: 'omit', text: `… 省略 ${omittedLines} 行未改动内容 …` })
+  }
   return out
 }
 

@@ -1331,7 +1331,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
               armGuard()
             }
             if (event.type === 'tool_end') {
-              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_end', name: event.name, ok: event.ok, summary: event.summary, createdAt: Date.now(), path: event.path, snapshotId: event.snapshotId }
+              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_end', name: event.name, ok: event.ok, summary: event.summary, createdAt: Date.now(), path: event.path, snapshotId: event.snapshotId, snapshotSkipped: event.snapshotSkipped }
               set({
                 conversations: get().conversations.map((c) =>
                   c.id === conversationId ? { ...c, toolEvents: [...(c.toolEvents ?? []), toolEvent] } : c,

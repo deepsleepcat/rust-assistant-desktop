@@ -54,15 +54,16 @@ type RootMap = Record<string, Record<string, AiHistoryEntry[]>>
 
 /**
  * 键归一化：rootPath 走 normalizePath（与全部安全边界同款：小写 + 分隔符统一）；
- * relPath 统一正斜杠并剥掉 ./ 前缀——AI 可能用 units/a.txt / units\a.txt / ./units/a.txt
- * 多种写法，不归一化会导致同一文件的历史链分裂（撤销「版本不存在」）。
+ * relPath 统一正斜杠并剥掉前导斜杠与 ./ 前缀——AI 可能用 units/a.txt / units\a.txt /
+ * ./units/a.txt / /units/a.txt 多种写法（resolveInside 同样剥前导斜杠），不归一化会
+ * 导致同一文件的历史链分裂（撤销「版本不存在」）。
  */
 function normalizeRootKey(rootPath: string): string {
   return normalizePath(rootPath)
 }
 
 function normalizeRelKey(relPath: string): string {
-  return relPath.replace(/\\/g, '/').replace(/^\.\//, '')
+  return relPath.replace(/\\/g, '/').replace(/^\/+/, '').replace(/^\.\//, '')
 }
 
 export function createAiHistory(filePath: string, limits?: Partial<AiHistoryLimits>): AiHistory {

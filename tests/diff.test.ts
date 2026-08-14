@@ -116,6 +116,39 @@ describe('diffLines', () => {
     // 500 行全部替换 = 500 del + 500 add；输出折叠但统计完整
     expect(summary).toEqual({ added: 500, deleted: 500 })
   })
+
+  it('分散改动 + 大量上下文：输出严格 ≤ 上限，且改动行一个不丢', () => {
+    // 1000 行文件 50 处分散改动：addDel=100 < 400，上下文行会把输出撑超 400
+    const oldLines = Array.from({ length: 1000 }, (_, i) => `line${i}`)
+    const newLines = oldLines.map((l, i) => (i % 20 === 0 ? `${l}-v2` : l))
+    const diff = diffLines(oldLines.join('\n'), newLines.join('\n'))
+    expect(diff.length).toBeLessThanOrEqual(400)
+    expect(diff.filter((l) => l.type === 'del').length).toBe(50)
+    expect(diff.filter((l) => l.type === 'add').length).toBe(50)
+  })
+
+  it('小预算下的分散改动：输出严格 ≤ 上限', () => {
+    const oldLines = Array.from({ length: 60 }, (_, i) => `line${i}`)
+    const newLines = oldLines.map((l, i) => (i % 6 === 0 ? `${l}-v2` : l))
+    const diff = diffLines(oldLines.join('\n'), newLines.join('\n'), { maxLines: 40 })
+    expect(diff.length).toBeLessThanOrEqual(40)
+    expect(diff.filter((l) => l.type === 'add').length).toBe(10)
+  })
+
+  it('折叠计数按代表行数累计（不把 omit 标记当 1 行）', () => {
+    // 大量未改动内容 + 少量改动：折叠标记的数字应接近真实隐藏行数
+    const oldLines = Array.from({ length: 800 }, (_, i) => `line${i}`)
+    const newLines = oldLines.map((l, i) => (i === 400 ? `${l}-v2` : l))
+    const diff = diffLines(oldLines.join('\n'), newLines.join('\n'), { maxLines: 40 })
+    expect(diff.length).toBeLessThanOrEqual(40)
+    const omits = diff.filter((l) => l.type === 'omit').map((l) => l.text)
+    // 隐藏行数合计 = 800 行 - 改动附近保留的上下文 - 改动行本身
+    const total = omits.reduce((sum, t) => {
+      const m = /省略 (\d+)/.exec(t)
+      return sum + (m ? Number(m[1]) : 0)
+    }, 0)
+    expect(total).toBeGreaterThan(700) // 800 行只保留 ±3 上下文与改动行，其余都应被计入
+  })
 })
 
 describe('summarizeDiff', () => {

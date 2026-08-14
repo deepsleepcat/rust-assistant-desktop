@@ -205,6 +205,10 @@ export async function streamAgent(
 
     const agent = new Agent({
       streamFn: (m, ctx, opts) => models.streamSimple(m, ctx, { ...opts, signal: abortController.signal }),
+      // 写文件审批必须逐个展示、逐个应答：并行执行会让同一批多个 writeFile 的
+      // 审批请求互相覆盖（单槽 pendingApproval），先到者只能等 120s 超时被拒。
+      // 串行执行 = 每次只发起一个审批，与审批弹窗的单槽模型天然匹配
+      toolExecution: 'sequential',
       initialState: {
         systemPrompt: params.systemPrompt,
         model,

@@ -31,10 +31,10 @@ interface EditorMirrorProps {
   chineseMode?: boolean
   /** 翻译追踪表：补全提交的中文登记进去，保存时才能回译成英文 */
   translationMap?: Map<string, string> | null
-  /** 大纲跳转请求：line 为 1 基行号；seq 递增保证同节重复点击也触发 */
-  jumpTo?: { line: number; seq: number } | null
-  /** 跳转已执行（外部跳转请求消费用，防止陈旧跳转重复触发） */
-  onJumpDone?: () => void
+  /** 大纲/外部跳转请求：line 为 1 基行号；seq 递增保证同节重复点击也触发；external 标记外部（质检「定位」）来源 */
+  jumpTo?: { line: number; seq: number; external?: boolean } | null
+  /** 跳转已处理（含行越界/视图未就绪的失效场景），回传实际执行/失效的请求——外部跳转据此消费，防止陈旧请求重复触发 */
+  onJumpDone?: (jump: { line: number; seq: number; external?: boolean }) => void
 }
 
 const editorTheme = EditorView.theme({
@@ -210,21 +210,29 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     }
   }, [value])
 
-  // 大纲/外部跳转：把光标定位到目标行首并滚动到视口中央
+  // 大纲/外部跳转：把光标定位到目标行首并滚动到视口中央。
+  // 处理完成（含失败）都回调 onJumpDone——外部跳转据此消费请求；行越界/视图未就绪
+  // 时也必须消费，否则请求残留会在之后每次重挂载时重试（行号一旦合法就意外跳转）
   useEffect(() => {
     if (!jumpTo) return
     const view = viewRef.current
-    if (!view) return
+    if (!view) {
+      onJumpDone?.(jumpTo)
+      return
+    }
     const doc = view.state.doc
-    if (jumpTo.line < 1 || jumpTo.line > doc.lines) return
+    if (jumpTo.line < 1 || jumpTo.line > doc.lines) {
+      onJumpDone?.(jumpTo)
+      return
+    }
     const pos = doc.line(jumpTo.line).from
     view.dispatch({
       selection: { anchor: pos, head: pos },
       effects: EditorView.scrollIntoView(pos, { y: 'center' }),
     })
     view.focus()
-    onJumpDone?.()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onJumpDone 是稳定的 store action 引用；跳转只应响应 jumpTo 变化
+    onJumpDone?.(jumpTo)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onJumpDone 是稳定的 store action/内联回调；跳转只应响应 jumpTo 变化
   }, [jumpTo])
 
   const monoFont = fontFamily === 'mono' ? 'var(--font-mono)' : fontFamily === 'kaiti' ? 'KaiTi, "楷体", serif' : 'var(--font-mono)'
