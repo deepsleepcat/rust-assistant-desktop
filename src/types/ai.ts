@@ -63,8 +63,8 @@ export type AiStreamEvent =
   | { type: 'done'; fullText: string; requestId?: string }
   | { type: 'error'; message: string; requestId?: string }
   | { type: 'tool_start'; name: string; args: Record<string, unknown> }
-  | { type: 'tool_end'; name: string; ok: boolean; summary: string; path?: string; snapshotId?: string }
-  | { type: 'approval_request'; id: string; tool: string; path: string; contentPreview: string; contentLength?: number; diff?: DiffLine[] | null; oldExists?: boolean }
+  | { type: 'tool_end'; name: string; ok: boolean; summary: string; path?: string; snapshotId?: string; snapshotSkipped?: boolean }
+  | { type: 'approval_request'; id: string; tool: string; path: string; contentPreview: string; contentLength?: number; diff?: DiffLine[] | null; diffSummary?: { added: number; deleted: number } | null; oldExists?: boolean; newFile?: boolean }
   | { type: 'approval_expired'; id: string }
 
 /** 审批响应（界面 → 主进程） */

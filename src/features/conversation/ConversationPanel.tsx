@@ -349,6 +349,11 @@ function ToolCard({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
                 <AppIcon name="undo" size={11} /> 撤销此修改
               </button>
             )}
+            {tool.path && tool.snapshotSkipped && (
+              <span className="tool-snapshot-skipped" title="文件过大等原因未存档，本次修改不可撤销">
+                ⚠ 本次修改不可撤销
+              </span>
+            )}
             {tool.path && (
               <button
                 className="btn"
@@ -388,11 +393,11 @@ function LintBox({ tool }: { tool: ToolEvent }) {
           {items.map((item, i) => (
             <li key={i} className={`lint-item lint-${item.severity}`}>
               <div className="lint-msg">
-                <span className="lint-line">第 {item.line} 行</span>
+                {item.line > 0 && <span className="lint-line">第 {item.line} 行</span>}
                 {item.message}
               </div>
-              <div className="lint-suggestion">建议：{item.suggestion}</div>
-              {tool.path && (
+              {item.suggestion && <div className="lint-suggestion">建议：{item.suggestion}</div>}
+              {tool.path && item.line > 0 && (
                 <button
                   className="btn"
                   style={{ padding: '1px 8px', fontSize: 11, alignSelf: 'flex-start' }}

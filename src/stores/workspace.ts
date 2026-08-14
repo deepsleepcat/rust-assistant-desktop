@@ -71,7 +71,19 @@ interface WorkspaceStoreState {
   /** 当前正在流式回复的对话（null 表示没有） */
   aiStreamingConversationId: string | null
   /** 待审批的写文件请求 */
-  pendingApproval: { id: string; path: string; contentPreview: string; contentLength?: number; diff?: DiffLine[] | null; oldExists?: boolean } | null
+  pendingApproval: {
+    id: string
+    path: string
+    contentPreview: string
+    contentLength?: number
+    /** 行级 diff（null = 无法计算，退回纯预览） */
+    diff?: DiffLine[] | null
+    /** 完整增删统计（截断前计算：即使 diff 因行数上限折叠，数字也反映全部改动） */
+    diffSummary?: { added: number; deleted: number } | null
+    oldExists?: boolean
+    /** 目标文件当前不存在（本次写入是新建） */
+    newFile?: boolean
+  } | null
   /** 「定位到文件行」请求（质检清单跳转用）：{ path, line, seq }，seq 递增保证重复跳转同位置也生效 */
   editorJump: { path: string; line: number; seq: number } | null
   /** M5：模组工具弹窗（null 表示关闭） */
@@ -131,6 +143,8 @@ interface WorkspaceStoreActions {
   setEditorPos(pos: EditorPosition): void
   /** 打开文件并跳到指定行（质检清单「定位」按钮用） */
   jumpToFileLine(path: string, line: number): void
+  /** 消费跳转请求（EditorPane 跳转成功后调用，防止切标签重挂载后陈旧跳转再次触发） */
+  consumeEditorJump(): void
   /** 恢复到指定历史版本（快照 id；打开标签有未保存修改时先确认） */
   aiRestoreFileVersion(relPath: string, snapshotId: string): Promise<void>
   setSettingsOpen(open: boolean): void
@@ -1112,8 +1126,13 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         set({ editorJump: { path, line, seq: (prev?.seq ?? 0) + 1 } })
       },
 
+      consumeEditorJump() {
+        if (get().editorJump) set({ editorJump: null })
+      },
+
       /** 恢复到指定历史版本（任务 2）：主进程写回磁盘 → 刷新树 → 重读打开中的标签页。
-       * 打开标签有未保存修改时先确认（恢复会覆盖这些修改），用户拒绝则不动作。 */
+       * 打开标签有未保存修改时先确认（恢复会覆盖这些修改），用户拒绝则不动作。
+       * 注意：该版本若为「文件创建前」的快照，恢复 = 删除文件（主进程删除后返回 deleted）。 */
       async aiRestoreFileVersion(relPath: string, snapshotId: string) {
         const s = get()
         const project = s.projects.find((p) => p.id === s.activeProjectId)
@@ -1129,7 +1148,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             await get().refreshTree()
             const tab = get().openTabs.find((t) => t.path === relPath)
             if (tab) await get().reloadTab(tab.id)
-            get().notify('已恢复到所选历史版本')
+            get().notify(res.deleted ? '已恢复到所选历史版本（该版本为文件创建前，文件已删除）' : '已恢复到所选历史版本')
             return true
           } catch (err) {
             get().notify(`恢复失败：${err instanceof Error ? err.message : String(err)}`)
@@ -1140,7 +1159,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         if (tab?.dirty) {
           s.requestConfirm({
             title: '恢复历史版本',
-            message: `「${tab.name}」有未保存的修改，恢复历史版本将覆盖这些修改。`,
+            message: `恢复历史版本会用所选版本替换「${tab.name}」的当前内容；若该版本为文件创建前，文件将被删除。当前未保存的修改会丢失。`,
             danger: true,
             confirmText: '覆盖并恢复',
             cancelText: '取消',
@@ -1345,7 +1364,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
                   contentPreview: event.contentPreview,
                   contentLength: event.contentLength,
                   diff: event.diff ?? null,
+                  diffSummary: event.diffSummary ?? null,
                   oldExists: event.oldExists ?? false,
+                  newFile: event.newFile ?? false,
                 },
               })
               armGuard()

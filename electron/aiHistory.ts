@@ -11,6 +11,7 @@
  */
 import fs from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
+import { normalizePath } from './paths'
 import type { AiHistoryMeta } from '../src/types/ai'
 
 export interface AiHistoryEntry {
@@ -50,6 +51,19 @@ export interface AiHistory {
 }
 
 type RootMap = Record<string, Record<string, AiHistoryEntry[]>>
+
+/**
+ * 键归一化：rootPath 走 normalizePath（与全部安全边界同款：小写 + 分隔符统一）；
+ * relPath 统一正斜杠并剥掉 ./ 前缀——AI 可能用 units/a.txt / units\a.txt / ./units/a.txt
+ * 多种写法，不归一化会导致同一文件的历史链分裂（撤销「版本不存在」）。
+ */
+function normalizeRootKey(rootPath: string): string {
+  return normalizePath(rootPath)
+}
+
+function normalizeRelKey(relPath: string): string {
+  return relPath.replace(/\\/g, '/').replace(/^\.\//, '')
+}
 
 export function createAiHistory(filePath: string, limits?: Partial<AiHistoryLimits>): AiHistory {
   const lim: AiHistoryLimits = { ...DEFAULT_HISTORY_LIMITS, ...limits }
@@ -153,8 +167,8 @@ export function createAiHistory(filePath: string, limits?: Partial<AiHistoryLimi
         content,
         size: content === null ? 0 : Buffer.byteLength(content, 'utf8'),
       }
-      const rootMap = (entries[rootPath] ??= {})
-      const list = (rootMap[relPath] ??= [])
+      const rootMap = (entries[normalizeRootKey(rootPath)] ??= {})
+      const list = (rootMap[normalizeRelKey(relPath)] ??= [])
       list.push(entry)
       if (list.length > lim.perFile) list.splice(0, list.length - lim.perFile)
       evictIfNeeded()
@@ -163,12 +177,12 @@ export function createAiHistory(filePath: string, limits?: Partial<AiHistoryLimi
     },
     async listHistory(rootPath, relPath) {
       if (!loaded && loading) await loading
-      const list = entries[rootPath]?.[relPath] ?? []
+      const list = entries[normalizeRootKey(rootPath)]?.[normalizeRelKey(relPath)] ?? []
       return [...list].reverse().map(({ id, at, relPath: rel, size }) => ({ id, at, relPath: rel, size }))
     },
     async getEntry(rootPath, relPath, id) {
       if (!loaded && loading) await loading
-      return entries[rootPath]?.[relPath]?.find((e) => e.id === id)
+      return entries[normalizeRootKey(rootPath)]?.[normalizeRelKey(relPath)]?.find((e) => e.id === id)
     },
     async flush(): Promise<void> {
       if (timer) {

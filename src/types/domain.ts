@@ -102,6 +102,8 @@ export interface ToolEvent {
   path?: string
   /** writeFile 写盘前快照 id（撤销入口用；新文件/快照超限时不存在） */
   snapshotId?: string
+  /** 快照被跳过（文件过大等）：本次写入不可撤销 */
+  snapshotSkipped?: boolean
   /** 写盘后自动质检结果（仅 writeFile 成功且发现问题时填充） */
   lint?: import('./ai').AiLintItem[]
 }

@@ -936,7 +936,7 @@ function registerIpc(): void {
     if (entry.content === null) {
       // 快照时文件不存在（AI 新建）：恢复 = 删除该文件
       await fs.rm(abs, { force: true })
-      return { ok: true }
+      return { ok: true, deleted: true }
     }
     // 原子写回（与 fs:writeFile 同一模式：临时文件 + rename，不破坏原文件）
     const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.ra-h-${randomUUID()}.tmp`)

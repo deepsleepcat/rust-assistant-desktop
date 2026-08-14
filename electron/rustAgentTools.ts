@@ -38,16 +38,28 @@ export function resolveAgentPath(rel: string): Promise<string> {
 }
 
 /**
- * writeFile 写盘前快照的工具调用 id 关联表（任务 2 撤销入口）：
- * 快照在工具 execute 内记录（拿到 toolCallId），审批/工具结束事件在 ai.ts 消费
- * （tool_execution_end 携带同一 toolCallId）。读取后即删除，防止表无限膨胀。
+ * writeFile 写盘前快照的工具调用 id 关联表（撤销入口）：
+ * 快照在工具 execute 内记录（拿到 toolCallId），工具结束事件在 ai.ts 消费
+ * （tool_execution_end 携带同一 toolCallId；工具可能并行执行，必须按 id 关联）。
+ * 读取后即删除；流中止时由 clearSnapshotInfo 清空，防止表无限膨胀。
+ * skipped=true：文件过大/读失败，本次写入没有快照（界面提示不可撤销）。
  */
-const snapshotIds = new Map<string, string>()
+const snapshotInfo = new Map<string, { id?: string; skipped: boolean }>()
 
-export function takeSnapshotId(toolCallId: string): string | null {
-  const id = snapshotIds.get(toolCallId) ?? null
-  snapshotIds.delete(toolCallId)
-  return id
+export interface SnapshotInfo {
+  id?: string
+  skipped: boolean
+}
+
+export function takeSnapshotInfo(toolCallId: string): SnapshotInfo | null {
+  const info = snapshotInfo.get(toolCallId) ?? null
+  snapshotInfo.delete(toolCallId)
+  return info
+}
+
+/** 流结束（done/error/abort）时清空未消费的快照关联，防止表泄漏 */
+export function clearSnapshotInfo(): void {
+  snapshotInfo.clear()
 }
 
 export function createListProjectTool(): AgentTool {
@@ -172,22 +184,28 @@ export function createWriteFileTool(): AgentTool {
       }
       const existed = await fs.access(file).then(() => true).catch(() => false)
       // 写盘前快照：旧内容（撤销 = 恢复它）；文件不存在也记一条 null 快照（撤销 = 删除新建文件）。
-      // 快照失败（读不到/超限）不阻断写入，只是本次没有撤销入口。
-      let snapshotId: string | null = null
+      // 快照失败（读不到/超限）不阻断写入，但记录 skipped 让界面提示「本次修改不可撤销」。
+      let snapshot: SnapshotInfo
       try {
         if (existed) {
-          const st = await fs.stat(file)
-          if (st.size <= DEFAULT_HISTORY_LIMITS.maxEntryBytes) {
-            snapshotId = await getHistory().addSnapshot(getAgentRoot(), p.path, await fs.readFile(file, 'utf8'))
+          const st = await fs.stat(file).catch(() => null)
+          if (st && st.size <= DEFAULT_HISTORY_LIMITS.maxEntryBytes) {
+            const id = await getHistory().addSnapshot(getAgentRoot(), p.path, await fs.readFile(file, 'utf8'))
+            if (id) snapshot = { id, skipped: false }
+            else snapshot = { skipped: true } // 内容超限（与 stat 上限一致，理论上不会发生）
+          } else {
+            snapshot = { skipped: true } // 文件过大：快照库有单条上限，跳过
           }
         } else {
-          snapshotId = await getHistory().addSnapshot(getAgentRoot(), p.path, null)
+          const id = await getHistory().addSnapshot(getAgentRoot(), p.path, null)
+          if (id) snapshot = { id, skipped: false }
+          else snapshot = { skipped: true }
         }
       } catch (err) {
-        console.warn('[writeFile] 快照失败，本次写入无撤销入口:', err)
-        snapshotId = null
+        console.warn('[writeFile] 快照失败，本次写入不可撤销:', err)
+        snapshot = { skipped: true }
       }
-      if (snapshotId) snapshotIds.set(toolCallId, snapshotId)
+      snapshotInfo.set(toolCallId, snapshot)
       await fs.mkdir(path.dirname(file), { recursive: true })
       const tmp = path.join(path.dirname(file), `.${path.basename(file)}.ai-${randomUUID()}.tmp`)
       try {

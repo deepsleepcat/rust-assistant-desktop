@@ -99,24 +99,58 @@ function withContext(lines: DiffLine[], context: number): DiffLine[] {
   return out
 }
 
-/** 输出行数上限：保留首尾，中间折叠（省略标记占 1 行，保证总行数 ≤ max） */
+/**
+ * 输出行数上限：改动行（add/del）是审批依据，**绝不截断**——超预算时只压缩
+ * 未改动/上下文行；改动行本身超预算时保留首尾并在省略标记里写明被隐藏的改动数
+ * （审批是安全边界，静默截断会让用户批准的依据不完整）。
+ */
 function capLines(lines: DiffLine[], max: number): DiffLine[] {
   if (lines.length <= max) return lines
-  const omitted = lines.length - max + 1
-  const half = Math.floor((max - 1) / 2)
-  const head = lines.slice(0, half)
-  const tail = lines.slice(lines.length - (max - 1 - half))
-  return [...head, { type: 'omit', text: `… 中间省略 ${omitted} 行 …` }, ...tail]
+  const addDel: DiffLine[] = []
+  const rest: DiffLine[] = []
+  for (const l of lines) (l.type === 'add' || l.type === 'del' ? addDel : rest).push(l)
+
+  if (addDel.length >= max) {
+    // 改动行本身就超预算：保留首尾，中间明确标注被隐藏的改动行数
+    const hidden = addDel.length - (max - 1)
+    const half = Math.floor((max - 1) / 2)
+    return [
+      ...addDel.slice(0, half),
+      { type: 'omit', text: `… 另有 ${hidden} 处改动未显示（全部改动共 ${addDel.length} 行） …` },
+      ...addDel.slice(addDel.length - (max - 1 - half)),
+    ]
+  }
+
+  // 改动行全保留；same/omit 行压缩到剩余预算（保留首尾，中间折叠）
+  //（此处 rest.length 必大于 budget：lines.length = addDel + rest > max 已成立）
+  const budget = max - addDel.length
+  const half = Math.floor(budget / 2)
+  const kept = new Set([...rest.slice(0, half), ...rest.slice(rest.length - (budget - half))])
+  const out: DiffLine[] = []
+  let omitted = 0
+  for (const l of lines) {
+    if (l.type === 'add' || l.type === 'del') {
+      if (omitted > 0) {
+        out.push({ type: 'omit', text: `… 省略 ${omitted} 行未改动内容 …` })
+        omitted = 0
+      }
+      out.push(l)
+    } else if (kept.has(l)) {
+      if (omitted > 0) {
+        out.push({ type: 'omit', text: `… 省略 ${omitted} 行未改动内容 …` })
+        omitted = 0
+      }
+      out.push(l)
+    } else {
+      omitted++
+    }
+  }
+  if (omitted > 0) out.push({ type: 'omit', text: `… 省略 ${omitted} 行未改动内容 …` })
+  return out
 }
 
-/**
- * 行级 diff：oldText → newText。
- * 返回的 same 行已按上下文裁剪；add/del 为实际改动行。
- * 内容完全一致时返回空数组（调用方据此显示「无改动」）。
- */
-export function diffLines(oldText: string, newText: string, opts?: DiffOptions): DiffLine[] {
-  const context = opts?.context ?? DEFAULT_CONTEXT
-  const maxLines = opts?.maxLines ?? DEFAULT_MAX_LINES
+/** 完整管线（不截断）：拆分 → 裁剪公共前后缀 → LCS → 组装 → 上下文折叠 */
+function diffUncapped(oldText: string, newText: string, context: number): DiffLine[] {
   const oldLines = splitLines(oldText)
   const newLines = splitLines(newText)
   if (oldLines.length === newLines.length && oldLines.every((l, i) => l === newLines[i])) {
@@ -159,7 +193,33 @@ export function diffLines(oldText: string, newText: string, opts?: DiffOptions):
   }
   for (const l of oldLines.slice(endOld)) lines.push({ type: 'same', text: l })
 
-  return capLines(withContext(lines, context), maxLines)
+  return withContext(lines, context)
+}
+
+/**
+ * 行级 diff：oldText → newText。
+ * 返回的 same 行已按上下文裁剪；add/del 为实际改动行（超上限时也只压缩未改动行）。
+ * 内容完全一致时返回空数组（调用方据此显示「无改动」）。
+ */
+export function diffLines(oldText: string, newText: string, opts?: DiffOptions): DiffLine[] {
+  const context = opts?.context ?? DEFAULT_CONTEXT
+  const maxLines = opts?.maxLines ?? DEFAULT_MAX_LINES
+  return capLines(diffUncapped(oldText, newText, context), maxLines)
+}
+
+/**
+ * 行级 diff + 完整统计：统计在截断前计算——输出可能因行数上限折叠，
+ * 但「新增/删除 X 行」的数字始终反映全部改动（审批弹窗的批准依据不能失真）。
+ */
+export function diffLinesWithStats(
+  oldText: string,
+  newText: string,
+  opts?: DiffOptions,
+): { lines: DiffLine[]; summary: DiffSummary } {
+  const context = opts?.context ?? DEFAULT_CONTEXT
+  const maxLines = opts?.maxLines ?? DEFAULT_MAX_LINES
+  const uncapped = diffUncapped(oldText, newText, context)
+  return { lines: capLines(uncapped, maxLines), summary: summarizeDiff(uncapped) }
 }
 
 /** 统计新增/删除行数（omit/same 不计） */

@@ -1,24 +1,28 @@
 /**
- * AI 写后质检（任务 3）纯函数测试：偏移量→行号、诊断→可操作清单、建议映射。
+ * AI 写后质检（任务 3）纯函数测试：行起始表、偏移量→行号、诊断→可操作清单、
+ * 建议映射、条目上限折叠。
  */
 import { describe, expect, it } from 'vitest'
-import { lineNumberAt, suggestionFor, toLintItems } from '../src/features/ai/aiQualityCheck'
+import { lineNumberAt, lineStarts, suggestionFor, toLintItems } from '../src/features/ai/aiQualityCheck'
 
-describe('lineNumberAt', () => {
-  it('偏移量 → 行号（从 1 起）', () => {
+describe('lineStarts / lineNumberAt', () => {
+  it('构建每行起始偏移表，行号从 1 起', () => {
     const content = 'a\nb\nc'
-    expect(lineNumberAt(content, 0)).toBe(1)
-    expect(lineNumberAt(content, 2)).toBe(2)
-    expect(lineNumberAt(content, 4)).toBe(3)
+    const starts = lineStarts(content)
+    expect(starts).toEqual([0, 2, 4])
+    expect(lineNumberAt(starts, 0)).toBe(1)
+    expect(lineNumberAt(starts, 2)).toBe(2)
+    expect(lineNumberAt(starts, 4)).toBe(3)
   })
 
   it('超过内容的偏移量不越界', () => {
-    expect(lineNumberAt('ab', 999)).toBe(1)
+    expect(lineNumberAt(lineStarts('ab'), 999)).toBe(1)
   })
 
   it('兼容 \\r\\n（\\r 不计行）', () => {
-    const content = 'a\r\nb'
-    expect(lineNumberAt(content, 3)).toBe(2)
+    const starts = lineStarts('a\r\nb')
+    expect(starts).toEqual([0, 3])
+    expect(lineNumberAt(starts, 3)).toBe(2)
   })
 })
 
@@ -49,5 +53,19 @@ describe('toLintItems', () => {
 
   it('空诊断 → 空清单', () => {
     expect(toLintItems('a\nb', [])).toEqual([])
+  })
+
+  it('超过 200 条时折叠为汇总条目（line=0，无建议）', () => {
+    const diagnostics = Array.from({ length: 205 }, (_, i) => ({
+      from: 0,
+      to: 1,
+      message: `问题 ${i}`,
+      severity: 'warning' as const,
+    }))
+    const items = toLintItems('a', diagnostics)
+    expect(items.length).toBe(201)
+    expect(items[200].line).toBe(0)
+    expect(items[200].message).toContain('其余 5 条问题未列出')
+    expect(items[200].suggestion).toBe('')
   })
 })

@@ -105,7 +105,16 @@ function ApprovalDialogInner({
   req,
   respondApproval,
 }: {
-  req: { id: string; path: string; contentPreview: string; contentLength?: number; diff?: DiffLine[] | null; oldExists?: boolean }
+  req: {
+    id: string
+    path: string
+    contentPreview: string
+    contentLength?: number
+    diff?: DiffLine[] | null
+    diffSummary?: { added: number; deleted: number } | null
+    oldExists?: boolean
+    newFile?: boolean
+  }
   respondApproval: (approved: boolean) => Promise<void>
 }) {
   // diff 不长（≤80 行）默认展开，超长默认收起
@@ -121,16 +130,19 @@ function ApprovalDialogInner({
   }, [])
 
   const diff: DiffLine[] | null = req.diff ?? null
-  const added = diff?.filter((l) => l.type === 'add').length ?? 0
-  const deleted = diff?.filter((l) => l.type === 'del').length ?? 0
-  const isNewFile = diff !== null && !req.oldExists && deleted === 0
+  // 完整统计优先用主进程截断前算好的数字（diff 因行数上限折叠时数组计数会低估）
+  const added = req.diffSummary?.added ?? diff?.filter((l) => l.type === 'add').length ?? 0
+  const deleted = req.diffSummary?.deleted ?? diff?.filter((l) => l.type === 'del').length ?? 0
 
   return (
     <div className="modal-overlay">
       <div ref={cardRef} tabIndex={-1} style={{ outline: 'none' }} className="modal-card confirm-card" role="dialog" aria-modal="true" aria-label="AI 请求修改文件">
         <div className="modal-header">AI 请求修改文件</div>
         <div className="modal-body">
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>文件：{req.path}</p>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>
+            {req.newFile && <span className="diff-badge" style={{ marginRight: 8 }}>新文件</span>}
+            文件：{req.path}
+          </p>
           {diff === null ? (
             // 无法计算 diff（文件过大/读取失败）：退回纯内容预览
             <>
@@ -148,7 +160,6 @@ function ApprovalDialogInner({
           ) : (
             <>
               <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                {isNewFile && <span className="diff-badge">新文件</span>}
                 <span>
                   新增 {added} 行 · 删除 {deleted} 行
                   {typeof req.contentLength === 'number' && ` · 完整内容约 ${req.contentLength} 字符`}

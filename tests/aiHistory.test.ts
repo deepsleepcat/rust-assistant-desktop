@@ -151,9 +151,10 @@ describe('electron/aiHistory', () => {
       const id = await history.addSnapshot('/proj', 'a.txt', 'ok')
       expect(id).toBeTruthy()
       await history.flush()
-      // 落盘后恢复为合法 JSON
+      // 落盘后恢复为合法 JSON（rootPath 键已归一化：win32 小写 + resolve）
       const raw = JSON.parse(readFileSync(badFile, 'utf8')) as { entries: Record<string, Record<string, unknown[]>> }
-      expect(raw.entries['/proj']['a.txt'].length).toBe(1)
+      const rootKey = Object.keys(raw.entries)[0]
+      expect(raw.entries[rootKey]['a.txt'].length).toBe(1)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

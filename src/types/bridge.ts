@@ -119,8 +119,8 @@ export interface BridgeApi {
     streamAbort(): Promise<{ aborted: boolean }>
     /** 某文件的 AI 修改历史（元数据：id/时间/大小；内容在恢复时由主进程读取） */
     historyList(rootPath: string, relPath: string): Promise<AiHistoryMeta[]>
-    /** 恢复到指定历史版本（写回磁盘；快照为「新建」时删除文件） */
-    historyRestore(rootPath: string, relPath: string, snapshotId: string): Promise<{ ok: boolean; message?: string }>
+    /** 恢复到指定历史版本（写回磁盘；快照为「新建」时删除文件并返回 deleted） */
+    historyRestore(rootPath: string, relPath: string, snapshotId: string): Promise<{ ok: boolean; message?: string; deleted?: boolean }>
     onAiEvent(callback: (event: AiStreamEvent) => void): () => void
   }
 }

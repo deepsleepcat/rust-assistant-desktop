@@ -4,7 +4,7 @@
  * - 无标签时显示欢迎页（最近项目 + 快捷操作）
  * - 有标签时显示简易代码编辑区（行号 + 文本编辑 + 保存）
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { TurretEditorModal } from '../modTools/TurretEditorModal'
 import { formatRelativeTime } from '../../utils/conversation'
@@ -201,15 +201,15 @@ function EditorPane({ tabId }: { tabId: string }) {
   const [reloadConfirm, setReloadConfirm] = useState(false)
   // 大纲跳转请求：{ line, seq }，seq 递增触发 EditorMirror 定位
   const [jumpRequest, setJumpRequest] = useState<{ line: number; seq: number } | null>(null)
-  // M9：质检清单「定位」按钮的外部跳转请求（store.editorJump）；seq 去重防重复触发
+  // M9：质检清单「定位」按钮的外部跳转请求（store.editorJump）。
+  // 外部跳转优先于大纲跳转；EditorMirror 跳转完成后通过 onJumpDone 消费请求
+  //（置 null）——切标签重挂载/再次打开同一文件时不会重复触发陈旧跳转
   const editorJump = useWorkspaceStore((s) => s.editorJump)
-  const lastJumpSeqRef = useRef(0)
-  useEffect(() => {
-    if (editorJump && tab && editorJump.path === tab.path && editorJump.seq !== lastJumpSeqRef.current) {
-      lastJumpSeqRef.current = editorJump.seq
-      setJumpRequest({ line: editorJump.line, seq: editorJump.seq })
-    }
-  }, [editorJump, tab])
+  const consumeEditorJump = useWorkspaceStore((s) => s.consumeEditorJump)
+  const jumpTo = useMemo(() => {
+    if (editorJump && tab && editorJump.path === tab.path) return { line: editorJump.line, seq: editorJump.seq }
+    return jumpRequest
+  }, [editorJump, tab, jumpRequest])
   const fontFamily = useWorkspaceStore((s) => s.settings.fontFamily)
   const fontSize = useWorkspaceStore((s) => s.settings.fontSize)
 
@@ -312,7 +312,8 @@ function EditorPane({ tabId }: { tabId: string }) {
           fontSize={fontSize}
           chineseMode={tab.translationEnabled}
           translationMap={tab.translationMap}
-          jumpTo={jumpRequest}
+          jumpTo={jumpTo}
+          onJumpDone={consumeEditorJump}
         />
       </div>
       {templateName !== null && (

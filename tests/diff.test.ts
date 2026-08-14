@@ -2,7 +2,7 @@
  * 行级 diff 测试：LCS 正确性 / 上下文裁剪 / omit 折叠 / 输出上限 / 统计。
  */
 import { describe, expect, it } from 'vitest'
-import { diffLines, splitLines, summarizeDiff } from '../electron/diff'
+import { diffLines, diffLinesWithStats, splitLines, summarizeDiff } from '../electron/diff'
 
 describe('splitLines', () => {
   it('兼容 \\n 与 \\r\\n，结尾换行不产生空尾行', () => {
@@ -96,6 +96,25 @@ describe('diffLines', () => {
     const diff = diffLines(oldText, newText, { maxLines: 40 })
     expect(diff.length).toBeLessThanOrEqual(40)
     expect(diff.some((l) => l.type === 'omit')).toBe(true)
+  })
+
+  it('改动行超预算：保留首尾改动 + 明确标注被隐藏的改动数，绝不静默截断', () => {
+    const oldText = Array.from({ length: 500 }, (_, i) => `line${i}`).join('\n')
+    const newText = Array.from({ length: 500 }, (_, i) => `line${i}-v2`).join('\n')
+    const diff = diffLines(oldText, newText, { maxLines: 40 })
+    expect(diff.length).toBeLessThanOrEqual(40)
+    const omit = diff.find((l) => l.type === 'omit')
+    expect(omit).toBeDefined()
+    expect(omit!.text).toMatch(/另有 \d+ 处改动未显示（全部改动共 1000 行）/)
+  })
+
+  it('diffLinesWithStats：统计在截断前计算，数字始终反映全部改动', () => {
+    const oldText = Array.from({ length: 500 }, (_, i) => `line${i}`).join('\n')
+    const newText = Array.from({ length: 500 }, (_, i) => `line${i}-v2`).join('\n')
+    const { lines, summary } = diffLinesWithStats(oldText, newText, { maxLines: 40 })
+    expect(lines.length).toBeLessThanOrEqual(40)
+    // 500 行全部替换 = 500 del + 500 add；输出折叠但统计完整
+    expect(summary).toEqual({ added: 500, deleted: 500 })
   })
 })
 

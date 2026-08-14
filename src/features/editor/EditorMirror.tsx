@@ -33,6 +33,8 @@ interface EditorMirrorProps {
   translationMap?: Map<string, string> | null
   /** 大纲跳转请求：line 为 1 基行号；seq 递增保证同节重复点击也触发 */
   jumpTo?: { line: number; seq: number } | null
+  /** 跳转已执行（外部跳转请求消费用，防止陈旧跳转重复触发） */
+  onJumpDone?: () => void
 }
 
 const editorTheme = EditorView.theme({
@@ -113,7 +115,7 @@ const editorTheme = EditorView.theme({
   },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -208,7 +210,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     }
   }, [value])
 
-  // 大纲跳转：把光标定位到目标行首并滚动到视口中央
+  // 大纲/外部跳转：把光标定位到目标行首并滚动到视口中央
   useEffect(() => {
     if (!jumpTo) return
     const view = viewRef.current
@@ -221,6 +223,8 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
       effects: EditorView.scrollIntoView(pos, { y: 'center' }),
     })
     view.focus()
+    onJumpDone?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onJumpDone 是稳定的 store action 引用；跳转只应响应 jumpTo 变化
   }, [jumpTo])
 
   const monoFont = fontFamily === 'mono' ? 'var(--font-mono)' : fontFamily === 'kaiti' ? 'KaiTi, "楷体", serif' : 'var(--font-mono)'
