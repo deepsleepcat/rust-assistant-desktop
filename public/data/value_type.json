@@ -848,6 +848,26 @@
       "list": "maxHp,hp,maxShield,shield,shieldRegen,maxEnergy,energy,armour,mass,shootDelayMultiplier,shootDamageMultiplier,moveSpeed,maxTurnSpeed,maxAttackRange,selfRegenRate,heightTarget,nanoFactorySpeed,fogOfWarSightRange",
       "tag": "",
       "describe": "maxHp、hp、maxShield、shield、shieldRegen、maxEnergy、energy、armour"
+    },
+    {
+      "name": "Action1DisplayType",
+      "type": "Action1DisplayType",
+      "rule": "action|upgrade",
+      "external": ":",
+      "offset": "",
+      "list": "action,upgrade",
+      "tag": "",
+      "describe": "（从游戏数据提取的枚举值）"
+    },
+    {
+      "name": "AiUse",
+      "type": "AiUse",
+      "rule": "launch|launchAmmo",
+      "external": ":",
+      "offset": "",
+      "list": "launch,launchAmmo",
+      "tag": "",
+      "describe": "（从游戏数据提取的枚举值）"
     }
   ]
 }

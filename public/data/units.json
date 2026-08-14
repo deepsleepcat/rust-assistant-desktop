@@ -1,0 +1,799 @@
+{
+  "name": "官方单位库（从游戏提取）",
+  "data": [
+    {
+      "name": "aaBeamGunship",
+      "displayKey": "aaBeamGunship",
+      "zhName": "AA激光射束战机",
+      "zhDesc": "[[拥有对空的激光粒子束武器]] [[激光粒子束可直接破盾破甲]] [[但是不能攻击陆地]] [[速度慢，但可以使用加速装置获得一段时间的加速]]",
+      "icon": "aa_beam_gunship/base3.png"
+    },
+    {
+      "name": "aaBeamGunship_afterburn",
+      "displayKey": "aaBeamGunship_afterburn",
+      "icon": "aa_beam_gunship/base3.png"
+    },
+    {
+      "name": "antiAirTurretFlak",
+      "displayKey": "antiAirTurretFlak",
+      "zhName": "T2 - 高射炮",
+      "zhDesc": "[[攻击空中单位，溅射伤害]] [[距离较短]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "antiNukeLauncherC",
+      "displayKey": "AntiNukeLaucher",
+      "zhName": "反核防御",
+      "zhDesc": "[[拦截核导弹]] [[需要建造反核导弹]] [[最多建造12枚]]",
+      "icon": "nukes/antinuke_launcher_back.png"
+    },
+    {
+      "name": "bomber",
+      "displayKey": "bomber",
+      "zhName": "轰炸机",
+      "zhDesc": "[[有重装甲但速度慢]] [[需要在投掷炸弹后装填]] [[攻击潜艇时伤害较低]]",
+      "icon": "bomber/base.png"
+    },
+    {
+      "name": "bugBee",
+      "displayKey": "bugBee",
+      "icon": "classic_bugs/bug_bee/bug_bee.png"
+    },
+    {
+      "name": "bugExtractor",
+      "displayKey": "bugExtractor",
+      "icon": "classic_bugs/bug_extractor/bug_extractor.png"
+    },
+    {
+      "name": "bugExtractorT2",
+      "displayKey": "bugExtractorT2",
+      "icon": "classic_bugs/bug_extractor/bug_extractor.png"
+    },
+    {
+      "name": "bugFly",
+      "displayKey": "bugFly",
+      "icon": "classic_bugs/bug_fly/bug_fly.png"
+    },
+    {
+      "name": "bugGenerator",
+      "displayKey": "bugGenerator",
+      "icon": "classic_bugs/bug_generator/bug_generator.png"
+    },
+    {
+      "name": "bugGeneratorN",
+      "displayKey": "bugGeneratorN",
+      "icon": "bug_base/bug_generator/bug_generator.png"
+    },
+    {
+      "name": "bugGeneratorNT2",
+      "displayKey": "bugGeneratorNT2",
+      "icon": "bug_base/bug_generator/bug_generator.png"
+    },
+    {
+      "name": "bugGeneratorT2",
+      "displayKey": "bugGeneratorT2",
+      "icon": "classic_bugs/bug_generator/bug_generator.png"
+    },
+    {
+      "name": "bugMelee",
+      "displayKey": "bugMelee",
+      "icon": "classic_bugs/bug_melee/bug_melee.png"
+    },
+    {
+      "name": "bugMeleeLarge",
+      "displayKey": "bugMeleeLarge",
+      "icon": "classic_bugs/bug_melee/bug_melee.png"
+    },
+    {
+      "name": "bugMeleeSmall",
+      "displayKey": "bugMeleeSmall",
+      "icon": "classic_bugs/bug_melee/bug_melee.png"
+    },
+    {
+      "name": "bugMeleeT31",
+      "displayKey": "bugMeleeT31",
+      "icon": "bug_melee/bug_meleet31.png"
+    },
+    {
+      "name": "bugNest",
+      "displayKey": "bugNest",
+      "icon": "classic_bugs/bug_nest/bug_nest_back.png"
+    },
+    {
+      "name": "bugPickup",
+      "displayKey": "bugPickup",
+      "icon": "classic_bugs/bugs/bug_pickup.png"
+    },
+    {
+      "name": "bugRanged",
+      "displayKey": "bugRanged",
+      "icon": "classic_bugs/bug_ranged/bug_ranged.png"
+    },
+    {
+      "name": "bugRangedT2",
+      "displayKey": "bugRangedT2",
+      "icon": "classic_bugs/bugs_t2/bug_ranged_t2.png"
+    },
+    {
+      "name": "bugSpore",
+      "displayKey": "bugSpore",
+      "icon": "classic_bugs/bug_spore/bug_spore.png"
+    },
+    {
+      "name": "bugTurret",
+      "displayKey": "bugTurret",
+      "icon": "classic_bugs/bug_turret/bug_turret.png"
+    },
+    {
+      "name": "bugWasp",
+      "displayKey": "bugWasp",
+      "icon": "classic_bugs/bugs/bug_pickup.png"
+    },
+    {
+      "name": "c_amphibiousJet",
+      "displayKey": "c_amphibiousJet",
+      "icon": "amphibious_jet/amphibious_jet.png"
+    },
+    {
+      "name": "c_amphibiousJet_transition",
+      "displayKey": "c_amphibiousJet_transition",
+      "icon": "amphibious_jet/amphibious_jet.png"
+    },
+    {
+      "name": "c_amphibiousJet_underwater",
+      "displayKey": "c_amphibiousJet_underwater",
+      "icon": "amphibious_jet/amphibious_jet.png"
+    },
+    {
+      "name": "c_antiAirTurret",
+      "displayKey": "antiAirTurret",
+      "zhName": "防空炮塔",
+      "zhDesc": "[[攻击空中单位]] [[可升级]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_antiAirTurretT2",
+      "displayKey": "antiAirTurretT2",
+      "zhName": "T2 - 防空炮塔",
+      "zhDesc": "[[攻击空中单位]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_antiAirTurretT3",
+      "displayKey": "antiAirTurretT3",
+      "zhName": "T3 - 防空炮塔",
+      "zhDesc": "[[攻击空中单位]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_artillery",
+      "displayKey": "artillery",
+      "zhName": "自行火炮",
+      "zhDesc": "[[只能攻击地面单位]] [[远距离打击]]",
+      "icon": "tanks/artillery.png"
+    },
+    {
+      "name": "c_experimentalTank",
+      "displayKey": "experimentalTank",
+      "zhName": "实验坦克",
+      "zhDesc": "[[全副武装]] [[能攻击地面单位]] [[对空能力较弱]]",
+      "icon": "experimental_tank/experimental_tank.png"
+    },
+    {
+      "name": "c_helicopter",
+      "displayKey": "helicopter",
+      "zhName": "直升机",
+      "zhDesc": "[[可以攻击地面和空中单位]] [[直接作战性价比低]]",
+      "icon": "helicopter/helicopter.png"
+    },
+    {
+      "name": "c_interceptor",
+      "displayKey": "airShip",
+      "zhName": "拦截机",
+      "zhDesc": "[[移动速度快]] [[只能攻击空中单位]]",
+      "icon": "interceptor/interceptor.png"
+    },
+    {
+      "name": "c_laserTank",
+      "displayKey": "laserTank",
+      "zhName": "激光坦克",
+      "zhDesc": "[[可以攻击地面和空中单位 ]] [[不能同时对付多个敌人]] [[强大的单发射击，但是充能慢]]",
+      "icon": "laser_tank/laser_tank.png"
+    },
+    {
+      "name": "c_mammothTank",
+      "displayKey": "mammothTank",
+      "zhName": "猛犸坦克",
+      "zhDesc": "[[重型装甲]] [[能电击地面单位]] [[对接地的建筑物伤害稍低，但攻击护盾效果拔群]]",
+      "icon": "mammoth_tank/mammoth_tank.png"
+    },
+    {
+      "name": "c_tank",
+      "displayKey": "tank",
+      "zhName": "坦克",
+      "zhDesc": "[[只能攻击地面单位]] [[移速较快但生命值较低]]",
+      "icon": "tanks/artillery.png"
+    },
+    {
+      "name": "c_turret_t1",
+      "displayKey": "turret",
+      "zhName": "炮塔",
+      "zhDesc": "[[攻击地面单位]] [[可升级]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_turret_t1_artillery",
+      "displayKey": "turret_artillery",
+      "zhName": "火炮",
+      "zhDesc": "[[远距离打击]] [[攻击速度较慢]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_turret_t1_lightning",
+      "displayKey": "turret_lightning",
+      "zhName": "闪电炮塔",
+      "zhDesc": "[[带有电击的炮塔]] [[用雷击攻击地面上的单位]] [[对接地的建筑物伤害较低]] [[电击可以绕过护盾]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_turret_t2_artillery",
+      "displayKey": "turret_artilleryT2",
+      "zhName": "火炮 T2",
+      "zhDesc": "[[额外的攻击距离]] [[攻击速度较慢]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_turret_t2_flame",
+      "displayKey": "turret_flamethrower",
+      "zhName": "火焰喷射器",
+      "zhDesc": "[[短距离范围群伤]] [[自我修复]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_turret_t2_gun",
+      "displayKey": "turretT2",
+      "zhName": "机枪 T2",
+      "zhDesc": "[[攻击地面单位]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_turret_t2_lightning",
+      "displayKey": "turret_lightningT2",
+      "zhName": "闪电炮塔 T2",
+      "zhDesc": "[[T2等级的闪电炮塔]] [[用雷击攻击地面上的单位]] [[对接地的建筑物伤害较低]] [[电击可以绕过护盾]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "c_turret_t3_gun",
+      "displayKey": "turretT3",
+      "zhName": "重机枪塔 T3",
+      "zhDesc": "[[攻击地面单位]]",
+      "icon": "turrets/anti_air_top.png"
+    },
+    {
+      "name": "combatEngineer",
+      "displayKey": "combatEngineer",
+      "zhName": "战斗工程师",
+      "zhDesc": "[[可建造单位和T2建筑物]] [[带有重型装甲并且可以对地攻击]] [[在水上时可以攻击潜艇]] [[能自我修复并内置资源制造仪]] [[能在水上移动]]",
+      "icon": "combat_engineer/base.png"
+    },
+    {
+      "name": "creditsCrates",
+      "displayKey": "creditsCrates",
+      "zhName": "资金箱子",
+      "zhDesc": "[[回收可获得资金]]",
+      "icon": "resource_deposits/creditsCrate.png"
+    },
+    {
+      "name": "crystal_mid",
+      "displayKey": "crystal_mid",
+      "icon": "resource_deposits/creditsCrate.png"
+    },
+    {
+      "name": "custom_tank",
+      "displayKey": "custom_tank",
+      "icon": "test_tank/tank.png"
+    },
+    {
+      "name": "example_faction_picker",
+      "displayKey": "example_faction_picker",
+      "icon": "miscellaneous/picker.png"
+    },
+    {
+      "name": "experiementalCarrier",
+      "displayKey": "experiementalCarrier",
+      "zhName": "航空母舰",
+      "zhDesc": "[[重型武器和装甲]] [[可建造空军单位(2倍建造速度)]] [[内置激光防御 & 修复湾]] [[自带高射炮防空]] [[内置资源制造仪]] [[可以制造反核导弹]] [[死亡后核爆 (如果未禁止核弹)]]",
+      "icon": "experimental_carrier/anti_air_top_flakgun.png"
+    },
+    {
+      "name": "experimentalDropship",
+      "displayKey": "experimentalDropship",
+      "zhName": "飞行堡垒",
+      "zhDesc": "[[有运输能力]] [[能制造单位]] [[可以对空]] [[降落后可以对地攻击]] [[能自我修复并内置资源制造仪]]",
+      "icon": "experimental_dropship/experimental_dropship.png"
+    },
+    {
+      "name": "experimentalGunship",
+      "displayKey": "experimentalGunship",
+      "zhName": "实验悬浮型气垫船",
+      "zhDesc": "[[可建造单位]] [[对地与对陆攻击]] [[反核防御]] [[可添加瞬移模块]] [[可运输单位]] [[部署可获得额外的射程、火力和护盾]]",
+      "icon": "experimental_gunship/body.png"
+    },
+    {
+      "name": "experimentalGunshipLanded",
+      "displayKey": "experimentalGunshipLanded",
+      "zhName": "实验悬浮型气垫船",
+      "zhDesc": "[[可建造单位]] [[对地与对陆攻击]] [[反核防御]] [[可添加瞬移模块]] [[可运输单位]] [[部署可获得额外的射程、火力和护盾]]",
+      "icon": "experimental_gunship/body.png"
+    },
+    {
+      "name": "experimentalSpider",
+      "displayKey": "experimentalSpider",
+      "zhName": "实验型战斗蜘蛛",
+      "zhDesc": "[[拥有超强防御,但移动缓慢]] [[能建造单位与建筑物]] [[自动修复附近的单位]] [[自带激光防御]] [[能在水上移动]] [[自我修复并内置资源制造仪]] [[死亡后核爆 (如果未禁止核弹)]]",
+      "icon": "experimental_spider/body.png"
+    },
+    {
+      "name": "extractorT1",
+      "displayKey": "extractor",
+      "zhName": "资源抽取器",
+      "zhDesc": "[[生成资金]] [[只能建造在资源池上]] [[可升级至T3]]",
+      "icon": "extractor/extractor.png"
+    },
+    {
+      "name": "extractorT2",
+      "displayKey": "extractor",
+      "zhName": "资源抽取器 T2",
+      "zhDesc": "[[生成资金]] [[只能建造在资源池上]] [[可升级至T3]]",
+      "icon": "extractor/extractor.png"
+    },
+    {
+      "name": "extractorT3",
+      "displayKey": "extractor",
+      "zhName": "资源抽取器 T3",
+      "zhDesc": "[[生成资金]] [[只能建造在资源池上]] [[可升级至T3]]",
+      "icon": "extractor/extractor.png"
+    },
+    {
+      "name": "extractorT3_overclocked",
+      "displayKey": "extractor",
+      "zhName": "资源抽取器",
+      "zhDesc": "[[生成资金]] [[只能建造在资源池上]] [[可升级至T3]]",
+      "icon": "extractor/extractor.png"
+    },
+    {
+      "name": "extractorT3_reinforced",
+      "displayKey": "extractor",
+      "zhName": "资源抽取器",
+      "zhDesc": "[[生成资金]] [[只能建造在资源池上]] [[可升级至T3]]",
+      "icon": "extractor/extractor.png"
+    },
+    {
+      "name": "fabricatorT1",
+      "displayKey": "fabricator",
+      "zhName": "资源制造仪",
+      "zhDesc": "[[生成资源比资源抽取器慢4倍]] [[可升级]]",
+      "icon": "fabricator/fabricatorT1.png"
+    },
+    {
+      "name": "fabricatorT2",
+      "displayKey": "fabricator",
+      "zhName": "资源制造仪",
+      "zhDesc": "[[生成资源比资源抽取器慢4倍]] [[可升级]]",
+      "icon": "fabricator/fabricatorT1.png"
+    },
+    {
+      "name": "fabricatorT3",
+      "displayKey": "fabricator",
+      "zhName": "资源制造仪",
+      "zhDesc": "[[生成资源比资源抽取器慢4倍]] [[可升级]]",
+      "icon": "fabricator/fabricatorT1.png"
+    },
+    {
+      "name": "fireBee",
+      "displayKey": "fireBee",
+      "zhName": "火蜂战机",
+      "zhDesc": "[[全副武装]] [[可以对空攻击]] [[中级对空能力]] [[开火后需要重新装填]] [[自我修复]]",
+      "icon": "fire_bee/body.png"
+    },
+    {
+      "name": "flare_10s",
+      "displayKey": "flare_10s",
+      "icon": "miscellaneous/picker.png"
+    },
+    {
+      "name": "heavyAAShip",
+      "displayKey": "heavyAAShip",
+      "zhName": "重型防空舰",
+      "zhDesc": "[[仅能攻击空中单位]] [[拥有大的攻击范围并有溅射伤害]] [[重型装甲与护盾]]",
+      "icon": "heavy_aa_ship/anti_air_top_flakgun.png"
+    },
+    {
+      "name": "heavyArtillery",
+      "displayKey": "heavyArtillery",
+      "zhName": "重型火炮",
+      "zhDesc": "[[只能对地攻击]] [[较远射程]] [[自带较有限的激光防御]]",
+      "icon": "tanks/artillery.png"
+    },
+    {
+      "name": "heavyBattleship",
+      "displayKey": "heavyBattleship",
+      "zhName": "重型战舰",
+      "zhDesc": "[[远距离对地攻击]] [[有防空能力]] [[可发射反潜艇鱼雷]]",
+      "icon": "heavy_battleship/heavy_battleship.png"
+    },
+    {
+      "name": "heavyInterceptor",
+      "displayKey": "heavyInterceptor",
+      "zhName": "重型拦截机",
+      "zhDesc": "[[移动速度快]] [[只能攻击空中单位]] [[全副武装并带有护盾]] [[电击可绕过防护盾]]",
+      "icon": "heavy_interceptor/base.png"
+    },
+    {
+      "name": "heavyMissileShip",
+      "displayKey": "heavyMissileShip",
+      "zhName": "重型导弹舰",
+      "zhDesc": "[[能攻击地面和空中单位]] [[超远射程]]",
+      "icon": "heavy_missile_ship/body.png"
+    },
+    {
+      "name": "heavySub",
+      "displayKey": "heavySub",
+      "zhName": "重型潜艇",
+      "zhDesc": "[[重型装甲,可发射鱼雷]] [[不能攻击水面以外的单位]]",
+      "icon": "heavy_sub/base.png"
+    },
+    {
+      "name": "laboratory",
+      "displayKey": "laboratory",
+      "icon": "laboratory/base.png"
+    },
+    {
+      "name": "lightGunship",
+      "displayKey": "lightGunship",
+      "zhName": "轻型武装直升机",
+      "zhDesc": "[[非常弱]] [[只能攻击地面单位]] [[飞行速度慢]]",
+      "icon": "light_gunship/base.png"
+    },
+    {
+      "name": "lightSub",
+      "displayKey": "lightSub",
+      "zhName": "水下探测器",
+      "zhDesc": "[[非常弱]] [[只能使用轻型鱼雷攻击]]",
+      "icon": "light_sub/base.png"
+    },
+    {
+      "name": "mechArtillery",
+      "displayKey": "mechArtillery",
+      "zhName": "火炮机甲",
+      "zhDesc": "[[能攻击地面]] [[射程远]] [[能够在边开火边移动]]",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechBunker",
+      "displayKey": "mechBunker",
+      "zhName": "移动炮塔",
+      "zhDesc": "[[能攻击地面]] [[可原地部署并获得额外射程与防御]]",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechBunkerDeployed",
+      "displayKey": "mechBunkerDeployed",
+      "zhName": "移动炮塔",
+      "zhDesc": "[[能攻击地面]] [[部署以获得护盾与额外射程]]",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechEngineer",
+      "displayKey": "mechEngineer",
+      "zhName": "机械师",
+      "zhDesc": "[[建造机甲和T2建筑物]][[配有防空导弹]][[全副武装]]",
+      "icon": "mech_engineer/body.png"
+    },
+    {
+      "name": "mechFactory",
+      "displayKey": "mechFactory",
+      "zhName": "机械工厂",
+      "zhDesc": "[[制造T1等级的机甲单位]] [[机甲通常移动缓慢但作战能力强大]] [[更大的T2机甲能够越过峭壁]] [[可以升级]]",
+      "icon": "mech_factory/mechFactoryBottom.png"
+    },
+    {
+      "name": "mechFactoryT2",
+      "displayKey": "mechFactoryT2",
+      "zhName": "T2 - 机械工厂",
+      "zhDesc": "[[制造T2等级的机甲单位]] [[机甲通常移动缓慢但作战能力强大]] [[更大的T2机甲能够越过峭壁]]",
+      "icon": "mech_factory/mechFactoryBottom.png"
+    },
+    {
+      "name": "mechFlame",
+      "displayKey": "mechFlame",
+      "zhName": "喷火机甲",
+      "zhDesc": "[[范围火焰伤害]] [[只能对地攻击]] [[生命值高，能够自我修复]]",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechFlyingLanded",
+      "displayKey": "mechFlyingLanded",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechFlyingTakeoff",
+      "displayKey": "mechFlyingTakeoff",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechGun",
+      "displayKey": "mechGun",
+      "zhName": "基础机甲",
+      "zhDesc": "[[只能攻击陆上单位]] [[相比普通坦克生命值更高,但移动也更缓慢]]",
+      "icon": "mechs_small/foot.png"
+    },
+    {
+      "name": "mechHeavyMissile",
+      "displayKey": "mechHeavyMissile",
+      "zhName": "重型防空机械装甲",
+      "zhDesc": "[[非常强的远程对空能力]] [[区域范围防空]] [[弱陆攻击]]",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechLaser",
+      "displayKey": "mechLaser",
+      "zhName": "等离子机甲",
+      "zhDesc": "[[可以对空与对低]] [[开火后需要装填]] [[射程较远]]",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechLightning",
+      "displayKey": "mechLightning",
+      "zhName": "特斯拉机甲",
+      "zhDesc": "[[对地闪电攻击]] [[可以绕过防护盾]] [[对接地的建筑物伤害较低]]",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechMinigun",
+      "displayKey": "mechMinigun",
+      "zhName": "机枪机甲",
+      "zhDesc": "[[能攻击地面]] [[高射速]] [[开火速度逐渐加快]] [[有防护盾(能被电击绕过)]]",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "mechMissile",
+      "displayKey": "mechMissile",
+      "zhName": "防空机甲",
+      "zhDesc": "[[只能攻击空中单位]] [[范围伤害]] [[不能对地攻击]]",
+      "icon": "mechs_small/foot.png"
+    },
+    {
+      "name": "missileAirship",
+      "displayKey": "missileAirship",
+      "zhName": "导弹飞艇",
+      "zhDesc": "[[有范围伤害的对地对空导弹]] [[开火后需要装填]] [[自我修复]]",
+      "icon": "missile_airship/body.png"
+    },
+    {
+      "name": "missileTank",
+      "displayKey": "missileTank",
+      "zhName": "防空导弹坦克",
+      "zhDesc": "[[远程对空导弹]] [[轻型护盾]]",
+      "icon": "missile_tank/missile_tank.png"
+    },
+    {
+      "name": "missing",
+      "displayKey": "missing",
+      "icon": "missing_unit/missing.png"
+    },
+    {
+      "name": "modularSpider",
+      "displayKey": "modularSpider",
+      "zhName": "模块化蜘蛛",
+      "zhDesc": "[[最多可在顶部建造6个自定义炮塔或模块]] [[-装甲非常重但速度较慢]] [[-如果附加了任何武器则会降低基本速度]] [[-可以建造单位和建筑物]] [[-可以在附近的单位进行自动维修]] [[-可以在水上移动]] [[-内置制造者]] [[n-死亡会核爆（如果启用了核武器，未启用则不会死亡核爆）]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_antiair",
+      "displayKey": "modularSpider_antiair",
+      "zhName": "萨姆防空炮T1",
+      "zhDesc": "[[只能对空！]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_antiairFlak",
+      "displayKey": "modularSpider_antiairFlak",
+      "zhName": "高射炮T2",
+      "zhDesc": "[[只能攻击空中]] [[大范围集群伤害]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_antiairT2",
+      "displayKey": "modularSpider_antiairT2",
+      "zhName": "萨姆防空炮T2",
+      "zhDesc": "[[只能对空！]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_antinuke",
+      "displayKey": "modularSpider_antinuke",
+      "zhName": "反核装置",
+      "zhDesc": "[[可以拦截从核弹发射井发射的核导弹。]] [[-若要拦截，需要建造反核导弹]] [[-反核范围1500]] [[可以关闭此模块，关闭后此模块将不会拦截核弹]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_artillery",
+      "displayKey": "modularSpider_artillery",
+      "zhName": "火炮装置T1",
+      "zhDesc": "[[远距离对地攻击]] [[射击速度慢]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_blink",
+      "displayKey": "modularSpider_blink",
+      "zhName": "瞬移模块",
+      "zhDesc": "[[瞬移核心]] [[可短距离使用瞬移]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_emptySlot",
+      "displayKey": "modularSpider_emptySlot",
+      "zhName": "闲置中...",
+      "zhDesc": "选择一个炮塔在这里建造",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_fabricator",
+      "displayKey": "modularSpider_fabricator",
+      "zhName": "资源制造装置T1",
+      "zhDesc": "[[资金生成核心]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_fabricatorT2",
+      "displayKey": "modularSpider_fabricatorT2",
+      "zhName": "资源制造装置T2",
+      "zhDesc": "[[资金生成核心]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_gunturret",
+      "displayKey": "modularSpider_gunturret",
+      "zhName": "机枪T1",
+      "zhDesc": "[[只能攻击陆地]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_gunturretT2",
+      "displayKey": "modularSpider_gunturretT2",
+      "zhName": "机枪T2",
+      "zhDesc": "[[只能攻击陆地]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_laserdefense",
+      "displayKey": "modularSpider_laserdefense",
+      "zhName": "激光防御装置",
+      "zhDesc": "[[拦截一切靠近的导弹，使之分解]] [[拦截需要消耗能量！]] [[如果能量耗尽需要重新等待充能完毕才可继续使用]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_lightning",
+      "displayKey": "modularSpider_lightning",
+      "zhName": "闪电炮塔T1",
+      "zhDesc": "[[只能攻击陆地]] [[可以直接破盾破甲]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_nonEmpty",
+      "displayKey": "modularSpider_nonEmpty",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_shieldGen",
+      "displayKey": "modularSpider_shieldGen",
+      "zhName": "护盾核心",
+      "zhDesc": "[[护盾恢复核心]] [[-增加护盾恢复效率]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_smallgunturret",
+      "displayKey": "modularSpider_smallgunturret",
+      "zhName": "等离子装置T1",
+      "zhDesc": "[[可以攻击空中和地面]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_smallgunturretT2",
+      "displayKey": "modularSpider_smallgunturretT2",
+      "zhName": "等离子装置T2",
+      "zhDesc": "[[可以攻击空中和地面]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_speed",
+      "displayKey": "modularSpider_speed",
+      "zhName": "速度模块",
+      "zhDesc": "[[速度核心]] [[增加移动速度]] [[无法叠加]] [[可消除拥有炮塔的速度惩罚]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "modularSpider_speedIncomplete",
+      "displayKey": "modularSpider_speed",
+      "zhName": "速度模块",
+      "zhDesc": "[[速度核心]] [[增加移动速度]] [[无法叠加]] [[可消除拥有炮塔的速度惩罚]]",
+      "icon": "modular_spider/antinuke.png"
+    },
+    {
+      "name": "nautilusSubmarine",
+      "displayKey": "nautilusSubmarine",
+      "zhName": "鹦鹉螺号",
+      "zhDesc": "[[重型武器和装甲]] [[可以攻击舰艇]] [[可以副处水面并在陆地上行动]] [[浮出水面后可以攻击陆上和空中单位]]",
+      "icon": "nautilus/body.png"
+    },
+    {
+      "name": "nautilusSubmarineLand",
+      "displayKey": "nautilusSubmarineLand",
+      "icon": "nautilus/body.png"
+    },
+    {
+      "name": "nautilusSubmarineSurface",
+      "displayKey": "nautilusSubmarineSurface",
+      "icon": "nautilus/body.png"
+    },
+    {
+      "name": "nukeLauncherC",
+      "displayKey": "NukeLaucher",
+      "zhName": "核弹发射井",
+      "zhDesc": "[[发射威力巨大的的核导弹]] [[需要建造核弹以发射]] [[最多建造4枚]]",
+      "icon": "nukes/antinuke_launcher_back.png"
+    },
+    {
+      "name": "NULL",
+      "displayKey": "NULL",
+      "icon": "mechs_large/ArtilleryTurret.png"
+    },
+    {
+      "name": "outpostT1",
+      "displayKey": "outpostT1",
+      "zhName": "瞭望塔",
+      "zhDesc": "[[可以看透较广范围内的迷雾]] [[不能攻击]]",
+      "icon": "outpost/outpost.png"
+    },
+    {
+      "name": "outpostT2",
+      "displayKey": "outpostT2",
+      "zhName": "瞭望塔 T2",
+      "zhDesc": "[[可以看透较广范围内的迷雾]] [[不能攻击]]",
+      "icon": "outpost/outpost.png"
+    },
+    {
+      "name": "plasmaTank",
+      "displayKey": "plasmaTank",
+      "zhName": "等离子坦克",
+      "zhDesc": "[[拥有强大防御]] [[只能攻击陆上单位]] [[有防护盾(能被电击绕过)]]",
+      "icon": "plasma_tank/plasma_tank.png"
+    },
+    {
+      "name": "robotCrab",
+      "displayKey": "robotCrab",
+      "icon": "nautilus/robotCrab/base.png"
+    },
+    {
+      "name": "robotCrabWater",
+      "displayKey": "robotCrabWater",
+      "icon": "nautilus/robotCrab/base.png"
+    },
+    {
+      "name": "scout",
+      "displayKey": "scout",
+      "zhName": "侦察者",
+      "zhDesc": "[[中型装甲-低性价比单位]] [[能够透过迷雾看得更远]] [[能够在水面上移动]] [[能攻击空中和地面单位]]",
+      "icon": "scout/base.png"
+    },
+    {
+      "name": "spyDrone",
+      "displayKey": "spyDrone",
+      "zhName": "间谍无人机",
+      "zhDesc": "[[无法攻击]] [[可以透过迷雾看的更广]] [[厚重的生命值和渐加速的速度]] [[可以自我修复]]",
+      "icon": "spy_drone/base.png"
+    }
+  ]
+}

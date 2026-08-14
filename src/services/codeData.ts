@@ -52,6 +52,15 @@ export interface LogicBooleanInfo {
   example?: string
 }
 
+/** 官方单位（scripts/extract-game-data.mjs 从游戏 assets/units 提取） */
+export interface OfficialUnitInfo {
+  name: string
+  displayKey: string
+  zhName?: string
+  zhDesc?: string
+  icon?: string
+}
+
 interface RawDataset {
   name?: string
   data?: unknown[]
@@ -65,6 +74,7 @@ let sections: SectionInfo[] = []
 let valueTypes: ValueTypeInfo[] = []
 let vocabulary: VocabularyItem[] = []
 let logicBooleans: LogicBooleanInfo[] = []
+let officialUnits: OfficialUnitInfo[] = []
 const enToZhDict = new Map<string, string>()
 const zhToEnDict = new Map<string, string>()
 
@@ -85,13 +95,14 @@ export function loadCodeData(): Promise<void> {
     loaded = (async () => {
       try {
         const base = import.meta.env.BASE_URL || '/'
-        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw] = await Promise.all([
+        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw, unitsRaw] = await Promise.all([
           fetchJson<RawDataset>(`${base}data/code.json`),
           fetchJson<RawDataset>(`${base}data/section.json`),
           fetchJson<RawDataset>(`${base}data/value_type.json`),
           fetchJson<RawDataset>(`${base}data/translations.json`),
           fetchJson<RawDataset>(`${base}data/vocabulary.json`),
           fetchJson<RawDataset>(`${base}data/logicboolean.json`).catch(() => ({ data: [] })),
+          fetchJson<RawDataset>(`${base}data/units.json`).catch(() => ({ data: [] })),
         ])
 
         codes = (codeRaw.data ?? []) as CodeInfo[]
@@ -127,6 +138,7 @@ export function loadCodeData(): Promise<void> {
         }
         vocabulary = vocab
         logicBooleans = (logicRaw.data ?? []) as LogicBooleanInfo[]
+        officialUnits = (unitsRaw.data ?? []) as OfficialUnitInfo[]
       } catch (err) {
         // 数据不可用（如离线/测试环境）时降级：编辑器仍可用，只是没有补全和翻译。
         // 失败后置回 null，允许下次 loadCodeData 重试（避免一次抖动导致整个会话失去补全/翻译）
@@ -205,6 +217,11 @@ export function getAllSections(): SectionInfo[] {
 /** 全部代码（按 code 排序），供代码表浏览 */
 export function getAllCodes(): CodeInfo[] {
   return [...codes].sort((a, b) => a.code.localeCompare(b.code))
+}
+
+/** 全部官方单位（scripts/extract-game-data.mjs 从游戏提取，按 name 排序） */
+export function getAllOfficialUnits(): OfficialUnitInfo[] {
+  return [...officialUnits]
 }
 
 /** 按中文节名查节（翻译用） */

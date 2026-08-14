@@ -110,9 +110,14 @@
 }
 
 /* ── M7 单位库弹窗 ─────────────────────────────────── */
-.unitlib-card { width: min(620px, 96vw); height: min(520px, 88vh); display: flex; flex-direction: column; }
+.unitlib-card { width: min(620px, 96vw); height: min(560px, 88vh); display: flex; flex-direction: column; }
 .unitlib-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
-.unitlib-list { border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px; flex: 1; }
+.unitlib-group { display: flex; flex-direction: column; gap: 4px; min-height: 0; flex: 1; }
+.unitlib-group:first-of-type { flex: 0 0 auto; }
+.unitlib-group-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); padding: 0 2px; }
+.unitlib-list { border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px; }
+.unitlib-official-list { max-height: min(220px, 30vh); }
+.unitlib-project-list { flex: 1; min-height: 0; }
 .unitlib-item { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; text-align: left; }
 .unitlib-item:hover { background: var(--surface-hover); }
 .unitlib-icon { flex-shrink: 0; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--divider); border-radius: var(--radius-sm); background: var(--surface-1); color: var(--text-secondary); }

@@ -11919,6 +11919,216 @@
       "type": "bool",
       "section": "mod-info",
       "demo": "示例：\naddToNormalPlaylist: false"
+    },
+    {
+      "code": "animateFrameStartRandomAdd",
+      "translate": "animateFrameStartRandomAdd",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "effect"
+    },
+    {
+      "code": "action_1_buildSpeed",
+      "translate": "action_1_buildSpeed",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "float",
+      "section": "action"
+    },
+    {
+      "code": "animation_idle_start",
+      "translate": "animation_idle_start",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_idle_end",
+      "translate": "animation_idle_end",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_idle_speed",
+      "translate": "animation_idle_speed",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_idle_scale_start",
+      "translate": "animation_idle_scale_start",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_idle_scale_end",
+      "translate": "animation_idle_scale_end",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "float",
+      "section": "animation"
+    },
+    {
+      "code": "animation_idle_pingPong",
+      "translate": "animation_idle_pingPong",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "bool",
+      "section": "animation"
+    },
+    {
+      "code": "animation_moving_start",
+      "translate": "animation_moving_start",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_moving_end",
+      "translate": "animation_moving_end",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_moving_speed",
+      "translate": "animation_moving_speed",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "float",
+      "section": "animation"
+    },
+    {
+      "code": "animation_attack_start",
+      "translate": "animation_attack_start",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_attack_end",
+      "translate": "animation_attack_end",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_attack_speed",
+      "translate": "animation_attack_speed",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_attack_scale_start",
+      "translate": "animation_attack_scale_start",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "int",
+      "section": "animation"
+    },
+    {
+      "code": "animation_attack_scale_end",
+      "translate": "animation_attack_scale_end",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "float",
+      "section": "animation"
+    },
+    {
+      "code": "animation_attack_pingPong",
+      "translate": "animation_attack_pingPong",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "bool",
+      "section": "animation"
+    },
+    {
+      "code": "action_1_displayType",
+      "translate": "action_1_displayType",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "Action1DisplayType",
+      "section": "action"
+    },
+    {
+      "code": "animation_idle_blendIn",
+      "translate": "animation_idle_blendIn",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "string",
+      "section": "animation"
+    },
+    {
+      "code": "buildSpeed_ignoreFactorySpeedModifiers",
+      "translate": "buildSpeed_ignoreFactorySpeedModifiers",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "bool",
+      "section": "action"
+    },
+    {
+      "code": "ignoreMoveOrders",
+      "translate": "ignoreMoveOrders",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "bool",
+      "section": "movement"
+    },
+    {
+      "code": "image_back_always_use_full_image",
+      "translate": "image_back_always_use_full_image",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "bool",
+      "section": "graphics"
+    },
+    {
+      "code": "explodeOnDeathGroundCollosion",
+      "translate": "explodeOnDeathGroundCollosion",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "bool",
+      "section": "core"
+    },
+    {
+      "code": "effectOnDeathGroundCollosion",
+      "translate": "effectOnDeathGroundCollosion",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "string",
+      "section": "core"
+    },
+    {
+      "code": "slowDeathFallSmoke",
+      "translate": "slowDeathFallSmoke",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "bool",
+      "section": "movement"
+    },
+    {
+      "code": "action_1_isActive",
+      "translate": "action_1_isActive",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "string",
+      "section": "action"
+    },
+    {
+      "code": "aiUse",
+      "translate": "aiUse",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "AiUse",
+      "section": "action"
+    },
+    {
+      "code": "aiTags",
+      "translate": "aiTags",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "string",
+      "section": "ai"
+    },
+    {
+      "code": "action_1_iconExtraImage",
+      "translate": "action_1_iconExtraImage",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "string",
+      "section": "action"
+    },
+    {
+      "code": "action_1_iconExtraColor",
+      "translate": "action_1_iconExtraColor",
+      "description": "（官方游戏数据，待补充翻译）",
+      "type": "string",
+      "section": "action"
     }
   ]
 }
