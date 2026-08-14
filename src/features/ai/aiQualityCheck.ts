@@ -11,7 +11,7 @@
  */
 import type { AiLintItem } from '../../types/ai'
 import { lintIniText } from '../editor/rustLint'
-import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
 import { runSemanticChecks } from '../editor/semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
 
@@ -96,10 +96,12 @@ export function toLintItems(
   return items
 }
 
-/** 质检选项：语义检查器配置与项目单位名（引用完整性检查用） */
+/** 质检选项：语义检查器配置、项目单位名与目标版本（引用/版本兼容检查用） */
 export interface QualityCheckOptions {
   semanticCheckers?: Record<string, boolean>
   unitNames?: ReadonlySet<string>
+  /** 当前项目目标游戏版本名（空 = 跟随最新） */
+  targetVersionName?: string
 }
 
 /**
@@ -121,9 +123,10 @@ export async function qualityCheckContent(content: string, options: QualityCheck
 
   // M10：语义检查器（与编辑器波浪线同一套规则；info 降级为 warning 展示）
   const ruleIds = enabledRuleIds(options.semanticCheckers ?? defaultSemanticCheckerConfig())
+  const targetVersionNumber = options.targetVersionName ? versionNameToNumber(options.targetVersionName) : undefined
   const issues = runSemanticChecks(content, {
     ruleIds,
-    ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames: options.unitNames },
+    ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames: options.unitNames, targetVersionNumber },
   })
   const semanticItems: AiLintItem[] = issues.map((it) => ({
     line: it.line,

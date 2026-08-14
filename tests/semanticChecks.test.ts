@@ -493,3 +493,44 @@ describe('M10 首轮审查修复回归', () => {
     expect(issues).toEqual([])
   })
 })
+
+describe('checkVersionCompatibility（M11）', () => {
+  const versionCtx: SemanticCheckContext = {
+    ...ctx,
+    findCode: (k) => {
+      const map: Record<string, { type: string; addVersion?: number; removeVersion?: number }> = {
+        maxHp: { type: 'int', addVersion: 1 },
+        mass: { type: 'int', addVersion: 1 },
+        oldField: { type: 'string', addVersion: 1, removeVersion: 4 },
+        newField: { type: 'string', addVersion: 6 },
+        plainField: { type: 'string' },
+      }
+      return map[k] ?? (map[Object.keys(map).find((c) => c.toLowerCase() === k.toLowerCase()) ?? ''] as never)
+    },
+    targetVersionNumber: 4, // 1.15
+  }
+
+  it('加入版本晚于目标版本 → 警告', () => {
+    const issues = runSemanticChecks(`[core]\nnewField: x\nmaxHp: 100\n`, { ctx: versionCtx, ruleIds: new Set(['checkVersionCompatibility']) })
+    expect(issues.some((i) => i.ruleId === 'checkVersionCompatibility' && i.message.includes('newField') && i.message.includes('6'))).toBe(true)
+    expect(issues.some((i) => i.message.includes('maxHp'))).toBe(false)
+  })
+
+  it('目标版本跟随最新时不报过新字段', () => {
+    const issues = runSemanticChecks(`[core]\nnewField: x\n`, {
+      ctx: { ...versionCtx, targetVersionNumber: 9 },
+      ruleIds: new Set(['checkVersionCompatibility']),
+    })
+    expect(issues).toEqual([])
+  })
+
+  it('已移除字段（removeVersion ≤ 目标）→ 警告', () => {
+    const issues = runSemanticChecks(`[core]\noldField: x\n`, { ctx: versionCtx, ruleIds: new Set(['checkVersionCompatibility']) })
+    expect(issues.some((i) => i.message.includes('oldField') && i.message.includes('移除'))).toBe(true)
+  })
+
+  it('无版本信息字段不报', () => {
+    const issues = runSemanticChecks(`[core]\nplainField: x\n`, { ctx: versionCtx, ruleIds: new Set(['checkVersionCompatibility']) })
+    expect(issues).toEqual([])
+  })
+})

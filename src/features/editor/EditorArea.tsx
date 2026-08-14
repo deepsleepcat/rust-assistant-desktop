@@ -193,6 +193,7 @@ function EditorPane({ tabId }: { tabId: string }) {
   const saveTab = useWorkspaceStore((s) => s.saveTab)
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const semanticCheckers = useWorkspaceStore((s) => s.settings.semanticCheckers)
+  const targetVersionName = useWorkspaceStore((s) => s.settings.targetGameVersion)
   const toggleTranslation = useWorkspaceStore((s) => s.toggleTranslation)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
   const [outlineOpen, setOutlineOpen] = useState(false)
@@ -326,6 +327,7 @@ function EditorPane({ tabId }: { tabId: string }) {
           onJumpDone={handleJumpDone}
           rootPath={project?.rootPath}
           semanticCheckers={semanticCheckers}
+          targetVersionName={targetVersionName}
         />
       </div>
       {templateName !== null && (

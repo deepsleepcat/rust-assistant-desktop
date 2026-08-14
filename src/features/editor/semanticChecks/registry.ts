@@ -1,6 +1,6 @@
 /**
  * 语义检查器注册表：全部检查器的唯一登记处。
- * - ALL_SEMANTIC_CHECKERS：15 个专项检查器（P1 任务 1 要求 ≥8 个上线，全部完成）；
+ * - ALL_SEMANTIC_CHECKERS：16 个专项检查器（P1 任务 1 要求 ≥8 个上线，全部完成）；
  * - 配置：每个检查器可单独开关（settings.semanticCheckers: Record<ruleId, boolean>）；
  * - 清洗：合并用户配置时只接受已知规则 id，未知 id 忽略（防脏数据）。
  */
@@ -20,6 +20,7 @@ import { checkProjectileLifecycle } from './checkProjectileLifecycle'
 import { checkProjectileRangeSemantics } from './checkProjectileRangeSemantics'
 import { checkResourceHudSemantics } from './checkResourceHudSemantics'
 import { checkRiskyUnitReferenceSemantics } from './checkRiskyUnitReferenceSemantics'
+import { checkVersionCompatibility } from './checkVersionCompatibility'
 
 /** 全部语义检查器（顺序即执行顺序） */
 export const ALL_SEMANTIC_CHECKERS: SemanticChecker[] = [
@@ -38,6 +39,7 @@ export const ALL_SEMANTIC_CHECKERS: SemanticChecker[] = [
   checkResourceHudSemantics,
   checkRiskyUnitReferenceSemantics,
   checkActionReferences,
+  checkVersionCompatibility,
 ]
 
 /** 默认配置：全部 defaultOn 的检查器开启 */

@@ -11,7 +11,7 @@
 import { linter } from '@codemirror/lint'
 import type { EditorView } from '@codemirror/view'
 import type { ValueTypeInfo } from '../../services/codeData'
-import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber, zhToEnKeySegments } from '../../services/codeData'
 import { classifyLine } from './rustLanguage'
 import { runSemanticChecks, semanticIssuesToDiagnostics } from './semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from './semanticChecks/registry'
@@ -180,6 +180,8 @@ export interface RustLintOptions {
   rootPath?: string
   /** 语义检查器开关（缺省全部开启） */
   semanticCheckers?: Record<string, boolean>
+  /** 当前项目目标游戏版本名（版本兼容检查用；空 = 跟随最新） */
+  targetVersionName?: string
 }
 
 /** 编辑器语义 lint 的内容上限：超过时只跑基础 lint（单趟 O(n)），
@@ -205,9 +207,11 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
       if (content.length <= MAX_SEMANTIC_LINT_CHARS) {
         const ruleIds = enabledRuleIds(opts.semanticCheckers ?? defaultSemanticCheckerConfig())
         const unitNames = await cachedUnitNames(opts.rootPath)
+        // M11：目标版本名 → 版本号（空 = 最新版本，由检查器兜底）
+        const targetVersionNumber = opts.targetVersionName ? versionNameToNumber(opts.targetVersionName) : undefined
         const issues = runSemanticChecks(content, {
           ruleIds,
-          ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames },
+          ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames, targetVersionNumber },
         })
         return [...diagnostics, ...semanticIssuesToDiagnostics(content, issues)]
       }

@@ -25,8 +25,8 @@ export interface SemanticIssue {
 
 /** 检查器上下文：代码表查询 + 可选的跨文件数据 */
 export interface SemanticCheckContext {
-  /** 键 → 代码表条目（大小写不敏感由实现方保证） */
-  findCode?: (key: string) => { type: string; description?: string; demo?: string } | undefined
+  /** 键 → 代码表条目（大小写不敏感由实现方保证；版本字段供版本兼容检查） */
+  findCode?: (key: string) => { type: string; description?: string; demo?: string; addVersion?: number; removeVersion?: number } | undefined
   /** 值类型查询（枚举 list 等） */
   findType?: (type: string) => ValueTypeInfo | undefined
   /** 中文显示层回译（中文键/值 → 英文） */
@@ -35,6 +35,8 @@ export interface SemanticCheckContext {
   unitNames?: ReadonlySet<string>
   /** 代码表全部英文键（键名拼写检查的候选池；缺省跳过拼写检查） */
   codes?: readonly string[]
+  /** 当前项目目标游戏版本号（版本兼容检查用；缺省 = 最新版本） */
+  targetVersionNumber?: number
   /** 共享解析结果（runSemanticChecks 注入，避免每个检查器重复扫描全文；检查器用 getIni 取） */
   parsed?: import('./helpers').ParsedIni
 }

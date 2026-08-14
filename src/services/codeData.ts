@@ -61,6 +61,12 @@ export interface OfficialUnitInfo {
   icon?: string
 }
 
+/** 游戏版本（game_version.json）：versionNumber 是 code.json addVersion/removeVersion 的取值 */
+export interface GameVersionInfo {
+  versionName: string
+  versionNumber: number
+}
+
 interface RawDataset {
   name?: string
   data?: unknown[]
@@ -75,6 +81,7 @@ let valueTypes: ValueTypeInfo[] = []
 let vocabulary: VocabularyItem[] = []
 let logicBooleans: LogicBooleanInfo[] = []
 let officialUnits: OfficialUnitInfo[] = []
+let gameVersions: GameVersionInfo[] = []
 const enToZhDict = new Map<string, string>()
 const zhToEnDict = new Map<string, string>()
 
@@ -128,7 +135,7 @@ export function loadCodeData(): Promise<void> {
     loaded = (async () => {
       try {
         const base = import.meta.env.BASE_URL || '/'
-        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw, unitsRaw] = await Promise.all([
+        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw] = await Promise.all([
           fetchJson<RawDataset>(`${base}data/code.json`),
           fetchJson<RawDataset>(`${base}data/section.json`),
           fetchJson<RawDataset>(`${base}data/value_type.json`),
@@ -136,6 +143,7 @@ export function loadCodeData(): Promise<void> {
           fetchJson<RawDataset>(`${base}data/vocabulary.json`),
           fetchJson<RawDataset>(`${base}data/logicboolean.json`).catch(() => ({ data: [] })),
           fetchJson<RawDataset>(`${base}data/units.json`).catch(() => ({ data: [] })),
+          fetchJson<RawDataset>(`${base}data/game_version.json`).catch(() => ({ data: [] })),
         ])
 
         codes = (codeRaw.data ?? []) as CodeInfo[]
@@ -175,6 +183,7 @@ export function loadCodeData(): Promise<void> {
         vocabulary = vocab
         logicBooleans = (logicRaw.data ?? []) as LogicBooleanInfo[]
         officialUnits = (unitsRaw.data ?? []) as OfficialUnitInfo[]
+        gameVersions = ((versionRaw.data ?? []) as GameVersionInfo[]).sort((a, b) => a.versionNumber - b.versionNumber)
       } catch (err) {
         // 数据不可用（如离线/测试环境）时降级：编辑器仍可用，只是没有补全和翻译。
         // 失败后置回 null，允许下次 loadCodeData 重试（避免一次抖动导致整个会话失去补全/翻译）
@@ -294,6 +303,29 @@ export function getAllOfficialUnits(): OfficialUnitInfo[] {
 /** 按中文节名查节（翻译用） */
 export function findSectionByTranslate(translate: string): SectionInfo | undefined {
   return sections.find((s) => s.translate === translate || s.code === translate)
+}
+
+/** 全部游戏版本（按 versionNumber 升序），供版本兼容设置/悬停展示 */
+export function getGameVersions(): GameVersionInfo[] {
+  return [...gameVersions]
+}
+
+/** 版本名 → versionNumber（未知/空返回 undefined；空字符串视为「跟随最新」） */
+export function versionNameToNumber(name: string | undefined): number | undefined {
+  if (!name) return undefined
+  const hit = gameVersions.find((v) => v.versionName.toLowerCase() === name.trim().toLowerCase())
+  return hit?.versionNumber
+}
+
+/** versionNumber → 版本名（未知返回 undefined） */
+export function versionNumberToName(number: number): string | undefined {
+  return gameVersions.find((v) => v.versionNumber === number)?.versionName
+}
+
+/** 最新版本号（版本检查器的默认目标；数据缺失时返回 undefined → 检查跳过） */
+export function latestVersionNumber(): number | undefined {
+  if (gameVersions.length === 0) return undefined
+  return gameVersions[gameVersions.length - 1].versionNumber
 }
 
 /** 按值类型 type 查（大小写不敏感 + 逗号分段：数据里 LogicBoolean/bool 大小写不一致、

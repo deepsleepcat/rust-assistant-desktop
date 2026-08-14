@@ -7,7 +7,7 @@
  */
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, loadCodeData, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, loadCodeData, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
 function stripComment(line: string): string {
@@ -121,6 +121,16 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       const en = findCodeByCode(key) ?? (key.includes('_') ? findCodeByCode(zhToEnKeySegments(key)) : undefined)
       if (!en) return null
       const vt = en.type
+      // M11：版本信息行（加入版本/移除弃用；版本表缺失时显示版本号）
+      const versionParts: string[] = []
+      if (typeof en.addVersion === 'number' && en.addVersion > 0) {
+        const name = versionNumberToName(en.addVersion)
+        versionParts.push(`加入：${name ?? en.addVersion}`)
+      }
+      if (typeof en.removeVersion === 'number' && en.removeVersion >= 0) {
+        const name = versionNumberToName(en.removeVersion)
+        versionParts.push(`已移除：${name ?? en.removeVersion}`)
+      }
       return {
         pos: line.from + keyStart,
         end: line.from + keyEnd,
@@ -132,6 +142,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
           parts.push(`<b>${escapeHtml(en.code)}</b>${en.translate && en.translate !== en.code ? ` · ${escapeHtml(en.translate)}` : ''}`)
           if (en.description && en.description !== en.translate) parts.push(`<div style="margin-top:3px">${escapeHtml(en.description)}</div>`)
           parts.push(`<div class="cm-hover-muted" style="margin-top:3px">类型：${escapeHtml(vt)}${en.section && en.section !== 'all' ? ` · 节：${escapeHtml(en.section)}` : ''}</div>`)
+          if (versionParts.length > 0) parts.push(`<div class="cm-hover-muted">${escapeHtml(versionParts.join(' · '))}</div>`)
           if (en.demo) parts.push(`<pre class="cm-hover-demo">${escapeHtml(en.demo)}</pre>`)
           dom.innerHTML = parts.join('')
           return { dom }

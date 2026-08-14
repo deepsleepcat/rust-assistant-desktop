@@ -39,6 +39,8 @@ interface EditorMirrorProps {
   rootPath?: string
   /** 语义检查器开关（缺省全部开启） */
   semanticCheckers?: Record<string, boolean>
+  /** 当前项目目标游戏版本名（版本兼容检查用；空 = 跟随最新） */
+  targetVersionName?: string
 }
 
 const editorTheme = EditorView.theme({
@@ -119,7 +121,7 @@ const editorTheme = EditorView.theme({
   },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -166,7 +168,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         drawSelection(),
         history(),
         rustConfigLanguageSupport(),
-        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers })),
+        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName })),
         rustHoverExtension,
         autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
         search({ top: true }),
@@ -203,14 +205,14 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时创建一次编辑器实例
   }, [])
 
-  // 语义 lint 配置变化（检查器开关/项目根）→ 热替换槽位（不重建编辑器）
+  // 语义 lint 配置变化（检查器开关/项目根/目标版本）→ 热替换槽位（不重建编辑器）
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers })),
+      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers, targetVersionName })),
     })
-  }, [rootPath, semanticCheckers])
+  }, [rootPath, semanticCheckers, targetVersionName])
 
   // 外部 value 变化（切换标签、恢复文档）→ 同步进编辑器
   useEffect(() => {

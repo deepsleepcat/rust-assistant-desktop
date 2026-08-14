@@ -1353,6 +1353,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
                   const current = get().projects.find((p) => p.id === project.id)
                   if (!current) return
                   const semanticCheckers = get().settings.semanticCheckers
+                  const targetVersionName = get().settings.targetGameVersion
                   // 质检必须用最新单位名（AI 刚写的单位要在引用检查中立即可见）。
                   // 同项目 2s 窗口内共享一次扫描（AI 一个流连续写 N 个文件只扫一次）：
                   // 每次扫描都在 writeFile 完成后触发，已包含此前全部写入，共享结果安全
@@ -1365,7 +1366,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
                   // 扫描失败/空项目时传 undefined → 引用检查整体跳过，
                   // 避免「扫描失败被当作空项目」导致 builtFrom/convertTo 全部误报
                   const unitNames = scan && scan.unitNames.length > 0 ? new Set(scan.unitNames) : undefined
-                  const items = await checkAiWrittenFile(current.rootPath, relPath, { semanticCheckers, unitNames })
+                  const items = await checkAiWrittenFile(current.rootPath, relPath, { semanticCheckers, unitNames, targetVersionName })
                   if (items && items.length > 0) {
                     set({
                       conversations: get().conversations.map((c) =>

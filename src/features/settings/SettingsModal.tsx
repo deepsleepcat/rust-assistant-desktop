@@ -12,6 +12,7 @@ import { Modal } from '../../components/Modal'
 import { AvatarCropModal } from './AvatarCropModal'
 import { GameSettingsTab } from './GameSettingsTab'
 import { ALL_SEMANTIC_CHECKERS } from '../editor/semanticChecks/registry'
+import { getGameVersions, loadCodeData } from '../../services/codeData'
 
 const GRADIENT_PRESETS = [
   { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
@@ -37,6 +38,18 @@ export function SettingsModal() {
 
   const bg = settings.background
   const [image, setImage] = useState<{ path: string; url: string | null }>({ path: '', url: null })
+  const [gameVersions, setGameVersions] = useState<Array<{ versionName: string; versionNumber: number }>>([])
+
+  // M11：目标游戏版本下拉数据（异步加载版本表；失败时只显示「跟随最新」）
+  useEffect(() => {
+    let alive = true
+    void loadCodeData().then(() => {
+      if (alive) setGameVersions(getGameVersions())
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   useEffect(() => {
     if (bg.kind !== 'image' || !bg.imagePath) return
@@ -337,6 +350,23 @@ export function SettingsModal() {
               <div className="setting-title">语义检查器（M10）</div>
               <div className="desc" style={{ marginBottom: 8 }}>
                 编辑器波浪线、AI 写后质检与项目检查共用这些规则，可单独开关。
+              </div>
+              <div className="setting-row">
+                <span className="label">
+                  目标游戏版本
+                  <div className="desc">写入的字段若超出该版本会提示（版本兼容检查）</div>
+                </span>
+                <select
+                  value={settings.targetGameVersion}
+                  onChange={(e) => updateSettings({ targetGameVersion: e.target.value })}
+                >
+                  <option value="">跟随最新（1.15-p10）</option>
+                  {gameVersions.map((v) => (
+                    <option key={v.versionNumber} value={v.versionName}>
+                      {v.versionName}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="checker-list">
                 {ALL_SEMANTIC_CHECKERS.map((c) => {
