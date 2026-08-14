@@ -4,7 +4,7 @@
  * - 无标签时显示欢迎页（最近项目 + 快捷操作）
  * - 有标签时显示简易代码编辑区（行号 + 文本编辑 + 保存）
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { TurretEditorModal } from '../modTools/TurretEditorModal'
 import { formatRelativeTime } from '../../utils/conversation'
@@ -201,6 +201,15 @@ function EditorPane({ tabId }: { tabId: string }) {
   const [reloadConfirm, setReloadConfirm] = useState(false)
   // 大纲跳转请求：{ line, seq }，seq 递增触发 EditorMirror 定位
   const [jumpRequest, setJumpRequest] = useState<{ line: number; seq: number } | null>(null)
+  // M9：质检清单「定位」按钮的外部跳转请求（store.editorJump）；seq 去重防重复触发
+  const editorJump = useWorkspaceStore((s) => s.editorJump)
+  const lastJumpSeqRef = useRef(0)
+  useEffect(() => {
+    if (editorJump && tab && editorJump.path === tab.path && editorJump.seq !== lastJumpSeqRef.current) {
+      lastJumpSeqRef.current = editorJump.seq
+      setJumpRequest({ line: editorJump.line, seq: editorJump.seq })
+    }
+  }, [editorJump, tab])
   const fontFamily = useWorkspaceStore((s) => s.settings.fontFamily)
   const fontSize = useWorkspaceStore((s) => s.settings.fontSize)
 

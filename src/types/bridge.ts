@@ -2,7 +2,7 @@
  * 界面进程（React）与主进程（Electron）之间的通信契约。
  * 所有文件操作都必须携带 rootPath（项目根目录），主进程会校验路径范围。
  */
-import type { AiChatParams, AiCheckResult, AiProviderInfo, AiSettings, AiStreamEvent } from './ai'
+import type { AiChatParams, AiCheckResult, AiHistoryMeta, AiProviderInfo, AiSettings, AiStreamEvent } from './ai'
 
 export interface DirEntry {
   name: string
@@ -117,6 +117,10 @@ export interface BridgeApi {
     approve(response: { id: string; approved: boolean }): Promise<boolean>
     /** 中止当前 AI 流（渲染层看门狗超时用）：拒绝在途审批 + 释放主进程 AI 锁 */
     streamAbort(): Promise<{ aborted: boolean }>
+    /** 某文件的 AI 修改历史（元数据：id/时间/大小；内容在恢复时由主进程读取） */
+    historyList(rootPath: string, relPath: string): Promise<AiHistoryMeta[]>
+    /** 恢复到指定历史版本（写回磁盘；快照为「新建」时删除文件） */
+    historyRestore(rootPath: string, relPath: string, snapshotId: string): Promise<{ ok: boolean; message?: string }>
     onAiEvent(callback: (event: AiStreamEvent) => void): () => void
   }
 }

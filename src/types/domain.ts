@@ -98,6 +98,12 @@ export interface ToolEvent {
   summary?: string
   ok?: boolean
   createdAt: number
+  /** writeFile 目标相对路径（质检/历史入口用，仅 tool_end） */
+  path?: string
+  /** writeFile 写盘前快照 id（撤销入口用；新文件/快照超限时不存在） */
+  snapshotId?: string
+  /** 写盘后自动质检结果（仅 writeFile 成功且发现问题时填充） */
+  lint?: import('./ai').AiLintItem[]
 }
 
 /** 一段 AI 对话，永远属于某一个项目 */

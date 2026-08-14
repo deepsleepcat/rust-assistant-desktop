@@ -7,6 +7,7 @@
  * - 将来社区后端上线 = 新增 community 实现 + 设置里切换，界面与业务零改动；
  * - 社区协议采用 OpenAI 兼容接口，服务器实现成本最低。
  */
+import type { DiffLine } from './diff'
 
 /** 提供者类型：现在只有 DeepSeek；community 为将来社区后端预留 */
 export type AiProviderType = 'deepseek' | 'community'
@@ -62,14 +63,31 @@ export type AiStreamEvent =
   | { type: 'done'; fullText: string; requestId?: string }
   | { type: 'error'; message: string; requestId?: string }
   | { type: 'tool_start'; name: string; args: Record<string, unknown> }
-  | { type: 'tool_end'; name: string; ok: boolean; summary: string }
-  | { type: 'approval_request'; id: string; tool: string; path: string; contentPreview: string; contentLength?: number }
+  | { type: 'tool_end'; name: string; ok: boolean; summary: string; path?: string; snapshotId?: string }
+  | { type: 'approval_request'; id: string; tool: string; path: string; contentPreview: string; contentLength?: number; diff?: DiffLine[] | null; oldExists?: boolean }
   | { type: 'approval_expired'; id: string }
 
 /** 审批响应（界面 → 主进程） */
 export interface AiApprovalResponse {
   id: string
   approved: boolean
+}
+
+/** AI 写文件后的质检条目（任务 3：文件 + 行号 + 原因 + 修复建议） */
+export interface AiLintItem {
+  /** 行号（从 1 起） */
+  line: number
+  message: string
+  severity: 'error' | 'warning'
+  suggestion: string
+}
+
+/** AI 修改历史条目元数据（列表用；内容在恢复时由主进程读取，不经过 IPC 搬运） */
+export interface AiHistoryMeta {
+  id: string
+  at: number
+  relPath: string
+  size: number
 }
 
 /** M6：自动更新事件（主进程 → 界面，设置 → 关于 展示） */

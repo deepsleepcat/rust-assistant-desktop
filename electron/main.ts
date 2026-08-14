@@ -10,6 +10,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { createStore } from './store'
+import { getHistory, initAiHistory } from './aiHistory'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import { applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, globalOp, importModBuffer, listTemplates, packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources, scanUnits, writeModInfo } from './modTools'
@@ -181,6 +182,8 @@ async function readMediaAsDataUrl(rootPath: string, mediaPath: string, mimeByExt
 }
 
 const store = createStore(path.join(app.getPath('userData'), 'app-state.json'))
+// AI 修改历史（任务 2）：独立 JSON 文件，避免与主 store 共用导致每次设置变更重写大文件
+initAiHistory(path.join(app.getPath('userData'), 'ai-history.json'))
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -900,6 +903,53 @@ function registerIpc(): void {
     return { aborted: true }
   })
 
+  // AI 修改历史（任务 2）：快照在 writeFile 工具内记录（rustAgentTools），
+  // 这里的两个通道只做「列出 / 恢复」。安全边界与 fs 通道一致：
+  // rootPath 必须已登记，relPath 必须相对且解析后在项目根内。
+  function requireHistoryRelPath(rootPath: unknown, relPath: unknown): { root: string; rel: string } {
+    if (typeof rootPath !== 'string' || typeof relPath !== 'string' || !relPath) {
+      throw new Error('无效的参数')
+    }
+    requireInsideRoot(rootPath, path.join(rootPath, relPath))
+    if (path.isAbsolute(relPath) || relPath.includes('..')) {
+      throw new Error('无效的文件路径')
+    }
+    return { root: rootPath, rel: relPath }
+  }
+
+  ipcMain.handle('ai:history:list', async (_event, rootPath: unknown, relPath: unknown) => {
+    const { root, rel } = requireHistoryRelPath(rootPath, relPath)
+    return getHistory().listHistory(root, rel)
+  })
+
+  ipcMain.handle('ai:history:restore', async (_event, rootPath: unknown, relPath: unknown, snapshotId: unknown) => {
+    const { root, rel } = requireHistoryRelPath(rootPath, relPath)
+    if (typeof snapshotId !== 'string' || !snapshotId) {
+      return { ok: false, message: '无效的历史版本' }
+    }
+    const entry = await getHistory().getEntry(root, rel, snapshotId)
+    if (!entry) {
+      return { ok: false, message: '历史版本不存在或已被清理（超过保留上限）' }
+    }
+    const abs = path.join(root, rel)
+    await requireRealInsideRoot(root, abs)
+    if (entry.content === null) {
+      // 快照时文件不存在（AI 新建）：恢复 = 删除该文件
+      await fs.rm(abs, { force: true })
+      return { ok: true }
+    }
+    // 原子写回（与 fs:writeFile 同一模式：临时文件 + rename，不破坏原文件）
+    const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.ra-h-${randomUUID()}.tmp`)
+    try {
+      await fs.writeFile(tmp, entry.content, 'utf8')
+      await fs.rename(tmp, abs)
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => undefined)
+      throw err
+    }
+    return { ok: true }
+  })
+
   ipcMain.handle('ai:stream', async (event, params: AiChatParams, settings: AiSettings, projectRoot: unknown) => {
     if (aiStreamActive) throw new Error('已有 AI 请求正在处理，请稍候再试')
     aiStreamActive = true
@@ -1024,9 +1074,9 @@ app.on('before-quit', (event) => {
     })
   }
   // M1：store.flush 也带 2s 超时兜底（网络盘/杀软锁盘时 fs 写入可能长时间阻塞，
-  // 无兜底会永久卡住退出——应用无窗口、进程残留）
+  // 无兜底会永久卡住退出——应用无窗口、进程残留）。AI 修改历史同链 flush
   const flushWithTimeout = Promise.race([
-    store.flush(),
+    Promise.allSettled([store.flush(), getHistory().flush()]),
     new Promise<void>((resolve) => setTimeout(resolve, 2000)),
   ])
   void confirmed.then(() => flushWithTimeout).then(() => app.quit())

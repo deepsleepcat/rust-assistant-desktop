@@ -18,6 +18,8 @@ import { enToZh, makeDict, zhToEn } from '../services/translation'
 import { invalidateResourceCache } from '../features/editor/completion'
 import { RUST_ASSISTANT_SYSTEM_PROMPT } from '../ai/rustSystemPrompt'
 import type { AiStreamEvent } from '../types/ai'
+import type { DiffLine } from '../types/diff'
+import { checkAiWrittenFile } from '../features/ai/aiQualityCheck'
 
 export interface ConfirmRequest {
   title: string
@@ -69,7 +71,9 @@ interface WorkspaceStoreState {
   /** 当前正在流式回复的对话（null 表示没有） */
   aiStreamingConversationId: string | null
   /** 待审批的写文件请求 */
-  pendingApproval: { id: string; path: string; contentPreview: string; contentLength?: number } | null
+  pendingApproval: { id: string; path: string; contentPreview: string; contentLength?: number; diff?: DiffLine[] | null; oldExists?: boolean } | null
+  /** 「定位到文件行」请求（质检清单跳转用）：{ path, line, seq }，seq 递增保证重复跳转同位置也生效 */
+  editorJump: { path: string; line: number; seq: number } | null
   /** M5：模组工具弹窗（null 表示关闭） */
   modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | null
   /** M5：单位检查结果 */
@@ -125,6 +129,10 @@ interface WorkspaceStoreActions {
   selectConversation(id: string): void
   updateSettings(patch: Partial<AppSettings>): void
   setEditorPos(pos: EditorPosition): void
+  /** 打开文件并跳到指定行（质检清单「定位」按钮用） */
+  jumpToFileLine(path: string, line: number): void
+  /** 恢复到指定历史版本（快照 id；打开标签有未保存修改时先确认） */
+  aiRestoreFileVersion(relPath: string, snapshotId: string): Promise<void>
   setSettingsOpen(open: boolean): void
   setCommandOpen(open: boolean): void
   setCodeTableOpen(open: boolean): void
@@ -312,6 +320,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       toast: null,
       aiStreamingConversationId: null,
       pendingApproval: null,
+      editorJump: null,
       modDialog: null,
       modCheckResult: null,
       optimizeItems: null,
@@ -1096,6 +1105,54 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         set({ confirm: null })
       },
 
+      jumpToFileLine(path: string, line: number) {
+        // 打开/激活标签页，再发定位请求（EditorPane 消费后跳转；seq 递增保证重复跳同一行也生效）
+        void get().openFile(path)
+        const prev = get().editorJump
+        set({ editorJump: { path, line, seq: (prev?.seq ?? 0) + 1 } })
+      },
+
+      /** 恢复到指定历史版本（任务 2）：主进程写回磁盘 → 刷新树 → 重读打开中的标签页。
+       * 打开标签有未保存修改时先确认（恢复会覆盖这些修改），用户拒绝则不动作。 */
+      async aiRestoreFileVersion(relPath: string, snapshotId: string) {
+        const s = get()
+        const project = s.projects.find((p) => p.id === s.activeProjectId)
+        if (!project) return
+        const restore = async (): Promise<boolean> => {
+          try {
+            const res = await bridge.ai.historyRestore(project.rootPath, relPath, snapshotId)
+            if (!res?.ok) {
+              get().notify(res?.message ?? '恢复失败：历史版本不可用')
+              return false
+            }
+            invalidateResourceCache()
+            await get().refreshTree()
+            const tab = get().openTabs.find((t) => t.path === relPath)
+            if (tab) await get().reloadTab(tab.id)
+            get().notify('已恢复到所选历史版本')
+            return true
+          } catch (err) {
+            get().notify(`恢复失败：${err instanceof Error ? err.message : String(err)}`)
+            return false
+          }
+        }
+        const tab = s.openTabs.find((t) => t.path === relPath)
+        if (tab?.dirty) {
+          s.requestConfirm({
+            title: '恢复历史版本',
+            message: `「${tab.name}」有未保存的修改，恢复历史版本将覆盖这些修改。`,
+            danger: true,
+            confirmText: '覆盖并恢复',
+            cancelText: '取消',
+            onConfirm: () => {
+              void restore()
+            },
+          })
+        } else {
+          await restore()
+        }
+      },
+
   /** 有未保存编辑时先确认再执行动作（切项目/导模组前调用，防止静默丢编辑）。
    * 提供「保存并切换」：全部保存成功才执行 action，任一失败则保留现状。
    * 返回 Promise<boolean>：true = 已执行 action；false = 用户取消或 action 失败
@@ -1255,16 +1312,42 @@ export function createWorkspaceStore(bridge: BridgeApi) {
               armGuard()
             }
             if (event.type === 'tool_end') {
-              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_end', name: event.name, ok: event.ok, summary: event.summary, createdAt: Date.now() }
+              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_end', name: event.name, ok: event.ok, summary: event.summary, createdAt: Date.now(), path: event.path, snapshotId: event.snapshotId }
               set({
                 conversations: get().conversations.map((c) =>
                   c.id === conversationId ? { ...c, toolEvents: [...(c.toolEvents ?? []), toolEvent] } : c,
                 ),
               })
+              // 任务 3：AI 写文件成功后自动质检（异步，不阻塞流；结果挂到该工具卡片上）。
+              // 与撤销/历史完全独立——质检发现问题不影响撤销能力
+              if (event.name === 'writeFile' && event.ok && event.path) {
+                const relPath = event.path
+                void (async () => {
+                  const items = await checkAiWrittenFile(project.rootPath, relPath)
+                  if (items && items.length > 0) {
+                    set({
+                      conversations: get().conversations.map((c) =>
+                        c.id === conversationId
+                          ? { ...c, toolEvents: (c.toolEvents ?? []).map((t) => (t.id === toolEvent.id ? { ...t, lint: items } : t)) }
+                          : c,
+                      ),
+                    })
+                  }
+                })()
+              }
               armGuard()
             }
             if (event.type === 'approval_request') {
-              set({ pendingApproval: { id: event.id, path: event.path, contentPreview: event.contentPreview, contentLength: event.contentLength } })
+              set({
+                pendingApproval: {
+                  id: event.id,
+                  path: event.path,
+                  contentPreview: event.contentPreview,
+                  contentLength: event.contentLength,
+                  diff: event.diff ?? null,
+                  oldExists: event.oldExists ?? false,
+                },
+              })
               armGuard()
             }
             if (event.type === 'approval_expired') {

@@ -219,3 +219,36 @@
 .music-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; width: 100%; }
 .music-list li { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); font-size: 12px; color: var(--text-secondary); }
 .music-list li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── M9 AI 修改闭环 ─────────────────────────────────── */
+/* 审批弹窗：行级 diff 视图 */
+.diff-view { margin: 8px 0 0; max-height: 320px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); font: 12px/1.6 var(--font-mono); }
+.diff-line { display: flex; gap: 8px; padding: 0 8px; white-space: pre-wrap; word-break: break-all; color: var(--text-2); }
+.diff-line.add { background: rgba(46, 160, 67, .13); color: var(--text-1); }
+.diff-line.del { background: rgba(197, 34, 31, .13); color: var(--text-1); }
+.diff-line.omit { font-style: italic; color: var(--text-muted); justify-content: center; }
+.diff-mark { width: 14px; flex: none; user-select: none; opacity: .75; }
+.diff-badge { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--surface-0); font-size: 11px; font-weight: 600; }
+/* 工具卡片：撤销/历史操作区（flex-wrap 保证窄面板下换行） */
+.tool-card { flex-wrap: wrap; }
+.tool-card-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+/* 质检结果清单 */
+.lint-box { margin: 2px 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); font-size: 12px; }
+.lint-box.has-error { border-color: rgba(197, 34, 31, .45); }
+.lint-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 10px; border: 0; background: none; color: var(--text-secondary); cursor: pointer; font: 12px var(--font-ui); text-align: left; }
+.lint-toggle:hover { color: var(--text-primary); }
+.lint-toggle-mark { width: 12px; flex: none; }
+.lint-toggle-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.lint-toggle-title .tool-path { flex-shrink: 1; min-width: 0; }
+.lint-list { list-style: none; margin: 0; padding: 6px 10px 8px; border-top: 1px solid var(--divider); display: flex; flex-direction: column; gap: 7px; }
+.lint-item { display: flex; flex-direction: column; gap: 3px; padding: 5px 8px; border-radius: var(--radius-xs); background: var(--surface-0); }
+.lint-msg { display: flex; align-items: baseline; gap: 8px; color: var(--text-1); line-height: 1.55; }
+.lint-line { flex: none; padding: 0 6px; border-radius: 3px; background: var(--surface-2); color: var(--text-secondary); font-size: 11px; }
+.lint-item.lint-error .lint-line { background: rgba(197, 34, 31, .14); color: var(--danger); }
+.lint-item.lint-warning .lint-line { background: rgba(253, 214, 99, .18); color: var(--text-secondary); }
+.lint-suggestion { color: var(--text-muted); font-size: 11.5px; }
+/* 修改历史弹窗 */
+.history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.history-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); font-size: 12.5px; }
+.history-time { color: var(--text-1); }
+.history-size { color: var(--text-muted); font-size: 11.5px; }

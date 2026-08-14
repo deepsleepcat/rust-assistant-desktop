@@ -83,6 +83,8 @@ const api: BridgeApi = {
     stream: (params, settings, projectRoot) => ipcRenderer.invoke('ai:stream', params, settings, projectRoot),
     approve: (response: { id: string; approved: boolean }) => ipcRenderer.invoke('ai:approval:respond', response),
     streamAbort: () => ipcRenderer.invoke('ai:stream:abort'),
+    historyList: (rootPath: string, relPath: string) => ipcRenderer.invoke('ai:history:list', rootPath, relPath),
+    historyRestore: (rootPath: string, relPath: string, snapshotId: string) => ipcRenderer.invoke('ai:history:restore', rootPath, relPath, snapshotId),
     onAiEvent: (callback) => {
       const listener = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data as never)
       ipcRenderer.on('ai:stream', listener)

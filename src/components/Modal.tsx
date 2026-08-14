@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { IconClose } from './icons'
 import { pushEscapeHandler, useEscapeHandler } from '../utils/modalStack'
+import type { DiffLine } from '../types/diff'
 
 interface ModalProps {
   title: ReactNode
@@ -90,34 +91,89 @@ export function ConfirmDialog() {
 }
 
 /** 全局 AI 审批弹窗：独立于对话视图渲染——切换对话/无对话时审批仍可见可操作，
- * 避免 AI 写文件请求因弹窗藏在旧对话里而只能等主进程超时 */
+ * 避免 AI 写文件请求因弹窗藏在旧对话里而只能等主进程超时。
+ * M9：弹窗内展示行级 diff（哪几行改了、改成什么），可展开/收起；拒绝后文件保持不变。
+ * 外层只做「有审批就渲染」；内层以 key=请求 id 重挂载，展开状态随每次请求重置。 */
 export function ApprovalDialog() {
   const pendingApproval = useWorkspaceStore((s) => s.pendingApproval)
   const respondApproval = useWorkspaceStore((s) => s.respondApproval)
+  if (!pendingApproval) return null
+  return <ApprovalDialogInner key={pendingApproval.id} req={pendingApproval} respondApproval={respondApproval} />
+}
+
+function ApprovalDialogInner({
+  req,
+  respondApproval,
+}: {
+  req: { id: string; path: string; contentPreview: string; contentLength?: number; diff?: DiffLine[] | null; oldExists?: boolean }
+  respondApproval: (approved: boolean) => Promise<void>
+}) {
+  // diff 不长（≤80 行）默认展开，超长默认收起
+  const [diffOpen, setDiffOpen] = useState((req.diff?.length ?? 0) <= 80)
   const cardRef = useRef<HTMLDivElement>(null)
   // 审批弹窗打开时占住栈顶吞掉 Escape（审批不可用 Escape 关闭——必须显式选「允许/拒绝」，
-  // 否则误关视觉下方的弹窗；也防止用户以为 Escape 能关掉审批）。无审批时不注册（不占栈）
-  const hasApproval = pendingApproval !== null
+  // 否则误关视觉下方的弹窗；也防止用户以为 Escape 能关掉审批）
   useEffect(() => {
-    if (!hasApproval) return
     // 焦点移入弹窗容器（tabIndex=-1，不落在按钮上）：键盘/读屏用户感知焦点所在，
     // 且不会因用户正在输入时的 Enter 误触发「拒绝」
     cardRef.current?.focus()
     return pushEscapeHandler(() => { /* no-op：消费 Escape，防误关下层弹窗 */ })
-  }, [hasApproval])
-  if (!pendingApproval) return null
+  }, [])
+
+  const diff: DiffLine[] | null = req.diff ?? null
+  const added = diff?.filter((l) => l.type === 'add').length ?? 0
+  const deleted = diff?.filter((l) => l.type === 'del').length ?? 0
+  const isNewFile = diff !== null && !req.oldExists && deleted === 0
+
   return (
     <div className="modal-overlay">
       <div ref={cardRef} tabIndex={-1} style={{ outline: 'none' }} className="modal-card confirm-card" role="dialog" aria-modal="true" aria-label="AI 请求修改文件">
         <div className="modal-header">AI 请求修改文件</div>
         <div className="modal-body">
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>文件：{pendingApproval.path}</p>
-          {typeof pendingApproval.contentLength === 'number' && (
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-2)' }}>
-              完整内容约 {pendingApproval.contentLength} 字符，以下为前 2000 字符预览
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>文件：{req.path}</p>
+          {diff === null ? (
+            // 无法计算 diff（文件过大/读取失败）：退回纯内容预览
+            <>
+              {typeof req.contentLength === 'number' && (
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-2)' }}>
+                  完整内容约 {req.contentLength} 字符，以下为前 2000 字符预览
+                </p>
+              )}
+              <pre className="approval-preview">{req.contentPreview}</pre>
+            </>
+          ) : diff.length === 0 ? (
+            <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-2)' }}>
+              内容与磁盘上的当前版本完全一致，本次写入不会产生实际改动
             </p>
+          ) : (
+            <>
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                {isNewFile && <span className="diff-badge">新文件</span>}
+                <span>
+                  新增 {added} 行 · 删除 {deleted} 行
+                  {typeof req.contentLength === 'number' && ` · 完整内容约 ${req.contentLength} 字符`}
+                </span>
+                <button
+                  className="btn"
+                  style={{ padding: '1px 8px', fontSize: 11, marginLeft: 'auto' }}
+                  onClick={() => setDiffOpen((open) => !open)}
+                  title={diffOpen ? '收起行级对比' : '展开行级对比'}
+                >
+                  {diffOpen ? '收起改动' : '展开改动'}
+                </button>
+              </p>
+              {diffOpen && (
+                <div className="diff-view" role="list" aria-label="改动前后对比">
+                  {diff.map((line, i) => (
+                    <div key={i} className={`diff-line ${line.type}`} role="listitem">
+                      <span className="diff-mark">{line.type === 'add' ? '+' : line.type === 'del' ? '-' : line.type === 'omit' ? '…' : ' '}</span>
+                      <span className="diff-text">{line.text || ' '}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
-          <pre className="approval-preview">{pendingApproval.contentPreview}</pre>
         </div>
         <div className="modal-footer">
           <button className="btn" onClick={() => void respondApproval(false)}>拒绝</button>

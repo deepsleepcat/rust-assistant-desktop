@@ -8,8 +8,11 @@
  */
 import type { WebContents } from 'electron'
 import { randomUUID } from 'node:crypto'
+import fs from 'node:fs/promises'
 import type { AiCheckResult, AiApprovalResponse, AiChatParams, AiProviderType, AiStreamEvent } from '../src/types/ai'
-import { createRustAgentTools, setAgentRoot } from './rustAgentTools'
+import type { DiffLine } from '../src/types/diff'
+import { diffLines } from './diff'
+import { createRustAgentTools, resolveAgentPath, setAgentRoot, takeSnapshotId } from './rustAgentTools'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 
 let piAi: typeof import('@earendil-works/pi-ai') | null = null
@@ -128,6 +131,9 @@ export async function streamAgent(
     // 写文件审批：beforeToolCall 钩子里等待用户响应（Pi 官方做法）
     // 用户 2 分钟未响应则自动拒绝并继续，避免 Agent 永久挂起、后续对话被阻塞
     const APPROVAL_TIMEOUT_MS = 120_000
+    // 审批/质检要用的路径：工具调用是串行的（同一流内），beforeToolCall 记录本次
+    // writeFile 的目标路径，随后 tool_execution_end 事件消费（工具事件不带 args）
+    let lastWritePath = ''
     const beforeToolCall = async (context: { toolCall: { name: string; id?: string }; args: unknown }) => {
       // 流已取消：所有工具一律拒绝（不只 writeFile）——旧流不能继续以
       // 新流设置的项目根执行任何工具，也不能再发起审批/写盘
@@ -137,11 +143,33 @@ export async function streamAgent(
       if (context.toolCall.name !== 'writeFile') return undefined
       const args = (context.args ?? {}) as { path?: string; content?: string }
       const id = context.toolCall.id ?? randomUUID()
+      lastWritePath = args.path ?? ''
       // 预览 2000 字符 + 完整长度：让用户批准前能看到足够内容和规模
       //（400 字符预览时恶意尾部内容可能被跳过，用户批准的实际写盘内容远超所见）
       const full = String(args.content ?? '')
       const preview = full.slice(0, 2000)
-      emit({ type: 'approval_request', id, tool: 'writeFile', path: args.path ?? '?', contentPreview: preview, contentLength: full.length })
+      // 行级 diff 预览（任务 1）：读取磁盘上的旧内容（≤2MB，BOM 剥离），
+      // 与本次写入内容逐行对比——用户批准前能看清「哪几行改了、改成什么」。
+      // 文件不存在 → 新文件（diff 为 null，前端显示「新文件」标记）；
+      // 文件过大/读取失败 → diff 为 null，前端退回纯预览。
+      let diff: DiffLine[] | null = null
+      let oldExists = false
+      if (args.path) {
+        try {
+          const file = await resolveAgentPath(args.path)
+          const st = await fs.stat(file).catch(() => null)
+          if (st?.isFile() && st.size <= 2 * 1024 * 1024) {
+            const buf = await fs.readFile(file)
+            const hasBom = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf
+            oldExists = true
+            diff = diffLines(hasBom ? buf.subarray(3).toString('utf8') : buf.toString('utf8'), full)
+          }
+        } catch {
+          // 路径解析失败（越界/链接逃逸）：审批仍照常发起，writeFile 工具会再校验一次
+          diff = null
+        }
+      }
+      emit({ type: 'approval_request', id, tool: 'writeFile', path: args.path ?? '?', contentPreview: preview, contentLength: full.length, diff, oldExists })
       const response = await new Promise<AiApprovalResponse>((resolve) => {
         let settled = false
         const finish = (approved: boolean) => {
@@ -210,9 +238,18 @@ export async function streamAgent(
         emit({ type: 'tool_start', name: (event as { toolName: string }).toolName, args: (event as { args: Record<string, unknown> }).args })
       }
       if (event.type === 'tool_execution_end') {
-        const e = event as { toolName: string; result: { content?: Array<{ text?: string }> }; isError: boolean }
+        const e = event as { toolName: string; toolCallId: string; result: { content?: Array<{ text?: string }> }; isError: boolean }
         const summary = e.isError ? '执行失败' : (e.result?.content?.[0]?.text ?? '完成').slice(0, 120)
-        emit({ type: 'tool_end', name: e.toolName, ok: !e.isError, summary })
+        // writeFile：附带目标路径（质检用）与写盘前快照 id（撤销入口用，无快照时为 undefined）
+        const isWrite = e.toolName === 'writeFile'
+        emit({
+          type: 'tool_end',
+          name: e.toolName,
+          ok: !e.isError,
+          summary,
+          path: isWrite ? lastWritePath : undefined,
+          snapshotId: isWrite ? takeSnapshotId(e.toolCallId) ?? undefined : undefined,
+        })
       }
       if (event.type === 'message_end' && event.message.role === 'assistant' && event.message.stopReason === 'error') {
         agentError = event.message.errorMessage ?? 'AI 请求失败'

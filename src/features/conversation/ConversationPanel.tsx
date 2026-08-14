@@ -8,7 +8,9 @@ import { useWorkspaceStore, useSortedConversations } from '../../stores/workspac
 import { formatRelativeTime } from '../../utils/conversation'
 import { IconArchive } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
-import { PromptModal } from '../../components/Modal'
+import { Modal, PromptModal } from '../../components/Modal'
+import type { ToolEvent } from '../../types/domain'
+import type { AiHistoryMeta } from '../../types/ai'
 
 function renderAssistantText(text: string) {
   // 围栏代码块渲染（注意：[\s\S] 是「任意字符」，不能写成 [\\s\\S]——双重转义会匹配字面反斜杠导致围栏永不命中）
@@ -182,6 +184,7 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
   }, [messages, toolEvents])
   const sendAiMessage = useWorkspaceStore((s) => s.sendAiMessage)
   const aiStreaming = useWorkspaceStore((s) => s.aiStreamingConversationId === id)
+  const projectRootPath = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId)?.rootPath ?? '')
   // P3：全局流锁（任何对话正在流式回复时都不能发送，与 store 的全局锁一致——
   // 否则切到另一个对话发送会清空输入框却被 store 拒绝，草稿丢失）
   const anyStreaming = useWorkspaceStore((s) => s.aiStreamingConversationId !== null)
@@ -253,20 +256,7 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
         ) : (
           timeline.map((item) =>
             item.kind === 'tool' ? (
-              <div key={item.key} className={`tool-card${item.tool.type === 'tool_end' && !item.tool.ok ? ' tool-card-error' : ''}`}>
-                {item.tool.type === 'tool_start' ? (
-                  <>
-                    <AppIcon name="tools" size={13} className="tool-icon" />
-                    <span>正在{toolLabel(item.tool.name)}…</span>
-                    {typeof item.tool.args?.path === 'string' && <code className="tool-path">{item.tool.args.path}</code>}
-                  </>
-                ) : (
-                  <>
-                    <AppIcon name={item.tool.ok ? 'check' : 'cross'} size={13} className="tool-icon" />
-                    <span>{item.tool.summary ?? toolLabel(item.tool.name)}</span>
-                  </>
-                )}
-              </div>
+              <ToolCard key={item.key} tool={item.tool} rootPath={projectRootPath} />
             ) : (
               <div key={item.key} className={`msg msg-${item.msg.role}`}>
                 {item.msg.role === 'assistant' && item.msg.reasoning && (
@@ -323,4 +313,160 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
       </div>
     </div>
   )
+}
+
+/** 工具卡片：writeFile 成功后提供「撤销此修改 / 修改历史」入口（任务 2），
+ * 质检发现问题时下方展示可操作清单（任务 3）。 */
+function ToolCard({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
+  const aiRestoreFileVersion = useWorkspaceStore((s) => s.aiRestoreFileVersion)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const done = tool.type === 'tool_end'
+  const isWrite = done && tool.name === 'writeFile'
+  return (
+    <>
+      <div className={`tool-card${done && !tool.ok ? ' tool-card-error' : ''}`}>
+        {!done ? (
+          <>
+            <AppIcon name="tools" size={13} className="tool-icon" />
+            <span>正在{toolLabel(tool.name)}…</span>
+            {typeof tool.args?.path === 'string' && <code className="tool-path">{tool.args.path}</code>}
+          </>
+        ) : (
+          <>
+            <AppIcon name={tool.ok ? 'check' : 'cross'} size={13} className="tool-icon" />
+            <span>{tool.summary ?? toolLabel(tool.name)}</span>
+          </>
+        )}
+        {isWrite && tool.ok && (
+          <span className="tool-card-actions">
+            {tool.path && tool.snapshotId && (
+              <button
+                className="btn"
+                style={{ padding: '1px 8px', fontSize: 11 }}
+                title="撤销这次写入，把文件恢复到写盘前的版本"
+                onClick={() => void aiRestoreFileVersion(tool.path!, tool.snapshotId!)}
+              >
+                <AppIcon name="undo" size={11} /> 撤销此修改
+              </button>
+            )}
+            {tool.path && (
+              <button
+                className="btn"
+                style={{ padding: '1px 8px', fontSize: 11 }}
+                title="查看该文件的历史版本，可恢复到任意版本"
+                onClick={() => setHistoryOpen(true)}
+              >
+                <AppIcon name="clock" size={11} /> 修改历史
+              </button>
+            )}
+          </span>
+        )}
+      </div>
+      {isWrite && tool.ok && tool.lint && tool.lint.length > 0 && <LintBox tool={tool} />}
+      {historyOpen && tool.path && <HistoryModal rootPath={rootPath} relPath={tool.path} onClose={() => setHistoryOpen(false)} />}
+    </>
+  )
+}
+
+/** 质检结果清单：默认收起；展开后每条含 行号 + 原因 + 修复建议 + 「定位」跳转 */
+function LintBox({ tool }: { tool: ToolEvent }) {
+  const jumpToFileLine = useWorkspaceStore((s) => s.jumpToFileLine)
+  const [open, setOpen] = useState(false)
+  const items = tool.lint ?? []
+  const errors = items.filter((l) => l.severity === 'error').length
+  return (
+    <div className={`lint-box${errors > 0 ? ' has-error' : ''}`}>
+      <button className="lint-toggle" onClick={() => setOpen(!open)} title={open ? '收起质检结果' : '展开质检结果'}>
+        <span className="lint-toggle-mark">{open ? '▾' : '▸'}</span>
+        <span className="lint-toggle-title">
+          质检发现 {items.length} 个问题{errors > 0 ? `（${errors} 个错误）` : ''}
+          {tool.path && <code className="tool-path">{tool.path}</code>}
+        </span>
+      </button>
+      {open && (
+        <ul className="lint-list">
+          {items.map((item, i) => (
+            <li key={i} className={`lint-item lint-${item.severity}`}>
+              <div className="lint-msg">
+                <span className="lint-line">第 {item.line} 行</span>
+                {item.message}
+              </div>
+              <div className="lint-suggestion">建议：{item.suggestion}</div>
+              {tool.path && (
+                <button
+                  className="btn"
+                  style={{ padding: '1px 8px', fontSize: 11, alignSelf: 'flex-start' }}
+                  title={`打开 ${tool.path} 并跳到第 ${item.line} 行`}
+                  onClick={() => jumpToFileLine(tool.path!, item.line)}
+                >
+                  <AppIcon name="search" size={11} /> 定位
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** 修改历史弹窗（任务 2）：列出该文件的历史版本（时间/大小），可恢复到任意版本 */
+function HistoryModal({ rootPath, relPath, onClose }: { rootPath: string; relPath: string; onClose: () => void }) {
+  const aiRestoreFileVersion = useWorkspaceStore((s) => s.aiRestoreFileVersion)
+  const [entries, setEntries] = useState<AiHistoryMeta[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    void (async () => {
+      try {
+        const { getBridge } = await import('../../services/bridge')
+        const list = await getBridge().ai.historyList(rootPath, relPath)
+        if (alive) setEntries(list)
+      } catch (err) {
+        if (alive) setError(err instanceof Error ? err.message : String(err))
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [rootPath, relPath])
+  return (
+    <Modal title={`修改历史 · ${relPath}`} onClose={onClose}>
+      {error ? (
+        <p style={{ color: 'var(--danger)', fontSize: 13 }}>加载失败：{error}</p>
+      ) : entries === null ? (
+        <p style={{ color: 'var(--text-2)', fontSize: 13 }}>加载中…</p>
+      ) : entries.length === 0 ? (
+        <p style={{ color: 'var(--text-2)', fontSize: 13, lineHeight: 1.7 }}>
+          暂无历史版本。AI 每次写文件前会自动保存前一版本（每文件最多 20 份，超出上限的旧版本会被清理），供你随时撤销。
+        </p>
+      ) : (
+        <ul className="history-list">
+          {entries.map((e) => (
+            <li key={e.id} className="history-item">
+              <span className="history-time">{new Date(e.at).toLocaleString()}</span>
+              <span className="history-size">{formatSize(e.size)}</span>
+              <span className="grow" />
+              <button
+                className="btn"
+                style={{ padding: '2px 10px', fontSize: 12 }}
+                onClick={() => {
+                  void aiRestoreFileVersion(relPath, e.id)
+                  onClose()
+                }}
+              >
+                恢复到此时
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  )
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }

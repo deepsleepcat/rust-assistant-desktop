@@ -12,6 +12,7 @@ import fs from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { Type } from 'typebox'
 import { assertNoLinkEscape, isPathInside } from './paths'
+import { getHistory, DEFAULT_HISTORY_LIMITS } from './aiHistory'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 
 const pathSchema = Type.String({ description: '相对项目根目录的路径，如 units/rifle.txt' })
@@ -29,6 +30,24 @@ async function resolveInsideReal(rootPath: string, rel: string): Promise<string>
   const abs = resolveInside(rootPath, rel)
   await assertNoLinkEscape(rootPath, abs)
   return abs
+}
+
+/** 供主进程审批流程复用：把 AI 相对路径解析为项目内绝对路径（与工具内部同一套校验） */
+export function resolveAgentPath(rel: string): Promise<string> {
+  return resolveInsideReal(getAgentRoot(), rel)
+}
+
+/**
+ * writeFile 写盘前快照的工具调用 id 关联表（任务 2 撤销入口）：
+ * 快照在工具 execute 内记录（拿到 toolCallId），审批/工具结束事件在 ai.ts 消费
+ * （tool_execution_end 携带同一 toolCallId）。读取后即删除，防止表无限膨胀。
+ */
+const snapshotIds = new Map<string, string>()
+
+export function takeSnapshotId(toolCallId: string): string | null {
+  const id = snapshotIds.get(toolCallId) ?? null
+  snapshotIds.delete(toolCallId)
+  return id
 }
 
 export function createListProjectTool(): AgentTool {
@@ -129,7 +148,8 @@ export function createOutlineTool(): AgentTool {
   }
 }
 
-/** 写文件：经过审批后调用；用临时文件 + 原子替换，不破坏原文件。 */
+/** 写文件：经过审批后调用；用临时文件 + 原子替换，不破坏原文件。
+ * 写盘前记录旧内容快照（任务 2）：撤销/历史入口靠快照 id 关联到本次工具调用。 */
 export function createWriteFileTool(): AgentTool {
   return {
     name: 'writeFile',
@@ -139,7 +159,7 @@ export function createWriteFileTool(): AgentTool {
       path: pathSchema,
       content: Type.String({ description: '完整文件内容（不是增量补丁）' }),
     }),
-    async execute(_id, params) {
+    async execute(toolCallId, params) {
       const p = params as { path: string; content: string }
       const file = await resolveInsideReal(getAgentRoot(), p.path)
       // LOW-2：与 fs:writeFile 的 64MB 上限对称——提示注入诱导 AI 写超大文件
@@ -151,6 +171,23 @@ export function createWriteFileTool(): AgentTool {
         }
       }
       const existed = await fs.access(file).then(() => true).catch(() => false)
+      // 写盘前快照：旧内容（撤销 = 恢复它）；文件不存在也记一条 null 快照（撤销 = 删除新建文件）。
+      // 快照失败（读不到/超限）不阻断写入，只是本次没有撤销入口。
+      let snapshotId: string | null = null
+      try {
+        if (existed) {
+          const st = await fs.stat(file)
+          if (st.size <= DEFAULT_HISTORY_LIMITS.maxEntryBytes) {
+            snapshotId = await getHistory().addSnapshot(getAgentRoot(), p.path, await fs.readFile(file, 'utf8'))
+          }
+        } else {
+          snapshotId = await getHistory().addSnapshot(getAgentRoot(), p.path, null)
+        }
+      } catch (err) {
+        console.warn('[writeFile] 快照失败，本次写入无撤销入口:', err)
+        snapshotId = null
+      }
+      if (snapshotId) snapshotIds.set(toolCallId, snapshotId)
       await fs.mkdir(path.dirname(file), { recursive: true })
       const tmp = path.join(path.dirname(file), `.${path.basename(file)}.ai-${randomUUID()}.tmp`)
       try {
