@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getBridge } from '../../services/bridge'
-import { canPreviewSafely, checkTmx, inflateBytes, parseTmx, type TmxCheckIssue, type TmxMap } from './tmx'
+import { canPreviewSafely, checkTmx, decodedTileCount, inflateBytes, parseTmx, type TmxCheckIssue, type TmxMap } from './tmx'
 
 interface MapViewerProps {
   path: string
@@ -21,7 +21,6 @@ export function isMapFile(path: string): boolean {
 async function groundGids(map: TmxMap): Promise<number[]> {
   const layer = map.layers.find((l) => l.kind === 'tile' && l.name.toLowerCase() === 'ground')
   if (!layer?.data) return []
-  const { decodedTileCount } = await import('./tmx')
   const count = await decodedTileCount(layer)
   if (count === null) return []
   const encoding = layer.encoding ?? 'csv'
