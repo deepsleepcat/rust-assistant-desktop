@@ -100,16 +100,22 @@ export async function checkDeepSeek(config: DeepSeekConfig): Promise<AiCheckResu
   }
 }
 
-/** Agent 模式：带铁锈战争工具与写文件审批的完整对话循环 */
+/** Agent 模式：带铁锈战争工具与写文件审批的完整对话循环。
+ * cancelled：流级取消标志（abort 只置当前流的标志，新流不复位旧流）。
+ * 置位后 emit 全部静默——旧流事件不会泄漏到渲染层新流的监听器；
+ * 联动 AbortController 硬停止在途模型请求（停止计费）。 */
 export async function streamAgent(
   webContents: WebContents,
   channel: string,
   params: AiChatParams,
   config: DeepSeekConfig,
   projectRoot: string,
-  approvalResolver: (resolve: (response: AiApprovalResponse) => void) => void,
+  approvalResolver: (id: string, resolve: (response: AiApprovalResponse) => void) => void,
+  cancelled: { current: boolean; abort?: () => void },
 ): Promise<void> {
   const emit = (event: AiStreamEvent) => {
+    // 流已取消（abort 后）：事件一律不再发出，防止陈旧流污染新流对话/审批
+    if (cancelled.current) return
     if (!webContents.isDestroyed()) webContents.send(channel, event)
   }
   try {
@@ -123,11 +129,19 @@ export async function streamAgent(
     // 用户 2 分钟未响应则自动拒绝并继续，避免 Agent 永久挂起、后续对话被阻塞
     const APPROVAL_TIMEOUT_MS = 120_000
     const beforeToolCall = async (context: { toolCall: { name: string; id?: string }; args: unknown }) => {
+      // 流已取消：所有工具一律拒绝（不只 writeFile）——旧流不能继续以
+      // 新流设置的项目根执行任何工具，也不能再发起审批/写盘
+      if (cancelled.current) {
+        return { block: true, reason: '此请求已超时取消，请重新发起对话' }
+      }
       if (context.toolCall.name !== 'writeFile') return undefined
       const args = (context.args ?? {}) as { path?: string; content?: string }
       const id = context.toolCall.id ?? randomUUID()
-      const preview = String(args.content ?? '').slice(0, 400)
-      emit({ type: 'approval_request', id, tool: 'writeFile', path: args.path ?? '?', contentPreview: preview })
+      // 预览 2000 字符 + 完整长度：让用户批准前能看到足够内容和规模
+      //（400 字符预览时恶意尾部内容可能被跳过，用户批准的实际写盘内容远超所见）
+      const full = String(args.content ?? '')
+      const preview = full.slice(0, 2000)
+      emit({ type: 'approval_request', id, tool: 'writeFile', path: args.path ?? '?', contentPreview: preview, contentLength: full.length })
       const response = await new Promise<AiApprovalResponse>((resolve) => {
         let settled = false
         const finish = (approved: boolean) => {
@@ -141,15 +155,21 @@ export async function streamAgent(
           if (!webContents.isDestroyed()) webContents.send(channel, { type: 'approval_expired', id })
           finish(false)
         }, APPROVAL_TIMEOUT_MS)
-        approvalResolver((r) => finish(r.approved))
+        // 把请求 id 一并交给主进程：界面响应时按 id 匹配，过期响应一律忽略
+        approvalResolver(id, (r) => finish(r.approved))
       })
       return response.approved
         ? undefined
         : { block: true, reason: '用户拒绝了此修改，请调整方案或询问用户' }
     }
 
+    // 硬停止：AbortController 联动 cancelled——abort 时中断在途模型请求（停止计费）。
+    // streamFn 把 signal 透传给 pi-ai（SimpleStreamOptions.signal）
+    const abortController = new AbortController()
+    cancelled.abort = () => abortController.abort()
+
     const agent = new Agent({
-      streamFn: (m, ctx, opts) => models.streamSimple(m, ctx, opts),
+      streamFn: (m, ctx, opts) => models.streamSimple(m, ctx, { ...opts, signal: abortController.signal }),
       initialState: {
         systemPrompt: params.systemPrompt,
         model,
@@ -211,45 +231,6 @@ export async function streamAgent(
   }
 }
 
-/** 流式对话：把事件推送给渲染进程 */
-export async function streamDeepSeek(
-  webContents: WebContents,
-  channel: string,
-  params: AiChatParams,
-  config: DeepSeekConfig,
-): Promise<void> {
-  const emit = (event: AiStreamEvent) => {
-    if (!webContents.isDestroyed()) webContents.send(channel, event)
-  }
-  try {
-    const { models, model } = await createDeepSeekModel(config)
-    if (!model) throw new Error('模型注册失败')
-    emit({ type: 'start' })
-    let fullText = ''
-    // pi-ai 的 Message 类型非常严格；主进程内部用宽松结构转换（运行时行为一致）
-    const messages = params.messages.map((m) => {
-      if (m.role === 'assistant') {
-        return { role: 'assistant', content: [{ type: 'text', text: m.content }], timestamp: Date.now() }
-      }
-      return { role: 'user', content: m.content, timestamp: Date.now() }
-    }) as never
-    const stream = await models.streamSimple(model, {
-      systemPrompt: params.systemPrompt,
-      messages,
-    }, { apiKey: config.apiKey })
-    for await (const event of stream) {
-      if (event.type === 'text_delta') {
-        const delta = (event as { delta?: string }).delta ?? ''
-        fullText += delta
-        emit({ type: 'delta', text: delta })
-      }
-    }
-    emit({ type: 'done', fullText })
-  } catch (err) {
-    emit({ type: 'error', message: toFriendlyError(err) })
-  }
-}
-
 /** 社区后端（闭源服务，预留）：未上线时返回"即将上线" */
 export function checkCommunity(config: { endpoint: string; token: string }): AiCheckResult {
   if (!config.endpoint || !config.token) {
@@ -263,9 +244,11 @@ export function communityInfo(): { type: AiProviderType; name: string; available
   return { type: 'community', name: '社区后端', available: false, models: [] }
 }
 
-/** 把底层错误转成用户看得懂的中文提示 */
+/** 把底层错误转成用户看得懂的中文提示（L7：回传前掩码 API Key，防止错误体泄漏密钥） */
 function toFriendlyError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err)
+  let message = err instanceof Error ? err.message : String(err)
+  // 掩码 sk- 开头的密钥片段（DeepSeek/OpenAI 风格），避免 provider 错误体回显完整 Key
+  message = message.replace(/sk-[A-Za-z0-9_-]{8,}/g, (m) => `sk-***${m.slice(-4)}`)
   if (/401|invalid api key|authentication/i.test(message)) return 'API Key 无效，请在设置中检查'
   if (/402|insufficient|quota|balance/i.test(message)) return '额度不足或余额耗尽，请检查账户'
   if (/timeout|ETIMEDOUT|ECONNREFUSED|fetch failed/i.test(message)) return '网络连接失败，请检查网络'

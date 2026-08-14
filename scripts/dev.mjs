@@ -21,8 +21,14 @@ async function waitForServer(url, timeoutMs = 45000) {
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url)
-      if (res.ok) return
-    } catch {
+      if (res.ok) {
+        // L14：校验响应确实是本项目的 Vite 页面（端口被恶意进程占用时不加载陌生页面进 Electron）
+        const text = await res.text()
+        if (text.includes('<div id="root">') && (text.includes('vite') || text.includes('/src/main.tsx'))) return
+        throw new Error(`端口 ${port} 已被其它服务占用（响应内容不是本项目页面），拒绝启动 Electron`)
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('占用')) throw err
       /* 服务器还没起来，继续等 */
     }
     await new Promise((r) => setTimeout(r, 400))

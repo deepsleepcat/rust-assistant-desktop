@@ -21,7 +21,8 @@ export function TitleBar() {
     let alive = true
     void getBridge().project.readImageAsDataUrl('', avatarSettings.localPath).then((url) => alive && setAvatar({ path: avatarSettings.localPath ?? '', url })).catch(() => alive && setAvatar({ path: avatarSettings.localPath ?? '', url: null }))
     return () => { alive = false }
-  }, [avatarSettings.source, avatarSettings.localPath])
+    // updatedAt：重新裁切头像后路径不变，也要重新读取
+  }, [avatarSettings.source, avatarSettings.localPath, avatarSettings.updatedAt])
 
   const avatarUrl = avatar.path === avatarSettings.localPath ? avatar.url : null
 

@@ -11,16 +11,23 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { Type } from 'typebox'
+import { assertNoLinkEscape, isPathInside } from './paths'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 
 const pathSchema = Type.String({ description: '相对项目根目录的路径，如 units/rifle.txt' })
 
-/** 把 AI 给的相对路径解析为项目内绝对路径（越界抛错） */
+/** 把 AI 给的相对路径解析为项目内绝对路径（越界抛错；盘符根/大小写与 paths.ts 一致） */
 function resolveInside(rootPath: string, rel: string): string {
   const normalized = String(rel).replace(/^\/+/, '').replace(/\//g, path.sep)
   const abs = path.resolve(rootPath, normalized)
-  const root = path.resolve(rootPath)
-  if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error('路径超出项目目录范围')
+  if (!isPathInside(rootPath, abs)) throw new Error('路径超出项目目录范围')
+  return abs
+}
+
+/** 词法校验 + 链接逃逸校验（M1：项目内 junction 不能把 AI 的读写重定向到根外） */
+async function resolveInsideReal(rootPath: string, rel: string): Promise<string> {
+  const abs = resolveInside(rootPath, rel)
+  await assertNoLinkEscape(rootPath, abs)
   return abs
 }
 
@@ -32,7 +39,8 @@ export function createListProjectTool(): AgentTool {
     parameters: Type.Object({ path: Type.Optional(pathSchema) }),
     async execute(_id, params) {
       const p = params as { path?: string }
-      const dir = p.path ? resolveInside(getAgentRoot(), p.path) : getAgentRoot()
+      // L-5：目录也可能是 junction——列表也不能读穿到根外
+      const dir = p.path ? await resolveInsideReal(getAgentRoot(), p.path) : getAgentRoot()
       const entries = await fs.readdir(dir, { withFileTypes: true })
       return {
         content: [{ type: 'text', text: entries.map((e) => `${e.isDirectory() ? '[目录]' : '[文件]'} ${e.name}${e.isDirectory() ? '/' : ''}`).join('\n') || '（空目录）' }],
@@ -50,7 +58,16 @@ export function createReadFileTool(): AgentTool {
     parameters: Type.Object({ path: pathSchema }),
     async execute(_id, params) {
       const p = params as { path: string }
-      const file = resolveInside(getAgentRoot(), p.path)
+      const file = await resolveInsideReal(getAgentRoot(), p.path)
+      // 与 fs:readFile 对称的 64MB 上限：AI 是远程模型，可能被项目内恶意内容
+      // prompt 注入后反复调用只读工具读大文件 → 全量读入会拖垮主进程
+      const st = await fs.stat(file)
+      if (st.size > 64 * 1024 * 1024) {
+        return {
+          content: [{ type: 'text', text: `文件过大（${(st.size / 1024 / 1024).toFixed(1)}MB，超过 64MB 上限），已拒绝读取。可用 sectionOutline 查看结构。` }],
+          details: { size: st.size },
+        }
+      }
       const buf = await fs.readFile(file)
       const hasBom = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf
       const content = (hasBom ? buf.subarray(3).toString('utf8') : buf.toString('utf8')).slice(0, 20000)
@@ -66,7 +83,7 @@ export function createSearchTool(): AgentTool {
   return {
     name: 'searchInProject',
     label: '搜索项目',
-    description: '在项目文件名中搜索关键词（如单位名、标签、文件夹名）。',
+    description: '搜索项目根目录第一层文件的文件名中的关键词（不递归子目录、不搜索文件内容）。如需要内容请用 readFile。',
     parameters: Type.Object({ query: Type.String({ description: '搜索关键词' }) }),
     async execute(_id, params) {
       const p = params as { query: string }
@@ -90,7 +107,15 @@ export function createOutlineTool(): AgentTool {
     parameters: Type.Object({ path: pathSchema }),
     async execute(_id, params) {
       const p = params as { path: string; content: string }
-      const file = resolveInside(getAgentRoot(), p.path)
+      const file = await resolveInsideReal(getAgentRoot(), p.path)
+      // 与 readFile 一致的大小上限：节大纲也需全量读入，超限时给提示而不是 OOM
+      const st = await fs.stat(file)
+      if (st.size > 64 * 1024 * 1024) {
+        return {
+          content: [{ type: 'text', text: `文件过大（${(st.size / 1024 / 1024).toFixed(1)}MB，超过 64MB 上限），已拒绝读取` }],
+          details: { size: st.size },
+        }
+      }
       const content = await fs.readFile(file, 'utf8')
       const lines = content.split(/\r?\n/)
       const sections = lines
@@ -116,7 +141,15 @@ export function createWriteFileTool(): AgentTool {
     }),
     async execute(_id, params) {
       const p = params as { path: string; content: string }
-      const file = resolveInside(getAgentRoot(), p.path)
+      const file = await resolveInsideReal(getAgentRoot(), p.path)
+      // LOW-2：与 fs:writeFile 的 64MB 上限对称——提示注入诱导 AI 写超大文件
+      // 会填满项目所在磁盘，必须限制
+      if (Buffer.byteLength(p.content, 'utf8') > 64 * 1024 * 1024) {
+        return {
+          content: [{ type: 'text', text: '写入失败：内容超过 64MB 上限，请拆分或精简内容' }],
+          details: {},
+        }
+      }
       const existed = await fs.access(file).then(() => true).catch(() => false)
       await fs.mkdir(path.dirname(file), { recursive: true })
       const tmp = path.join(path.dirname(file), `.${path.basename(file)}.ai-${randomUUID()}.tmp`)

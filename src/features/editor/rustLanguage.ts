@@ -1,7 +1,7 @@
 /**
- * 铁锈战争配置语法高亮：移植手机版 RustLanguage 的行内规则。
+ * 铁锈战争配置语法高亮：移植自 RustLanguage 的行内规则。
  *
- * 规则（与手机版一致，纯行内、无跨行状态）：
+ * 规则（纯行内、无跨行状态）：
  * 1. 以 # 开头 → 注释
  * 2. 行内含 : → key: value（key 高亮，冒号与 value 常规色）
  * 3. 以 [ 开头且以 ] 结尾 → 节名（加粗）
@@ -12,10 +12,20 @@ import { tags } from '@lezer/highlight'
 import type { CompletionContext } from '@codemirror/autocomplete'
 
 /** 逐行分类：纯函数，供测试 */
+export type RustKeyKind = 'animation' | 'graphic' | 'property'
+
+export function keyKind(key: string): RustKeyKind {
+  if (/^(animation_|total_frames$)/.test(key)) return 'animation'
+  if (/^(image|image_|draw_|shadow|frame_|scale|teamColors)/.test(key)) return 'graphic'
+  return 'property'
+}
+
 export function classifyLine(line: string): { kind: 'comment' | 'section' | 'keyvalue' | 'plain'; key?: string; value?: string } {
   const trimmed = line.trim()
   if (trimmed.startsWith('#')) return { kind: 'comment' }
-  if (/^\[.*\]$/.test(trimmed)) return { kind: 'section' }
+  // 节头允许行尾注释：[core] # 说明 仍是节（否则该节下所有键值行会被误报「不在任何节内」）；
+  // 空节名 [] 不算节（与 findSectionOfLine 判定一致）
+  if (/^\[[^\]]+\]\s*(?:#.*)?$/.test(trimmed)) return { kind: 'section' }
   const colon = line.indexOf(':')
   if (colon >= 0) {
     const key = line.slice(0, colon).trim()
@@ -42,10 +52,10 @@ const rustConfigLanguage = StreamLanguage.define({
     }
     if (classified.kind === 'keyvalue') {
       const colon = rest.indexOf(':')
-      // 消费到冒号（含冒号），返回 key 标签；剩余部分下一次 tokenize
+      // 消费到冒号（含冒号），返回按字段类型区分的标签
       stream.pos += colon
       stream.next()
-      return 'key'
+      return keyKind(classified.key ?? '')
     }
     stream.skipToEnd()
     return 'plain'
@@ -54,6 +64,9 @@ const rustConfigLanguage = StreamLanguage.define({
     comment: tags.comment,
     section: tags.heading,
     key: tags.propertyName,
+    animation: tags.function(tags.propertyName),
+    graphic: tags.labelName,
+    property: tags.propertyName,
     plain: tags.content,
   },
 })
@@ -63,6 +76,8 @@ export const rustConfigHighlightStyle = HighlightStyle.define([
   { tag: tags.comment, color: '#888888', fontStyle: 'italic' },
   { tag: tags.heading, color: '#111111', fontWeight: '700' },
   { tag: tags.propertyName, color: '#333333', fontWeight: '600' },
+  { tag: tags.function(tags.propertyName), color: '#7a3e00', fontWeight: '650' },
+  { tag: tags.labelName, color: '#3d5a80', fontWeight: '600' },
 ])
 
 export function rustConfigLanguageSupport() {
@@ -83,10 +98,10 @@ export function keyOfLine(line: string): string | null {
   return key.length > 0 ? key : null
 }
 
-/** 从行数组向上扫描最近的 [节名] */
+/** 从行数组向上扫描最近的 [节名]（允许行尾注释：[core] # 说明） */
 export function findSectionOfLine(lines: string[], lineIndex: number): string {
   for (let i = lineIndex; i >= 0; i--) {
-    const m = /^\s*\[(.+?)\]\s*$/.exec(lines[i])
+    const m = /^\s*\[(.+?)\]\s*(?:#.*)?$/.exec(lines[i])
     if (m) return m[1]
   }
   return ''

@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { IconChat, IconClose, IconFolder, IconGear } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
+import { useEscapeHandler } from '../../utils/modalStack'
 
 interface CommandItem {
   id: string
@@ -18,7 +19,7 @@ interface CommandItem {
 export function CommandPalette() {
   const open = useWorkspaceStore((s) => s.commandOpen)
   const setOpen = useWorkspaceStore((s) => s.setCommandOpen)
-  const openProject = useWorkspaceStore((s) => s.openProject)
+  const importModProject = useWorkspaceStore((s) => s.importModProject)
   const createConversation = useWorkspaceStore((s) => s.createConversation)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
   const setModDialog = useWorkspaceStore((s) => s.setModDialog)
@@ -31,15 +32,10 @@ export function CommandPalette() {
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // 全局 Escape 关闭：与 Modal 一致，焦点在任何位置都能按 Esc 关闭面板
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, setOpen])
+  // 全局 Escape 关闭：与 Modal 一致，焦点在任何位置都能按 Esc 关闭面板。
+  // 面板常驻挂载但只在打开时占栈（enabled）——否则会永久吞掉全局 Escape
+  // （编辑器补全弹层等都无法用 Esc 关闭）
+  useEscapeHandler(() => setOpen(false), open)
 
   // 打开时聚焦输入框（重新打开时保留上次的搜索词，与 VS Code 行为一致）
   useEffect(() => {
@@ -50,22 +46,24 @@ export function CommandPalette() {
 
   const commands = useMemo<CommandItem[]>(
     () => [
-      { id: 'open-project', title: '打开项目…', hint: 'Ctrl+O', icon: <IconFolder size={15} />, run: () => void openProject() },
+      { id: 'open-project', title: '导入模组…', hint: 'Ctrl+O', icon: <IconFolder size={15} />, run: () => void importModProject() },
       { id: 'new-conversation', title: '新建 AI 对话', hint: 'Ctrl+Shift+C', icon: <IconChat size={15} />, run: () => createConversation() },
       { id: 'open-settings', title: '打开设置', hint: 'Ctrl+,', icon: <IconGear size={15} />, run: () => setSettingsOpen(true) },
       {
         id: 'close-tab',
         title: '关闭当前文件',
-        hint: 'Ctrl+W',
         icon: <IconClose size={15} />,
         run: () => activeTabId && closeTab(activeTabId),
       },
-      { id: 'mod-create', title: '模组：新建模组…', icon: <AppIcon name="box" size={15} />, run: () => { setModDialog('createMod'); setOpen(false) } },
+      { id: 'mod-create', title: '模组：自述文件（创建/编辑）…', icon: <AppIcon name="box" size={15} />, run: () => { setModDialog('createMod'); setOpen(false) } },
       { id: 'mod-create-unit', title: '模组：新建单位…', icon: <AppIcon name="tower" size={15} />, run: () => { setModDialog('createUnit'); setOpen(false) } },
+      { id: 'mod-unit-library', title: '模组：单位库', icon: <AppIcon name="tower" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setUnitLibraryOpen(true) } },
       { id: 'mod-pack', title: '模组：打包（.rwmod）', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); void packModProject() } },
       { id: 'mod-check', title: '模组：检查单位', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); void checkModProject() } },
+      { id: 'mod-optimize', title: '模组：优化（清理垃圾）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); setModDialog('optimize') } },
+      { id: 'code-table', title: '浏览代码表', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setCodeTableOpen(true) } },
     ],
-    [openProject, createConversation, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen],
+    [importModProject, createConversation, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen],
   )
 
   const filtered = useMemo(() => {
@@ -92,7 +90,8 @@ export function CommandPalette() {
             // Escape 由全局监听处理（焦点不在输入框时也能关闭）
             if (e.key === 'ArrowDown') {
               e.preventDefault()
-              setIndex((i) => Math.min(i + 1, filtered.length - 1))
+              // 空结果时保持 0：否则 index 变 -1，恢复查询后高亮与 Enter 短暂失效
+              setIndex((i) => (filtered.length === 0 ? 0 : Math.min(i + 1, filtered.length - 1)))
             }
             if (e.key === 'ArrowUp') {
               e.preventDefault()

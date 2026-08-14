@@ -11,3 +11,21 @@
 .image-viewer-canvas img { display: block; box-shadow: var(--shadow-md); }
 .image-viewer-loading, .image-viewer-error { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; text-align: center; }
 .image-viewer-error small { max-width: 420px; color: var(--text-muted); }
+
+/* M8 hover 文档（键名/节名/颜色悬停） */
+.cm-tooltip.cm-tooltip-hover { background: var(--bg-panel, #fff); border: 1px solid var(--border, #d8dee4); border-radius: 8px; box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,.12)); padding: 8px 10px; max-width: 420px; }
+.cm-hover-doc { font-size: 12.5px; line-height: 1.6; color: var(--text-1, #1f2328); }
+.cm-hover-doc b { font-size: 13px; }
+.cm-hover-muted { color: var(--text-muted, #8c959f); font-size: 11.5px; }
+.cm-hover-demo { margin: 6px 0 0; padding: 6px 8px; background: rgba(127,127,127,.08); border-radius: 5px; font-family: var(--font-mono, monospace); font-size: 11.5px; white-space: pre-wrap; word-break: break-all; max-height: 180px; overflow: auto; }
+
+/* M12 炮塔编辑器 */
+.turret-card { width: min(760px, 94vw); }
+.turret-body { display: flex; flex-direction: column; gap: 12px; max-height: 70vh; overflow: auto; }
+.turret-table table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.turret-table th, .turret-table td { border: 1px solid var(--divider, #e5e8ec); padding: 4px 8px; text-align: left; }
+.turret-table th { background: rgba(127,127,127,.06); font-weight: 600; color: var(--text-secondary, #57606a); }
+.turret-table input { width: 72px; border: 1px solid var(--border, #d8dee4); border-radius: 4px; padding: 3px 6px; font: 12.5px var(--font-ui); }
+.turret-preview { border: 1px solid var(--border, #d8dee4); border-radius: 6px; }
+.turret-dot { border-radius: 50%; border: 1.5px solid #fff; background: rgba(217, 76, 76, .85); color: #fff; font-size: 9px; font-weight: 700; display: grid; place-items: center; cursor: crosshair; box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 1; }
+.turret-dot:hover { background: rgba(217, 76, 76, 1); transform: scale(1.15); }

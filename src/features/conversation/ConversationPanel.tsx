@@ -11,9 +11,10 @@ import { AppIcon } from '../../components/AppIcon'
 import { PromptModal } from '../../components/Modal'
 
 function renderAssistantText(text: string) {
-  const parts = text.split(/(```[\\s\\S]*?```)/g)
+  // 围栏代码块渲染（注意：[\s\S] 是「任意字符」，不能写成 [\\s\\S]——双重转义会匹配字面反斜杠导致围栏永不命中）
+  const parts = text.split(/(```[\s\S]*?```)/g)
   return parts.map((part, index) =>
-    part.startsWith('```') ? <pre key={index} className="assistant-code">{part.replace(/^```[^\\n]*\\n?/, '').replace(/```$/, '')}</pre> : <span key={index}>{part}</span>,
+    part.startsWith('```') ? <pre key={index} className="assistant-code">{part.replace(/^```[^\n]*\n?/, '').replace(/```$/, '')}</pre> : <span key={index}>{part}</span>,
   )
 }
 
@@ -181,25 +182,46 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
   }, [messages, toolEvents])
   const sendAiMessage = useWorkspaceStore((s) => s.sendAiMessage)
   const aiStreaming = useWorkspaceStore((s) => s.aiStreamingConversationId === id)
+  // P3：全局流锁（任何对话正在流式回复时都不能发送，与 store 的全局锁一致——
+  // 否则切到另一个对话发送会清空输入框却被 store 拒绝，草稿丢失）
+  const anyStreaming = useWorkspaceStore((s) => s.aiStreamingConversationId !== null)
   const aiSettings = useWorkspaceStore((s) => s.settings.ai)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
-  const pendingApproval = useWorkspaceStore((s) => s.pendingApproval)
-  const respondApproval = useWorkspaceStore((s) => s.respondApproval)
+  // 低-4：草稿按对话隔离——切换对话时输入框显示该对话上次的草稿，防止误发到别的对话
   const [input, setInput] = useState('')
+  const draftsRef = useRef<Map<string, string>>(new Map())
+  const previousIdRef = useRef(id)
   const messagesRef = useRef<HTMLDivElement>(null)
 
+  // 社区后端为预留服务（主进程也返回「即将上线」）：选中时输入区明确提示怎么恢复
+  const communitySelected = aiSettings.provider === 'community'
   const providerReady = aiSettings.provider === 'deepseek' ? aiSettings.deepseekApiKey.length > 0 : false
 
-  // 新消息自动滚动到底部
+  // 新消息自动滚动到底部：仅当用户本来就停在底部附近时才跟随，
+  // 否则向上阅读历史时每个流式增量都会把人拽回底部（打断阅读）
   useEffect(() => {
     const el = messagesRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    if (nearBottom) el.scrollTop = el.scrollHeight
   }, [messages])
+
+  // 对话切换：把「切换前对话」的输入存进旧 id 的草稿（不能用新 id 存旧输入，否则串稿），
+  // 再取回新对话的草稿
+  useEffect(() => {
+    const prevId = previousIdRef.current
+    previousIdRef.current = id
+    if (prevId === id) return
+    if (input.trim()) draftsRef.current.set(prevId, input)
+    setInput(draftsRef.current.get(id) ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在对话 id 变化时切换草稿
+  }, [id])
 
   const send = () => {
     const text = input.trim()
-    if (!text || !providerReady || aiStreaming) return
+    if (!text || !providerReady || aiStreaming || anyStreaming) return
     setInput('')
+    draftsRef.current.delete(id)
     void sendAiMessage(id, text)
   }
 
@@ -255,7 +277,8 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
                 )}
                 <div className="msg-bubble">
                   {item.msg.role === 'assistant' ? renderAssistantText(item.msg.content) : item.msg.content}
-                  {item.msg.role === 'assistant' && item.msg.content === '' && !item.msg.reasoning && <span className="msg-streaming">正在思考…</span>}
+                  {/* 仅流式进行中且内容为空时显示「正在思考…」：done 后为空内容不再挂着占位符 */}
+                  {item.msg.role === 'assistant' && item.msg.content === '' && !item.msg.reasoning && aiStreaming && <span className="msg-streaming">正在思考…</span>}
                 </div>
               </div>
             ),
@@ -263,43 +286,37 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
         )}
       </div>
 
-      {pendingApproval && (
-        <div className="modal-overlay">
-          <div className="modal-card confirm-card">
-            <div className="modal-header">AI 请求修改文件</div>
-            <div className="modal-body">
-              <p style={{ margin: 0, fontSize: 13, fontWeight: 600 }}>文件：{pendingApproval.path}</p>
-              <pre className="approval-preview">{pendingApproval.contentPreview}</pre>
-            </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => void respondApproval(false)}>拒绝</button>
-              <button className="btn primary" onClick={() => void respondApproval(true)}>允许写入</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="conv-input-area">
         <textarea
           className="conv-input"
           value={input}
-          disabled={!providerReady || aiStreaming}
-          placeholder={providerReady ? '输入你的模组需求…（如：帮我做一个能隐身的侦察单位）' : '请先在设置中配置 AI'}
+          // 低-5：textarea 不禁用（流式中允许起草下一条；发送守卫已覆盖全部流式场景）
+          disabled={!providerReady}
+          placeholder={providerReady ? '输入你的模组需求…（如：帮我做一个能隐身的侦察单位）' : communitySelected ? '社区后端即将上线，请先在设置中切换回 DeepSeek' : '请先在设置中配置 AI'}
           aria-label="对话输入框"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            // 低-2：IME 组合输入（拼音/五笔候选确认）的 Enter 不触发发送
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault()
               send()
             }
           }}
         />
         <div className="conv-input-row">
-          <span className="hint">{aiStreaming ? 'AI 正在回复…' : 'Enter 发送 · Shift+Enter 换行'}</span>
-          <button className="btn" disabled={!providerReady || aiStreaming || !input.trim()} onClick={send}>
+          <span className="hint">
+            {aiStreaming
+              ? 'AI 正在回复…'
+              : anyStreaming
+                ? 'AI 正在其他对话回复，请稍候'
+                : !providerReady
+                  ? (communitySelected ? '社区后端即将上线，请在设置中切换回 DeepSeek' : '请先在设置中配置 AI')
+                  : 'Enter 发送 · Shift+Enter 换行'}
+          </span>
+          <button className="btn" disabled={!providerReady || aiStreaming || anyStreaming || !input.trim()} onClick={send}>
             <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
               <AppIcon name="add" size={13} />
-              {aiStreaming ? '回复中' : '发送'}
+              {aiStreaming ? '回复中' : anyStreaming ? '等待中' : '发送'}
             </span>
           </button>
         </div>

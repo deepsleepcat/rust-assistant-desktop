@@ -117,12 +117,12 @@ export interface EditorTab {
   content: string
   /** 磁盘上的英文原文快照（保存基准） */
   original: string
-  /** 上次保存/打开时的显示层快照，用于脏标记判断 */
-  lastSavedView: string
   hasBom: boolean
   dirty: boolean
   /** 是否启用中文显示层（显示中文、保存转英文） */
   translationEnabled: boolean
+  /** 翻译追踪表（中文显示串 → 原始英文串）：保存时精确还原，未追踪中文保留 */
+  translationMap?: Map<string, string>
   /** 读取文件时的大小（仅供展示） */
   size: number
   /** 磁盘快照时间与外部修改标记 */

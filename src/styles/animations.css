@@ -29,6 +29,14 @@
 @keyframes ra-spin {
   to { transform: rotate(360deg); }
 }
+@keyframes ra-tree-reveal {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ra-tree-loading {
+  0%, 100% { opacity: .38; }
+  50% { opacity: .9; }
+}
 
 /* ── 浮层：命令面板、设置、确认、M5 弹窗 ─────────────── */
 .modal-overlay, .command-overlay { animation: ra-fade-in .18s ease-out; }
@@ -67,7 +75,11 @@
 .avatar-btn:hover img { animation: ra-spin .5s ease; }
 
 /* ── 折叠箭头已有点击过渡（补动画时长统一） ───────────── */
-.tree-row .chev { transition: transform .18s ease; }
+.tree-row .chev { transition: transform .2s cubic-bezier(.2, .8, .25, 1); }
+.tree-row.tree-child { animation: ra-tree-reveal .18s ease-out both; }
+.tree-loading { animation: ra-tree-loading 1.1s ease-in-out infinite; }
+.tree-row .row-actions { opacity: 0; transform: translateX(3px); transition: opacity .15s ease, transform .15s ease; }
+.tree-row:hover .row-actions, .tree-row:focus-within .row-actions { opacity: 1; transform: translateX(0); }
 
 /* ── 减少动态效果：全部降级为即时显示 ────────────────── */
 @media (prefers-reduced-motion: reduce) {

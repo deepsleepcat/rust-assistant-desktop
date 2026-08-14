@@ -63,7 +63,7 @@ export function createSearchTool(): RustTool {
   }
 }
 
-/** 查询代码表（手机版数据库） */
+/** 查询代码表 */
 export function createCodeTableTool(): RustTool {
   return {
     name: 'codeTable',
@@ -74,7 +74,7 @@ export function createCodeTableTool(): RustTool {
       await loadCodeData()
       const results = findCodesByQuery(String(args.query ?? ''), 10)
       return results.length > 0
-        ? results.map((c) => `${c.code}（${c.translate}）\n  类型: ${c.type} | 节: ${c.section}\n  ${c.description}`).join('\n\n')
+        ? results.map((c) => `${c.code}（${c.translate}）\n  类型: ${c.type} | 节: ${c.section}${c.description ? `\n  ${c.description}` : ''}`).join('\n\n')
         : `代码表中未找到「${args.query}」`
     },
   }
@@ -112,9 +112,18 @@ export function createWriteFileTool(): RustTool {
     },
     async execute(args, rootPath) {
       const rel = String(args.path ?? '').replace(/^\/+/, '')
+      if (!rel) return '写入失败：缺少 path 参数（相对路径，如 units/new-unit.txt）'
       const filePath = `${rootPath.replace(/[\\/]$/, '')}\\${rel.replace(/\//g, '\\')}`
       const content = String(args.content ?? '')
-      await getBridge().project.writeFile(rootPath, filePath, content, { hasBom: false })
+      // 原文件带 BOM 时保留（先读一次原文件，失败视为不存在 → 无 BOM）
+      let hasBom = false
+      try {
+        const existing = await getBridge().project.readFile(rootPath, filePath)
+        hasBom = existing.hasBom
+      } catch {
+        /* 文件不存在：新建无 BOM */
+      }
+      await getBridge().project.writeFile(rootPath, filePath, content, { hasBom })
       return `已写入 ${rel}（${content.length} 字符）`
     },
   }

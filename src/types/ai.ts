@@ -63,7 +63,7 @@ export type AiStreamEvent =
   | { type: 'error'; message: string; requestId?: string }
   | { type: 'tool_start'; name: string; args: Record<string, unknown> }
   | { type: 'tool_end'; name: string; ok: boolean; summary: string }
-  | { type: 'approval_request'; id: string; tool: string; path: string; contentPreview: string }
+  | { type: 'approval_request'; id: string; tool: string; path: string; contentPreview: string; contentLength?: number }
   | { type: 'approval_expired'; id: string }
 
 /** 审批响应（界面 → 主进程） */
@@ -85,6 +85,8 @@ export interface AvatarProvider {
   source: 'default' | 'local' | 'community'
   localPath: string | null
   remoteUrl: string | null
+  /** 头像更新序号：重新选择/裁切时递增，供界面感知「同一路径的新头像」 */
+  updatedAt?: number
 }
 
 /** 健康检查结果 */

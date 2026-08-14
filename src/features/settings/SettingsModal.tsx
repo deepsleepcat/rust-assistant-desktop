@@ -10,6 +10,7 @@ import { IconImage } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { LogoR } from '../../components/LogoR'
 import { Modal } from '../../components/Modal'
+import { AvatarCropModal } from './AvatarCropModal'
 
 const GRADIENT_PRESETS = [
   { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
@@ -30,6 +31,8 @@ export function SettingsModal() {
   const [aiCheck, setAiCheck] = useState<string | null>(null)
   const [aiChecking, setAiChecking] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  // M8 头像裁切：待裁剪的原图 data URL（null = 未在裁切）
+  const [cropSource, setCropSource] = useState<string | null>(null)
 
   const bg = settings.background
   const [image, setImage] = useState<{ path: string; url: string | null }>({ path: '', url: null })
@@ -61,7 +64,7 @@ export function SettingsModal() {
     let alive = true
     void getBridge().project.readImageAsDataUrl('', settings.avatar.localPath).then((url) => alive && setAvatarUrl(url)).catch(() => alive && setAvatarUrl(null))
     return () => { alive = false }
-  }, [settings.avatar.source, settings.avatar.localPath])
+  }, [settings.avatar.source, settings.avatar.localPath, settings.avatar.updatedAt])
 
   const pickImage = async () => {
     const picked = await getBridge().project.openImageDialog()
@@ -69,6 +72,7 @@ export function SettingsModal() {
   }
 
   return (
+    <>
       <Modal title="设置" onClose={() => setSettingsOpen(false)} wide>
       <div style={{ display: 'flex', gap: 20, minHeight: 380 }}>
         {/* 左侧导航 */}
@@ -449,13 +453,18 @@ export function SettingsModal() {
               <div className="setting-row">
                 <span className="label">
                   自定义头像
-                  <div className="desc">本地头像只保存在你的电脑；社区上传接口预留中</div>
+                  <div className="desc">选择图片后可裁剪成正方形头像，只保存在你的电脑；社区上传接口预留中</div>
                 </span>
                 {avatarUrl && <img src={avatarUrl} alt="头像预览" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' }} />}
                 <button className="btn" onClick={async () => {
-                  const path = await getBridge().avatar.chooseLocal()
-                  if (path) {
-                    updateSettings({ avatar: { source: 'local', localPath: path, remoteUrl: null } })
+                  try {
+                    const path = await getBridge().avatar.chooseLocal()
+                    if (!path) return
+                    // 读取原图 → 弹裁切窗口（圆形裁切框，可拖动/缩放选自己喜欢的部分）
+                    const dataUrl = await getBridge().project.readImageAsDataUrl('', path)
+                    setCropSource(dataUrl)
+                  } catch (err) {
+                    useWorkspaceStore.getState().notify(`读取图片失败：${err instanceof Error ? err.message : String(err)}`)
                   }
                 }}>选择图片</button>
                 <button className="btn" onClick={() => updateSettings({ avatar: { source: 'default', localPath: null, remoteUrl: null } })}>恢复默认</button>
@@ -538,6 +547,24 @@ export function SettingsModal() {
         </div>
       </div>
     </Modal>
+      {cropSource && (
+        <AvatarCropModal
+          imageSrc={cropSource}
+          onCancel={() => setCropSource(null)}
+          onConfirm={async (croppedDataUrl) => {
+            setCropSource(null)
+            try {
+              // 裁剪结果写为本地文件并登记（返回路径），设置指向它 → 标题栏/预览都能读；
+              // updatedAt 递增：裁切弹窗每次生成同一个 avatar.png，依赖路径不变也要触发刷新
+              const path = await getBridge().avatar.saveCropped(croppedDataUrl)
+              updateSettings({ avatar: { source: 'local', localPath: path, remoteUrl: null, updatedAt: Date.now() } })
+            } catch (err) {
+              useWorkspaceStore.getState().notify(`保存头像失败：${err instanceof Error ? err.message : String(err)}`)
+            }
+          }}
+        />
+      )}
+    </>
   )
 }
 

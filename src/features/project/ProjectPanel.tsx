@@ -56,14 +56,14 @@ export function ProjectPanel() {
           title="新建文件"
           onClick={() => setDialog({ kind: 'file', parent: project.rootPath })}
         >
-          <AppIcon name="add" size={13} />
+          <AppIcon name="file" size={14} />
         </button>
         <button
           className="icon-btn"
           title="新建文件夹"
           onClick={() => setDialog({ kind: 'folder', parent: project.rootPath })}
         >
-          <AppIcon name="add" size={13} />
+          <AppIcon name="folder" size={14} />
         </button>
         <div className="mod-tools-wrap">
           <button className="icon-btn" title="模组工具" onClick={() => setModMenu((v) => !v)}>
@@ -72,11 +72,15 @@ export function ProjectPanel() {
           {modMenu && (
             <>
               <div className="mod-tools-menu">
-                <button onClick={() => { setModDialog('createMod'); setModMenu(false) }}>新建模组</button>
+                <button onClick={() => { setModDialog('createMod'); setModMenu(false) }}>模组自述文件</button>
+                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setUnitLibraryOpen(true) }}>单位库</button>
                 <button onClick={() => { setModDialog('createUnit'); setModMenu(false) }}>新建单位</button>
-                <button onClick={() => { setModMenu(false); void importModProject() }}>导入模组 (.rwmod)</button>
-                <button onClick={() => { setModMenu(false); void packModProject() }}>打包模组</button>
+                <button className="mod-action-import" onClick={() => { setModMenu(false); void importModProject() }}><AppIcon name="import" size={16} />导入模组</button>
+                <button className="mod-action-pack" onClick={() => { setModMenu(false); void packModProject() }}><AppIcon name="archive" size={16} />打包模组</button>
                 <button onClick={() => { setModMenu(false); void checkModProject() }}>检查模组</button>
+                <button onClick={() => { setModMenu(false); setModDialog('optimize') }}>优化模组</button>
+                <button onClick={() => { setModMenu(false); setModDialog('globalOp') }}>全局操作</button>
+                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setCodeTableOpen(true) }}>浏览代码表</button>
               </div>
               <div className="mod-tools-mask" onClick={() => setModMenu(false)} />
             </>
@@ -90,12 +94,15 @@ export function ProjectPanel() {
           <TreeRow node={treeRoot} depth={0} onRename={setRenaming} onNewIn={setDialog} />
         </div>
       ) : null}
+      <FavoritesList onOpenFile={(path) => void useWorkspaceStore.getState().openFile(path)} />
 
       {dialog && (
         <PromptModal
           title={dialog.kind === 'file' ? '新建文件' : '新建文件夹'}
           placeholder={dialog.kind === 'file' ? '文件名，例如 units.txt' : '文件夹名称'}
           confirmText="创建"
+          suffixes={dialog.kind === 'file' ? ['.ini', '.template', '.txt'] : undefined}
+          validateName
           onSubmit={(name) => {
             void (dialog.kind === 'file' ? createFile(dialog.parent, name) : createFolder(dialog.parent, name))
             setDialog(null)
@@ -108,6 +115,7 @@ export function ProjectPanel() {
           title={`重命名「${renaming.name}」`}
           initialValue={renaming.name}
           confirmText="重命名"
+          validateName
           onSubmit={(name) => {
             void useWorkspaceStore.getState().renameItem(renaming.path, name)
             setRenaming(null)
@@ -138,8 +146,22 @@ function TreeRow({
   const openFile = useWorkspaceStore((s) => s.openFile)
   const deleteItem = useWorkspaceStore((s) => s.deleteItem)
   const requestConfirm = useWorkspaceStore((s) => s.requestConfirm)
+  const isBookmarked = useWorkspaceStore((s) => s.bookmarks.some((b) => b.path === node.path && b.projectId === s.activeProjectId))
 
   const indent = depth * 14
+
+  const bookmarkBtn = (
+    <button
+      className={`icon-btn${isBookmarked ? ' bookmarked' : ''}`}
+      title={isBookmarked ? '取消收藏' : '收藏（快速跳转）'}
+      onClick={(e) => {
+        e.stopPropagation()
+        useWorkspaceStore.getState().toggleBookmark(node.path, node.isDirectory)
+      }}
+    >
+      <AppIcon name="star" size={12} />
+    </button>
+  )
 
   if (node.isDirectory) {
     const expanded = node.expanded
@@ -157,6 +179,7 @@ function TreeRow({
           <FolderIcon size={15} open={expanded} />
           <span className="tree-name">{node.name}</span>
           <span className="row-actions">
+            {bookmarkBtn}
             <button className="icon-btn" title="重命名" onClick={(e) => { e.stopPropagation(); onRename(node) }}>
               <AppIcon name="rename" size={12} />
             </button>
@@ -200,8 +223,12 @@ function TreeRow({
         </div>
         {expanded &&
           (node.loading ? (
-            <div className="tree-row" style={{ paddingLeft: 20 + indent, color: 'var(--text-3)', fontStyle: 'italic' }}>
+            <div className="tree-row tree-loading" style={{ paddingLeft: 20 + indent, color: 'var(--text-3)', fontStyle: 'italic' }}>
               加载中…
+            </div>
+          ) : node.error ? (
+            <div className="tree-row tree-error-inline" style={{ paddingLeft: 20 + indent }} title={node.error}>
+              无法读取：{node.error}
             </div>
           ) : node.children === undefined ? (
             <div className="tree-row" style={{ paddingLeft: 20 + indent, color: 'var(--text-3)', fontStyle: 'italic' }}>
@@ -209,7 +236,7 @@ function TreeRow({
             </div>
           ) : (
             node.children.map((child) => (
-              <TreeRow key={child.path} node={child} depth={depth + 1} onRename={onRename} onNewIn={onNewIn} />
+              <div className="tree-child" key={child.path}><TreeRow node={child} depth={depth + 1} onRename={onRename} onNewIn={onNewIn} /></div>
             ))
           ))}
       </>
@@ -229,6 +256,7 @@ function TreeRow({
       <FileTypeIcon name={node.name} />
       <span className="tree-name">{node.name}</span>
       <span className="row-actions">
+        {bookmarkBtn}
         <button className="icon-btn" title="重命名" onClick={() => onRename(node)}>
           <AppIcon name="rename" size={12} />
         </button>
@@ -248,6 +276,65 @@ function TreeRow({
           <AppIcon name="delete" size={12} />
         </button>
       </span>
+    </div>
+  )
+}
+
+/** 收藏列表：点击文件打开、点击文件夹展开定位（快速跳转；仅显示当前项目的收藏） */
+function FavoritesList({ onOpenFile }: { onOpenFile: (path: string) => void }) {
+  const bookmarks = useWorkspaceStore((s) => s.bookmarks)
+  const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
+  if (!project) return null
+  const mine = bookmarks.filter((b) => b.projectId === project.id)
+  if (mine.length === 0) return null
+
+  return (
+    <div className="favorites">
+      <div className="favorites-head">
+        <AppIcon name="star" size={12} />
+        收藏
+        <span className="favorites-count">{mine.length}</span>
+      </div>
+      <div className="favorites-list">
+        {mine.map((b) => (
+          <div
+            key={b.path}
+            className="favorite-item"
+            role="button"
+            tabIndex={0}
+            title={b.path}
+            onClick={() => {
+              if (b.isDirectory) {
+                // 文件夹：展开/收起该目录
+                useWorkspaceStore.getState().toggleDir(b.path)
+              } else {
+                onOpenFile(b.path)
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                if (b.isDirectory) useWorkspaceStore.getState().toggleDir(b.path)
+                else onOpenFile(b.path)
+              }
+            }}
+          >
+            <AppIcon name={b.isDirectory ? 'folder' : 'file'} size={12} />
+            <span className="fav-name">{b.name}</span>
+            <span
+              className="row-actions"
+              onClick={(e) => {
+                e.stopPropagation()
+                useWorkspaceStore.getState().toggleBookmark(b.path, b.isDirectory)
+              }}
+            >
+              <button className="icon-btn" title="取消收藏">
+                <AppIcon name="close" size={11} />
+              </button>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

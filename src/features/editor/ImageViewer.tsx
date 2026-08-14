@@ -33,7 +33,7 @@ export function ImageViewer({ path, rootPath }: ImageViewerProps) {
       : { width: `${scale}%`, height: 'auto', maxWidth: 'none', maxHeight: 'none' }
 
   return (
-    <div className="image-viewer">
+    <div className="image-viewer" id="editor-pane" role="tabpanel">
       <div className="image-viewer-toolbar">
         <span className="image-viewer-path" title={path}>{truncateMiddle(path, 90)}</span>
         <span className="image-viewer-spacer" />

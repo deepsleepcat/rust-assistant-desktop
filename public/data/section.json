@@ -80,7 +80,7 @@
       "code": "global_resource",
       "translate": "全局资源",
       "needName": true,
-      "isVisible": "true"
+      "isVisible": true
     },
     {
       "code": "template",
@@ -100,30 +100,30 @@
       "isVisible": true
     },
     {
-        "code": "vanillaUnit",
-        "translate": "原版单位对照表",
-        "needName": true,
-        "isVisible": true
+      "code": "vanillaUnit",
+      "translate": "原版单位对照表",
+      "needName": true,
+      "isVisible": true
     },
     {
       "code": "vanillaDexUnit",
       "translate": "特殊单位对照表",
       "needName": true,
       "isVisible": true
-  },
+    },
     {
       "code": "logicBoolean",
       "translate": "逻辑值",
       "needName": false,
       "isAvailable": false,
-      "isVisible":true
+      "isVisible": true
     },
     {
       "code": "comment",
       "translate": "注解",
       "needName": false,
       "isAvailable": false,
-      "isVisible":false
+      "isVisible": false
     },
     {
       "code": "boolean",
@@ -138,34 +138,54 @@
       "isAvailable": false
     },
     {
-      "code":"array",
-      "translate":"数组",
+      "code": "array",
+      "translate": "数组",
       "needName": true,
       "isVisible": true
     },
     {
-      "code":"memory",
-      "translate":"内存",
+      "code": "memory",
+      "translate": "内存",
       "needName": true,
       "isVisible": true
     },
     {
-      "code":"reloadArmy",
-      "translate":"刷兵",
+      "code": "reloadArmy",
+      "translate": "刷兵",
       "needName": true,
       "isVisible": false
     },
     {
-      "code":"decal",
-      "translate":"贴花",
+      "code": "decal",
+      "translate": "贴花",
       "needName": true,
       "isVisible": true
     },
     {
-      "code":"misc",
-      "translate":"杂项",
+      "code": "misc",
+      "translate": "杂项",
       "needName": true,
       "isVisible": false
-    }                           
+    },
+    {
+      "code": "spawnUnits",
+      "translate": "生成单位",
+      "needName": true
+    },
+    {
+      "code": "spawnProjectiles",
+      "translate": "生成抛射体",
+      "needName": true
+    },
+    {
+      "code": "prices",
+      "translate": "价格",
+      "needName": false
+    },
+    {
+      "code": "mod-info",
+      "translate": "模组信息",
+      "needName": false
+    }
   ]
 }

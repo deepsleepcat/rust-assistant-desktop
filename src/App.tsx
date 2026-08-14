@@ -1,13 +1,14 @@
 /**
  * 应用根组件：组装三栏布局、主题、快捷键与全局弹层。
  */
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useWorkspaceStore } from './stores/workspace'
-import { isElectron } from './services/bridge'
+import { getBridge, isElectron } from './services/bridge'
 import { Backdrop } from './components/Backdrop'
 import { TitleBar } from './components/TitleBar'
 import { StatusBar } from './components/StatusBar'
-import { ConfirmDialog } from './components/Modal'
+import { ApprovalDialog, ConfirmDialog } from './components/Modal'
+import { installEscapeDispatcher } from './utils/modalStack'
 import { WorkspaceSidebar } from './features/workspace/WorkspaceSidebar'
 import { ProjectPanel } from './features/project/ProjectPanel'
 import { EditorArea } from './features/editor/EditorArea'
@@ -15,25 +16,41 @@ import { ConversationPanel } from './features/conversation/ConversationPanel'
 import { SettingsModal } from './features/settings/SettingsModal'
 import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
+import { CodeTableModal } from './features/editor/CodeTableModal'
+import { UnitLibraryModal } from './features/editor/UnitLibraryModal'
 import { CursorEffect } from './components/CursorEffect'
 
 export function App() {
   const ready = useWorkspaceStore((s) => s.ready)
   const settings = useWorkspaceStore((s) => s.settings)
   const settingsOpen = useWorkspaceStore((s) => s.settingsOpen)
+  const codeTableOpen = useWorkspaceStore((s) => s.codeTableOpen)
+  const unitLibraryOpen = useWorkspaceStore((s) => s.unitLibraryOpen)
   const toast = useWorkspaceStore((s) => s.toast)
   const dismissToast = useWorkspaceStore((s) => s.dismissToast)
 
 
-  // 初始化：读取本地设置与工作区
-  useEffect(() => {
-    void useWorkspaceStore.getState().init()
+  // 初始化：读取本地设置与工作区（失败时展示错误面板与重试入口；initPromise 已重置可重试）
+  const [initError, setInitError] = useState<string | null>(null)
+  const handleInitError = useCallback((err: unknown) => {
+    console.error('[app] 初始化失败:', err)
+    setInitError(err instanceof Error ? err.message : String(err))
   }, [])
+  const runInit = useCallback(() => {
+    setInitError(null)
+    void useWorkspaceStore.getState().init().catch(handleInitError)
+  }, [handleInitError])
+  useEffect(() => {
+    // 首次启动：initError 初始为 null，直接调用（无同步 setState）
+    void useWorkspaceStore.getState().init().catch(handleInitError)
+  }, [handleInitError])
 
   // 白色主视觉固定；旧设置中的主题字段只为兼容数据，不再改变界面。
   useEffect(() => {
     document.documentElement.dataset.theme = 'light'
     document.body.classList.toggle('electron', isElectron)
+    // 弹窗 Escape 栈：多弹窗叠放时只关最上层（capture 阶段拦截）
+    installEscapeDispatcher()
   }, [])
 
   // 全局快捷键
@@ -61,6 +78,26 @@ export function App() {
     return () => clearInterval(timer)
   }, [ready])
 
+  // LOW-3b：窗口关闭前同步落盘（渲染层 300ms 防抖的最后写入不丢失），
+  // 完成后向主进程确认，主进程再销毁窗口
+  useEffect(() => {
+    return getBridge().app.onBeforeClose(() => {
+      void useWorkspaceStore
+        .getState()
+        .flushPersist()
+        .catch((err) => {
+          // 落盘失败要可感知（如 store 超限被主进程拒绝）：提示用户，避免静默丢对话/项目记录。
+          // 退出瞬间 toast 不可见——同时写 console.error 留痕
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error('[flushPersist] 数据落盘失败', err)
+          useWorkspaceStore.getState().notify(`数据保存失败，部分内容可能未写入：${msg}`)
+        })
+        .finally(() => {
+          void getBridge().app.confirmClose()
+        })
+    })
+  }, [])
+
   // Toast 自动消失
   useEffect(() => {
     if (!toast) return
@@ -80,7 +117,14 @@ export function App() {
           fontSize: 14,
         }}
       >
-        正在启动…
+        {initError ? (
+          <div style={{ textAlign: 'center', maxWidth: 420, padding: 24 }}>
+            <div style={{ marginBottom: 12 }}>启动失败：{initError}</div>
+            <button className="btn primary" onClick={runInit}>重试</button>
+          </div>
+        ) : (
+          '正在启动…'
+        )}
       </div>
     )
   }
@@ -108,7 +152,10 @@ export function App() {
       {settingsOpen && <SettingsModal />}
       <CommandPalette />
       <ModToolModals />
+      {codeTableOpen && <CodeTableModal onClose={() => useWorkspaceStore.getState().setCodeTableOpen(false)} />}
+      {unitLibraryOpen && <UnitLibraryModal onClose={() => useWorkspaceStore.getState().setUnitLibraryOpen(false)} />}
       <ConfirmDialog />
+      <ApprovalDialog />
 
       {toast && <div className="toast">{toast}</div>}
 

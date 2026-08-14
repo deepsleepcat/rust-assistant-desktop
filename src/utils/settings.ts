@@ -41,7 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cursorEffect: false,
   cursorEffectIntensity: 1,
   cursorEffectColor: '#000000',
-  avatar: { source: 'default', localPath: null, remoteUrl: null },
+  avatar: { source: 'default', localPath: null, remoteUrl: null, updatedAt: 0 },
   ai: {
     provider: 'deepseek',
     deepseekApiKey: '',
@@ -105,6 +105,7 @@ function sanitizeAvatar(raw: unknown): AppSettings['avatar'] {
     source,
     localPath: typeof input.localPath === 'string' ? input.localPath : null,
     remoteUrl: typeof input.remoteUrl === 'string' ? input.remoteUrl : null,
+    updatedAt: typeof input.updatedAt === 'number' ? input.updatedAt : 0,
   }
 }
 

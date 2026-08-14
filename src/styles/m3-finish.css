@@ -30,6 +30,21 @@
 .mod-row { display: flex; gap: 10px; }
 .mod-row .mod-field { flex: 1; }
 .mod-tip { margin: 0; font-size: 11px; color: var(--text-muted); line-height: 1.6; }
+
+/* 新建文件后缀预设（ini / template / txt） */
+.suffix-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.suffix-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font: 500 11.5px var(--font-mono);
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.suffix-chip:hover { border-color: var(--accent); color: var(--text-primary); }
+.suffix-chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .mod-check-body { display: flex; flex-direction: column; gap: 6px; }
 .mod-check-ok { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--success); }
 .mod-check-list { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
@@ -37,6 +52,84 @@
 .mod-check-list li code { color: var(--text-primary); font-family: var(--font-mono); }
 .mod-check-error { border-color: rgba(197,34,31,.4); }
 .mod-check-warning { border-color: rgba(217,144,20,.4); }
+.mod-check-info { border-color: var(--divider); opacity: .85; }
+
+/* ── M7 优化工具弹窗 ─────────────────────────────── */
+.optimize-card { width: min(560px, 100%); }
+.optimize-groups { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; padding: 2px; }
+.optimize-group { border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow: hidden; }
+.optimize-group-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--surface-1); cursor: pointer; }
+.optimize-check { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; font-size: 12.5px; }
+.optimize-check input[type='checkbox'], .optimize-item input[type='checkbox'] { accent-color: var(--accent); cursor: pointer; }
+.optimize-label { font-weight: 600; color: var(--text-primary); }
+.optimize-desc { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.optimize-count { font-size: 11px; color: var(--text-secondary); background: var(--surface-0); border: 1px solid var(--divider); border-radius: 10px; padding: 1px 8px; }
+.optimize-list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--divider); }
+.optimize-item { padding: 5px 10px; font-size: 12px; }
+.optimize-item label { display: flex; align-items: center; gap: 8px; cursor: pointer; min-width: 0; }
+.optimize-item code { color: var(--text-secondary); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.optimize-detail { margin-left: auto; flex-shrink: 0; font-size: 11px; color: var(--text-muted); }
+.optimize-item:hover { background: var(--surface-hover); }
+.optimize-confirm { margin-top: 10px; padding: 8px 10px; border: 1px solid rgba(197,34,31,.35); border-radius: var(--radius-sm); background: rgba(197,34,31,.05); }
+
+/* ── M7 打包选项弹窗 ─────────────────────────────── */
+.pack-card { width: min(520px, 100%); }
+.pack-options { display: flex; flex-direction: column; gap: 4px; }
+.pack-option { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--divider); border-radius: var(--radius-sm); cursor: pointer; }
+.pack-option:hover { background: var(--surface-hover); }
+.pack-option input[type='checkbox'] { accent-color: var(--accent); cursor: pointer; }
+.pack-label { font-size: 13px; font-weight: 500; color: var(--text-primary); min-width: 96px; }
+.pack-desc { font-size: 11.5px; color: var(--text-muted); }
+
+/* ── M7 代码表浏览弹窗 ─────────────────────────────── */
+.codetable-card { width: min(760px, 96vw); height: min(560px, 88vh); display: flex; flex-direction: column; }
+.codetable-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
+.codetable-search { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-input); color: var(--text-primary); font: 13px var(--font-ui); outline: 0; }
+.codetable-search:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.codetable-grid { display: grid; grid-template-columns: minmax(180px, 220px) minmax(0, 1fr); gap: 10px; min-height: 0; flex: 1; }
+.codetable-sections { border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px; min-width: 0; }
+.codetable-section { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; font: 12.5px var(--font-ui); text-align: left; min-width: 0; }
+.codetable-section:hover { background: var(--surface-hover); }
+.codetable-section.active { background: var(--bg-active); }
+.ct-sec-code { flex-shrink: 0; font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
+.ct-sec-zh { min-width: 0; font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.codetable-codes { border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px; min-width: 0; }
+.codetable-code { display: grid; grid-template-columns: minmax(145px, .9fr) minmax(62px, 78px) minmax(180px, 1.5fr); gap: 8px; align-items: start; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; font: 12px var(--font-ui); text-align: left; }
+.codetable-code:hover { background: var(--surface-hover); }
+.ct-code-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 6px; min-width: 0; overflow-wrap: anywhere; }
+.ct-code-name { font-family: var(--font-mono); font-weight: 600; color: var(--text-primary); }
+.ct-code-zh { font-family: var(--font-ui); font-weight: 400; font-size: 11.5px; color: var(--text-secondary); }
+.ct-code-type { justify-self: start; max-width: 100%; font-size: 10.5px; color: var(--text-muted); background: var(--surface-1); border: 1px solid var(--divider); border-radius: 8px; padding: 1px 6px; text-align: center; overflow-wrap: anywhere; }
+.ct-code-desc { min-width: 0; font-size: 11.5px; line-height: 1.45; color: var(--text-secondary); white-space: normal; overflow-wrap: anywhere; }
+.codetable-empty { margin: 8px; font-size: 12px; color: var(--text-muted); }
+.codetable-copied { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--success); }
+@media (max-width: 640px) {
+  .codetable-grid { grid-template-columns: 1fr; grid-template-rows: minmax(110px, 30%) minmax(0, 1fr); }
+  .codetable-code { grid-template-columns: minmax(120px, 1fr) auto; }
+  .ct-code-desc { grid-column: 1 / -1; }
+}
+
+/* ── M7 单位库弹窗 ─────────────────────────────────── */
+.unitlib-card { width: min(620px, 96vw); height: min(520px, 88vh); display: flex; flex-direction: column; }
+.unitlib-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
+.unitlib-list { border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px; flex: 1; }
+.unitlib-item { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; text-align: left; }
+.unitlib-item:hover { background: var(--surface-hover); }
+.unitlib-icon { flex-shrink: 0; display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--divider); border-radius: var(--radius-sm); background: var(--surface-1); color: var(--text-secondary); }
+.unitlib-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.unitlib-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.unitlib-desc { font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unitlib-path { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── M7 收藏列表（文件树下方） ───────────────────────── */
+.favorites { border-top: 1px solid var(--divider); padding: 6px 8px 4px; display: flex; flex-direction: column; gap: 4px; }
+.favorites-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+.favorites-count { margin-left: auto; font-size: 10px; color: var(--text-muted); background: var(--surface-1); border: 1px solid var(--divider); border-radius: 8px; padding: 0 6px; }
+.favorites-list { display: flex; flex-direction: column; gap: 1px; max-height: 130px; overflow-y: auto; }
+.favorite-item { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; font: 12px var(--font-ui); color: var(--text-secondary); text-align: left; }
+.favorite-item:hover { background: var(--surface-hover); }
+.fav-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.icon-btn.bookmarked img { filter: none; opacity: 1; }
 
 /* ── M6 鼠标粒子特效层 ─────────────────────────── */
 .cursor-effect {

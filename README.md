@@ -45,3 +45,17 @@ Electron · React 19 · TypeScript · Vite · Zustand · CodeMirror 6 · Pi Agen
 ## 许可证
 
 [GNU GPL v3.0](LICENSE)。代码表与词库数据提取自 GPL-3.0 的铁锈助手 Android 版，随本项目一并以 GPL-3.0 分发。
+
+## 更新与安全说明
+
+- 安装包由 GitHub Actions（`.github/workflows/release.yml`）在打 `v*` tag 时自动构建并上传 Release，不从本地环境出包（供应链缓解）。
+- 安装包当前**未做 Authenticode 代码签名**：首次安装可能触发 Windows SmartScreen 提示，属预期行为；更新包通过 GitHub Releases + `latest.yml` 的 sha512 校验完整性。
+
+### 代码签名（可选，需要证书）
+
+安装包当前未做 Authenticode 签名（需要付费 OV/EV 代码签名证书）。已购证书后，在仓库 Settings → Secrets 配置：
+
+- `WIN_CSC_LINK`：证书文件（.pfx 的 base64）
+- `WIN_CSC_KEY_PASSWORD`：证书密码
+
+CI 构建会自动签名（electron-builder 标准变量），消除 SmartScreen 警告。未配置时功能不受影响，仅首次安装有提示。

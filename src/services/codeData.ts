@@ -1,11 +1,11 @@
 /**
- * 代码数据服务：加载 public/data/ 下的手机版数据库与旧版词库，
+ * 代码数据服务：加载 public/data/ 下的数据库与旧版词库，
  * 构建内存索引（键/节/值类型/翻译词典/词库），供补全、翻译、高亮使用。
  *
  * 数据来源：
- * - code.json       手机版 1130 条代码键（英文键/中文译名/说明/值类型/所属节）
- * - section.json    手机版 30 个节
- * - value_type.json 手机版 66 种值类型（补全规则、合法值列表）
+ * - code.json       1130 条代码键（英文键/中文译名/说明/值类型/所属节）
+ * - section.json    30 个节
+ * - value_type.json 66 种值类型（补全规则、合法值列表）
  * - translations.json 旧版 758 条 en↔zh 翻译对
  * - vocabulary.json 旧版 1759 条 词库（word+explanation）
  */
@@ -44,6 +44,14 @@ export interface VocabularyItem {
   explanation: string
 }
 
+/** 逻辑布尔函数（VSCode 插件 logicboolean.json：139 条 self.xxx() 方法/关键字） */
+export interface LogicBooleanInfo {
+  name: string
+  type: string
+  description?: string
+  example?: string
+}
+
 interface RawDataset {
   name?: string
   data?: unknown[]
@@ -56,6 +64,7 @@ let codes: CodeInfo[] = []
 let sections: SectionInfo[] = []
 let valueTypes: ValueTypeInfo[] = []
 let vocabulary: VocabularyItem[] = []
+let logicBooleans: LogicBooleanInfo[] = []
 const enToZhDict = new Map<string, string>()
 const zhToEnDict = new Map<string, string>()
 
@@ -76,12 +85,13 @@ export function loadCodeData(): Promise<void> {
     loaded = (async () => {
       try {
         const base = import.meta.env.BASE_URL || '/'
-        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw] = await Promise.all([
+        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw] = await Promise.all([
           fetchJson<RawDataset>(`${base}data/code.json`),
           fetchJson<RawDataset>(`${base}data/section.json`),
           fetchJson<RawDataset>(`${base}data/value_type.json`),
           fetchJson<RawDataset>(`${base}data/translations.json`),
           fetchJson<RawDataset>(`${base}data/vocabulary.json`),
+          fetchJson<RawDataset>(`${base}data/logicboolean.json`).catch(() => ({ data: [] })),
         ])
 
         codes = (codeRaw.data ?? []) as CodeInfo[]
@@ -94,29 +104,34 @@ export function loadCodeData(): Promise<void> {
         // 翻译词典构建顺序：先并入补充词条（translations.json），
         // 再并入主数据（code.json / section.json）——主数据优先，
         // 防止补充词条里的垃圾值覆盖正确翻译。
+        // zhToEn 值统一小写：回译落盘时不带词典原文大小写（避免保存把文件里的
+        // Image ↔ image 悄悄改掉，与 enToZh 的小写索引对称）。
         for (const t of translations) {
           if (t.en && t.zh) {
             enToZhDict.set(t.en.toLowerCase(), t.zh)
-            zhToEnDict.set(t.zh, t.en)
+            zhToEnDict.set(t.zh, t.en.toLowerCase())
           }
         }
         for (const c of codes) {
           if (c.code && c.translate) {
             enToZhDict.set(c.code.toLowerCase(), c.translate)
-            zhToEnDict.set(c.translate, c.code)
+            zhToEnDict.set(c.translate, c.code.toLowerCase())
           }
         }
         // 节名（[core]→[核心] 等）必须进词典，否则中文模式下节头不翻译
         for (const s of sections) {
           if (s.code && s.translate) {
             enToZhDict.set(s.code.toLowerCase(), s.translate)
-            zhToEnDict.set(s.translate, s.code)
+            zhToEnDict.set(s.translate, s.code.toLowerCase())
           }
         }
         vocabulary = vocab
+        logicBooleans = (logicRaw.data ?? []) as LogicBooleanInfo[]
       } catch (err) {
-        // 数据不可用（如离线/测试环境）时降级：编辑器仍可用，只是没有补全和翻译
-        console.warn('[codeData] 数据加载失败，补全与翻译不可用', err)
+        // 数据不可用（如离线/测试环境）时降级：编辑器仍可用，只是没有补全和翻译。
+        // 失败后置回 null，允许下次 loadCodeData 重试（避免一次抖动导致整个会话失去补全/翻译）
+        loaded = null
+        console.warn('[codeData] 数据加载失败，补全与翻译不可用（下次调用会重试）', err)
       }
     })()
   }
@@ -133,6 +148,15 @@ export function getZhToEnDict(): Map<string, string> {
   return zhToEnDict
 }
 
+/** 中文键分段回译（建造自_1_名称 → builtFrom_1_name）：
+ * 中文显示层的宏字段键是分段翻译结果，查代码表/值类型前先按 _ 分段回译。 */
+export function zhToEnKeySegments(key: string): string {
+  return key
+    .split('_')
+    .map((seg) => zhToEnDict.get(seg) ?? seg)
+    .join('_')
+}
+
 /** 当前行所属节（向上扫描最近的 [xxx]） */
 export function getSectionOfLine(lines: string[], lineIndex: number): string {
   for (let i = lineIndex; i >= 0; i--) {
@@ -142,10 +166,12 @@ export function getSectionOfLine(lines: string[], lineIndex: number): string {
   return ''
 }
 
-/** 按节查询代码（节为 all 时全局适用；英文 code 或中文 translate 匹配） */
+/** 按节查询代码（节为 all 时全局适用；英文 code 或中文 translate 匹配）。
+ * 中文显示层传入的中文节名（如「核心」）先经词典回译成英文（core）再匹配。 */
 export function findCodesBySection(section: string, query: string, limit = 40): CodeInfo[] {
   const q = query.trim().toLowerCase()
-  const matchSection = (c: CodeInfo) => c.section === 'all' || c.section.split(',').includes(section)
+  const enSection = zhToEnDict.get(section) ?? section
+  const matchSection = (c: CodeInfo) => c.section === 'all' || (c.section ?? '').split(',').includes(enSection)
   const list = codes.filter((c) => matchSection(c) && (c.code.toLowerCase().includes(q) || c.translate.includes(query.trim())))
   return list.slice(0, limit)
 }
@@ -171,14 +197,37 @@ export function findSectionsByQuery(query: string, limit = 40): SectionInfo[] {
   return list.slice(0, limit)
 }
 
+/** 全部节（按 code 排序），供代码表浏览 */
+export function getAllSections(): SectionInfo[] {
+  return [...sections].sort((a, b) => a.code.localeCompare(b.code))
+}
+
+/** 全部代码（按 code 排序），供代码表浏览 */
+export function getAllCodes(): CodeInfo[] {
+  return [...codes].sort((a, b) => a.code.localeCompare(b.code))
+}
+
 /** 按中文节名查节（翻译用） */
 export function findSectionByTranslate(translate: string): SectionInfo | undefined {
   return sections.find((s) => s.translate === translate || s.code === translate)
 }
 
-/** 按值类型 type 查 */
+/** 按值类型 type 查（大小写不敏感 + 逗号分段：数据里 LogicBoolean/bool 大小写不一致、
+ * 'float,logicBoolean' 等多值 type 也能命中其中任一段） */
 export function findValueType(type: string): ValueTypeInfo | undefined {
-  return valueTypes.find((v) => v.type === type)
+  const direct = valueTypes.find((v) => v.type === type)
+  if (direct) return direct
+  const lower = type.toLowerCase()
+  const ci = valueTypes.find((v) => v.type.toLowerCase() === lower)
+  if (ci) return ci
+  // 多值 type（'float,logicBoolean'）：任一段匹配即用该段的值类型
+  for (const seg of type.split(',')) {
+    const t = seg.trim()
+    if (!t) continue
+    const hit = valueTypes.find((v) => v.type === t) ?? valueTypes.find((v) => v.type.toLowerCase() === t.toLowerCase())
+    if (hit) return hit
+  }
+  return undefined
 }
 
 /** 值类型合法值列表（解析逗号分隔，含特殊指令 @xxx） */
@@ -190,9 +239,20 @@ export function parseValueList(list: string | undefined): string[] {
     .filter((s) => s.length > 0 && !s.startsWith('@'))
 }
 
-/** 词库：按 word 模糊匹配（旧版 fuzzy 思路：位置越靠前、长度差越小分越高） */
-export function searchVocabulary(query: string, limit = 20): VocabularyItem[] {
+/** 逻辑布尔函数：按名精确查（self.xxx() 悬停/补全用） */
+export function findLogicBoolean(name: string): LogicBooleanInfo | undefined {
+  return logicBooleans.find((l) => l.name === name)
+}
+
+/** 逻辑布尔函数：前缀模糊查（self. 补全候选） */
+export function searchLogicBooleans(query: string, limit = 30): LogicBooleanInfo[] {
   const q = query.trim().toLowerCase()
+  if (!q) return logicBooleans.slice(0, limit)
+  return logicBooleans.filter((l) => l.name.toLowerCase().includes(q)).slice(0, limit)
+}
+
+/** 词库：按 word 模糊匹配（旧版 fuzzy 思路：位置越靠前、长度差越小分越高） */
+export function searchVocabulary(query: string, limit = 20): VocabularyItem[] {  const q = query.trim().toLowerCase()
   if (!q) return vocabulary.slice(0, limit)
   const scored: Array<{ item: VocabularyItem; score: number }> = []
   for (const item of vocabulary) {

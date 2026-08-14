@@ -8,7 +8,7 @@
     "types": ["node"],
     "outDir": "dist-electron",
     "rootDir": ".",
-    "sourceMap": true
+    "sourceMap": false
   },
   "include": ["electron", "src/types"]
 }

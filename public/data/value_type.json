@@ -287,7 +287,7 @@
       "rule": "move|attackMove|guard|loadInto|loadUp|attack|reclaim|repair|touchTarget|build|follow",
       "external": ":",
       "offset": "",
-      "list": "move,attackMove,guard,loadInto,loadUp,attack,reclaim,repair,touchTarget,build,follow",
+      "list": "move,attackMove,guard,loadInto,loadUp,attack,reclaim,repair,touchTarget,build,follow,setPassiveTarget",
       "tag": "",
       "describe": "@search(code)"
     },
@@ -554,10 +554,10 @@
     {
       "name": "显示类型",
       "type": "displayType",
-      "rule": "NONE|rally|upgrade|queueUnit|building|action|infoOnly|infoOnlyNoBox",
+      "rule": "NONE|rally|upgrade|queueUnit|building|action|infoOnly|infoOnlyNoBox|infoOnlyStockpile|Upgrade",
       "external": ":",
       "offset": "",
-      "list": "NONE,rally,upgrade,queueUnit,building,action,infoOnly,infoOnlyNoBox",
+      "list": "NONE,rally,upgrade,queueUnit,building,action,infoOnly,infoOnlyNoBox,infoOnlyStockpile,Upgrade,none,nfoOnlyNoBox",
       "tag": "",
       "describe": "@search(code)"
     },
@@ -587,7 +587,7 @@
       "rule": "move|attack|idle|underConstruction|underConstructionWithLinkedBuiltTime|queuedUnits|Unknown",
       "external": ":",
       "offset": "",
-      "list": "move,attack,idle,underConstruction,underConstructionWithLinkedBuiltTime,queuedUnits,Unknown",
+      "list": "move,attack,idle,underConstruction,underConstructionWithLinkedBuiltTime,queuedUnits,Unknown,repair",
       "tag": "",
       "describe": "@search(code)"
     },
@@ -597,7 +597,7 @@
       "rule": "own|neutral|ally|enemy|any|allyNotOwn",
       "external": ":",
       "offset": "",
-      "list": "own,neutral,ally,enemy,any,allyNotOwn",
+      "list": "own,neutral,ally,enemy,any,allyNotOwn,notOwn",
       "tag": "",
       "describe": "@search(code)"
     },
@@ -629,7 +629,7 @@
       "offset": "",
       "list": "commandCenter,c_turret_t1,c_antiAirTurret,landFactory,seaFactory,airFactory,extractorT1,fabricatorT1,experimentalLandFactory,nukeLauncherC,antiNukeLauncherC,laboratory,outpostT1,laserDefence,repairbay,mechFactory,aaBeamGunship,amphibiousJet,bomber,c_interceptor,heavyInterceptor,c_helicopter,lightGunship,gunShip,dropship,missileAirship,fireBee,experimentalDropship,combatEngineer,c_laserTank,c_mammothTank,mechEngineer,missileTank,plasmaTank,scout,c_artillery,heavyArtillery,c_tank,builder,hoverTank,hovercraft,heavyTank,heavyHoverTank,mechGun,mechMissile,mechArtillery,mechBunker,mechFlame,mechHeavyMissile,mechLaser,mechLightning,mechMinigun,experimentalHoverTank,modularSpider,c_experimentalTank,experimentalSpider,experimentalGunship,creditsCrates,crystal_mid",
       "tag": "@lineRule",
-      "describe": "覆盖单位补齐规则"      
+      "describe": "覆盖单位补齐规则"
     },
     {
       "name": "标记",
@@ -660,6 +660,194 @@
       "list": "",
       "tag": "",
       "describe": "检查自身的炮塔作为逻辑条件"
+    },
+    {
+      "name": "复制自",
+      "type": "copyFrom",
+      "rule": ".+",
+      "external": ":",
+      "list": "@file(ini)",
+      "describe": "引用其它单位文件或单位名"
+    },
+    {
+      "name": "addWaypoint_target_nearestUnit_team",
+      "type": "addWaypoint_target_nearestUnit_team",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "own,neutral,allyNotOwn,ally,enemy,any,notOwn",
+      "tag": "",
+      "describe": "own、neutral、allyNotOwn、ally、enemy、any、notOwn"
+    },
+    {
+      "name": "autoTriggerOnEvent",
+      "type": "autoTriggerOnEvent",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "created,completeAndActive,destroyed,killedAnyUnit,queuedUnitFinished,queueItemAdded(withActionTag=\"#\"),queueItemCancelled(withActionTag=\"#\"),teleported,touchTargetSuccess,newWaypointGivenByPlayer,teamChanged,transportingNewUnit,transportUnloadedOrRemovedUnit,tookDamage(withTag=\"#\"),newMessage(withTag=\"#\"),enteredTransport,leftTransport,attachmentRemoved",
+      "tag": "",
+      "describe": "created、completeAndActive、destroyed、killedAnyUnit、queuedUnitFinished、queueItemAdded(withActionTag=\"#\")、queueItemCancelled(withActionTag=\"#\")、teleported"
+    },
+    {
+      "name": "bool",
+      "type": "bool",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "true,false",
+      "tag": "",
+      "describe": "true、false"
+    },
+    {
+      "name": "convertTo_keepCurrentFields",
+      "type": "convertTo_keepCurrentFields",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "maxHp,hp,maxShield,shield,shieldRegen,maxEnergy,energy,armour,mass,shootDelayMultiplier,shootDamageMultiplier,moveSpeed,maxTurnSpeed,maxAttackRange,selfRegenRate,heightTarget,nanoFactorySpeed,fogOfWarSightRange",
+      "tag": "",
+      "describe": "maxHp、hp、maxShield、shield、shieldRegen、maxEnergy、energy、armour"
+    },
+    {
+      "name": "displayDigitGrouping",
+      "type": "displayDigitGrouping",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "none,comma,space",
+      "tag": "",
+      "describe": "none、comma、space"
+    },
+    {
+      "name": "drawLayer",
+      "type": "drawLayer",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "wreaks,underwater,bottom,ground,ground2,experimentals,air,top",
+      "tag": "",
+      "describe": "wreaks、underwater、bottom、ground、ground2、experimentals、air、top"
+    },
+    {
+      "name": "drawType",
+      "type": "drawType",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "normal,displacement",
+      "tag": "",
+      "describe": "normal、displacement"
+    },
+    {
+      "name": "fireTurretXAtGround_onlyOverPassableTileOf",
+      "type": "fireTurretXAtGround_onlyOverPassableTileOf",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "NONE,BUILDING,LAND,HOVER,AIR,OVER_CLIFF,OVER_WATER_CLIFF",
+      "tag": "",
+      "describe": "NONE、BUILDING、LAND、HOVER、AIR、OVER_CLIFF、OVER_WATER_CLIFF"
+    },
+    {
+      "name": "layer",
+      "type": "layer",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "inactive,shadow,afterBody,beforeBody,onTop,beforeUI",
+      "tag": "",
+      "describe": "inactive、shadow、afterBody、beforeBody、onTop、beforeUI"
+    },
+    {
+      "name": "onlyTeam",
+      "type": "onlyTeam",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "own,neutral,allyNotOwn,ally,enemy,any,notOwn",
+      "tag": "",
+      "describe": "own、neutral、allyNotOwn、ally、enemy、any、notOwn"
+    },
+    {
+      "name": "Prices_Resources",
+      "type": "Prices_Resources",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "credits,energy,hp,shield,ammo,setFlag,unsetFlag,hasFlag,hasMissingFlag,X",
+      "tag": "",
+      "describe": "credits、energy、hp、shield、ammo、setFlag、unsetFlag、hasFlag"
+    },
+    {
+      "name": "searchTeam",
+      "type": "searchTeam",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "own,neutral,allyNotOwn,ally,enemy,any,notOwn",
+      "tag": "",
+      "describe": "own、neutral、allyNotOwn、ally、enemy、any、notOwn"
+    },
+    {
+      "name": "setUnitStats",
+      "type": "setUnitStats",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "maxHp,hp,maxShield,shield,shieldRegen,maxEnergy,energy,armour,mass,shootDelayMultiplier,shootDamageMultiplier,moveSpeed,maxTurnSpeed,maxAttackRange,selfRegenRate,heightTarget,nanoFactorySpeed,fogOfWarSightRange",
+      "tag": "",
+      "describe": "maxHp、hp、maxShield、shield、shieldRegen、maxEnergy、energy、armour"
+    },
+    {
+      "name": "spawnProjectiles",
+      "type": "spawnProjectiles",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "spawnChance,maxSpawnLimit,recursionLimit,offsetX,offsetY,xOffsetRelative,yOffsetRelative,offsetRandomX,offsetRandomY,offsetRandomXY,offsetHeight,offsetDir,offsetRandomDir",
+      "tag": "",
+      "describe": "spawnChance、maxSpawnLimit、recursionLimit、offsetX、offsetY、xOffsetRelative、yOffsetRelative、offsetRandomX"
+    },
+    {
+      "name": "spawnUnits",
+      "type": "spawnUnits",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "neutralTeam,setToTeamOfLastAttacker,spawnChance,spawnSource,maxSpawnLimit,gridAlign,skipIfOverlapping,offsetX,offsetY,offsetDir,offsetHeight,offsetRandomX,offsetRandomY,offsetRandomDir,addResources,transportedUnitsToTransfer,copyWaypointsFrom,alwayStartDirAtZero,damagingBorder,zoneMarker,techLevel",
+      "tag": "",
+      "describe": "neutralTeam、setToTeamOfLastAttacker、spawnChance、spawnSource、maxSpawnLimit、gridAlign、skipIfOverlapping、offsetX"
+    },
+    {
+      "name": "teamColoringMode",
+      "type": "teamColoringMode",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "pureGreen,hueAdd,hueShift,disabled",
+      "tag": "",
+      "describe": "pureGreen、hueAdd、hueShift、disabled"
+    },
+    {
+      "name": "transportUnitsRequireMovementType",
+      "type": "transportUnitsRequireMovementType",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "NONE,BUILDING,LAND,HOVER,AIR,OVER_CLIFF,OVER_WATER_CLIFF",
+      "tag": "",
+      "describe": "NONE、BUILDING、LAND、HOVER、AIR、OVER_CLIFF、OVER_WATER_CLIFF"
+    },
+    {
+      "name": "whenBuilding_temporarilyConvertTo_keepFields",
+      "type": "whenBuilding_temporarilyConvertTo_keepFields",
+      "rule": "",
+      "external": "",
+      "offset": "",
+      "list": "maxHp,hp,maxShield,shield,shieldRegen,maxEnergy,energy,armour,mass,shootDelayMultiplier,shootDamageMultiplier,moveSpeed,maxTurnSpeed,maxAttackRange,selfRegenRate,heightTarget,nanoFactorySpeed,fogOfWarSightRange",
+      "tag": "",
+      "describe": "maxHp、hp、maxShield、shield、shieldRegen、maxEnergy、energy、armour"
     }
   ]
 }

@@ -121,6 +121,9 @@ const MOCK_IMAGE_DATA_URL =
 
 export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi {
   const tree = buildTree(files)
+  // M10：监听器集合每桥独立（模块级单例会跨测试/跨桥串扰：上个测试的流式事件
+  // 会写进下一个测试的 store）
+  const mockAiListeners = new Set<(event: import('../types/ai').AiStreamEvent) => void>()
 
   const storageKey = 'rust-assistant:mock-state'
   function loadState<T>(key: string, fallback: T): T {
@@ -174,6 +177,13 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     }
   }
 
+  /** 只读元数据（与 readFile 的 mtimeMs/size 同源，供外部修改轮询） */
+  function statFile(filePath: string): { mtimeMs: number; size: number } {
+    const node = findNode(tree, relToRoot(filePath))
+    if (!node || node.kind !== 'file') throw new Error('文件不存在：' + filePath)
+    return { mtimeMs: node.content.length, size: new TextEncoder().encode(node.content).length }
+  }
+
   function writeFile(filePath: string, content: string, opts: { hasBom: boolean }): void {
     const parts = relToRoot(filePath)
     const dir = findNode(tree, parts.slice(0, -1))
@@ -200,6 +210,8 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       downloadUpdate: async () => ({ skipped: true }),
       installUpdate: async () => true,
       onUpdateEvent: () => () => undefined,
+      onBeforeClose: () => () => undefined,
+      confirmClose: async () => true,
     },
     store: {
       get: async (key) => {
@@ -214,6 +226,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       openImageDialog: async () => MOCK_IMAGE_DATA_URL,
       registerRoots: async () => undefined,
       readDir: async (_root, dirPath) => listDir(dirPath),
+      stat: async (_root, filePath) => statFile(filePath),
       readFile: async (_root, filePath) => readFile(filePath),
       writeFile: async (_root, filePath, content, opts) => {
         writeFile(filePath, content, opts)
@@ -226,11 +239,18 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         if (!dir || dir.kind !== 'dir') throw new Error('找不到要重命名的项目')
         const node = dir.children[parts[parts.length - 1]]
         if (!node) throw new Error('找不到要重命名的项目')
-        delete dir.children[parts[parts.length - 1]]
+        // 与真实桥一致：目标已存在时拒绝（纯大小写改名除外——Windows 大小写不敏感，
+        // 目标就是自身；模拟大小写不敏感判定：仅名字大小写不同视为同一文件）
         const newParts = relToRoot(newPath)
         const target = findNode(tree, newParts.slice(0, -1))
         if (!target || target.kind !== 'dir') throw new Error('重命名目标目录不存在')
-        target.children[newParts[newParts.length - 1]] = node
+        const newName = newParts[newParts.length - 1]
+        const existing = target.children[newName]
+        if (existing && !(existing === node && oldPath.toLowerCase() === newPath.toLowerCase())) {
+          throw new Error('已存在同名文件，不会覆盖')
+        }
+        delete dir.children[parts[parts.length - 1]]
+        target.children[newName] = node
       },
       delete: async (_root, targetPath) => {
         const parts = relToRoot(targetPath)
@@ -243,19 +263,35 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     },
     avatar: {
       chooseLocal: async () => null,
+      saveCropped: async () => 'C:\\mock\\avatar.png',
       uploadCommunity: async () => ({ ok: false, message: '社区头像服务即将上线' }),
     },
     mod: {
       create: async () => ({ files: ['mod-info.txt', 'units/'] }),
       chooseMusic: async () => [],
       import: async () => null,
+      discardImport: async () => ({ ok: true }),
       createUnit: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
       pack: async () => ({ canceled: true }),
       check: async () => ({ issues: [], unitCount: 0, fileCount: 0 }),
+      readModInfo: async () => ({ title: '我的模组', musicFiles: [], musicExclusive: false, mapsFiles: [], mapsExtra: false }),
+      writeModInfo: async () => ({ ok: true }),
+      scanResources: async () => ({
+        files: ['units/tank/tank.png', 'units/tank/tank_wreck.png', 'units/rifle/rifle.png', 'music/bgm.ogg', 'maps/test.tmx'],
+        unitNames: ['重型坦克', '步枪兵', '侦察车'],
+      }),
+      scanUnits: async () => [
+        { path: 'units/tank/tank.ini', name: '重型坦克', description: '重甲主力', image: 'tank.png', modified: Date.now() },
+        { path: 'units/rifle/rifle.ini', name: '步枪兵', description: '基础步兵', image: 'rifle.png', modified: Date.now() },
+      ],
+      optimizeScan: async () => [],
+      optimizeApply: async () => ({ done: 0, failed: 0 }),
+      globalOp: async () => ({ files: 0, changed: 0, skipped: 0 }),
       listTemplates: async () => [
         { key: 'mock-tank', name: '基础模板-坦克-陆军模板', nameEn: 'Base-Template(Tank)LAND', actions: [{ label: '名称', key: 'name', section: 'core', tag: 'name-core', type: 'input' }], defaults: { 'name-core': '基础坦克' } },
       ],
       createUnitFromTemplate: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
+      saveFileAsTemplate: async () => ({ key: 'mock-template' }),
     },
     ai: {
       check: async (settings) => {
@@ -268,11 +304,12 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       },
       info: async () => ({
         providers: [
-          { type: 'deepseek', name: 'DeepSeek', description: '使用你自己的 DeepSeek API Key', configured: false, available: true, models: ['deepseek-chat', 'deepseek-reasoner'] },
+          { type: 'deepseek', name: 'DeepSeek', description: '使用你自己的 DeepSeek API Key', configured: false, available: true, models: ['deepseek-v4-flash', 'deepseek-v4-pro'] },
           { type: 'community', name: '社区后端', description: '我们提供的社区 AI 服务（即将上线）', configured: false, available: false, models: [] },
         ],
       }),
       approve: async () => true,
+      streamAbort: async () => ({ aborted: true }),
       stream: async (_params, _settings, _projectRoot) => {
         // 浏览器预览模式：模拟流式回复，便于界面联调
         const reply = '这是浏览器预览模式的模拟回复。\n\n配置真实的 DeepSeek API Key 后，这里会显示真实的 AI 回复。\n\n你可以：\n1. 在设置 → AI 中填写 API Key\n2. 然后问任何铁锈战争模组问题'
@@ -291,5 +328,3 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     },
   }
 }
-
-const mockAiListeners = new Set<(event: import("../types/ai").AiStreamEvent) => void>()

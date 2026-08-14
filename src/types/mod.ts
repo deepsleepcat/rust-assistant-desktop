@@ -1,9 +1,9 @@
 /**
  * M6.5 模组模板系统共享类型（渲染进程与主进程共用）。
- * 模板来自手机版 baseTemplate_v2.0（GPL-3.0 数据，随项目同许可分发）。
+ * 模板来自 baseTemplate_v2.0（GPL-3.0 数据，随项目同许可分发）。
  */
 
-/** 模板表单字段（手机版 action 数组 → 界面字段） */
+/** 模板表单字段（action 数组 → 界面字段） */
 export interface TemplateAction {
   label: string
   key: string

@@ -22,7 +22,7 @@ export function AudioViewer({ rootPath, path }: { rootPath: string; path: string
   const error = loaded.path === path ? loaded.error : null
 
   return (
-    <div className="audio-viewer">
+    <div className="audio-viewer" id="editor-pane" role="tabpanel">
       <div className="image-viewer-toolbar">
         <span className="image-viewer-path" title={path}>{truncateMiddle(path, 90)}</span>
       </div>

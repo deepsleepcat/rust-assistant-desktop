@@ -158,3 +158,145 @@ describe('工作区 store 业务流', () => {
     expect(store.getState().treeRoot?.children?.length).toBeGreaterThan(0)
   })
 })
+
+describe('M7 收藏（书签）', () => {
+  let store: ReturnType<typeof createWorkspaceStore>
+  beforeEach(() => {
+    // node 测试环境没有 localStorage：给 mock 桥提供最小实现（持久化验证用）
+    const mem = new Map<string, string>()
+    ;(globalThis as Record<string, unknown>).localStorage = {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => { mem.set(k, v) },
+      removeItem: (k: string) => { mem.delete(k) },
+      clear: () => { mem.clear() },
+      key: (i: number) => [...mem.keys()][i] ?? null,
+      get length() { return mem.size },
+    }
+    store = createWorkspaceStore(createMockBridge())
+  })
+
+  it('toggleBookmark 收藏/取消收藏，删除项目文件时同步清理', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    const path = `${MOCK_PROJECT_ROOT}\\mod.json`
+    const s = store.getState()
+    s.toggleBookmark(path, false)
+    expect(store.getState().bookmarks.some((b) => b.path === path)).toBe(true)
+    expect(s.isBookmarked(path)).toBe(true)
+
+    // 再次切换 = 取消
+    store.getState().toggleBookmark(path, false)
+    expect(store.getState().bookmarks).toEqual([])
+
+    // 收藏后删除文件 → 收藏自动移除
+    store.getState().toggleBookmark(path, false)
+    await store.getState().deleteItem(path)
+    expect(store.getState().bookmarks.some((b) => b.path === path)).toBe(false)
+  })
+
+  it('收藏按项目隔离：切换项目后不串显示', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    store.getState().toggleBookmark(`${MOCK_PROJECT_ROOT}\\mod.json`, false)
+    expect(store.getState().bookmarks.length).toBe(1)
+    // 模拟另一个项目
+    store.getState().selectProject(store.getState().projects[0].id)
+    // 收藏仍存在但属于原项目；isBookmarked 只认当前项目
+    expect(store.getState().bookmarks.length).toBe(1)
+    expect(store.getState().isBookmarked(`${MOCK_PROJECT_ROOT}\\mod.json`)).toBe(true)
+    // 未激活项目时 isBookmarked 为 false（activeProjectId 为 null 场景）
+    store.getState().removeProject(store.getState().projects[0].id)
+    expect(store.getState().isBookmarked(`${MOCK_PROJECT_ROOT}\\mod.json`)).toBe(false)
+  })
+
+  it('删除文件夹时前缀匹配清理其内部收藏', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    store.getState().toggleBookmark(`${MOCK_PROJECT_ROOT}\\units`, true)
+    store.getState().toggleBookmark(`${MOCK_PROJECT_ROOT}\\units\\tank.txt`, false)
+    expect(store.getState().bookmarks.length).toBe(2)
+    await store.getState().deleteItem(`${MOCK_PROJECT_ROOT}\\units`)
+    expect(store.getState().bookmarks.length).toBe(0)
+  })
+
+  it('书签持久化进 workspace 存储', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    store.getState().toggleBookmark(`${MOCK_PROJECT_ROOT}\\mod.json`, false)
+    // 等待持久化（300ms 防抖）
+    await new Promise((r) => setTimeout(r, 400))
+    const bridge = createMockBridge()
+    const saved = (await bridge.store.get('workspace')) as { bookmarks?: Array<{ path: string; name: string; projectId: string; isDirectory: boolean }> }
+    expect(saved.bookmarks?.length).toBe(1)
+    expect(saved.bookmarks![0]).toHaveProperty('projectId')
+    expect(saved.bookmarks![0]).toHaveProperty('isDirectory')
+  })
+})
+
+describe('M8 第二轮审查修复回归', () => {
+  let store: ReturnType<typeof createWorkspaceStore>
+  let bridge: ReturnType<typeof createMockBridge>
+  beforeEach(() => {
+    const mem = new Map<string, string>()
+    ;(globalThis as Record<string, unknown>).localStorage = {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => { mem.set(k, v) },
+      removeItem: (k: string) => { mem.delete(k) },
+      clear: () => { mem.clear() },
+      key: (i: number) => [...mem.keys()][i] ?? null,
+      get length() { return mem.size },
+    }
+    bridge = createMockBridge()
+    store = createWorkspaceStore(bridge)
+  })
+
+  it('selectProject 点击当前项目不短路清空标签', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    await store.getState().openFile(`${MOCK_PROJECT_ROOT}\\mod.json`)
+    expect(store.getState().openTabs.length).toBe(1)
+    await store.getState().selectProject(store.getState().activeProjectId!)
+    expect(store.getState().openTabs.length).toBe(1)
+    expect(store.getState().activeTabId).not.toBeNull()
+  })
+
+  it('saveTab 被外部修改拦截时返回 false 并标记，reloadTab 恢复磁盘内容', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    const filePath = `${MOCK_PROJECT_ROOT}\\units\\rifle.txt`
+    await store.getState().openFile(filePath)
+    const tabId = store.getState().activeTabId!
+
+    // 外部直接改文件（绕过 store），内容长度变化 → mtimeMs 变化 → 保存被拦截
+    await bridge.project.writeFile(MOCK_PROJECT_ROOT, filePath, '外部修改后的新内容', { hasBom: false })
+    const ok = await store.getState().saveTab(tabId)
+    expect(ok).toBe(false)
+    expect(store.getState().openTabs.find((t) => t.id === tabId)?.externalChanged).toBe(true)
+
+    // 重新加载：回到磁盘最新内容，清掉标记
+    await store.getState().reloadTab(tabId)
+    const tab = store.getState().openTabs.find((t) => t.id === tabId)!
+    expect(tab.content).toBe('外部修改后的新内容')
+    expect(tab.externalChanged).toBe(false)
+    expect(tab.dirty).toBe(false)
+  })
+
+  it('删除活动标签对应文件后 activeTabId 回退到相邻标签', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    const a = `${MOCK_PROJECT_ROOT}\\mod.json`
+    const b = `${MOCK_PROJECT_ROOT}\\units\\rifle.txt`
+    await store.getState().openFile(a)
+    await store.getState().openFile(b)
+    const firstId = store.getState().openTabs[0].id
+    store.getState().setActiveTabId(store.getState().openTabs[1].id)
+    await store.getState().deleteItem(b)
+    expect(store.getState().openTabs.length).toBe(1)
+    expect(store.getState().activeTabId).toBe(firstId)
+
+    // 删除最后一个活动标签 → null（编辑器回欢迎页，不空白）
+    await store.getState().deleteItem(a)
+    expect(store.getState().openTabs.length).toBe(0)
+    expect(store.getState().activeTabId).toBeNull()
+  })
+})

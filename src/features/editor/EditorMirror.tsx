@@ -5,16 +5,19 @@
  * - Ctrl+S 保存回调
  */
 import { useEffect, useRef } from 'react'
-import { EditorState } from '@codemirror/state'
+import { EditorState, Transaction } from '@codemirror/state'
 import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
 import { search, searchKeymap } from '@codemirror/search'
 import { rustConfigLanguageSupport } from './rustLanguage'
-import { rustCompletionSource } from './completion'
+import { rustHoverExtension } from './rustHover'
+import { rustCompletionSource, setCompletionChineseMode, setCompletionTracker } from './completion'
 import { foldGutter, foldKeymap } from '@codemirror/language'
+import { lintGutter, lintKeymap } from '@codemirror/lint'
 import { colorDecorationExtension } from './colorDecorationsExtension'
 import { rustSectionFolding } from './sectionFolding'
+import { rustLintExtension } from './rustLint'
 import { loadCodeData } from '../../services/codeData'
 
 interface EditorMirrorProps {
@@ -24,6 +27,10 @@ interface EditorMirrorProps {
   onSave: () => void
   fontFamily: string
   fontSize: number
+  /** 中文显示层开启时，补全提交中文键/节名（保存时自动回译） */
+  chineseMode?: boolean
+  /** 翻译追踪表：补全提交的中文登记进去，保存时才能回译成英文 */
+  translationMap?: Map<string, string> | null
   /** 大纲跳转请求：line 为 1 基行号；seq 递增保证同节重复点击也触发 */
   jumpTo?: { line: number; seq: number } | null
 }
@@ -85,9 +92,28 @@ const editorTheme = EditorView.theme({
     color: 'var(--text-primary)',
   },
   '.cm-matchingBracket': { backgroundColor: 'rgba(0,0,0,.08)' },
+  // 值合法性检查（lint）标记：红色波浪线 + 槽内标记，保持黑白专业主题
+  '.cm-lintRange-error': {
+    backgroundImage: 'linear-gradient(to right, transparent 40%, var(--danger, #c5221f) 40%)',
+    backgroundPosition: 'bottom',
+    backgroundRepeat: 'repeat-x',
+    backgroundSize: '4px 2px',
+  },
+  '.cm-lintRange-warning': {
+    backgroundImage: 'linear-gradient(to right, transparent 40%, var(--warn, #d99014) 40%)',
+    backgroundPosition: 'bottom',
+    backgroundRepeat: 'repeat-x',
+    backgroundSize: '4px 2px',
+  },
+  '.cm-lint-marker-error, .cm-lint-marker-warning': {
+    color: 'var(--danger, #c5221f)',
+  },
+  '.cm-tooltip-lint': {
+    fontSize: '12px',
+  },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, jumpTo }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -100,6 +126,18 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     onSaveRef.current = onSave
   }, [onChange, onCursor, onSave])
 
+  // 中文显示层切换 → 补全提交文本同步（中文键/节名）；卸载时复位为英文模式
+  useEffect(() => {
+    setCompletionChineseMode(chineseMode)
+    return () => setCompletionChineseMode(false)
+  }, [chineseMode])
+
+  // 翻译追踪表注入补全：中文模式下补全提交的新键登记后，保存时才能回译
+  useEffect(() => {
+    setCompletionTracker(chineseMode ? (translationMap ?? null) : null)
+    return () => setCompletionTracker(null)
+  }, [chineseMode, translationMap])
+
   useEffect(() => {
     void loadCodeData()
   }, [])
@@ -111,6 +149,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
       extensions: [
         lineNumbers(),
         foldGutter(),
+        lintGutter(),
         rustSectionFolding,
         colorDecorationExtension,
         highlightActiveLine(),
@@ -118,6 +157,8 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         drawSelection(),
         history(),
         rustConfigLanguageSupport(),
+        rustLintExtension(),
+        rustHoverExtension,
         autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
         search({ top: true }),
         keymap.of([
@@ -126,6 +167,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
           ...searchKeymap,
           ...completionKeymap,
           ...foldKeymap,
+          ...lintKeymap,
           indentWithTab,
           { key: 'Mod-s', run: () => { onSaveRef.current(); return true } },
         ]),
@@ -156,8 +198,11 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     const view = viewRef.current
     if (!view) return
     if (view.state.doc.toString() !== value) {
+      // 不进撤销历史（addToHistory annotation）——程序化整档替换（切中文视图/格式化/
+      // 恢复文档）否则 Ctrl+Z 会把整档回退到旧视图，而 store 里翻译开关已切换，视图与状态不一致
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: value },
+        annotations: Transaction.addToHistory.of(false),
       })
     }
   }, [value])
