@@ -147,11 +147,13 @@ function migrateModel(model: string): string {
   return model
 }
 
-/** 上次运行前检查结果清洗（M12）：损坏/缺字段回退默认 */
+/** 上次运行前检查结果清洗（M12）：损坏/缺字段回退默认；at 上限未来 1 天（防脏时间戳渲染 Invalid Date） */
 function sanitizeLastCheck(input: unknown): AppSettings['gameLastCheck'] {
   const raw = (input && typeof input === 'object' ? input : {}) as Partial<AppSettings['gameLastCheck']>
+  const now = Date.now()
+  const at = typeof raw.at === 'number' && Number.isFinite(raw.at) ? Math.min(Math.max(raw.at, 0), now + 24 * 3600 * 1000) : 0
   return {
-    at: typeof raw.at === 'number' && Number.isFinite(raw.at) && raw.at >= 0 ? raw.at : 0,
+    at,
     ok: typeof raw.ok === 'boolean' ? raw.ok : true,
     message: typeof raw.message === 'string' ? raw.message.slice(0, 2000) : '',
   }

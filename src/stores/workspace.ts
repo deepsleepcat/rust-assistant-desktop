@@ -1609,6 +1609,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             .game.preflight(project.rootPath)
             .then((r) => {
               if (!r) return
+              // 打包后项目可能已被关闭/切换：仅当仍是当前项目时才追加失败通知
+              // （检查结果本身仍写入设置，供设置页「上次检查」查看）
+              const stillActive = get().activeProjectId === project.id
               const errors = r.issues.filter((i) => i.severity === 'error').length
               const warnings = r.issues.filter((i) => i.severity === 'warning').length
               // 经 updateSettings（sanitize + 持久化）
@@ -1619,7 +1622,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
                   message: r.issues.length === 0 ? '检查通过' : `${errors} 个错误，${warnings} 个警告`,
                 },
               })
-              if (!r.ok) {
+              if (!r.ok && stillActive) {
                 get().notify(`运行前检查发现 ${errors} 个错误（设置 → 试玩联动 查看详情）`)
               }
             })

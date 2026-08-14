@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { findGameExe, importOfficialUnits, launchGame, listOfficialUnitDirs, preflightCheck } from '../electron/game'
+import { findGameExe, importOfficialUnits, launchGame, listOfficialUnitDirs, openDir, preflightCheck } from '../electron/game'
 
 function makeTmp(prefix: string): string {
   const dir = mkdtempSync(path.join(tmpdir(), prefix))
@@ -235,5 +235,46 @@ describe('M12 试玩联动（preflightCheck / launchGame 安全）', () => {
     const result = await launchGame(game)
     expect(result.ok).toBe(false) // spawn 假 exe 失败是预期的（找不到真实可执行文件）——但安全校验已通过
     expect(result.message).toBeTruthy()
+  })
+})
+
+describe('M12 审查修复回归', () => {
+  it('多帧引用（a.png;b.png）逐帧检查：第二帧缺失报错', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\n')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'a.png'), 'png')
+    writeFileSync(path.join(mod, 'units', 'a', 'a.ini'), '[core]\nname: a\n[graphics]\nimage: a.png;b.png\n')
+    const result = await preflightCheck(mod)
+    expect(result.issues.some((i) => i.severity === 'error' && i.message.includes('b.png'))).toBe(true)
+    expect(result.issues.some((i) => i.message.includes('a.png'))).toBe(false)
+  })
+
+  it('帧语法（frame.png:延迟）剥冒号后缀不误报', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\n')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'frame.png'), 'png')
+    writeFileSync(path.join(mod, 'units', 'a', 'a.ini'), '[core]\nname: a\n[graphics]\nimage: frame.png:0.1\n')
+    const result = await preflightCheck(mod)
+    expect(result.issues.some((i) => i.message.includes('frame.png'))).toBe(false)
+  })
+
+  it('SHARED:/CUSTOM:/ROOT: 前缀与行内注释/引号不误报', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\n')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'real.png'), 'png')
+    writeFileSync(
+      path.join(mod, 'units', 'a', 'a.ini'),
+      '[core]\nname: a\n[graphics]\nimage: SHARED:beam3.png\nimage_wreak: "real.png" # 注释\nimage_shadow: ROOT:units/a/real.png\n',
+    )
+    const result = await preflightCheck(mod)
+    expect(result.issues.some((i) => i.severity === 'error')).toBe(false)
+  })
+
+  it('openDir 拒绝不存在的目录', async () => {
+    const result = await openDir(path.join(makeTmp('rust-nodir-'), 'nope'))
+    expect(result.ok).toBe(false)
   })
 })

@@ -155,7 +155,7 @@ export function GameSettingsTab() {
     try {
       const result = await getBridge().game.launch(detect.gamePath)
       if (!result.ok) {
-        setLaunchMsg(result.message ?? '启动失败')
+        // 失败只走 error（红色），不写 launchMsg（绿色）——避免同句红绿双显误导
         setError(`游戏启动失败：${result.message ?? '未知原因'}`)
       } else {
         setLaunchMsg('游戏已启动（可在游戏内 模组管理 中启用本模组）')
@@ -173,8 +173,17 @@ export function GameSettingsTab() {
       setError('请先打开一个模组项目')
       return
     }
-    const result = await getBridge().game.openDir(project.rootPath)
-    if (!result.ok) setError(`打开失败：${result.message ?? '未知原因'}`)
+    if (busy !== null) return
+    setBusy('launch') // 复用 busy 互斥（防连点并发弹窗）
+    setError(null)
+    try {
+      const result = await getBridge().game.openDir(project.rootPath)
+      if (!result.ok) setError(`打开失败：${result.message ?? '未知原因'}`)
+    } catch (err) {
+      setError(`打开失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setBusy(null)
+    }
   }
 
   return (

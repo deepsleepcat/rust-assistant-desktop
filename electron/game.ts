@@ -6,8 +6,8 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { isPathInside, normalizePath } from './paths'
-import { checkMod, escapeIniComment } from './modTools'
+import { assertNoLinkEscape, isPathInside, normalizePath } from './paths'
+import { checkMod, escapeIniComment, isExcluded } from './modTools'
 
 const execFileAsync = promisify(execFile)
 
@@ -224,18 +224,30 @@ export async function findGameExe(gamePath: string): Promise<string | null> {
   return null
 }
 
-/** 启动游戏（detached 不阻塞主进程；失败返回错误信息，成功返回 null） */
+/** 启动游戏（detached 不阻塞主进程；失败返回错误信息，成功返回 null）。
+ * spawn 的失败（ENOENT/EACCES/ENOEXEC）是异步 'error' 事件而非同步异常：
+ * 用 Promise 包裹监听 error/spawn 两个事件，避免误报「已启动」或
+ * unhandled 'error' 打崩主进程 */
 export async function launchGame(gamePath: string): Promise<{ ok: boolean; message?: string }> {
   if (!(await looksLikeGameDir(gamePath))) return { ok: false, message: '不是有效的铁锈战争安装目录（缺少 assets/units）' }
   const exe = await findGameExe(gamePath)
   if (!exe) return { ok: false, message: '在游戏目录中未找到可执行文件（Rusted Warfare.exe）' }
-  try {
-    const child = spawn(exe, [], { detached: true, stdio: 'ignore', cwd: gamePath, windowsHide: true })
-    child.unref() // 不阻塞主进程退出
-    return { ok: true }
-  } catch (err) {
-    return { ok: false, message: `启动失败：${err instanceof Error ? err.message : String(err)}` }
-  }
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(exe, [], { detached: true, stdio: 'ignore', cwd: gamePath, windowsHide: true })
+    } catch (err) {
+      resolve({ ok: false, message: `启动失败：${err instanceof Error ? err.message : String(err)}` })
+      return
+    }
+    child.once('error', (err) => {
+      resolve({ ok: false, message: `启动失败：${err.message}` })
+    })
+    child.once('spawn', () => {
+      child.unref() // 不阻塞主进程退出
+      resolve({ ok: true })
+    })
+  })
 }
 
 /** 打开目录（项目根或游戏目录；shell.openPath 是只读操作） */
@@ -283,11 +295,16 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
   const root = path.resolve(projectRoot)
   const issues: PreflightIssue[] = []
 
-  // 1) mod-info.txt 完整性
+  // 1) mod-info.txt 完整性（区分「缺失」与「过大/读取失败」）
   const modInfoPath = path.join(root, 'mod-info.txt')
   const modInfoContent = await readTextLimited(modInfoPath)
   if (!modInfoContent) {
-    issues.push({ severity: 'error', message: '缺少 mod-info.txt（游戏不识别该模组）', file: 'mod-info.txt' })
+    const st = await fs.stat(modInfoPath).catch(() => null)
+    if (st && st.size > MAX_READ_SIZE) {
+      issues.push({ severity: 'error', message: 'mod-info.txt 过大（超过 64MB），无法读取', file: 'mod-info.txt' })
+    } else {
+      issues.push({ severity: 'error', message: '缺少 mod-info.txt（游戏不识别该模组）', file: 'mod-info.txt' })
+    }
   } else {
     const modSection = /^\s*\[mod\]\s*$/im.test(modInfoContent)
     if (!modSection) issues.push({ severity: 'error', message: 'mod-info.txt 缺少 [mod] 节', file: 'mod-info.txt' })
@@ -298,12 +315,14 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
 
   // 2) 引用文件存在性：扫描全部 ini 的资源键，检查相对路径文件存在
   const iniFiles: string[] = []
-  async function collectIni(dir: string): Promise<void> {
+  async function collectIni(dir: string, prefix = ''): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
     for (const e of entries) {
-      if (isExcludedPath(e.name)) continue
+      // 与打包同一套排除规则（out/.hg/*.tmp 等永远不会进模组的内容不检查）
+      const relName = prefix ? `${prefix}/${e.name}` : e.name
+      if (isExcluded(relName)) continue
       const full = path.join(dir, e.name)
-      if (e.isDirectory()) await collectIni(full)
+      if (e.isDirectory()) await collectIni(full, relName)
       else if (e.isFile() && e.name.toLowerCase().endsWith('.ini')) iniFiles.push(full)
     }
   }
@@ -318,22 +337,43 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
       const key = m[1].trim().toLowerCase()
       if (!RESOURCE_REF_KEYS.has(key)) continue
       for (const raw of m[2].split(',')) {
-        const ref = raw.trim().replace(/^CUSTOM:/i, '')
-        if (!ref || RESOURCE_SKIP_VALUES.has(ref.toLowerCase())) continue
-        // 多帧引用（frame_1.png: 或 a.png;b.png）与模板占位忽略
-        const candidate = ref.split(';')[0].trim()
-        if (!candidate || candidate.includes('*') || candidate.includes('${')) continue
-        const target = path.resolve(path.dirname(file), candidate)
-        // 越出项目根（../ 引用）→ 直接报错（打包后必然失效）
-        if (!isPathInside(root, target)) {
-          issues.push({ severity: 'error', message: `「${key}」引用越出项目目录：${candidate}`, file: rel })
-          continue
-        }
-        try {
-          const st = await fs.stat(target)
-          if (!st.isFile()) issues.push({ severity: 'error', message: `「${key}」引用的文件不存在：${candidate}`, file: rel })
-        } catch {
-          issues.push({ severity: 'error', message: `「${key}」引用的文件不存在：${candidate}`, file: rel })
+        // 值清洗（与编辑器 imagePathFromLine 对齐）：行内注释/引号/CUSTOM:/ROOT: 前缀
+        let ref = raw.trim().replace(/[ \t]+#.*$/, '').replace(/^["']|["']$/g, '')
+        if (!ref) continue
+        const lower = ref.toLowerCase()
+        if (RESOURCE_SKIP_VALUES.has(lower)) continue
+        // SHARED: 前缀 = 游戏共享资源（不检查存在性）；CUSTOM:/ROOT: = 项目内引用（剥前缀）
+        if (lower.startsWith('shared:')) continue
+        const rootBased = /^ROOT:/i.test(ref)
+        ref = ref.replace(/^CUSTOM:/i, '').replace(/^ROOT:/i, '')
+        if (!ref) continue
+        // 多帧引用（a.png;b.png）逐帧检查；帧语法（frame_1.png:延迟）剥冒号后缀
+        for (let frame of ref.split(';')) {
+          frame = frame.split(':')[0].trim()
+          if (!frame || frame.includes('*') || frame.includes('${')) continue
+          const candidate = frame
+          // ROOT: 前缀按项目根解析，其余按 ini 所在目录解析
+          const target = rootBased ? path.resolve(root, candidate) : path.resolve(path.dirname(file), candidate)
+          // 越出项目根（../ 引用）→ 直接报错（打包后必然失效）
+          if (!isPathInside(root, target)) {
+            issues.push({ severity: 'error', message: `「${key}」引用越出项目目录：${candidate}`, file: rel })
+            continue
+          }
+          try {
+            const st = await fs.stat(target)
+            if (!st.isFile()) {
+              issues.push({ severity: 'error', message: `「${key}」引用的文件不存在：${candidate}`, file: rel })
+              continue
+            }
+            // 链接逃逸：目标存在但经链接指向项目外 → 打包会跳过该链接，模组缺图
+            await assertNoLinkEscape(root, target)
+          } catch (err) {
+            if (err instanceof Error && err.message.includes('指向项目目录外的链接')) {
+              issues.push({ severity: 'error', message: `「${key}」引用的文件经链接指向项目外（打包会跳过）：${candidate}`, file: rel })
+            } else {
+              issues.push({ severity: 'error', message: `「${key}」引用的文件不存在：${candidate}`, file: rel })
+            }
+          }
         }
       }
     }
@@ -348,19 +388,4 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
   }
 
   return { ok: issues.every((i) => i.severity !== 'error'), issues }
-}
-
-/** preflight 用排除（与 modTools.isExcluded 同规则，避免重复 import） */
-function isExcludedPath(name: string): boolean {
-  return (
-    name === '.git' ||
-    name === '.svn' ||
-    name === 'node_modules' ||
-    name === 'dist' ||
-    name === 'dist-electron' ||
-    name === '.vite' ||
-    name === 'Thumbs.db' ||
-    name === '.DS_Store' ||
-    name === 'desktop.ini'
-  )
 }
