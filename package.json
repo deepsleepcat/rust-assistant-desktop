@@ -1,6 +1,6 @@
 {
   "name": "rust-assistant-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "GPL-3.0",
   "description": "铁锈助手 · 铁锈战争模组开发工作台（电脑版）",
