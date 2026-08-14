@@ -1322,7 +1322,11 @@ export function createWorkspaceStore(bridge: BridgeApi) {
               armGuard()
             }
             if (event.type === 'tool_start') {
-              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_start', name: event.name, args: event.args, createdAt: Date.now() }
+              // writeFile 的 args 含完整写入内容：剥离后随对话持久化（防 workspace store
+              // 长期使用后膨胀到主进程体积上限；工具卡片只需要 path 等元信息）
+              const args = { ...(event.args ?? {}) }
+              if (event.name === 'writeFile' && 'content' in args) delete (args as Record<string, unknown>).content
+              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_start', name: event.name, args, createdAt: Date.now() }
               set({
                 conversations: get().conversations.map((c) =>
                   c.id === conversationId ? { ...c, toolEvents: [...(c.toolEvents ?? []), toolEvent] } : c,

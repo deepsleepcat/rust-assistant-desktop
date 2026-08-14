@@ -910,11 +910,14 @@ function registerIpc(): void {
     if (typeof rootPath !== 'string' || typeof relPath !== 'string' || !relPath) {
       throw new Error('无效的参数')
     }
-    requireInsideRoot(rootPath, path.join(rootPath, relPath))
-    if (path.isAbsolute(relPath) || relPath.includes('..')) {
+    // 与 writeFile 工具 resolveInside 对齐：剥前导斜杠（AI 可能用 /units/a.txt 写法；
+    // win32 上 path.isAbsolute('/units/a.txt') === true，不剥会误拒）
+    const rel = relPath.replace(/^\/+/, '')
+    if (path.isAbsolute(rel) || rel.includes('..')) {
       throw new Error('无效的文件路径')
     }
-    return { root: rootPath, rel: relPath }
+    requireInsideRoot(rootPath, path.join(rootPath, rel))
+    return { root: rootPath, rel }
   }
 
   ipcMain.handle('ai:history:list', async (_event, rootPath: unknown, relPath: unknown) => {

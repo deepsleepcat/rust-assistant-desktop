@@ -17,6 +17,18 @@ const MAX_LINT_ITEMS = 200
 /** 超过此体积的文件跳过质检（lint 是单趟 O(n)，超大文件在渲染线程跑会卡界面） */
 const MAX_LINT_FILE_CHARS = 5 * 1024 * 1024
 
+/**
+ * 项目内绝对路径拼接（渲染层无 node:path）：
+ * AI 工具给的 relPath 是相对写法（units/rifle.ini），而 bridge 的 fs 通道要求
+ * 绝对路径（按主进程 CWD 解析相对路径会与项目根无关，必然「超出项目目录范围」）。
+ * Windows-only 应用：统一正斜杠拼接（Node fs 兼容），与主进程 requireRealInsideRoot 一致。
+ */
+export function joinProjectPath(rootPath: string, relPath: string): string {
+  const root = rootPath.replace(/[\\/]+$/, '')
+  const rel = relPath.replace(/^\/+/, '').replace(/\\/g, '/').replace(/^\.\//, '')
+  return `${root}/${rel}`
+}
+
 /** 每行起始偏移表（单趟构建，行号查询 O(1)） */
 export function lineStarts(content: string): number[] {
   const starts = [0]
@@ -82,7 +94,8 @@ export async function checkAiWrittenFile(rootPath: string, relPath: string): Pro
   if (!/\.(ini|template)$/i.test(relPath)) return null
   try {
     const { getBridge } = await import('../../services/bridge')
-    const { content } = await getBridge().project.readFile(rootPath, relPath)
+    // relPath 是 AI 的相对写法：必须拼成项目内绝对路径再走 fs 通道（见 joinProjectPath）
+    const { content } = await getBridge().project.readFile(rootPath, joinProjectPath(rootPath, relPath))
     if (content.length > MAX_LINT_FILE_CHARS) return null
     await loadCodeData()
     const zhToEnDict = getZhToEnDict()

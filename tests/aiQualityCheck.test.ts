@@ -3,7 +3,15 @@
  * 建议映射、条目上限折叠。
  */
 import { describe, expect, it } from 'vitest'
-import { lineNumberAt, lineStarts, suggestionFor, toLintItems } from '../src/features/ai/aiQualityCheck'
+import { joinProjectPath, lineNumberAt, lineStarts, suggestionFor, toLintItems } from '../src/features/ai/aiQualityCheck'
+
+describe('joinProjectPath', () => {
+  it('把 AI 相对路径拼成项目内绝对路径（统一正斜杠，兼容多种写法）', () => {
+    expect(joinProjectPath('W:\\proj', 'units/rifle.ini')).toBe('W:\\proj/units/rifle.ini')
+    expect(joinProjectPath('W:\\proj\\', '/units/rifle.ini')).toBe('W:\\proj/units/rifle.ini')
+    expect(joinProjectPath('W:/proj', './units\\rifle.ini')).toBe('W:/proj/units/rifle.ini')
+  })
+})
 
 describe('lineStarts / lineNumberAt', () => {
   it('构建每行起始偏移表，行号从 1 起', () => {
