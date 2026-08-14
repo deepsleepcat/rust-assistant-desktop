@@ -379,6 +379,35 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
     }
   }
 
+  // 2.5) 地图基础校验（打包桥接）：.tmx 必须有 <map> 根元素且含瓦片层 data
+  const tmxFiles: string[] = []
+  async function collectTmx(dir: string): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const e of entries) {
+      if (isExcluded(e.name)) continue
+      const full = path.join(dir, e.name)
+      if (e.isDirectory()) await collectTmx(full)
+      else if (e.isFile() && e.name.toLowerCase().endsWith('.tmx')) tmxFiles.push(full)
+    }
+  }
+  await collectTmx(root)
+  for (const file of tmxFiles) {
+    const content = await readTextLimited(file)
+    const rel = path.relative(root, file).replace(/\\/g, '/')
+    if (!content) {
+      issues.push({ severity: 'error', message: '地图文件为空或无法读取', file: rel })
+      continue
+    }
+    if (!/<map\b[^>]*>/.test(content)) {
+      issues.push({ severity: 'error', message: '地图缺少 <map> 根元素（可能不是有效 TMX）', file: rel })
+      continue
+    }
+    // Ground 瓦片层必须有 data（正则粗检：<layer name="Ground" ...><data ...>）
+    if (!/<layer\b[^>]*name\s*=\s*"Ground"[^>]*>[\s\S]*?<data\b/.test(content)) {
+      issues.push({ severity: 'warning', message: '缺少带 data 的 Ground 瓦片层（地形可能无法加载）', file: rel })
+    }
+  }
+
   // 3) 合并现有 checkMod 的 error 级问题（单位完整性：缺 name/重名等）
   const modCheck = await checkMod(root).catch(() => null)
   if (modCheck) {

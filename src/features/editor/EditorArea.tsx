@@ -15,6 +15,7 @@ import { LogoR } from '../../components/LogoR'
 import { ConfirmBox, PromptModal } from '../../components/Modal'
 import { EditorMirror } from './EditorMirror'
 import { isUnitFile, UnitFormPanel } from './unitForm/UnitFormPanel'
+import { isMapFile, MapViewer } from '../map/MapViewer'
 import { ImageViewer } from './ImageViewer'
 import { AudioViewer } from './AudioViewer'
 import { isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
@@ -327,7 +328,9 @@ function EditorPane({ tabId }: { tabId: string }) {
         </div>
       )}
       <div className="editor-body">
-        {formMode && isUnitFile(tab.content) && project ? (
+        {isMapFile(tab.path) && project ? (
+          <MapViewer path={tab.path} rootPath={project.rootPath} />
+        ) : formMode && isUnitFile(tab.content) && project ? (
           <UnitFormPanel tab={tab} rootPath={project.rootPath} />
         ) : (
         <EditorMirror

@@ -278,3 +278,21 @@ describe('M12 审查修复回归', () => {
     expect(result.ok).toBe(false)
   })
 })
+
+describe('M15 地图打包桥接（preflight tmx 校验）', () => {
+  it('有效地图通过；缺 Ground data 警告；非 TMX 报错', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\n')
+    mkdirSync(path.join(mod, 'maps'), { recursive: true })
+    writeFileSync(
+      path.join(mod, 'maps', 'good.tmx'),
+      '<map version="1.2" width="4" height="4" tilewidth="32" tileheight="32"><layer name="Ground"><data encoding="csv">1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1</data></layer></map>',
+    )
+    writeFileSync(path.join(mod, 'maps', 'noground.tmx'), '<map version="1.2" width="4" height="4" tilewidth="32" tileheight="32"><layer name="Items"><data encoding="csv">0</data></layer></map>')
+    writeFileSync(path.join(mod, 'maps', 'bad.tmx'), 'not a map at all')
+    const result = await preflightCheck(mod)
+    expect(result.issues.some((i) => i.message.includes('good.tmx'))).toBe(false)
+    expect(result.issues.some((i) => i.severity === 'warning' && i.message.includes('Ground') && i.message.includes('noground.tmx'))).toBe(true)
+    expect(result.issues.some((i) => i.severity === 'error' && i.message.includes('<map> 根元素') && i.message.includes('bad.tmx'))).toBe(true)
+  })
+})
