@@ -1341,12 +1341,15 @@ export function createWorkspaceStore(bridge: BridgeApi) {
                   c.id === conversationId ? { ...c, toolEvents: [...(c.toolEvents ?? []), toolEvent] } : c,
                 ),
               })
-              // 任务 3：AI 写文件成功后自动质检（异步，不阻塞流；结果挂到该工具卡片上）。
-              // 与撤销/历史完全独立——质检发现问题不影响撤销能力
+              // 任务 3 + M10：AI 写文件成功后自动质检（异步，不阻塞流；结果挂到该工具卡片上）。
+              // 与撤销/历史完全独立——质检发现问题不影响撤销能力；
+              // 语义检查器按设置开关过滤，引用完整性检查使用项目单位名（扫描后传入）
               if (event.name === 'writeFile' && event.ok && event.path) {
                 const relPath = event.path
                 void (async () => {
-                  const items = await checkAiWrittenFile(project.rootPath, relPath)
+                  const semanticCheckers = get().settings.semanticCheckers
+                  const unitNames = new Set((await getBridge().mod.scanResources(project.rootPath).catch(() => null))?.unitNames ?? [])
+                  const items = await checkAiWrittenFile(project.rootPath, relPath, { semanticCheckers, unitNames })
                   if (items && items.length > 0) {
                     set({
                       conversations: get().conversations.map((c) =>

@@ -1,7 +1,8 @@
 /**
- * AI 修改后自动质检（任务 3）：
- * writeFile 成功后，读取刚写入的文件跑一遍现有 rustLint，把诊断转成
- * 「文件 + 行号 + 原因 + 修复建议」的可操作清单，展示在对话工具卡片里。
+ * AI 修改后自动质检（任务 3 + M10 语义升级）：
+ * writeFile 成功后，读取刚写入的文件跑一遍现有 rustLint + M10 语义检查器，
+ * 把诊断转成「文件 + 行号 + 原因 + 修复建议 + 证据」的可操作清单，
+ * 展示在对话工具卡片里。
  *
  * 设计：lint 数据层（代码表/值类型/词典）只在渲染层加载过，质检也放在渲染层
  * （工具结束事件到达时触发）；lint 与撤销/历史完全独立——质检发现问题不影响撤销。
@@ -10,7 +11,9 @@
  */
 import type { AiLintItem } from '../../types/ai'
 import { lintIniText } from '../editor/rustLint'
-import { findCodeByCode, findValueType, getZhToEnDict, loadCodeData } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData } from '../../services/codeData'
+import { runSemanticChecks } from '../editor/semanticChecks'
+import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
 
 /** 清单上限：超出后折叠为汇总条目（防大文件产生数万条诊断拖垮渲染） */
 const MAX_LINT_ITEMS = 200
@@ -89,25 +92,62 @@ export function toLintItems(
   return items
 }
 
+/** 质检选项：语义检查器配置与项目单位名（引用完整性检查用） */
+export interface QualityCheckOptions {
+  semanticCheckers?: Record<string, boolean>
+  unitNames?: ReadonlySet<string>
+}
+
 /**
- * AI 写文件后自动质检：读取刚写入的文件并跑一遍 rustLint。
+ * 质检核心（纯函数，供测试与 checkAiWrittenFile 共用）：
+ * 基础 lint + M10 语义检查器合并为统一清单。
+ */
+export async function qualityCheckContent(content: string, options: QualityCheckOptions = {}): Promise<AiLintItem[]> {
+  if (content.length > MAX_LINT_FILE_CHARS) return []
+  await loadCodeData()
+  const zhToEnDict = getZhToEnDict()
+  const data = {
+    findCode: (k: string) => findCodeByCode(k),
+    findType: (t: string) => findValueType(t),
+    zhToEn: (k: string) => zhToEnDict.get(k),
+  }
+  const diagnostics = lintIniText(content, data)
+  const items = toLintItems(content, diagnostics)
+
+  // M10：语义检查器（与编辑器波浪线同一套规则；info 降级为 warning 展示）
+  const ruleIds = enabledRuleIds(options.semanticCheckers ?? defaultSemanticCheckerConfig())
+  const issues = runSemanticChecks(content, {
+    ruleIds,
+    ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames: options.unitNames },
+  })
+  for (const it of issues) {
+    items.push({
+      line: it.line,
+      message: it.message,
+      severity: it.severity === 'error' ? 'error' : 'warning',
+      suggestion: it.suggestion,
+      ruleId: it.ruleId,
+      evidence: it.evidence,
+    })
+  }
+  return items
+}
+
+/**
+ * AI 写文件后自动质检：读取刚写入的文件并跑一遍 rustLint + 语义检查器。
  * 返回 null 表示无法检查（非 ini/读取失败/文件过大）；空数组表示无问题。
  */
-export async function checkAiWrittenFile(rootPath: string, relPath: string): Promise<AiLintItem[] | null> {
+export async function checkAiWrittenFile(
+  rootPath: string,
+  relPath: string,
+  options: QualityCheckOptions = {},
+): Promise<AiLintItem[] | null> {
   if (!/\.(ini|template)$/i.test(relPath)) return null
   try {
     const { getBridge } = await import('../../services/bridge')
     // relPath 是 AI 的相对写法：必须拼成项目内绝对路径再走 fs 通道（见 joinProjectPath）
     const { content } = await getBridge().project.readFile(rootPath, joinProjectPath(rootPath, relPath))
-    if (content.length > MAX_LINT_FILE_CHARS) return null
-    await loadCodeData()
-    const zhToEnDict = getZhToEnDict()
-    const diagnostics = lintIniText(content, {
-      findCode: (k) => findCodeByCode(k),
-      findType: (t) => findValueType(t),
-      zhToEn: (k) => zhToEnDict.get(k),
-    })
-    return toLintItems(content, diagnostics)
+    return qualityCheckContent(content, options)
   } catch {
     // 文件被删/读取失败等：跳过质检，不影响对话与撤销
     return null

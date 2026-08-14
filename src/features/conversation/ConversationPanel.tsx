@@ -398,8 +398,10 @@ function LintBox({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
             <li key={i} className={`lint-item lint-${item.severity}`}>
               <div className="lint-msg">
                 {item.line > 0 && <span className="lint-line">第 {item.line} 行</span>}
+                {item.ruleId && <span className="lint-rule" title="语义检查器规则">{item.ruleId}</span>}
                 {item.message}
               </div>
+              {item.evidence && <div className="lint-evidence">证据：{item.evidence}</div>}
               {item.suggestion && <div className="lint-suggestion">建议：{item.suggestion}</div>}
               {tool.path && item.line > 0 && (
                 <button

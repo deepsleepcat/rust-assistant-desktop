@@ -35,6 +35,10 @@ interface EditorMirrorProps {
   jumpTo?: { line: number; seq: number; external?: boolean } | null
   /** 跳转已处理（含行越界/视图未就绪的失效场景），回传实际执行/失效的请求——外部跳转据此消费，防止陈旧请求重复触发 */
   onJumpDone?: (jump: { line: number; seq: number; external?: boolean }) => void
+  /** 项目根路径（语义检查的引用完整性需要扫描单位名） */
+  rootPath?: string
+  /** 语义检查器开关（缺省全部开启） */
+  semanticCheckers?: Record<string, boolean>
 }
 
 const editorTheme = EditorView.theme({
@@ -115,7 +119,7 @@ const editorTheme = EditorView.theme({
   },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -159,7 +163,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         drawSelection(),
         history(),
         rustConfigLanguageSupport(),
-        rustLintExtension(),
+        rustLintExtension({ rootPath, semanticCheckers }),
         rustHoverExtension,
         autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
         search({ top: true }),

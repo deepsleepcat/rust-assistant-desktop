@@ -4,6 +4,7 @@
  */
 import type { AppSettings, BackgroundKind, FileSort, ThemeMode } from '../types/domain'
 import type { AiProviderType } from '../types/ai'
+import { defaultSemanticCheckerConfig, sanitizeCheckerConfig } from '../features/editor/semanticChecks/registry'
 
 export const FONT_OPTIONS = [
   { label: '系统默认', value: 'system' },
@@ -46,6 +47,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cursorEffectColor: '#000000',
   /** M8：铁锈战争安装目录（用户手动配置；自动检测作为兜底） */
   gamePath: '',
+  /** M10：语义检查器开关（默认全部开启） */
+  semanticCheckers: defaultSemanticCheckerConfig(),
+  /** M11：当前项目目标游戏版本（空 = 跟随最新） */
+  targetGameVersion: '',
   avatar: { source: 'default', localPath: null, remoteUrl: null, updatedAt: 0 },
   ai: {
     provider: 'deepseek',
@@ -101,6 +106,8 @@ export function sanitizeSettings(input: unknown): AppSettings {
         ? raw.cursorEffectColor
         : DEFAULT_SETTINGS.cursorEffectColor,
     gamePath: typeof raw.gamePath === 'string' ? raw.gamePath.trim() : DEFAULT_SETTINGS.gamePath,
+    semanticCheckers: sanitizeCheckerConfig(raw.semanticCheckers),
+    targetGameVersion: typeof raw.targetGameVersion === 'string' ? raw.targetGameVersion.trim() : DEFAULT_SETTINGS.targetGameVersion,
     ai: sanitizeAi(raw.ai),
   }
 }

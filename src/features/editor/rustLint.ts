@@ -11,8 +11,10 @@
 import { linter } from '@codemirror/lint'
 import type { EditorView } from '@codemirror/view'
 import type { ValueTypeInfo } from '../../services/codeData'
-import { findCodeByCode, findValueType, getZhToEnDict, loadCodeData, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, zhToEnKeySegments } from '../../services/codeData'
 import { classifyLine } from './rustLanguage'
+import { runSemanticChecks, semanticIssuesToDiagnostics } from './semanticChecks'
+import { defaultSemanticCheckerConfig, enabledRuleIds } from './semanticChecks/registry'
 
 /** 规则描述「整行/键」而非「值」的类型：值校验时跳过，避免误报 */
 const LINE_LEVEL_TYPES = new Set(['key', 'section', 'value', 'notes', 'define', 'prefixKey', 'code'])
@@ -156,17 +158,52 @@ export function lintIniText(
   return diagnostics
 }
 
-/** CodeMirror lint 扩展（异步加载代码表数据后逐行检查） */
-export function rustLintExtension() {
+/** 项目单位名缓存（语义引用检查用）：scanResources 是 IPC，编辑高频 lint 不能每次都打。
+ * 缓存 30s——AI 写文件后最多 30s 内新单位名不生效，可接受（质检会立刻扫描） */
+let unitNamesCache: { root: string; names: ReadonlySet<string>; at: number } | null = null
+
+async function cachedUnitNames(rootPath?: string): Promise<ReadonlySet<string> | undefined> {
+  if (!rootPath) return undefined
+  if (unitNamesCache && unitNamesCache.root === rootPath && Date.now() - unitNamesCache.at < 30_000) {
+    return unitNamesCache.names
+  }
+  const { getBridge } = await import('../../services/bridge')
+  const data = await getBridge().mod.scanResources(rootPath).catch(() => null)
+  if (data) {
+    unitNamesCache = { root: rootPath, names: new Set(data.unitNames), at: Date.now() }
+  }
+  return unitNamesCache?.root === rootPath ? unitNamesCache.names : undefined
+}
+
+export interface RustLintOptions {
+  /** 项目根（提供时语义引用检查可拿到单位名列表） */
+  rootPath?: string
+  /** 语义检查器开关（缺省全部开启） */
+  semanticCheckers?: Record<string, boolean>
+}
+
+/** CodeMirror lint 扩展（异步加载代码表数据后逐行检查 + M10 语义检查器合并） */
+export function rustLintExtension(opts: RustLintOptions = {}) {
   return linter(
     async (view: EditorView) => {
       await loadCodeData()
       const zhToEnDict = getZhToEnDict()
-      return lintIniText(view.state.doc.toString(), {
-        findCode: (k) => findCodeByCode(k),
-        findType: (t) => findValueType(t),
-        zhToEn: (k) => zhToEnDict.get(k),
+      const content = view.state.doc.toString()
+      const data = {
+        findCode: (k: string) => findCodeByCode(k),
+        findType: (t: string) => findValueType(t),
+        zhToEn: (k: string) => zhToEnDict.get(k),
+      }
+      const diagnostics = lintIniText(content, data)
+
+      // M10：语义检查器（配置驱动，可单独开关；引用检查在拿到单位名时生效）
+      const ruleIds = enabledRuleIds(opts.semanticCheckers ?? defaultSemanticCheckerConfig())
+      const unitNames = await cachedUnitNames(opts.rootPath)
+      const issues = runSemanticChecks(content, {
+        ruleIds,
+        ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames },
       })
+      return [...diagnostics, ...semanticIssuesToDiagnostics(content, issues)]
     },
     { delay: 400 },
   )

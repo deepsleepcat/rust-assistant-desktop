@@ -11,6 +11,7 @@ import { LogoR } from '../../components/LogoR'
 import { Modal } from '../../components/Modal'
 import { AvatarCropModal } from './AvatarCropModal'
 import { GameSettingsTab } from './GameSettingsTab'
+import { ALL_SEMANTIC_CHECKERS } from '../editor/semanticChecks/registry'
 
 const GRADIENT_PRESETS = [
   { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
@@ -331,6 +332,29 @@ export function SettingsModal() {
                   onChange={(e) => updateSettings({ fontSize: Number(e.target.value) })}
                 />
                 <span style={{ width: 34, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{settings.fontSize}px</span>
+              </div>
+              <div className="setting-divider" />
+              <div className="setting-title">语义检查器（M10）</div>
+              <div className="desc" style={{ marginBottom: 8 }}>
+                编辑器波浪线、AI 写后质检与项目检查共用这些规则，可单独开关。
+              </div>
+              <div className="checker-list">
+                {ALL_SEMANTIC_CHECKERS.map((c) => {
+                  const on = settings.semanticCheckers[c.id] !== false
+                  return (
+                    <label key={c.id} className="checker-item">
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={(e) =>
+                          updateSettings({ semanticCheckers: { ...settings.semanticCheckers, [c.id]: e.target.checked } })
+                        }
+                      />
+                      <span className="checker-name">{c.title}</span>
+                      <span className="checker-desc">{c.description}</span>
+                    </label>
+                  )
+                })}
               </div>
             </div>
           )}

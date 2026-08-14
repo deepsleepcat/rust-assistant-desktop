@@ -62,6 +62,10 @@ export interface AppSettings {
   cursorEffectColor: string
   /** M8：铁锈战争安装目录（用户手动配置；自动检测作为兜底） */
   gamePath: string
+  /** M10：语义检查器开关（ruleId → 是否启用；缺省全部开启） */
+  semanticCheckers: Record<string, boolean>
+  /** M11：当前项目目标游戏版本（版本兼容提示用；空 = 跟随最新） */
+  targetGameVersion: string
 }
 
 /** 一个项目 = 一个铁锈战争模组目录 */

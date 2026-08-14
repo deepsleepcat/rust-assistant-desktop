@@ -192,6 +192,7 @@ function EditorPane({ tabId }: { tabId: string }) {
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
+  const semanticCheckers = useWorkspaceStore((s) => s.settings.semanticCheckers)
   const toggleTranslation = useWorkspaceStore((s) => s.toggleTranslation)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
   const [outlineOpen, setOutlineOpen] = useState(false)
@@ -323,6 +324,8 @@ function EditorPane({ tabId }: { tabId: string }) {
           translationMap={tab.translationMap}
           jumpTo={jumpTo}
           onJumpDone={handleJumpDone}
+          rootPath={project?.rootPath}
+          semanticCheckers={semanticCheckers}
         />
       </div>
       {templateName !== null && (

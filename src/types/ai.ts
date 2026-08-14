@@ -75,11 +75,15 @@ export interface AiApprovalResponse {
 
 /** AI 写文件后的质检条目（任务 3：文件 + 行号 + 原因 + 修复建议） */
 export interface AiLintItem {
-  /** 行号（从 1 起） */
+  /** 行号（从 1 起；0 = 汇总条目，无定位） */
   line: number
   message: string
   severity: 'error' | 'warning'
   suggestion: string
+  /** 语义检查器规则 id（M10；基础 lint 无此字段） */
+  ruleId?: string
+  /** 证据（触发问题的原文，语义检查器带） */
+  evidence?: string
 }
 
 /** AI 修改历史条目元数据（列表用；内容在恢复时由主进程读取，不经过 IPC 搬运） */

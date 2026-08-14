@@ -3,7 +3,7 @@
  * 建议映射、条目上限折叠。
  */
 import { describe, expect, it } from 'vitest'
-import { joinProjectPath, lineNumberAt, lineStarts, suggestionFor, toLintItems } from '../src/features/ai/aiQualityCheck'
+import { joinProjectPath, lineNumberAt, lineStarts, qualityCheckContent, suggestionFor, toLintItems } from '../src/features/ai/aiQualityCheck'
 
 describe('joinProjectPath', () => {
   it('把 AI 相对路径拼成项目内绝对路径（统一正斜杠，兼容多种写法）', () => {
@@ -80,5 +80,38 @@ describe('toLintItems', () => {
     expect(items[200].line).toBe(0)
     expect(items[200].message).toContain('其余 5 条问题未列出')
     expect(items[200].suggestion).toBe('')
+  })
+})
+
+describe('qualityCheckContent（M10 语义检查器合并）', () => {
+  it('语义问题带 ruleId/evidence 并入清单', async () => {
+    const items = await qualityCheckContent('[core]\nmaxHp: -5\nname: myUnit\n', {})
+    const semantic = items.find((i) => i.ruleId === 'checkPositiveCoreStats')
+    expect(semantic).toBeDefined()
+    expect(semantic?.line).toBe(2)
+    expect(semantic?.severity).toBe('error')
+    expect(semantic?.evidence).toBe('-5')
+  })
+
+  it('检查器可单独关闭（配置过滤）', async () => {
+    const items = await qualityCheckContent('[core]\nmaxHp: -5\n', { semanticCheckers: { checkPositiveCoreStats: false } })
+    expect(items.some((i) => i.ruleId === 'checkPositiveCoreStats')).toBe(false)
+  })
+
+  it('unitNames 传入时引用检查生效', async () => {
+    const items = await qualityCheckContent('[core]\nbuiltFrom_1_name: ghostFactory\nname: x\n', {
+      unitNames: new Set(['landFactory']),
+    })
+    expect(items.some((i) => i.ruleId === 'checkRiskyUnitReferenceSemantics' && i.message.includes('ghostFactory'))).toBe(true)
+  })
+
+  it('dont_load 文件跳过语义检查', async () => {
+    const items = await qualityCheckContent('[core]\ndont_load: true\nmaxHp: -5\n', {})
+    expect(items.some((i) => i.ruleId === 'checkPositiveCoreStats')).toBe(false)
+  })
+
+  it('超大文件返回空（不检查）', async () => {
+    const items = await qualityCheckContent('x'.repeat(5 * 1024 * 1024 + 1), {})
+    expect(items).toEqual([])
   })
 })
