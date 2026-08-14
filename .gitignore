@@ -49,6 +49,7 @@ ui-*.png
 
 # 宣传片制作工作目录（另一工作流产物）
 promo/
+promo-v2/
 scripts/capture-promo.mjs
 
 # 开发过程脚本与调试残留（仅本地）
