@@ -10,7 +10,7 @@
  * 统一按「字母前缀(可带数字)_时间s」匹配。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, getIni, sectionEnName } from './helpers'
+import { issue, getIni, keyValuesInSection, sectionEnName } from './helpers'
 
 /** 动画时间键：前缀（字母/数字/下划线）+ 时间（可负、可小数）+ s；如 body_0.8s / leg3_1s / arm1_0s */
 const ANIM_TIME_KEY_RE = /^[a-z][a-z0-9]*_(?:-?\d+(?:\.\d+)?)s$/i
@@ -22,15 +22,14 @@ export const checkEventTimingSemantics: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { sections, keyValues } = getIni(ctx, content)
+    const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     for (const sec of sections) {
       if (!sectionEnName(sec, zhToEn).startsWith('animation')) continue
       // 官方动画键交错排列（leg1_0.5s、leg2_0.5s、leg1_3s…），
       // 每个前缀（leg1/leg2/body…）是独立时间轴，单调性按前缀分组跟踪
       const lastByPrefix = new Map<string, number>()
-      for (const kv of keyValues) {
-        if (kv.line < sec.startLine || kv.line >= sec.endLine) continue
+      for (const kv of keyValuesInSection(sec)) {
         const m = ANIM_TIME_KEY_RE.exec(kv.key)
         if (!m) continue
         // 前缀 = 键去掉「_时间s」部分（如 leg1_0.5s → leg1）

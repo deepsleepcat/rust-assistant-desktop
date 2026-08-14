@@ -32,7 +32,8 @@ export const checkActionReferences: SemanticChecker = {
       const lower = sectionEnName(sec, zhToEn)
       if (!isActionSection(lower)) continue
       const name = lower.replace(/^(?:action|hiddenaction)/, '')
-      if (!name || !/^[a-z_][a-z0-9_]*$/i.test(name)) {
+      // 数字后缀（官方 [action_1]）与普通命名均合法；只有空名/非法字符报错
+      if (!name || (!/^[a-z_][a-z0-9_]*$/i.test(name) && !/^_\d+$/.test(name))) {
         issues.push(
           issue(
             sec.startLine,

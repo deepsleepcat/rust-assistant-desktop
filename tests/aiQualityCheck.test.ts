@@ -115,3 +115,16 @@ describe('qualityCheckContent（M10 语义检查器合并）', () => {
     expect(items).toEqual([])
   })
 })
+
+describe('合并截断（第二轮审查回归）', () => {
+  it('基础诊断超限时汇总计数准确（不二次折叠）', async () => {
+    // 300 行每行一个节外键值行 → 基础诊断 300 条（节外警告）
+    const lines: string[] = []
+    for (let i = 0; i < 300; i++) lines.push(`key${i}: value${i}`)
+    const content = lines.join('\n')
+    const items = await qualityCheckContent(content, {})
+    const fold = items.find((i) => i.line === 0 && i.message.startsWith('…其余'))
+    // 300 基础 - 200 上限 = 100 条折叠（非「1 条」）
+    expect(fold?.message).toContain('其余 100 条问题未列出')
+  })
+})

@@ -67,10 +67,12 @@ export function suggestionFor(message: string): string {
   return '检查该行格式是否符合铁锈战争 .ini 规范'
 }
 
-/** lint 诊断 → 可操作清单（纯函数，供测试）；超过上限时折叠为汇总条目（line=0，UI 不显示行号/定位） */
+/** lint 诊断 → 可操作清单（纯函数，供测试）；超过上限时折叠为汇总条目（line=0，UI 不显示行号/定位）。
+ * fold=false 时不折叠（由调用方合并多个来源后统一折叠一次，避免汇总计数二次失真） */
 export function toLintItems(
   content: string,
   diagnostics: Array<{ from: number; to: number; message: string; severity: 'error' | 'warning' }>,
+  fold = true,
 ): AiLintItem[] {
   const starts = lineStarts(content)
   const items: AiLintItem[] = diagnostics.slice(0, MAX_LINT_ITEMS).map((d) => ({
@@ -79,7 +81,7 @@ export function toLintItems(
     severity: d.severity,
     suggestion: suggestionFor(d.message),
   }))
-  if (diagnostics.length > MAX_LINT_ITEMS) {
+  if (fold && diagnostics.length > MAX_LINT_ITEMS) {
     const rest = diagnostics.length - MAX_LINT_ITEMS
     const errors = diagnostics.slice(MAX_LINT_ITEMS).filter((d) => d.severity === 'error').length
     items.push({
@@ -112,11 +114,10 @@ export async function qualityCheckContent(content: string, options: QualityCheck
     zhToEn: (k: string) => zhToEnDict.get(k),
   }
   const diagnostics = lintIniText(content, data)
-  const items = toLintItems(content, diagnostics)
+  // 基础 lint 不预折叠：语义条目合并后统一折叠一次（否则旧汇总条目被二次计数，剩余数失真）
+  const items = toLintItems(content, diagnostics, false)
 
-  // M10：语义检查器（与编辑器波浪线同一套规则；info 降级为 warning 展示）。
-  // 语义条目与基础 lint 合并后统一截断（基础 lint 已按 200 上限折叠，
-  // 语义条目直接追加会让大文件绕过上限 → UI 渲染数万条卡死）
+  // M10：语义检查器（与编辑器波浪线同一套规则；info 降级为 warning 展示）
   const ruleIds = enabledRuleIds(options.semanticCheckers ?? defaultSemanticCheckerConfig())
   const issues = runSemanticChecks(content, {
     ruleIds,
@@ -131,13 +132,17 @@ export async function qualityCheckContent(content: string, options: QualityCheck
     evidence: it.evidence,
   }))
   const merged = [...items, ...semanticItems]
-  if (merged.length > MAX_LINT_ITEMS) {
-    const rest = merged.length - MAX_LINT_ITEMS
-    const errors = merged.slice(MAX_LINT_ITEMS).filter((i) => i.severity === 'error').length
-    merged.length = MAX_LINT_ITEMS
+  // 统一折叠一次：被隐藏数 = 基础诊断超出部分 + 语义条目超出剩余槽位的部分
+  const hiddenBase = Math.max(0, diagnostics.length - MAX_LINT_ITEMS)
+  const hiddenSemantic = Math.max(0, semanticItems.length - Math.max(0, MAX_LINT_ITEMS - items.length))
+  const hidden = hiddenBase + hiddenSemantic
+  if (hidden > 0) {
+    const baseErrors = diagnostics.slice(MAX_LINT_ITEMS).filter((d) => d.severity === 'error').length
+    const semErrors = semanticItems.slice(Math.max(0, MAX_LINT_ITEMS - items.length)).filter((i) => i.severity === 'error').length
+    merged.length = Math.min(merged.length, MAX_LINT_ITEMS)
     merged.push({
       line: 0,
-      message: `…其余 ${rest} 条问题未列出${errors > 0 ? `（其中 ${errors} 个错误）` : ''}，建议先修复上面的问题后重新让 AI 检查`,
+      message: `…其余 ${hidden} 条问题未列出${baseErrors + semErrors > 0 ? `（其中 ${baseErrors + semErrors} 个错误）` : ''}，建议先修复上面的问题后重新让 AI 检查`,
       severity: 'warning',
       suggestion: '',
     })

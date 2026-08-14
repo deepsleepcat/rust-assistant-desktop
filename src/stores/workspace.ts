@@ -196,6 +196,8 @@ export type WorkspaceStore = WorkspaceStoreState & WorkspaceStoreActions
 const dirLoadSeqs = new Map<string, number>()
 /** 持久化裁剪后仍超限的提示标志（本次会话只提示一次，防噪音） */
 let trimNotified = false
+/** 质检用单位名扫描的短窗口缓存（2s）：AI 连续写文件时避免重复全项目扫描 */
+let lastQualityScan: { root: string; at: number; result: { unitNames: string[] } | null } | null = null
 
 export function createWorkspaceStore(bridge: BridgeApi) {
   let persistTimer: ReturnType<typeof setTimeout> | null = null
@@ -1351,10 +1353,17 @@ export function createWorkspaceStore(bridge: BridgeApi) {
                   const current = get().projects.find((p) => p.id === project.id)
                   if (!current) return
                   const semanticCheckers = get().settings.semanticCheckers
-                  // 质检必须用最新单位名（AI 刚写的单位要在引用检查中立即可见），
-                  // 不做 30s 缓存；扫描失败/空项目时传 undefined → 引用检查整体跳过，
+                  // 质检必须用最新单位名（AI 刚写的单位要在引用检查中立即可见）。
+                  // 同项目 2s 窗口内共享一次扫描（AI 一个流连续写 N 个文件只扫一次）：
+                  // 每次扫描都在 writeFile 完成后触发，已包含此前全部写入，共享结果安全
+                  const now = Date.now()
+                  let scan = lastQualityScan && lastQualityScan.root === current.rootPath && now - lastQualityScan.at < 2000 ? lastQualityScan.result : null
+                  if (!scan) {
+                    scan = await getBridge().mod.scanResources(current.rootPath).catch(() => null)
+                    lastQualityScan = { root: current.rootPath, at: now, result: scan }
+                  }
+                  // 扫描失败/空项目时传 undefined → 引用检查整体跳过，
                   // 避免「扫描失败被当作空项目」导致 builtFrom/convertTo 全部误报
-                  const scan = await getBridge().mod.scanResources(current.rootPath).catch(() => null)
                   const unitNames = scan && scan.unitNames.length > 0 ? new Set(scan.unitNames) : undefined
                   const items = await checkAiWrittenFile(current.rootPath, relPath, { semanticCheckers, unitNames })
                   if (items && items.length > 0) {

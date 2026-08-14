@@ -182,6 +182,10 @@ export interface RustLintOptions {
   semanticCheckers?: Record<string, boolean>
 }
 
+/** 编辑器语义 lint 的内容上限：超过时只跑基础 lint（单趟 O(n)），
+ * 跳过 15 个语义检查器——大文件（1MB+）在渲染线程每次输入都跑全套会明显卡顿 */
+const MAX_SEMANTIC_LINT_CHARS = 2 * 1024 * 1024
+
 /** CodeMirror lint 扩展（异步加载代码表数据后逐行检查 + M10 语义检查器合并） */
 export function rustLintExtension(opts: RustLintOptions = {}) {
   return linter(
@@ -196,14 +200,18 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
       }
       const diagnostics = lintIniText(content, data)
 
-      // M10：语义检查器（配置驱动，可单独开关；引用检查在拿到单位名时生效）
-      const ruleIds = enabledRuleIds(opts.semanticCheckers ?? defaultSemanticCheckerConfig())
-      const unitNames = await cachedUnitNames(opts.rootPath)
-      const issues = runSemanticChecks(content, {
-        ruleIds,
-        ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames },
-      })
-      return [...diagnostics, ...semanticIssuesToDiagnostics(content, issues)]
+      // M10：语义检查器（配置驱动，可单独开关；引用检查在拿到单位名时生效；
+      // 超大文件跳过语义检查，基础 lint 仍保留）
+      if (content.length <= MAX_SEMANTIC_LINT_CHARS) {
+        const ruleIds = enabledRuleIds(opts.semanticCheckers ?? defaultSemanticCheckerConfig())
+        const unitNames = await cachedUnitNames(opts.rootPath)
+        const issues = runSemanticChecks(content, {
+          ruleIds,
+          ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames },
+        })
+        return [...diagnostics, ...semanticIssuesToDiagnostics(content, issues)]
+      }
+      return diagnostics
     },
     { delay: 400 },
   )
