@@ -347,3 +347,8 @@
 .map-viewer-issue-error { color: var(--danger); }
 .map-viewer-issue-warning { color: #b26a00; }
 .map-viewer-canvas { image-rendering: pixelated; border: 1px solid var(--border); border-radius: var(--radius-xs); max-width: 100%; }
+/* M16：离线知识包数据版本 */
+.data-version-list { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); padding: 8px 10px; font-size: 12.5px; margin-bottom: 10px; }
+.data-version-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.data-version-row code { font-size: 11.5px; color: var(--text-2); }
+.data-version-bad { color: var(--danger); }

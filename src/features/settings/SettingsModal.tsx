@@ -12,7 +12,7 @@ import { Modal } from '../../components/Modal'
 import { AvatarCropModal } from './AvatarCropModal'
 import { GameSettingsTab } from './GameSettingsTab'
 import { ALL_SEMANTIC_CHECKERS } from '../editor/semanticChecks/registry'
-import { getGameVersions, loadCodeData } from '../../services/codeData'
+import { getDataVersionInfo, getGameVersions, loadCodeData, type DataVersionInfo } from '../../services/codeData'
 
 const GRADIENT_PRESETS = [
   { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
@@ -39,6 +39,8 @@ export function SettingsModal() {
   const bg = settings.background
   const [image, setImage] = useState<{ path: string; url: string | null }>({ path: '', url: null })
   const [gameVersions, setGameVersions] = useState<Array<{ versionName: string; versionNumber: number }>>([])
+  // M16：离线知识包数据版本信息（关于页展示）
+  const [dataVersion, setDataVersion] = useState<DataVersionInfo | null>(null)
 
   // M11：目标游戏版本下拉数据（异步加载版本表；失败时只显示「跟随最新」）
   useEffect(() => {
@@ -47,6 +49,7 @@ export function SettingsModal() {
       if (!alive) return
       const versions = getGameVersions()
       setGameVersions(versions)
+      setDataVersion(getDataVersionInfo())
       // 存储的版本名不在当前版本表（数据更新后旧值残留）→ 归一化回「跟随最新」，
       // 避免 select 显示与实际存储脱节
       const stored = useWorkspaceStore.getState().settings.targetGameVersion
@@ -590,6 +593,26 @@ export function SettingsModal() {
                 本项目参考了开源 Pi Agent Harness、铁锈助手 Android 版与旧版 Python 工具的设计与数据，
                 遵循各自开源许可。
               </p>
+              <div className="setting-divider" />
+              <div className="setting-title">离线知识包</div>
+              <div className="desc" style={{ marginBottom: 8 }}>
+                官方代码表、版本表、modding guide 与模板均内置在应用内——无网络时补全、检查、模板、打包全部可用。
+                数据与游戏版本对应关系如下：
+              </div>
+              <div className="data-version-list">
+                <div className="data-version-row"><span>代码表（code.json）</span><code>{dataVersion ? `${dataVersion.codeCount} 条` : '…'}</code></div>
+                <div className="data-version-row"><span>游戏版本表</span><code>{dataVersion ? `${dataVersion.versionCount} 个版本（最新 ${dataVersion.latestVersionName ?? '?'}）` : '…'}</code></div>
+                <div className="data-version-row"><span>字段版本上限</span><code>{dataVersion ? (dataVersion.maxAddVersion !== undefined ? `版本 ${dataVersion.maxAddVersion}` : '无版本标记') : '…'}</code></div>
+                <div className="data-version-row">
+                  <span>数据一致性</span>
+                  <code className={dataVersion && !dataVersion.consistent ? 'data-version-bad' : ''}>
+                    {!dataVersion ? '…' : dataVersion.consistent ? '✓ 字段版本均不超出版本表' : '⚠ 存在超出版本表的字段'}
+                  </code>
+                </div>
+              </div>
+              {dataVersion && !dataVersion.loaded && (
+                <div className="setting-error">数据加载失败——补全/检查/翻译将不可用，请重新启动应用</div>
+              )}
               <div className="setting-row">
                 <span className="label">
                   自动更新

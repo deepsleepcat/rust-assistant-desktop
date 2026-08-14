@@ -328,6 +328,44 @@ export function latestVersionNumber(): number | undefined {
   return gameVersions[gameVersions.length - 1].versionNumber
 }
 
+/** 离线知识包数据版本信息（M16，任务 6）：设置页「关于」展示 + 数据一致性校验 */
+export interface DataVersionInfo {
+  /** 代码表是否已加载（离线数据可用性） */
+  loaded: boolean
+  /** 代码表条数 */
+  codeCount: number
+  /** 游戏版本表条数 */
+  versionCount: number
+  /** 最新游戏版本名 */
+  latestVersionName: string | undefined
+  /** 最新游戏版本号 */
+  latestVersionNumber: number | undefined
+  /** 代码表字段的最大加入版本号 */
+  maxAddVersion: number | undefined
+  /** 一致性：所有字段的加入版本 ≤ 版本表最新版本（无「孤儿字段」） */
+  consistent: boolean
+}
+
+/** 数据版本信息（离线可用性 + 数据与游戏版本对应关系） */
+export function getDataVersionInfo(): DataVersionInfo {
+  let maxAddVersion: number | undefined
+  for (const c of codes) {
+    if (typeof c.addVersion === 'number' && (maxAddVersion === undefined || c.addVersion > maxAddVersion)) {
+      maxAddVersion = c.addVersion
+    }
+  }
+  const latest = latestVersionNumber()
+  return {
+    loaded: loaded !== null,
+    codeCount: codes.length,
+    versionCount: gameVersions.length,
+    latestVersionName: latest !== undefined ? versionNumberToName(latest) : undefined,
+    latestVersionNumber: latest,
+    maxAddVersion,
+    consistent: maxAddVersion === undefined || latest === undefined || maxAddVersion <= latest,
+  }
+}
+
 /** 按值类型 type 查（大小写不敏感 + 逗号分段：数据里 LogicBoolean/bool 大小写不一致、
  * 'float,logicBoolean' 等多值 type 也能命中其中任一段） */
 export function findValueType(type: string): ValueTypeInfo | undefined {
