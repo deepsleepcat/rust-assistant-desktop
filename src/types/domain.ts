@@ -66,6 +66,8 @@ export interface AppSettings {
   semanticCheckers: Record<string, boolean>
   /** M11：当前项目目标游戏版本（版本兼容提示用；空 = 跟随最新） */
   targetGameVersion: string
+  /** M12：上次运行前检查结果（at=0 表示从未检查过） */
+  gameLastCheck: { at: number; ok: boolean; message: string }
 }
 
 /** 一个项目 = 一个铁锈战争模组目录 */

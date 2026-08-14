@@ -57,6 +57,9 @@ const api: BridgeApi = {
       ipcRenderer.invoke('game:importSample', gamePath, targetRoot, opts),
     importMod: (gamePath: string, fileName: string, targetRoot: string) =>
       ipcRenderer.invoke('game:importMod', gamePath, fileName, targetRoot),
+    launch: (gamePath: string) => ipcRenderer.invoke('game:launch', gamePath),
+    openDir: (rootPath: string) => ipcRenderer.invoke('game:openDir', rootPath),
+    preflight: (rootPath: string) => ipcRenderer.invoke('game:preflight', rootPath),
   },
   mod: {
     create: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:create', rootPath, params),

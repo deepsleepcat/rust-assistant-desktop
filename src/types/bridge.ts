@@ -106,6 +106,12 @@ export interface BridgeApi {
     importSample(gamePath: string, targetRoot: string, opts?: { title?: string; description?: string }): Promise<{ rootPath: string; units: number; files: number }>
     /** 解压游戏 mods/units 下的 .rwmod 到已登记的目标目录 */
     importMod(gamePath: string, fileName: string, targetRoot: string): Promise<{ rootPath: string; files: number }>
+    /** M12：启动游戏（只接受通过 looksLikeGameDir 校验的目录） */
+    launch(gamePath: string): Promise<{ ok: boolean; message?: string }>
+    /** M12：打开已登记的项目根目录（系统文件管理器） */
+    openDir(rootPath: string): Promise<{ ok: boolean; message?: string }>
+    /** M12：运行前检查清单（mod-info 完整性 + 引用文件存在 + 单位完整性） */
+    preflight(rootPath: string): Promise<{ ok: boolean; issues: Array<{ severity: 'error' | 'warning'; message: string; file?: string }> }>
   }
   ai: {
     /** 健康检查：验证 Key/连接 */

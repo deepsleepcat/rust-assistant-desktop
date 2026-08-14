@@ -51,6 +51,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   semanticCheckers: defaultSemanticCheckerConfig(),
   /** M11：当前项目目标游戏版本（空 = 跟随最新） */
   targetGameVersion: '',
+  /** M12：上次运行前检查结果（at=0 表示从未检查过） */
+  gameLastCheck: { at: 0, ok: true, message: '' },
   avatar: { source: 'default', localPath: null, remoteUrl: null, updatedAt: 0 },
   ai: {
     provider: 'deepseek',
@@ -108,6 +110,7 @@ export function sanitizeSettings(input: unknown): AppSettings {
     gamePath: typeof raw.gamePath === 'string' ? raw.gamePath.trim() : DEFAULT_SETTINGS.gamePath,
     semanticCheckers: sanitizeCheckerConfig(raw.semanticCheckers),
     targetGameVersion: typeof raw.targetGameVersion === 'string' ? raw.targetGameVersion.trim() : DEFAULT_SETTINGS.targetGameVersion,
+    gameLastCheck: sanitizeLastCheck(raw.gameLastCheck),
     ai: sanitizeAi(raw.ai),
   }
 }
@@ -142,4 +145,14 @@ function migrateModel(model: string): string {
   if (model === 'deepseek-chat') return 'deepseek-v4-flash'
   if (model === 'deepseek-reasoner') return 'deepseek-v4-pro'
   return model
+}
+
+/** 上次运行前检查结果清洗（M12）：损坏/缺字段回退默认 */
+function sanitizeLastCheck(input: unknown): AppSettings['gameLastCheck'] {
+  const raw = (input && typeof input === 'object' ? input : {}) as Partial<AppSettings['gameLastCheck']>
+  return {
+    at: typeof raw.at === 'number' && Number.isFinite(raw.at) && raw.at >= 0 ? raw.at : 0,
+    ok: typeof raw.ok === 'boolean' ? raw.ok : true,
+    message: typeof raw.message === 'string' ? raw.message.slice(0, 2000) : '',
+  }
 }

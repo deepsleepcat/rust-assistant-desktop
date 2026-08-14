@@ -14,7 +14,7 @@ import { getHistory, initAiHistory } from './aiHistory'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import { applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, globalOp, importModBuffer, listTemplates, packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources, scanUnits, writeModInfo } from './modTools'
-import { detectGameDir, importOfficialUnits } from './game'
+import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck } from './game'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
@@ -752,6 +752,28 @@ function registerIpc(): void {
     // 登记为「本次会话创建」：语义与 mod:import 一致（只针对本次创建的目录）
     importedDirs.add(normalizePath(destRoot))
     return { rootPath: destRoot, files }
+  })
+
+  // M12 试玩联动：启动游戏 / 打开目录 / 运行前检查。
+  // 安全：launchGame 只接受通过 looksLikeGameDir 校验的目录；openDir 只接受
+  // 已登记的项目根（打开任意目录无写风险，但保持「限制项目根」的一致性）
+  ipcMain.handle('game:launch', async (_event, gamePath: unknown) => {
+    if (typeof gamePath !== 'string' || !gamePath) return { ok: false, message: '请先在设置中配置游戏安装目录' }
+    return launchGame(gamePath)
+  })
+
+  ipcMain.handle('game:openDir', async (_event, rootPath: unknown) => {
+    if (typeof rootPath !== 'string' || !rootPath) return { ok: false, message: '目录为空' }
+    const normalized = normalizePath(rootPath)
+    if (!allowedRoots.has(normalized)) return { ok: false, message: '目录未登记，无法打开' }
+    return openDir(normalized)
+  })
+
+  ipcMain.handle('game:preflight', async (_event, rootPath: unknown) => {
+    if (typeof rootPath !== 'string' || !rootPath) return { ok: false, issues: [{ severity: 'error' as const, message: '项目目录为空' }] }
+    const normalized = normalizePath(rootPath)
+    if (!allowedRoots.has(normalized)) return { ok: false, issues: [{ severity: 'error' as const, message: '项目目录未登记，无法检查' }] }
+    return preflightCheck(normalized)
   })
 
   // M6.5 音频预览：与图片同一套安全校验（限项目内 + 白名单 + 大小上限）

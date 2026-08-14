@@ -270,6 +270,9 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       detect: async () => ({ found: false, gamePath: null, units: [], mods: [] }),
       importSample: async () => ({ rootPath: 'C:\\mock\\official-units', units: 0, files: 0 }),
       importMod: async () => ({ rootPath: 'C:\\mock\\game-mod', files: 0 }),
+      launch: async () => ({ ok: false, message: '模拟环境：未安装游戏' }),
+      openDir: async () => ({ ok: false, message: '模拟环境：无法打开目录' }),
+      preflight: async () => ({ ok: true, issues: [] }),
     },
     mod: {
       create: async () => ({ files: ['mod-info.txt', 'units/'] }),

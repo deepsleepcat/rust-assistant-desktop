@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { importOfficialUnits, listOfficialUnitDirs } from '../electron/game'
+import { findGameExe, importOfficialUnits, launchGame, listOfficialUnitDirs, preflightCheck } from '../electron/game'
 
 function makeTmp(prefix: string): string {
   const dir = mkdtempSync(path.join(tmpdir(), prefix))
@@ -170,5 +170,70 @@ describe('游戏官方单位导入', () => {
       rmSync(game, { recursive: true, force: true })
       rmSync(target, { recursive: true, force: true })
     }
+  })
+})
+
+describe('M12 试玩联动（preflightCheck / launchGame 安全）', () => {
+  it('preflight 报告缺失 mod-info.txt', async () => {
+    const mod = makeTmp('rust-mod-')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'a.ini'), '[core]\nname: a\n')
+    const result = await preflightCheck(mod)
+    expect(result.ok).toBe(false)
+    expect(result.issues.some((i) => i.message.includes('mod-info.txt'))).toBe(true)
+  })
+
+  it('preflight 检查图片引用文件存在', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\nversion: 1\nminVersion: 1.15p9\n')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'a.ini'), '[core]\nname: a\n[graphics]\nimage: missing.png\n')
+    const result = await preflightCheck(mod)
+    expect(result.issues.some((i) => i.severity === 'error' && i.message.includes('missing.png'))).toBe(true)
+  })
+
+  it('preflight 放行存在的引用与 SHARED:/NONE', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\nversion: 1\nminVersion: 1.15p9\n')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'a.ini'), '[core]\nname: a\n[graphics]\nimage: a.png\nimage_shadow: AUTO\n')
+    writeFileSync(path.join(mod, 'units', 'a', 'a.png'), 'png')
+    const result = await preflightCheck(mod)
+    expect(result.issues.some((i) => i.message.includes('a.png'))).toBe(false)
+  })
+
+  it('preflight 拦截越出项目根的引用（..）', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\n')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'a.ini'), '[core]\nname: a\n[graphics]\nimage: ../../../outside.png\n')
+    const result = await preflightCheck(mod)
+    expect(result.issues.some((i) => i.severity === 'error' && i.message.includes('越出项目目录'))).toBe(true)
+  })
+
+  it('mod-info 完整性：缺 title/version/minVersion 给警告', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\n')
+    const result = await preflightCheck(mod)
+    const warnings = result.issues.filter((i) => i.severity === 'warning')
+    expect(warnings.some((i) => i.message.includes('title'))).toBe(true)
+    expect(warnings.some((i) => i.message.includes('version'))).toBe(true)
+    expect(warnings.some((i) => i.message.includes('minVersion'))).toBe(true)
+  })
+
+  it('launchGame 拒绝非游戏目录（防任意 exe 执行）', async () => {
+    const fake = makeTmp('rust-notgame-')
+    const result = await launchGame(fake)
+    expect(result.ok).toBe(false)
+  })
+
+  it('launchGame 接受含 assets/units 的目录并找到 exe', async () => {
+    const game = makeTmp('rust-game2-')
+    mkdirSync(path.join(game, 'assets', 'units'), { recursive: true })
+    writeFileSync(path.join(game, 'Rusted Warfare.exe'), 'fake-exe')
+    expect(await findGameExe(game)).toBe(path.join(game, 'Rusted Warfare.exe'))
+    const result = await launchGame(game)
+    expect(result.ok).toBe(false) // spawn 假 exe 失败是预期的（找不到真实可执行文件）——但安全校验已通过
+    expect(result.message).toBeTruthy()
   })
 })

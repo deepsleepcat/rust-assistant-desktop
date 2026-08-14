@@ -6,10 +6,22 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { normalizePath } from './paths'
-import { escapeIniComment } from './modTools'
+import { isPathInside, normalizePath } from './paths'
+import { checkMod, escapeIniComment } from './modTools'
 
 const execFileAsync = promisify(execFile)
+
+/** 文本读取上限（与 modTools 一致）：超过返回空，调用方跳过该文件 */
+const MAX_READ_SIZE = 64 * 1024 * 1024
+async function readTextLimited(file: string): Promise<string> {
+  try {
+    const st = await fs.stat(file)
+    if (!st.isFile() || st.size > MAX_READ_SIZE) return ''
+    return fs.readFile(file, 'utf8').catch(() => '')
+  } catch {
+    return ''
+  }
+}
 
 /** 验证目录看起来像铁锈战争安装目录（存在 assets/units） */
 export async function looksLikeGameDir(dir: string): Promise<boolean> {
@@ -185,4 +197,170 @@ export async function importOfficialUnits(
   }
 
   return { units: copiedUnits, files }
+}
+
+/**
+ * M12 试玩联动：一键启动游戏、打开模组目录、运行前检查清单。
+ * 安全：launchGame 只接受通过 looksLikeGameDir 校验的目录（存在 assets/units），
+ * 绝不执行任意路径的可执行文件；打开目录限定项目根内。
+ */
+import { spawn } from 'node:child_process'
+import { shell } from 'electron'
+
+/** 游戏可执行文件名（优先 64 位） */
+const GAME_EXE_CANDIDATES = ['Rusted Warfare - 64.exe', 'Rusted Warfare.exe', 'Rusted Warfare - 32.exe', 'Rusted Warfare_x64.exe']
+
+/** 找游戏可执行文件（gamePath 需已通过 looksLikeGameDir 校验；找不到返回 null） */
+export async function findGameExe(gamePath: string): Promise<string | null> {
+  for (const name of GAME_EXE_CANDIDATES) {
+    const p = path.join(gamePath, name)
+    try {
+      const st = await fs.stat(p)
+      if (st.isFile()) return p
+    } catch {
+      // 继续尝试下一个候选
+    }
+  }
+  return null
+}
+
+/** 启动游戏（detached 不阻塞主进程；失败返回错误信息，成功返回 null） */
+export async function launchGame(gamePath: string): Promise<{ ok: boolean; message?: string }> {
+  if (!(await looksLikeGameDir(gamePath))) return { ok: false, message: '不是有效的铁锈战争安装目录（缺少 assets/units）' }
+  const exe = await findGameExe(gamePath)
+  if (!exe) return { ok: false, message: '在游戏目录中未找到可执行文件（Rusted Warfare.exe）' }
+  try {
+    const child = spawn(exe, [], { detached: true, stdio: 'ignore', cwd: gamePath, windowsHide: true })
+    child.unref() // 不阻塞主进程退出
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, message: `启动失败：${err instanceof Error ? err.message : String(err)}` }
+  }
+}
+
+/** 打开目录（项目根或游戏目录；shell.openPath 是只读操作） */
+export async function openDir(dir: string): Promise<{ ok: boolean; message?: string }> {
+  if (!dir) return { ok: false, message: '目录为空' }
+  try {
+    const st = await fs.stat(dir)
+    if (!st.isDirectory()) return { ok: false, message: '路径不是目录' }
+  } catch {
+    return { ok: false, message: '目录不存在' }
+  }
+  const err = await shell.openPath(dir)
+  return err ? { ok: false, message: err } : { ok: true }
+}
+
+/** 运行前检查单条结果 */
+export interface PreflightIssue {
+  severity: 'error' | 'warning'
+  message: string
+  /** 关联文件（相对项目根，可为空） */
+  file?: string
+}
+
+export interface PreflightResult {
+  ok: boolean
+  issues: PreflightIssue[]
+}
+
+/** ini 里引用资源文件的键（小写；值可能是逗号分隔或 CUSTOM: 前缀） */
+const RESOURCE_REF_KEYS = new Set([
+  'image', 'image_wreak', 'image_turret', 'image_shadow', 'image_foot_shadow', 'image_end_shadow',
+  'beamimage', 'beamimageend', 'beamimagestart', 'minimapicon', 'icon',
+])
+/** 非文件引用的值（放行） */
+const RESOURCE_SKIP_VALUES = new Set(['none', 'auto', 'shared'])
+
+/**
+ * 运行前检查清单（主进程文件级）：
+ * 1) mod-info.txt 完整性（存在 + [mod] + title/version/minVersion）
+ * 2) 单位 ini 引用的图片等文件必须存在（缺失 → 游戏里单位显示异常）
+ * 3) 合并现有 checkMod 的 error 级问题（单位完整性）
+ * 版本兼容维度由渲染层语义检查器（checkVersionCompatibility）覆盖。
+ */
+export async function preflightCheck(projectRoot: string): Promise<PreflightResult> {
+  const root = path.resolve(projectRoot)
+  const issues: PreflightIssue[] = []
+
+  // 1) mod-info.txt 完整性
+  const modInfoPath = path.join(root, 'mod-info.txt')
+  const modInfoContent = await readTextLimited(modInfoPath)
+  if (!modInfoContent) {
+    issues.push({ severity: 'error', message: '缺少 mod-info.txt（游戏不识别该模组）', file: 'mod-info.txt' })
+  } else {
+    const modSection = /^\s*\[mod\]\s*$/im.test(modInfoContent)
+    if (!modSection) issues.push({ severity: 'error', message: 'mod-info.txt 缺少 [mod] 节', file: 'mod-info.txt' })
+    if (!/^\s*title\s*:/im.test(modInfoContent)) issues.push({ severity: 'warning', message: 'mod-info.txt 缺少 title（模组名）', file: 'mod-info.txt' })
+    if (!/^\s*version\s*:/im.test(modInfoContent)) issues.push({ severity: 'warning', message: 'mod-info.txt 缺少 version（建议填写）', file: 'mod-info.txt' })
+    if (!/^\s*minVersion\s*:/im.test(modInfoContent)) issues.push({ severity: 'warning', message: 'mod-info.txt 缺少 minVersion（建议填写最低游戏版本）', file: 'mod-info.txt' })
+  }
+
+  // 2) 引用文件存在性：扫描全部 ini 的资源键，检查相对路径文件存在
+  const iniFiles: string[] = []
+  async function collectIni(dir: string): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const e of entries) {
+      if (isExcludedPath(e.name)) continue
+      const full = path.join(dir, e.name)
+      if (e.isDirectory()) await collectIni(full)
+      else if (e.isFile() && e.name.toLowerCase().endsWith('.ini')) iniFiles.push(full)
+    }
+  }
+  await collectIni(root)
+  for (const file of iniFiles) {
+    const content = await readTextLimited(file)
+    if (!content) continue
+    const rel = path.relative(root, file).replace(/\\/g, '/')
+    // 键名排除冒号/换行/#（m 标志下 [^:] 会跨行吞掉节名行，导致键名错乱）
+    const kvRe = /^([^:\n#][^:\n]*?)\s*:\s*(.*)$/gm
+    for (const m of content.matchAll(kvRe)) {
+      const key = m[1].trim().toLowerCase()
+      if (!RESOURCE_REF_KEYS.has(key)) continue
+      for (const raw of m[2].split(',')) {
+        const ref = raw.trim().replace(/^CUSTOM:/i, '')
+        if (!ref || RESOURCE_SKIP_VALUES.has(ref.toLowerCase())) continue
+        // 多帧引用（frame_1.png: 或 a.png;b.png）与模板占位忽略
+        const candidate = ref.split(';')[0].trim()
+        if (!candidate || candidate.includes('*') || candidate.includes('${')) continue
+        const target = path.resolve(path.dirname(file), candidate)
+        // 越出项目根（../ 引用）→ 直接报错（打包后必然失效）
+        if (!isPathInside(root, target)) {
+          issues.push({ severity: 'error', message: `「${key}」引用越出项目目录：${candidate}`, file: rel })
+          continue
+        }
+        try {
+          const st = await fs.stat(target)
+          if (!st.isFile()) issues.push({ severity: 'error', message: `「${key}」引用的文件不存在：${candidate}`, file: rel })
+        } catch {
+          issues.push({ severity: 'error', message: `「${key}」引用的文件不存在：${candidate}`, file: rel })
+        }
+      }
+    }
+  }
+
+  // 3) 合并现有 checkMod 的 error 级问题（单位完整性：缺 name/重名等）
+  const modCheck = await checkMod(root).catch(() => null)
+  if (modCheck) {
+    for (const it of modCheck.issues) {
+      if (it.level === 'error') issues.push({ severity: 'error', message: it.message, file: it.file })
+    }
+  }
+
+  return { ok: issues.every((i) => i.severity !== 'error'), issues }
+}
+
+/** preflight 用排除（与 modTools.isExcluded 同规则，避免重复 import） */
+function isExcludedPath(name: string): boolean {
+  return (
+    name === '.git' ||
+    name === '.svn' ||
+    name === 'node_modules' ||
+    name === 'dist' ||
+    name === 'dist-electron' ||
+    name === '.vite' ||
+    name === 'Thumbs.db' ||
+    name === '.DS_Store' ||
+    name === 'desktop.ini'
+  )
 }

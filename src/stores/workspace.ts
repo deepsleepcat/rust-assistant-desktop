@@ -1603,7 +1603,27 @@ export function createWorkspaceStore(bridge: BridgeApi) {
           // LOW-1：指向项目外的链接被跳过时给出提示（不再中止整次打包）
           const skippedTip = result.skippedLinks ? `；已跳过 ${result.skippedLinks} 个指向项目外的链接` : ''
           get().notify(`打包完成：${result.files} 个文件，${mb} MB → ${result.filePath}${skippedTip}`)
-        } catch (err) {
+          // M12：打包后自动运行前检查（不阻塞；结果持久化到设置「试玩联动」，
+          // 失败时追加提示引导去查看/修复——「打包 → 检查 → 进游戏」闭环）
+          void getBridge()
+            .game.preflight(project.rootPath)
+            .then((r) => {
+              if (!r) return
+              const errors = r.issues.filter((i) => i.severity === 'error').length
+              const warnings = r.issues.filter((i) => i.severity === 'warning').length
+              // 经 updateSettings（sanitize + 持久化）
+              get().updateSettings({
+                gameLastCheck: {
+                  at: Date.now(),
+                  ok: r.ok,
+                  message: r.issues.length === 0 ? '检查通过' : `${errors} 个错误，${warnings} 个警告`,
+                },
+              })
+              if (!r.ok) {
+                get().notify(`运行前检查发现 ${errors} 个错误（设置 → 试玩联动 查看详情）`)
+              }
+            })
+            .catch(() => undefined)        } catch (err) {
           get().notify(`打包失败：${err instanceof Error ? err.message : String(err)}`)
         }
       },
