@@ -15,7 +15,7 @@ function stubFetchFromDisk(failVersion = false) {
     vi.fn(async (url: string) => {
       const rel = String(url).replace(/^\.?\//, '')
       if (failVersion && rel === 'data/game_version.json') {
-        return { ok: false, status: 404, json: async () => { throw new Error('404') } } as Response
+        return { ok: false, status: 404, json: async () => { throw new Error('404') } } as unknown as Response
       }
       const file = path.join(DATA_DIR, rel.replace(/^data\//, ''))
       const content = fs.readFileSync(file, 'utf8')
