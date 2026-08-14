@@ -128,20 +128,6 @@ export function issue(
   return { line, message, severity, suggestion, ruleId, evidence }
 }
 
-/** 判定值是否「数字且 > 0」；返回 null 表示不是数字（不适用），false 表示 ≤ 0 */
-export function isPositiveNumber(value: string): boolean | null {
-  const n = toNumber(value)
-  if (n === null) return null
-  return n > 0
-}
-
-/** 判定值是否「数字且 ≥ 0」 */
-export function isNonNegativeNumber(value: string): boolean | null {
-  const n = toNumber(value)
-  if (n === null) return null
-  return n >= 0
-}
-
 /** 枚举合法性：忽略大小写后必须命中白名单 */
 export function isEnumValue(value: string, allowed: ReadonlySet<string>): boolean {
   return allowed.has(value.trim().toLowerCase())

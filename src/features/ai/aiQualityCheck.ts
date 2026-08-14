@@ -17,7 +17,9 @@ import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semantic
 
 /** 清单上限：超出后折叠为汇总条目（防大文件产生数万条诊断拖垮渲染） */
 const MAX_LINT_ITEMS = 200
-/** 超过此体积的文件跳过质检（lint 是单趟 O(n)，超大文件在渲染线程跑会卡界面） */
+/** 超过此体积的文件跳过质检（lint 是单趟 O(n)，超大文件在渲染线程跑会卡界面）。
+ * 与编辑器 rustLint 的 2MB 语义上限不同：质检是一次性动作（非每次输入），
+ * 且覆盖「AI 写大文件后的完整检查」场景，故保留 5MB 上限 */
 const MAX_LINT_FILE_CHARS = 5 * 1024 * 1024
 
 /**

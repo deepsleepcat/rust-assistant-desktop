@@ -45,7 +45,7 @@ describe('官方单位零误报（游戏安装目录存在时运行）', () => {
   // （vitest CJS/ESM 双兼容的路径写法；文件缺失时跳过拼写类检查而非整体失败）
   let codes: string[] = []
   let findCode: ((k: string) => { code: string; type: string } | undefined) | undefined
-  const codeTablePath = new URL('../public/data/code.json', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+  const codeTablePath = decodeURIComponent(new URL('../public/data/code.json', import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1')
   try {
     if (fs.existsSync(codeTablePath)) {
       const codeTable = JSON.parse(fs.readFileSync(codeTablePath, 'utf8')) as { data: Array<{ code: string; type: string }> }

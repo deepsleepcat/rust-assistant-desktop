@@ -40,12 +40,6 @@ export const ALL_SEMANTIC_CHECKERS: SemanticChecker[] = [
   checkActionReferences,
 ]
 
-const BY_ID = new Map(ALL_SEMANTIC_CHECKERS.map((c) => [c.id, c]))
-
-export function getSemanticChecker(id: string): SemanticChecker | undefined {
-  return BY_ID.get(id)
-}
-
 /** 默认配置：全部 defaultOn 的检查器开启 */
 export function defaultSemanticCheckerConfig(): Record<string, boolean> {
   const out: Record<string, boolean> = {}
