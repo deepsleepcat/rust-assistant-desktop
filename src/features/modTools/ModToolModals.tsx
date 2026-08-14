@@ -735,6 +735,7 @@ function ReportModal({ onClose }: { onClose: () => void }) {
   const report = useWorkspaceStore((s) => s.modReport)
   const busy = useWorkspaceStore((s) => s.modReportBusy)
   const reportError = useWorkspaceStore((s) => s.modReportError)
+  const reportProgress = useWorkspaceStore((s) => s.modReportProgress)
   const generateModReport = useWorkspaceStore((s) => s.generateModReport)
   const exportModReport = useWorkspaceStore((s) => s.exportModReport)
   useEscapeHandler(onClose)
@@ -745,7 +746,8 @@ function ReportModal({ onClose }: { onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在打开时触发一次
   }, [])
 
-  const errorCount = report?.issues.filter((i) => i.severity === 'error').length ?? 0
+  // 徽标/统计用报告的全量计数（issues 清单有 500 条 cap，filter 会低估）
+  const errorCount = report?.errorCount ?? 0
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -767,7 +769,9 @@ function ReportModal({ onClose }: { onClose: () => void }) {
         ) : !report ? (
           <div className="report-loading">
             <span className="report-spinner" />
-            正在检查全部文件…（{busy ? '语义检查器全量运行中' : '等待开始'}）
+            {reportProgress && reportProgress.total > 0
+              ? `正在检查文件 ${reportProgress.done}/${reportProgress.total}…`
+              : '正在检查全部文件…'}
           </div>
         ) : (
           <div className="report-body">

@@ -16,6 +16,7 @@ function makeReport(): ModReport {
       audioCount: 1,
       targetVersion: '跟随最新',
       skippedLargeFiles: 0,
+      checkFailedFiles: 0,
     },
     errorCount: 2,
     warningCount: 1,

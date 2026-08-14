@@ -97,6 +97,8 @@ interface WorkspaceStoreState {
   modReportBusy: boolean
   /** 报告生成失败信息（保留弹窗内联展示，不突然关闭） */
   modReportError: string | null
+  /** 报告生成进度（done/total 为可检查文件数） */
+  modReportProgress: { done: number; total: number } | null
   /** M7：优化工具扫描结果 */
   optimizeItems: Array<{ id: string; kind: 'emptyFile' | 'emptyFolder' | 'backupFile' | 'emptyLine' | 'comment'; rel: string; detail?: string }> | null
   /** M8：优化扫描失败信息（null 表示无失败；重试入口由弹窗提供） */
@@ -356,6 +358,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       modReportOpen: false,
       modReportBusy: false,
       modReportError: null,
+      modReportProgress: null,
       optimizeItems: null,
       optimizeError: null,
       updateState: { status: 'idle' },
@@ -576,6 +579,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             modDialog: null,
             modReport: null,
             modReportOpen: false,
+            modReportError: null,
+            modReportProgress: null,
           })
           await get().refreshTree()
           persist()
@@ -1665,24 +1670,34 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       async generateModReport() {
         const project = activeProject()
         if (!project || get().modReportBusy) return
-        set({ modReportBusy: true, modReportOpen: true, modReportError: null })
+        const pid = project.id
+        set({ modReportBusy: true, modReportOpen: true, modReportError: null, modReportProgress: null })
         try {
-          const report = await generateModReportFn(project.rootPath, {
-            projectName: project.name,
-            semanticCheckers: get().settings.semanticCheckers,
-            targetVersionName: get().settings.targetGameVersion,
-          })
+          const report = await generateModReportFn(
+            project.rootPath,
+            {
+              projectName: project.name,
+              semanticCheckers: get().settings.semanticCheckers,
+              targetVersionName: get().settings.targetGameVersion,
+              onProgress: (done, total) => {
+                // 生成期间用户可能已切换项目：进度只写给当前项目
+                if (get().activeProjectId === pid) set({ modReportProgress: { done, total } })
+              },
+            },
+          )
+          // 竞态守卫：生成期间切换项目 → 丢弃旧项目报告（对齐 scanOptimizeProject 模式）
+          if (get().activeProjectId !== pid) return
           set({ modReport: report })
         } catch (err) {
           // 保留弹窗内联展示错误（不突然关闭，用户可重试或关闭）
-          set({ modReportError: err instanceof Error ? err.message : String(err) })
+          if (get().activeProjectId === pid) set({ modReportError: err instanceof Error ? err.message : String(err) })
         } finally {
           set({ modReportBusy: false })
         }
       },
 
       setModReportOpen(open: boolean) {
-        set({ modReportOpen: open, modReport: open ? get().modReport : null, modReportError: open ? null : get().modReportError })
+        set({ modReportOpen: open, modReport: open ? get().modReport : null, modReportError: open ? null : get().modReportError, modReportProgress: open ? get().modReportProgress : null })
       },
 
       // M13：导出质量报告（文本/JSON；保存位置由系统对话框决定）

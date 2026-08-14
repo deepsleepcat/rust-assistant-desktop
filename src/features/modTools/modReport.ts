@@ -40,6 +40,8 @@ export interface ModReport {
     targetVersion: string
     /** 因超过单文件上限（2MB）未检查的文件数 */
     skippedLargeFiles: number
+    /** 检查中异常被跳过的文件数 */
+    checkFailedFiles: number
   }
   /** 全量统计（不受问题清单 500 条上限影响——ok/结论必须基于全量计数） */
   errorCount: number
@@ -116,18 +118,9 @@ export async function generateModReport(
   const { lintIniText } = await import('../editor/rustLint')
   const { lineNumberAt, lineStarts } = await import('../ai/aiQualityCheck')
 
-  /** 单文件检查（供并发批次调用） */
+  /** 单文件检查（供并发批次调用；只处理 ini/template——图片/音频已在 checkFiles 构建时统计） */
+  let checkFailedFiles = 0
   async function checkOne(file: string): Promise<void> {
-    const lower = file.toLowerCase()
-    if (IMAGE_EXTS.has(lower.slice(lower.lastIndexOf('.')))) {
-      imageCount++
-      return
-    }
-    if (AUDIO_EXTS.has(lower.slice(lower.lastIndexOf('.')))) {
-      audioCount++
-      return
-    }
-    if (!/\.(ini|template)$/i.test(file)) return
     const content = await bridge.project.readFile(rootPath, file).then((r) => r.content).catch(() => '')
     if (!content) return
     if (content.length > MAX_REPORT_FILE_CHARS) {
@@ -171,12 +164,29 @@ export async function generateModReport(
     }
   }
 
-  // 需要检查的 ini/template 文件
-  const checkFiles = files.filter((f) => /\.(ini|template)$/i.test(f) && !IMAGE_EXTS.has(f.slice(f.lastIndexOf('.')).toLowerCase()) && !AUDIO_EXTS.has(f.slice(f.lastIndexOf('.')).toLowerCase()))
+  // 需要检查的 ini/template 文件（顺带统计图片/音频——checkOne 只处理 ini）
+  const checkFiles: string[] = []
+  for (const f of files) {
+    const ext = f.slice(f.lastIndexOf('.')).toLowerCase()
+    if (IMAGE_EXTS.has(ext)) {
+      imageCount++
+    } else if (AUDIO_EXTS.has(ext)) {
+      audioCount++
+    } else if (/\.(ini|template)$/i.test(f)) {
+      checkFiles.push(f)
+    }
+  }
   // 分批并发（每批 6 个），每批之间让出事件循环；进度回调
   const BATCH = 6
   for (let i = 0; i < checkFiles.length; i += BATCH) {
-    await Promise.all(checkFiles.slice(i, i + BATCH).map((f) => checkOne(f).catch(() => undefined)))
+    await Promise.all(
+      checkFiles.slice(i, i + BATCH).map((f) =>
+        checkOne(f).catch((err) => {
+          checkFailedFiles++
+          console.warn('[modReport] 单文件检查失败，已跳过：', f, err)
+        }),
+      ),
+    )
     options.onProgress?.(Math.min(i + BATCH, checkFiles.length), checkFiles.length)
   }
   if (issues.length >= MAX_REPORT_ISSUES) {
@@ -209,6 +219,7 @@ export async function generateModReport(
       audioCount,
       targetVersion: options.targetVersionName || '跟随最新',
       skippedLargeFiles,
+      checkFailedFiles,
     },
     errorCount: totalErrorCount,
     warningCount: totalWarningCount,
@@ -225,7 +236,7 @@ export function reportToText(r: ModReport): string {
   lines.push(`铁锈助手 · 模组质量报告`)
   lines.push(`项目：${r.meta.projectName}`)
   lines.push(`生成时间：${new Date(r.meta.generatedAt).toLocaleString()}`)
-  lines.push(`文件 ${r.meta.fileCount} · 单位 ${r.meta.unitCount} · 图片 ${r.meta.imageCount} · 音频 ${r.meta.audioCount} · 目标版本 ${r.meta.targetVersion}${r.meta.skippedLargeFiles > 0 ? ` · 跳过 ${r.meta.skippedLargeFiles} 个超大文件` : ''}`)
+  lines.push(`文件 ${r.meta.fileCount} · 单位 ${r.meta.unitCount} · 图片 ${r.meta.imageCount} · 音频 ${r.meta.audioCount} · 目标版本 ${r.meta.targetVersion}${r.meta.skippedLargeFiles > 0 ? ` · 跳过 ${r.meta.skippedLargeFiles} 个超大文件` : ''}${r.meta.checkFailedFiles > 0 ? ` · ${r.meta.checkFailedFiles} 个文件检查异常` : ''}`)
   lines.push(`总体：${r.ok ? '通过' : `发现 ${r.errorCount} 个错误`}`)
   lines.push(`版本兼容：${r.versionConclusion}`)
   lines.push('')
