@@ -606,7 +606,13 @@ export function SettingsModal() {
                 <div className="data-version-row">
                   <span>数据一致性</span>
                   <code className={dataVersion && !dataVersion.consistent ? 'data-version-bad' : ''}>
-                    {!dataVersion ? '…' : dataVersion.consistent ? '✓ 字段版本均不超出版本表' : '⚠ 存在超出版本表的字段'}
+                    {!dataVersion
+                      ? '…'
+                      : dataVersion.consistent === undefined
+                        ? '无法判定（数据不完整）'
+                        : dataVersion.consistent
+                          ? '✓ 字段版本均不超出版本表'
+                          : '⚠ 存在超出版本表的字段'}
                   </code>
                 </div>
               </div>

@@ -342,8 +342,9 @@ export interface DataVersionInfo {
   latestVersionNumber: number | undefined
   /** 代码表字段的最大加入版本号 */
   maxAddVersion: number | undefined
-  /** 一致性：所有字段的加入版本 ≤ 版本表最新版本（无「孤儿字段」） */
-  consistent: boolean
+  /** 一致性：所有字段的加入版本 ≤ 版本表最新版本（无「孤儿字段」）；
+   * undefined = 无法判定（代码表或版本表缺失） */
+  consistent: boolean | undefined
 }
 
 /** 数据版本信息（离线可用性 + 数据与游戏版本对应关系） */
@@ -362,7 +363,8 @@ export function getDataVersionInfo(): DataVersionInfo {
     latestVersionName: latest !== undefined ? versionNumberToName(latest) : undefined,
     latestVersionNumber: latest,
     maxAddVersion,
-    consistent: maxAddVersion === undefined || latest === undefined || maxAddVersion <= latest,
+    // 代码表或版本表缺失时无法判定（避免在无版本表时误报「一致」）
+    consistent: maxAddVersion === undefined || latest === undefined ? undefined : maxAddVersion <= latest,
   }
 }
 
