@@ -266,6 +266,11 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       saveCropped: async () => 'C:\\mock\\avatar.png',
       uploadCommunity: async () => ({ ok: false, message: '社区头像服务即将上线' }),
     },
+    game: {
+      detect: async () => ({ found: false, gamePath: null, units: [], mods: [] }),
+      importSample: async () => ({ rootPath: 'C:\\mock\\official-units', units: 0, files: 0 }),
+      importMod: async () => ({ rootPath: 'C:\\mock\\game-mod', files: 0 }),
+    },
     mod: {
       create: async () => ({ files: ['mod-info.txt', 'units/'] }),
       chooseMusic: async () => [],

@@ -62,6 +62,7 @@ export function CommandPalette() {
       { id: 'mod-check', title: '模组：检查单位', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); void checkModProject() } },
       { id: 'mod-optimize', title: '模组：优化（清理垃圾）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); setModDialog('optimize') } },
       { id: 'code-table', title: '浏览代码表', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setCodeTableOpen(true) } },
+      { id: 'value-type', title: '值类型管理（自定义补全规则）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setValueTypeOpen(true) } },
     ],
     [importModProject, createConversation, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen],
   )

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commitText, computeRustCompletions, setCompletionChineseMode } from '../src/features/editor/completion'
+import { commitText, computeRustCompletions, localVariableCompletions, setCompletionChineseMode } from '../src/features/editor/completion'
 import type { CompletionDataSource } from '../src/features/editor/completion'
 import { parseValueList } from '../src/services/codeData'
 
@@ -17,6 +17,7 @@ const fakeData: CompletionDataSource = {
       { code: 'price', translate: '价格', description: '造价', type: 'resource', section: 'core' },
       { code: 'health', translate: '生命值', description: '血量', type: 'int', section: 'core' },
       { code: 'image', translate: '图像', description: '单位图像', type: 'baseImage', section: 'graphics' },
+      { code: 'logic', translate: '逻辑', description: '逻辑判断', type: 'logicBoolean', section: 'logicBoolean' },
     ]
       .filter((c) => c.section === 'all' || c.section === section)
       .filter((c) => c.code.includes(q) || c.translate.includes(q)),
@@ -26,6 +27,8 @@ const fakeData: CompletionDataSource = {
       price: { code: 'price', translate: '价格', description: '', type: 'resource' },
       health: { code: 'health', translate: '生命值', description: '', type: 'int' },
       image: { code: 'image', translate: '图像', description: '', type: 'baseImage' },
+      logic: { code: 'logic', translate: '逻辑', description: '', type: 'logicBoolean' },
+      builtFrom_1_name: { code: 'builtFrom_1_name', translate: '建造自_1_名称', description: '', type: 'unit' },
     }
     return map[code]
   },
@@ -35,10 +38,17 @@ const fakeData: CompletionDataSource = {
       resource: { external: ':', list: 'NONE,AUTO,@file(png)' },
       int: { external: ':' },
       baseImage: { list: 'NONE,AUTO,@file(png),@file(jpg)' },
+      logicBoolean: { list: 'true,false,if,@type(noParameterLogicStatement)' },
+      unit: { external: ':', list: '@type(internalUnits),@customType(unitName)' },
     }
     return map[type]
   },
   findCodesByQuery: (q) => fakeData.findCodesBySection('core', q),
+  findCodesByType: (type, q = '') =>
+    [
+      { code: 'self.isFlying', translate: '自身在天上', description: '', type: 'noParameterLogicStatement' },
+      { code: 'self.isMoving', translate: '自身在移动', description: '', type: 'noParameterLogicStatement' },
+    ].filter((c) => c.type === type && (c.code.includes(q) || c.translate.includes(q))),
   listResourceFiles: async (exts) =>
     ['units/tank/tank.png', 'units/tank/tank_wreck.png', 'units/rifle/rifle.png'].filter((f) =>
       exts.some((e) => f.endsWith(`.${e}`)),
@@ -91,6 +101,32 @@ describe('补全候选计算（注入假数据源）', () => {
     expect(result.map((r) => r.apply)).toContain('侦察车')
   })
 
+  it('@type(类型)：同类型键联想（logicBoolean 值位置提示 self 语句）', async () => {
+    const result = await computeRustCompletions('logic: ', 'logicBoolean', '', 'logic: ', 0, ['[logicBoolean]', 'logic: '], fakeData)
+    const apps = result.map((r) => r.apply)
+    const labels = result.map((r) => r.label)
+    // 普通 list 值也在
+    expect(apps).toContain('true')
+    // @type(noParameterLogicStatement) → 同类型键（self 语句，apply 为函数）
+    expect(labels.some((l) => l.startsWith('self.isFlying'))).toBe(true)
+    expect(labels.some((l) => l.startsWith('self.isMoving'))).toBe(true)
+  })
+
+  it('@customType(类型)：unit 值类型引用项目单位名', async () => {
+    const result = await computeRustCompletions('builtFrom_1_name: ', 'core', '', 'builtFrom_1_name: ', 0, ['[core]', 'builtFrom_1_name: '], fakeData)
+    const apps = result.map((r) => r.apply)
+    // @customType(unitName) → 项目单位名
+    expect(apps).toContain('重型坦克')
+    expect(apps).toContain('步枪兵')
+  })
+
+  it('@type/@customType 候选支持关键字过滤', async () => {
+    const result = await computeRustCompletions('builtFrom_1_name: 重型', 'core', '重型', 'builtFrom_1_name: 重型', 0, ['[core]', 'builtFrom_1_name: 重型'], fakeData)
+    const apps = result.map((r) => r.apply)
+    expect(apps).toContain('重型坦克')
+    expect(apps).not.toContain('步枪兵')
+  })
+
   it('键补全：无冒号行返回当前节键，中文可匹配', async () => {
     const result = await computeRustCompletions('名', 'core', '名', '名', 0, ['[core]', '名'], fakeData)
     expect(result.map((r) => r.label)).toContain('name · 名称')
@@ -133,5 +169,33 @@ describe('值类型 list 解析', () => {
     expect(parseValueList('NONE,AUTO,@file(png),ROOT:')).toEqual(['NONE', 'AUTO', 'ROOT:'])
     expect(parseValueList('')).toEqual([])
     expect(parseValueList(undefined)).toEqual([])
+  })
+})
+
+describe('局部变量补全（${}）', () => {
+  it('收集当前文件出现的 ${变量名} 并去重', () => {
+    const lines = ['[core]', 'name: ${坦克名}', 'describe: ${坦克名} ${价格}']
+    const result = localVariableCompletions(lines, '')
+    expect(result).toHaveLength(2)
+    const labels = result.map((r) => r.label)
+    expect(labels).toContain('坦克名')
+    expect(labels).toContain('价格')
+  })
+
+  it('${节.键} 引用不算变量', () => {
+    const lines = ['name: ${core.name}']
+    expect(localVariableCompletions(lines, '')).toEqual([])
+  })
+
+  it('按输入过滤变量名', () => {
+    const lines = ['a: ${坦克名}', 'b: ${价格}']
+    const result = localVariableCompletions(lines, '坦克')
+    expect(result.map((r) => r.label)).toEqual(['坦克名'])
+  })
+
+  it('提交文本为 ${变量名}', () => {
+    const lines = ['a: ${坦克名}']
+    const result = localVariableCompletions(lines, '')
+    expect(result[0].apply).toBe('${坦克名}')
   })
 })

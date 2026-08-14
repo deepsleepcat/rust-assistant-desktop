@@ -4,7 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import globals from 'globals'
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'dist-electron/**', 'node_modules/**', 'coverage/**', 'vendor/**', 'promo/**', 'scripts/capture-promo.mjs'] },
+  { ignores: ['dist/**', 'dist-electron/**', 'node_modules/**', 'coverage/**', 'vendor/**', 'promo/**', 'promo-v2/**', 'scripts/capture-promo.mjs'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

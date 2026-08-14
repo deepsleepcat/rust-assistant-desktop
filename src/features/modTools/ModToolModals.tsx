@@ -44,11 +44,13 @@ export function ModToolModals() {
   return <CreateModModal onClose={() => setModDialog(null)} onSubmit={createModProject} />
 }
 
-function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean }) => void }) {
+function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean; updateUrl?: string }) => void }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [author, setAuthor] = useState('')
   const [version, setVersion] = useState('1.0')
+  // M8 更新链接（http/https，写入 [mod] update: 键）
+  const [updateUrl, setUpdateUrl] = useState('')
   // M6.5 背景音乐：源文件绝对路径列表 + 独占播放开关
   const [musicFiles, setMusicFiles] = useState<string[]>([])
   const [musicExclusive, setMusicExclusive] = useState(true)
@@ -74,6 +76,7 @@ function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: 
           setDescription(info.description ?? '')
           setAuthor(info.author ?? '')
           setVersion(info.version ?? '1.0')
+          setUpdateUrl(info.updateUrl ?? '')
           setMusicExclusive(info.musicExclusive)
           // 已存在的 music/ 文件作为只读展示（源路径不可反推，仅展示）
         } else {
@@ -96,6 +99,11 @@ function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: 
   const submit = () => {
     if (!title.trim()) return
     if (existing === 'loading') return // 加载中不允许提交
+    // 更新链接校验：为空或合法 http(s) 链接（不符合就拦截并提示，避免写入脏数据）
+    if (updateUrl.trim() && !/^https?:\/\/\S+$/i.test(updateUrl.trim())) {
+      useWorkspaceStore.getState().notify('更新链接需以 http:// 或 https:// 开头')
+      return
+    }
     if (existing) {
       // 编辑模式：覆盖式写回
       void useWorkspaceStore.getState().saveModInfo({
@@ -112,6 +120,7 @@ function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: 
         // M8：原样传回自定义目录，防止覆盖用户手改的 sourceFolder
         musicSourceFolder: existing.musicSourceFolder,
         mapsSourceFolder: existing.mapsSourceFolder,
+        updateUrl: updateUrl.trim() || undefined,
       })
       onClose()
       return
@@ -123,6 +132,7 @@ function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: 
       version: version.trim() || undefined,
       musicFiles: musicFiles.length > 0 ? musicFiles : undefined,
       musicExclusive: musicFiles.length > 0 ? musicExclusive : undefined,
+      updateUrl: updateUrl.trim() || undefined,
     })
     onClose()
   }
@@ -161,6 +171,10 @@ function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: 
               <input value={version} onChange={(e) => setVersion(e.target.value)} placeholder="1.0" />
             </label>
           </div>
+          <label className="mod-field">
+            <span>更新链接（可选）</span>
+            <input value={updateUrl} onChange={(e) => setUpdateUrl(e.target.value)} placeholder="https://…（写入 mod-info.txt 的 update 键）" />
+          </label>
           {!existing && (
             <div className="mod-field">
               <span>背景音乐（可选）</span>
@@ -254,6 +268,8 @@ interface ModInfoEditorData {
   /** M8：自定义音乐/地图目录（编辑保存时原样传回，防止覆盖用户手改的 sourceFolder） */
   musicSourceFolder?: string
   mapsSourceFolder?: string
+  /** M8：更新链接（写入 [mod] update: 键） */
+  updateUrl?: string
 }
 
 /**

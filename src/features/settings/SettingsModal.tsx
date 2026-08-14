@@ -6,11 +6,11 @@ import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { CURSOR_EFFECT_COLORS, DEFAULT_SETTINGS, FONT_OPTIONS } from '../../utils/settings'
 import { getBridge } from '../../services/bridge'
-import { IconImage } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { LogoR } from '../../components/LogoR'
 import { Modal } from '../../components/Modal'
 import { AvatarCropModal } from './AvatarCropModal'
+import { GameSettingsTab } from './GameSettingsTab'
 
 const GRADIENT_PRESETS = [
   { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
@@ -27,7 +27,7 @@ export function SettingsModal() {
   const downloadUpdate = useWorkspaceStore((s) => s.downloadUpdate)
   const installUpdate = useWorkspaceStore((s) => s.installUpdate)
   const version = useWorkspaceStore((s) => s.version)
-  const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'avatar' | 'about'>('appearance')
+  const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'avatar' | 'game' | 'about'>('appearance')
   const [aiCheck, setAiCheck] = useState<string | null>(null)
   const [aiChecking, setAiChecking] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -77,13 +77,14 @@ export function SettingsModal() {
       <div style={{ display: 'flex', gap: 20, minHeight: 380 }}>
         {/* 左侧导航 */}
         <nav style={{ width: 130, flexShrink: 0 }}>
-          <SettingNavItem active={tab === 'appearance'} onClick={() => setTab('appearance')} icon={<AppIcon name="settings" size={14} />} label="外观" />
-          <SettingNavItem active={tab === 'background'} onClick={() => setTab('background')} icon={<IconImage size={14} />} label="背景" />
+          <SettingNavItem active={tab === 'appearance'} onClick={() => setTab('appearance')} icon={<AppIcon name="palette" size={14} />} label="外观" />
+          <SettingNavItem active={tab === 'background'} onClick={() => setTab('background')} icon={<AppIcon name="image" size={14} />} label="背景" />
           <SettingNavItem active={tab === 'editor'} onClick={() => setTab('editor')} icon={<AppIcon name="text" size={14} />} label="编辑器" />
           <SettingNavItem active={tab === 'layout'} onClick={() => setTab('layout')} icon={<AppIcon name="layout" size={14} />} label="布局" />
-          <SettingNavItem active={tab === 'ai'} onClick={() => setTab('ai')} icon={<AppIcon name="tools" size={14} />} label="AI" />
-          <SettingNavItem active={tab === 'avatar'} onClick={() => setTab('avatar')} icon={<AppIcon name="file" size={14} />} label="头像" />
-          <SettingNavItem active={tab === 'about'} onClick={() => setTab('about')} icon={<AppIcon name="tools" size={14} />} label="关于" />
+          <SettingNavItem active={tab === 'ai'} onClick={() => setTab('ai')} icon={<AppIcon name="sparkle" size={14} />} label="AI" />
+          <SettingNavItem active={tab === 'avatar'} onClick={() => setTab('avatar')} icon={<AppIcon name="avatar" size={14} />} label="头像" />
+          <SettingNavItem active={tab === 'game'} onClick={() => setTab('game')} icon={<AppIcon name="tower" size={14} />} label="游戏" />
+          <SettingNavItem active={tab === 'about'} onClick={() => setTab('about')} icon={<AppIcon name="info" size={14} />} label="关于" />
         </nav>
 
         {/* 内容 */}
@@ -93,10 +94,24 @@ export function SettingsModal() {
               <div className="setting-title">外观</div>
               <div className="setting-row">
                 <span className="label">
-                  黑白专业主题
-                  <div className="desc">白色工作区、黑色文字与操作，不使用彩色装饰</div>
+                  主题
+                  <div className="desc">浅色为白色工作区；深色为暗色工作区；跟随系统则随 Windows 深浅色自动切换</div>
                 </span>
-                <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>已固定</span>
+                <div className="seg-group">
+                  {([
+                    { value: 'light', label: '浅色' },
+                    { value: 'dark', label: '深色' },
+                    { value: 'system', label: '跟随系统' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      className={settings.theme === opt.value ? 'active' : ''}
+                      onClick={() => updateSettings({ theme: opt.value })}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="setting-row">
                 <span className="label">
@@ -361,6 +376,24 @@ export function SettingsModal() {
                   恢复默认
                 </button>
               </div>
+              <div className="setting-row">
+                <span className="label">
+                  显示隐藏文件
+                  <div className="desc">在文件树中显示以 . 开头的文件（如 .nomedia），默认隐藏</div>
+                </span>
+                <button
+                  className={`switch${settings.showHiddenFiles ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={settings.showHiddenFiles}
+                  onClick={() => {
+                    updateSettings({ showHiddenFiles: !settings.showHiddenFiles })
+                    // 重载文件树（隐藏文件过滤在主进程读取时生效，需重新读取目录）
+                    void useWorkspaceStore.getState().refreshTree()
+                  }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
             </div>
           )}
 
@@ -475,6 +508,8 @@ export function SettingsModal() {
               </div>
             </div>
           )}
+
+          {tab === 'game' && <GameSettingsTab />}
 
           {tab === 'about' && (
             <div className="setting-section">

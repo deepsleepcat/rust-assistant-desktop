@@ -254,22 +254,22 @@ function EditorPane({ tabId }: { tabId: string }) {
         )}
         {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
         <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => useWorkspaceStore.getState().updateTabContent(tab.id, formatted)} title="Ctrl+Shift+F">
-          格式化
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="text" size={12} />格式化</span>
         </button>
         <button className={outlineOpen ? 'btn primary' : 'btn'} style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => setOutlineOpen((open) => !open)}>
-          大纲 ({sections.length})
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="expand" size={12} />大纲 ({sections.length})</span>
         </button>
         <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => useWorkspaceStore.getState().setCodeTableOpen(true)} title="浏览代码表：字段说明 / 值类型 / 所属节">
-          代码表
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="document" size={12} />代码表</span>
         </button>
         {/\.(ini|template)$/i.test(tab.path) && /^\s*\[(core|核心)\]\s*$/m.test(tab.content) && (
           <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => setTemplateName(tab.name.replace(/\.(ini|template)$/i, ''))} title="把当前单位文件保存为模板，可在「新建单位」中复用">
-            存为模板
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="box" size={12} />存为模板</span>
           </button>
         )}
         {/\.ini$/i.test(tab.path) && (/^\s*\[turret_\d+\]\s*(?:#.*)?$/im.test(tab.content) || /^\s*\[炮塔_\d+\]\s*(?:#.*)?$/im.test(tab.content)) && (
           <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => useWorkspaceStore.getState().setTurretEditorOpen(true)} title="可视化编辑 [turret_N] 炮塔坐标">
-            炮塔
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="tower" size={12} />炮塔</span>
           </button>
         )}
         <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => void saveTab(tab.id)}>

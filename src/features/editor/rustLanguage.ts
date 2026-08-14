@@ -71,13 +71,13 @@ const rustConfigLanguage = StreamLanguage.define({
   },
 })
 
-/** 黑白专业配色 */
+/** 黑白专业配色（颜色走 CSS 变量，深浅色主题自动切换） */
 export const rustConfigHighlightStyle = HighlightStyle.define([
-  { tag: tags.comment, color: '#888888', fontStyle: 'italic' },
-  { tag: tags.heading, color: '#111111', fontWeight: '700' },
-  { tag: tags.propertyName, color: '#333333', fontWeight: '600' },
-  { tag: tags.function(tags.propertyName), color: '#7a3e00', fontWeight: '650' },
-  { tag: tags.labelName, color: '#3d5a80', fontWeight: '600' },
+  { tag: tags.comment, color: 'var(--cm-comment)', fontStyle: 'italic' },
+  { tag: tags.heading, color: 'var(--cm-section)', fontWeight: '700' },
+  { tag: tags.propertyName, color: 'var(--cm-key)', fontWeight: '600' },
+  { tag: tags.function(tags.propertyName), color: 'var(--cm-anim)', fontWeight: '650' },
+  { tag: tags.labelName, color: 'var(--cm-graphic)', fontWeight: '600' },
 ])
 
 export function rustConfigLanguageSupport() {
@@ -114,3 +114,50 @@ export function completionContext(context: CompletionContext): { line: string; s
   const lineIndex = lineInfo.number - 1
   return { line: lineInfo.text, section: findSectionOfLine(lines, lineIndex) }
 }
+
+/** 收集当前文件所有 ${变量名}（对齐手机版 RustAnalyzer.localVariableNameList：
+ * 只收简单名（支持中文），${节.键} 这类带点的引用不算变量）。 */
+export function collectLocalVariables(lines: string[]): string[] {
+  const set = new Set<string>()
+  const re = /\$\{([A-Za-z_\u4e00-\u9fff][A-Za-z0-9_\u4e00-\u9fff]*)\}/g
+  for (const line of lines) {
+    let m: RegExpExecArray | null
+    while ((m = re.exec(line)) !== null) set.add(m[1])
+  }
+  return [...set]
+}
+
+/** 智能换行（对齐手机版 RustLanguage NewlineHandler）：
+ * 光标前文本是未闭合节头、且光标后没有内容（行尾）→ 回车自动补 ]（[turret_ 这类以 _ 结尾的补 name]）；
+ * 其他情况返回 null 交给默认换行。 */
+export function smartEnterInsert(before: string, after = ''): string | null {
+  if (after.trim()) return null // 光标后还有内容（行中回车）：不补，避免破坏行
+  const trimmed = before.trimStart()
+  if (!trimmed.startsWith('[')) return null
+  if (trimmed.includes(']')) return null // 已闭合，正常换行
+  return trimmed.endsWith('_') ? 'name]\n' : ']\n'
+}
+
+/** Enter 智能换行绑定（展开进 EditorMirror 的 keymap.of 数组）。
+ * 必须排在 defaultKeymap 之前（其 Enter 换行无条件返回 true）；
+ * 补全弹窗打开时 Enter 由 autocompletion 的 Prec.highest 绑定先行确认，与本数组位置无关。 */
+export const smartEnterBindings: Array<{ key: string; run: (view: import('@codemirror/view').EditorView) => boolean }> = [
+  {
+    key: 'Enter',
+    run: (view) => {
+      const sel = view.state.selection.main
+      if (sel.from !== sel.to) return false // 有选区：交给默认行为
+      const line = view.state.doc.lineAt(sel.from)
+      const before = line.text.slice(0, sel.from - line.from)
+      const after = line.text.slice(sel.from - line.from)
+      const insert = smartEnterInsert(before, after)
+      if (insert === null) return false
+      view.dispatch({
+        changes: { from: sel.from, to: sel.from, insert },
+        selection: { anchor: sel.from + insert.length },
+        scrollIntoView: true,
+      })
+      return true
+    },
+  },
+]

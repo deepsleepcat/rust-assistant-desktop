@@ -60,6 +60,8 @@ interface WorkspaceStoreState {
   codeTableOpen: boolean
   /** M7：单位库弹窗 */
   unitLibraryOpen: boolean
+  /** M8：值类型管理弹窗 */
+  valueTypeOpen: boolean
   /** M12：炮塔编辑器弹窗 */
   turretEditorOpen: boolean
   confirm: ConfirmRequest | null
@@ -89,6 +91,9 @@ interface WorkspaceStoreActions {
   init(): Promise<void>
   openProject(): Promise<void>
   importModProject(): Promise<void>
+  /** M8：把已存在的目录注册为新项目（游戏示例/游戏模组导入用）：
+   * 确认未保存编辑 → 切到新项目 → 刷新树 → 通知；用户取消返回 false */
+  addImportedProject(rootPath: string, name: string, message: string): Promise<boolean>
   selectProject(id: string): Promise<void>
   removeProject(id: string): void
   refreshTree(): Promise<void>
@@ -124,6 +129,8 @@ interface WorkspaceStoreActions {
   setCommandOpen(open: boolean): void
   setCodeTableOpen(open: boolean): void
   setUnitLibraryOpen(open: boolean): void
+  /** M8：值类型管理弹窗 */
+  setValueTypeOpen(open: boolean): void
   /** M12：炮塔编辑器弹窗 */
   setTurretEditorOpen(open: boolean): void
   requestConfirm(req: ConfirmRequest): void
@@ -141,9 +148,9 @@ interface WorkspaceStoreActions {
   respondApproval(approved: boolean): Promise<void>
   /** M5：模组工具 */
   setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | null): void
-  createModProject(params: { title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean }): Promise<void>
+  createModProject(params: { title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean; updateUrl?: string }): Promise<void>
   /** M7：编辑模组自述文件（mod-info.txt 读写，包含 thumbnail/music/maps） */
-  saveModInfo(data: { title: string; description?: string; author?: string; version?: string; thumbnail?: string; minVersion?: string; musicFiles: string[]; musicExclusive: boolean; mapsFiles: string[]; mapsExtra: boolean; musicSourceFolder?: string; mapsSourceFolder?: string }): Promise<void>
+  saveModInfo(data: { title: string; description?: string; author?: string; version?: string; thumbnail?: string; minVersion?: string; musicFiles: string[]; musicExclusive: boolean; mapsFiles: string[]; mapsExtra: boolean; musicSourceFolder?: string; mapsSourceFolder?: string; updateUrl?: string }): Promise<void>
   /** M7：把当前打开的文件保存为模板 */
   saveActiveFileAsTemplate(name: string): Promise<void>
   createUnitFile(params: { name: string; templateKey: string; values: Record<string, string> }): Promise<void>
@@ -261,7 +268,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
     async function dirToNode(dirPath: string, expanded: boolean): Promise<TreeNode> {
       const project = activeProject()
       if (!project) throw new Error('当前没有打开的项目')
-      const entries = await bridge.project.readDir(project.rootPath, dirPath)
+      const entries = await bridge.project.readDir(project.rootPath, dirPath, get().settings.showHiddenFiles)
       return {
         name: dirPath === project.rootPath ? project.name : basename(dirPath),
         path: dirPath,
@@ -299,6 +306,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       commandOpen: false,
       codeTableOpen: false,
       unitLibraryOpen: false,
+      valueTypeOpen: false,
       turretEditorOpen: false,
       confirm: null,
       toast: null,
@@ -405,35 +413,29 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             lastOpenedAt: Date.now(),
           }
           // 有未保存编辑时先确认（防止静默丢弃）；确认回调里的失败仍走统一 notify。
-          // 返回 false = 用户取消：刚解压的目录未被使用，清理掉不留残留
+          // 返回 false = 用户取消或 action 失败：刚解压的目录未被使用，清理掉不留残留
           const ok = await get().confirmDirtySwitch(async () => {
-            try {
-              const others = get().projects.filter((p) => p.rootPath !== imported.rootPath)
-              set({
-                projects: [project, ...others],
-                activeProjectId: project.id,
-                openTabs: [],
-                activeTabId: null,
-                treeRoot: null,
-                treeError: null,
-                activeConversationId: null,
-                modCheckResult: null,
-                optimizeItems: null,
-                optimizeError: null,
-                modDialog: null,
-              })
-              await get().refreshTree()
-              persist()
-              get().notify(`已导入模组：${imported.name}（${imported.files ?? 0} 个文件）`)
-              // 导入后检测：模组缺少自述文件（mod-info.txt）时自动弹出补全界面
-              const root = get().treeRoot
-              if (root && !(root.children ?? []).some((c) => c.name === 'mod-info.txt')) {
-                set({ modDialog: 'createMod' })
-              }
-            } catch (err) {
-              // 失败也向上抛：confirmDirtySwitch 捕获后 resolve(false) → 走 discardImport 清理残留
-              get().notify(`导入模组失败：${err instanceof Error ? err.message : String(err)}`)
-              throw err
+            const others = get().projects.filter((p) => p.rootPath !== imported.rootPath)
+            set({
+              projects: [project, ...others],
+              activeProjectId: project.id,
+              openTabs: [],
+              activeTabId: null,
+              treeRoot: null,
+              treeError: null,
+              activeConversationId: null,
+              modCheckResult: null,
+              optimizeItems: null,
+              optimizeError: null,
+              modDialog: null,
+            })
+            await get().refreshTree()
+            persist()
+            get().notify(`已导入模组：${imported.name}（${imported.files ?? 0} 个文件）`)
+            // 导入后检测：模组缺少自述文件（mod-info.txt）时自动弹出补全界面
+            const root = get().treeRoot
+            if (root && !(root.children ?? []).some((c) => c.name === 'mod-info.txt')) {
+              set({ modDialog: 'createMod' })
             }
           })
           // 用户取消或导入失败且是解压导入（files 存在）：删除刚解压的目录（主进程只接受本会话创建的），
@@ -459,6 +461,56 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         } catch (err) {
           get().notify(`导入模组失败：${err instanceof Error ? err.message : String(err)}`)
         }
+      },
+
+      /** M8：注册已存在的目录为新项目（游戏官方示例 / 游戏内模组导入） */
+      async addImportedProject(rootPath: string, name: string, message: string) {
+        const prev = get()
+        const prevActiveId = prev.activeProjectId
+        const project: ProjectInfo = {
+          id: crypto.randomUUID(),
+          name,
+          rootPath,
+          createdAt: Date.now(),
+          lastOpenedAt: Date.now(),
+        }
+        return get().confirmDirtySwitch(async () => {
+          try {
+            const others = get().projects.filter((p) => p.rootPath !== rootPath)
+            set({
+              projects: [project, ...others],
+              activeProjectId: project.id,
+              openTabs: [],
+              activeTabId: null,
+              treeRoot: null,
+              treeError: null,
+              activeConversationId: null,
+              modCheckResult: null,
+              optimizeItems: null,
+              optimizeError: null,
+              modDialog: null,
+            })
+            await get().refreshTree()
+            persist()
+            get().notify(message)
+          } catch (err) {
+            // 失败回滚：恢复导入前的项目与树（refreshTree 失败等场景不留「新项目 + 空树」中间态）
+            const s2 = get()
+            if (s2.projects.some((p) => p.rootPath === rootPath)) {
+              set({
+                projects: s2.projects.filter((p) => p.rootPath !== rootPath),
+                activeProjectId: prevActiveId,
+                activeConversationId: prevActiveId ? s2.lastActiveConversationByProject[prevActiveId] ?? null : null,
+                treeRoot: null,
+                treeError: null,
+              })
+              persist()
+              if (prevActiveId) await get().refreshTree().catch(() => undefined)
+            }
+            // 不重复 notify：confirmDirtySwitch 统一提示「操作失败」
+            throw err
+          }
+        })
       },
 
       async selectProject(id: string) {
@@ -560,7 +612,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         dirLoadSeqs.set(node.path, seq)
         set({ treeRoot: updateTreeNode(root, node.path, (n) => ({ ...n, loading: true, error: undefined })) })
         try {
-          const entries = await bridge.project.readDir(project.rootPath, node.path)
+          const entries = await bridge.project.readDir(project.rootPath, node.path, get().settings.showHiddenFiles)
           if (get().activeProjectId !== pid) return // 期间切换了项目：丢弃
           if (dirLoadSeqs.get(node.path) !== seq) return // 已有更新的加载：丢弃过期响应
           const cur = get().treeRoot
@@ -1010,6 +1062,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       setUnitLibraryOpen(open: boolean) {
         set({ unitLibraryOpen: open })
       },
+      setValueTypeOpen(open: boolean) {
+        set({ valueTypeOpen: open })
+      },
       setTurretEditorOpen(open: boolean) {
         set({ turretEditorOpen: open })
       },
@@ -1043,8 +1098,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
 
   /** 有未保存编辑时先确认再执行动作（切项目/导模组前调用，防止静默丢编辑）。
    * 提供「保存并切换」：全部保存成功才执行 action，任一失败则保留现状。
-   * 返回 Promise<boolean>：true = 已执行 action；false = 用户取消（调用方据此做善后，
-   * 如丢弃刚导入的残留目录）；action 抛错时透传 rejection（不吞）。 */
+   * 返回 Promise<boolean>：true = 已执行 action；false = 用户取消或 action 失败
+   * （两种情形都统一 notify 失败原因；调用方按「取消」同路径善后，
+   * 如丢弃刚导入的残留目录——action 失败时同样需要清理）。 */
   confirmDirtySwitch(action: () => Promise<void> | void): Promise<boolean> {
     const s = get()
     const dirtyTabs = s.openTabs.filter((t) => t.dirty)
@@ -1063,8 +1119,10 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         Promise.resolve(action()).then(
           () => resolve(true),
           (err: unknown) => {
-            // action 失败：关闭确认框并让调用方感知失败（不静默成功）
+            // action 失败：关闭确认框并让调用方感知失败（不静默成功）；
+            // 与无脏标签路径一致地提示失败原因（此前这里静默，用户对切换失败无感知）
             s.dismissConfirm()
+            get().notify(`操作失败：${err instanceof Error ? err.message : String(err)}`)
             resolve(false)
             console.warn('[workspace] confirmDirtySwitch action 失败', err)
           },

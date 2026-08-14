@@ -89,6 +89,39 @@ async function fetchJson<T>(url: string): Promise<T> {
   return (await res.json()) as T
 }
 
+/** 重载全部数据（值类型管理保存自定义类型后调用：清缓存重新加载，补全/lint 立即生效） */
+export function reloadCodeData(): void {
+  loaded = null
+}
+
+/** 从本地存储读取用户自定义值类型（M8 值类型管理 UI 保存，store key: customValueTypes） */
+async function loadCustomValueTypes(): Promise<ValueTypeInfo[]> {
+  try {
+    const { getBridge } = await import('./bridge')
+    const raw = await getBridge().store.get('customValueTypes')
+    if (!Array.isArray(raw)) return []
+    const out: ValueTypeInfo[] = []
+    for (const item of raw) {
+      if (item && typeof item === 'object') {
+        const v = item as Partial<ValueTypeInfo>
+        if (typeof v.type === 'string' && v.type.trim()) {
+          out.push({
+            name: v.type.trim(),
+            type: v.type.trim(),
+            rule: typeof v.rule === 'string' ? v.rule : undefined,
+            list: typeof v.list === 'string' ? v.list : undefined,
+            external: typeof v.external === 'string' ? v.external : undefined,
+            describe: typeof v.describe === 'string' ? v.describe : undefined,
+          })
+        }
+      }
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
 /** 加载全部数据并构建索引（幂等，内存缓存；失败时降级为空词典，不阻塞编辑器） */
 export function loadCodeData(): Promise<void> {
   if (!loaded) {
@@ -108,6 +141,9 @@ export function loadCodeData(): Promise<void> {
         codes = (codeRaw.data ?? []) as CodeInfo[]
         sections = (sectionRaw.data ?? []) as SectionInfo[]
         valueTypes = (valueRaw.data ?? []) as ValueTypeInfo[]
+        // M8：合并用户自定义值类型（内置优先；自定义类型驱动补全/lint 规则）
+        const customTypes = await loadCustomValueTypes()
+        if (customTypes.length > 0) valueTypes = [...valueTypes, ...customTypes]
         // translations/vocabulary 的顶层键是 words（不是 data），两边都兼容
         const translations = (transRaw.words ?? transRaw.data ?? []) as Array<{ en?: string; zh?: string }>
         const vocab = (vocabRaw.words ?? vocabRaw.data ?? []) as VocabularyItem[]
@@ -202,6 +238,20 @@ export function findCodeByCode(code: string): CodeInfo | undefined {
   return codes.find((c) => c.code.toLowerCase() === lower)
 }
 
+/** 按值类型查代码（@type(x) 关联联想用，对齐手机版 findCodeByCodeInType）：
+ * type 逗号分段含目标类型；code/translate 可按关键字模糊过滤。 */
+export function findCodesByType(type: string, query = '', limit = 40): CodeInfo[] {
+  const target = type.trim().toLowerCase()
+  const q = query.trim().toLowerCase()
+  const list = codes.filter((c) => {
+    const types = (c.type ?? '').split(',').map((t) => t.trim().toLowerCase())
+    if (!types.includes(target)) return false
+    if (!q) return true
+    return c.code.toLowerCase().includes(q) || c.translate.includes(query.trim())
+  })
+  return list.slice(0, limit)
+}
+
 /** 按节英文 code 或中文译名模糊查节 */
 export function findSectionsByQuery(query: string, limit = 40): SectionInfo[] {
   const q = query.trim().toLowerCase()
@@ -217,6 +267,23 @@ export function getAllSections(): SectionInfo[] {
 /** 全部代码（按 code 排序），供代码表浏览 */
 export function getAllCodes(): CodeInfo[] {
   return [...codes].sort((a, b) => a.code.localeCompare(b.code))
+}
+
+/** 全部值类型（内置 + 用户自定义，按 type 排序），供值类型管理浏览 */
+export function getAllValueTypes(): ValueTypeInfo[] {
+  return [...valueTypes].sort((a, b) => a.type.localeCompare(b.type))
+}
+
+/** 读取用户自定义值类型（供值类型管理 UI 编辑；与加载时合并逻辑同源） */
+export async function getCustomValueTypes(): Promise<ValueTypeInfo[]> {
+  return loadCustomValueTypes()
+}
+
+/** 保存用户自定义值类型（整体覆盖写入本地存储） */
+export async function saveCustomValueTypes(list: ValueTypeInfo[]): Promise<void> {
+  const { getBridge } = await import('./bridge')
+  await getBridge().store.set('customValueTypes', list)
+  reloadCodeData()
 }
 
 /** 全部官方单位（scripts/extract-game-data.mjs 从游戏提取，按 name 排序） */

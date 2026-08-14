@@ -6,11 +6,30 @@
  * - 顶部工具栏：刷新、新建文件、新建文件夹
  */
 import { useState } from 'react'
-import type { TreeNode } from '../../types/domain'
+import type { FileSort, TreeNode } from '../../types/domain'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { FileTypeIcon, FolderIcon, IconChevronRight } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { PromptModal } from '../../components/Modal'
+
+/** 排序树节点：文件夹始终优先，组内按所选字段（名称/类型/大小/修改时间） */
+function sortChildren(children: TreeNode[], sort: FileSort): TreeNode[] {
+  const byName = (a: TreeNode, b: TreeNode) => a.name.localeCompare(b.name, 'zh-CN')
+  const cmp: Record<FileSort, (a: TreeNode, b: TreeNode) => number> = {
+    name: byName,
+    type: (a, b) => {
+      const extA = a.name.includes('.') ? a.name.slice(a.name.lastIndexOf('.') + 1).toLowerCase() : ''
+      const extB = b.name.includes('.') ? b.name.slice(b.name.lastIndexOf('.') + 1).toLowerCase() : ''
+      return extA.localeCompare(extB) || byName(a, b)
+    },
+    size: (a, b) => b.size - a.size || byName(a, b),
+    mtime: (a, b) => b.mtimeMs - a.mtimeMs || byName(a, b),
+  }
+  const c = cmp[sort]
+  const dirs = children.filter((x) => x.isDirectory)
+  const files = children.filter((x) => !x.isDirectory)
+  return [...dirs].sort(c).concat([...files].sort(c))
+}
 
 export function ProjectPanel() {
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
@@ -23,6 +42,8 @@ export function ProjectPanel() {
   const packModProject = useWorkspaceStore((s) => s.packModProject)
   const checkModProject = useWorkspaceStore((s) => s.checkModProject)
   const importModProject = useWorkspaceStore((s) => s.importModProject)
+  const settings = useWorkspaceStore((s) => s.settings)
+  const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const [dialog, setDialog] = useState<null | { kind: 'file' | 'folder'; parent: string }>(null)
   const [renaming, setRenaming] = useState<null | TreeNode>(null)
   const [modMenu, setModMenu] = useState(false)
@@ -48,6 +69,17 @@ export function ProjectPanel() {
         <IconFolderOpen2 size={13} />
         {project.name}
         <span className="grow" />
+        <select
+          className="sort-select"
+          value={settings.fileSort}
+          onChange={(e) => updateSettings({ fileSort: e.target.value as FileSort })}
+          title="文件树排序"
+        >
+          <option value="name">名称</option>
+          <option value="type">类型</option>
+          <option value="size">大小</option>
+          <option value="mtime">修改时间</option>
+        </select>
         <button className="icon-btn" title="刷新" onClick={() => void refreshTree()}>
           <AppIcon name="refresh" size={13} />
         </button>
@@ -147,8 +179,30 @@ function TreeRow({
   const deleteItem = useWorkspaceStore((s) => s.deleteItem)
   const requestConfirm = useWorkspaceStore((s) => s.requestConfirm)
   const isBookmarked = useWorkspaceStore((s) => s.bookmarks.some((b) => b.path === node.path && b.projectId === s.activeProjectId))
+  const fileSort = useWorkspaceStore((s) => s.settings.fileSort)
 
   const indent = depth * 14
+
+  /** 复制游戏引用格式的相对路径（ROOT: 前缀，可直接粘进代码引用） */
+  const copyRelPath = async () => {
+    const s = useWorkspaceStore.getState()
+    const project = s.projects.find((p) => p.id === s.activeProjectId)
+    if (!project) return
+    const rel =
+      node.path === project.rootPath
+        ? ''
+        : node.path
+            .slice(project.rootPath.length)
+            .replace(/^[\\/]+/, '')
+            .replace(/\\/g, '/')
+    const text = rel ? `ROOT:${rel}` : 'ROOT:'
+    try {
+      await navigator.clipboard.writeText(text)
+      s.notify(`已复制：${text}`)
+    } catch {
+      s.notify('复制失败：剪贴板不可用')
+    }
+  }
 
   const bookmarkBtn = (
     <button
@@ -195,6 +249,16 @@ function TreeRow({
             </button>
             <button
               className="icon-btn"
+              title="复制路径（ROOT: 格式）"
+              onClick={(e) => {
+                e.stopPropagation()
+                void copyRelPath()
+              }}
+            >
+              <AppIcon name="copy" size={12} />
+            </button>
+            <button
+              className="icon-btn"
               title="新建文件夹"
               onClick={(e) => {
                 e.stopPropagation()
@@ -235,7 +299,7 @@ function TreeRow({
               尚未加载
             </div>
           ) : (
-            node.children.map((child) => (
+            sortChildren(node.children, fileSort).map((child) => (
               <div className="tree-child" key={child.path}><TreeRow node={child} depth={depth + 1} onRename={onRename} onNewIn={onNewIn} /></div>
             ))
           ))}
@@ -257,6 +321,9 @@ function TreeRow({
       <span className="tree-name">{node.name}</span>
       <span className="row-actions">
         {bookmarkBtn}
+        <button className="icon-btn" title="复制路径（ROOT: 格式）" onClick={() => void copyRelPath()}>
+          <AppIcon name="copy" size={12} />
+        </button>
         <button className="icon-btn" title="重命名" onClick={() => onRename(node)}>
           <AppIcon name="rename" size={12} />
         </button>

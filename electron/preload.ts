@@ -33,7 +33,7 @@ const api: BridgeApi = {
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
     openImageDialog: () => ipcRenderer.invoke('dialog:openImage'),
     registerRoots: (roots: string[]) => ipcRenderer.invoke('project:registerRoots', roots),
-    readDir: (rootPath: string, dirPath: string) => ipcRenderer.invoke('fs:readDir', rootPath, dirPath),
+    readDir: (rootPath: string, dirPath: string, showHidden?: boolean) => ipcRenderer.invoke('fs:readDir', rootPath, dirPath, showHidden),
     stat: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:stat', rootPath, filePath),
     readFile: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:readFile', rootPath, filePath),
     writeFile: (rootPath: string, filePath: string, content: string, opts: { hasBom: boolean }) =>
@@ -50,6 +50,13 @@ const api: BridgeApi = {
     /** 保存裁剪后的头像（PNG data URL）→ 返回已登记的文件路径 */
     saveCropped: (dataUrl: string) => ipcRenderer.invoke('avatar:saveCropped', dataUrl),
     uploadCommunity: () => ipcRenderer.invoke('avatar:uploadCommunity'),
+  },
+  game: {
+    detect: (configuredPath?: string) => ipcRenderer.invoke('game:detect', configuredPath),
+    importSample: (gamePath: string, targetRoot: string, opts?: unknown) =>
+      ipcRenderer.invoke('game:importSample', gamePath, targetRoot, opts),
+    importMod: (gamePath: string, fileName: string, targetRoot: string) =>
+      ipcRenderer.invoke('game:importMod', gamePath, fileName, targetRoot),
   },
   mod: {
     create: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:create', rootPath, params),

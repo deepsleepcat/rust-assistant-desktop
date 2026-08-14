@@ -402,11 +402,18 @@ export interface CreateModParams {
   musicFiles?: string[]
   /** M6.5 使用本模组单位时独占播放（写入 [music] 节） */
   musicExclusive?: boolean
+  /** M8 更新链接（http/https，写入 [mod] update: 键） */
+  updateUrl?: string
 }
 
-function escapeIniComment(text: string): string {
+export function escapeIniComment(text: string): string {
   // 先转义字面反斜杠再转义换行：否则用户字面输入的 \n 会被读回时误还原为换行
   return text.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n')
+}
+
+/** 校验更新链接：只接受 http/https URL（主进程侧复核，渲染层不可信） */
+export function isValidUpdateUrl(url: string): boolean {
+  return /^https?:\/\/\S+$/i.test(url)
 }
 
 /** 生成 mod-info.txt 内容（所有自由文本字段统一转义换行，保证单行 INI 不损坏） */
@@ -418,6 +425,8 @@ export function buildModInfo(params: CreateModParams): string {
   if (params.thumbnail) lines.push(`thumbnail: ${escapeIniComment(params.thumbnail)}`)
   if (params.version) lines.push(`version: ${escapeIniComment(params.version)}`)
   if (params.author) lines.push(`author: ${escapeIniComment(params.author)}`)
+  // 主进程复核更新链接格式（渲染层不可信）；非法值静默丢弃，不写脏数据
+  if (params.updateUrl && isValidUpdateUrl(params.updateUrl)) lines.push(`update: ${escapeIniComment(params.updateUrl)}`)
   lines.push('minVersion: 1.15p9')
   lines.push('')
   lines.push('[music]')
@@ -589,6 +598,8 @@ export interface ModInfoData {
   musicSourceFolder?: string
   /** M8：用户自定义的地图目录（如 mymaps/） */
   mapsSourceFolder?: string
+  /** M8：模组更新链接（http/https，写入 [mod] update: 键，供分享/发布时展示） */
+  updateUrl?: string
 }
 
 /**
@@ -649,6 +660,7 @@ export async function readModInfo(projectRoot: string): Promise<ModInfoData | nu
     data.version = km.get('version')
     data.thumbnail = km.get('thumbnail')
     data.minVersion = km.get('minversion')
+    data.updateUrl = km.get('update')
   }
   const musicSec = sections.find((s) => s.name === 'music')
   if (musicSec) {
@@ -733,6 +745,8 @@ export async function writeModInfo(projectRoot: string, data: ModInfoData): Prom
         ['version', data.version ? escapeIniComment(data.version) : null],
         ['thumbnail', data.thumbnail ? escapeIniComment(data.thumbnail) : null],
         ['minVersion', data.minVersion || '1.15p9'],
+        // 主进程复核更新链接格式；非法值按删除处理（不写脏数据）
+        ['update', data.updateUrl && isValidUpdateUrl(data.updateUrl) ? escapeIniComment(data.updateUrl) : null],
       ],
     },
     {

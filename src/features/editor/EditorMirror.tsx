@@ -8,9 +8,9 @@ import { useEffect, useRef } from 'react'
 import { EditorState, Transaction } from '@codemirror/state'
 import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { autocompletion, completionKeymap } from '@codemirror/autocomplete'
+import { autocompletion } from '@codemirror/autocomplete'
 import { search, searchKeymap } from '@codemirror/search'
-import { rustConfigLanguageSupport } from './rustLanguage'
+import { rustConfigLanguageSupport, smartEnterBindings } from './rustLanguage'
 import { rustHoverExtension } from './rustHover'
 import { rustCompletionSource, setCompletionChineseMode, setCompletionTracker } from './completion'
 import { foldGutter, foldKeymap } from '@codemirror/language'
@@ -55,10 +55,10 @@ const editorTheme = EditorView.theme({
     borderRight: '1px solid var(--divider)',
     fontFamily: 'var(--font-mono)',
   },
-  '.cm-activeLine': { backgroundColor: 'rgba(0,0,0,.04)' },
-  '.cm-activeLineGutter': { backgroundColor: 'rgba(0,0,0,.04)', color: 'var(--text-primary)' },
+  '.cm-activeLine': { backgroundColor: 'var(--cm-active-line)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--cm-active-line)', color: 'var(--text-primary)' },
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'rgba(26,115,232,.18)',
+    backgroundColor: 'var(--cm-selection)',
   },
   '.cm-cursor': { borderLeftColor: 'var(--text-primary)' },
   '.cm-tooltip': {
@@ -91,7 +91,7 @@ const editorTheme = EditorView.theme({
     borderRadius: '4px',
     color: 'var(--text-primary)',
   },
-  '.cm-matchingBracket': { backgroundColor: 'rgba(0,0,0,.08)' },
+  '.cm-matchingBracket': { backgroundColor: 'var(--surface-hover)' },
   // 值合法性检查（lint）标记：红色波浪线 + 槽内标记，保持黑白专业主题
   '.cm-lintRange-error': {
     backgroundImage: 'linear-gradient(to right, transparent 40%, var(--danger, #c5221f) 40%)',
@@ -162,10 +162,11 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
         search({ top: true }),
         keymap.of([
+          ...smartEnterBindings, // 必须排在 defaultKeymap 之前：defaultKeymap 的 Enter（换行）无条件返回 true，
+          // 排在后面永远轮不到；补全弹窗打开时 Enter 仍先走 Prec.highest 的 acceptCompletion（自动注册，与数组位置无关）
           ...defaultKeymap,
           ...historyKeymap,
           ...searchKeymap,
-          ...completionKeymap,
           ...foldKeymap,
           ...lintKeymap,
           indentWithTab,

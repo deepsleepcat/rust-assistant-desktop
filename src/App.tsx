@@ -18,6 +18,7 @@ import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
 import { CodeTableModal } from './features/editor/CodeTableModal'
 import { UnitLibraryModal } from './features/editor/UnitLibraryModal'
+import { ValueTypeModal } from './features/settings/ValueTypeModal'
 import { CursorEffect } from './components/CursorEffect'
 
 export function App() {
@@ -26,6 +27,7 @@ export function App() {
   const settingsOpen = useWorkspaceStore((s) => s.settingsOpen)
   const codeTableOpen = useWorkspaceStore((s) => s.codeTableOpen)
   const unitLibraryOpen = useWorkspaceStore((s) => s.unitLibraryOpen)
+  const valueTypeOpen = useWorkspaceStore((s) => s.valueTypeOpen)
   const toast = useWorkspaceStore((s) => s.toast)
   const dismissToast = useWorkspaceStore((s) => s.dismissToast)
 
@@ -45,9 +47,29 @@ export function App() {
     void useWorkspaceStore.getState().init().catch(handleInitError)
   }, [handleInitError])
 
-  // 白色主视觉固定；旧设置中的主题字段只为兼容数据，不再改变界面。
+  // 主题：浅色 / 深色 / 跟随系统（system 模式监听系统偏好变化实时切换）
   useEffect(() => {
-    document.documentElement.dataset.theme = 'light'
+    const applyTheme = () => {
+      const dark =
+        settings.theme === 'dark' ||
+        (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+      // 缓存到 localStorage：下次启动首帧前（main.tsx 顶部）同步应用，避免白屏闪烁
+      try {
+        localStorage.setItem('ra-theme', settings.theme)
+      } catch {
+        /* 存储不可用（隐私模式等）：忽略，仅影响启动首帧 */
+      }
+    }
+    applyTheme()
+    if (settings.theme === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)')
+      mq.addEventListener('change', applyTheme)
+      return () => mq.removeEventListener('change', applyTheme)
+    }
+  }, [settings.theme])
+
+  useEffect(() => {
     document.body.classList.toggle('electron', isElectron)
     // 弹窗 Escape 栈：多弹窗叠放时只关最上层（capture 阶段拦截）
     installEscapeDispatcher()
@@ -154,6 +176,12 @@ export function App() {
       <ModToolModals />
       {codeTableOpen && <CodeTableModal onClose={() => useWorkspaceStore.getState().setCodeTableOpen(false)} />}
       {unitLibraryOpen && <UnitLibraryModal onClose={() => useWorkspaceStore.getState().setUnitLibraryOpen(false)} />}
+      {valueTypeOpen && (
+        <ValueTypeModal
+          onClose={() => useWorkspaceStore.getState().setValueTypeOpen(false)}
+          onNotify={(m) => useWorkspaceStore.getState().notify(m)}
+        />
+      )}
       <ConfirmDialog />
       <ApprovalDialog />
 

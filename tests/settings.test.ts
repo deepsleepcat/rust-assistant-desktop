@@ -23,16 +23,21 @@ describe('设置清洗', () => {
     expect(s.background.kind).toBe('none')
   })
 
+  it('合法主题值被保留（light/dark/system）', () => {
+    expect(sanitizeSettings({ theme: 'dark' }).theme).toBe('dark')
+    expect(sanitizeSettings({ theme: 'system' }).theme).toBe('system')
+    expect(sanitizeSettings({ theme: 'light' }).theme).toBe('light')
+  })
+
   it('非法颜色回退默认值', () => {
     const s = sanitizeSettings({ background: { color: 'red; x' } })
     expect(s.background.color).toBe(DEFAULT_SETTINGS.background.color)
   })
 
   it('合法值被保留', () => {
-    const input: Partial<AppSettings> = { theme: 'dark', rainbow: false, fontSize: 16, leftWidth: 300, rightWidth: 400 }
+    const input: Partial<AppSettings> = { theme: 'dark', fontSize: 16, leftWidth: 300, rightWidth: 400 }
     const s = sanitizeSettings(input)
-    expect(s.theme).toBe('light')
-    expect(s.rainbow).toBe(false)
+    expect(s.theme).toBe('dark')
     expect(s.fontSize).toBe(16)
     expect(s.leftWidth).toBe(300)
     expect(s.rightWidth).toBe(400)

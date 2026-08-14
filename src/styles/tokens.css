@@ -43,6 +43,15 @@ html[data-theme="light"] {
   --scrollbar: rgba(60, 64, 67, .25);
   --overlay: rgba(32, 33, 36, .38);
 
+  /* 代码高亮配色（黑白专业风，浅色版） */
+  --cm-comment: #888888;
+  --cm-section: #111111;
+  --cm-key: #333333;
+  --cm-anim: #7a3e00;
+  --cm-graphic: #3d5a80;
+  --cm-selection: rgba(26, 115, 232, .18);
+  --cm-active-line: rgba(0, 0, 0, .04);
+
   /* 旧变量兼容：组件逐步迁移时不出现透明断层 */
   --bg-app: var(--canvas);
   --bg-panel: var(--surface-0);
@@ -79,6 +88,15 @@ html[data-theme="dark"] {
   --danger: #f28b82;
   --scrollbar: rgba(255, 255, 255, .25);
   --overlay: rgba(0, 0, 0, .52);
+
+  /* 代码高亮配色（黑白专业风，深色版） */
+  --cm-comment: #9aa0a6;
+  --cm-section: #e8eaed;
+  --cm-key: #c6c9ce;
+  --cm-anim: #fdd663;
+  --cm-graphic: #8ab4f8;
+  --cm-selection: rgba(138, 180, 248, .24);
+  --cm-active-line: rgba(255, 255, 255, .05);
   --bg-app: var(--canvas);
   --bg-panel: var(--surface-0);
   --bg-panel-solid: var(--surface-0);

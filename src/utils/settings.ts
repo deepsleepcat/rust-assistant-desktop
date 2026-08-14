@@ -2,7 +2,7 @@
  * 设置：默认值与清洗逻辑。所有外部输入（本地存储、界面操作）都必须先经过清洗，
  * 防止损坏的数据进入应用。
  */
-import type { AppSettings, BackgroundKind } from '../types/domain'
+import type { AppSettings, BackgroundKind, FileSort, ThemeMode } from '../types/domain'
 import type { AiProviderType } from '../types/ai'
 
 export const FONT_OPTIONS = [
@@ -10,6 +10,9 @@ export const FONT_OPTIONS = [
   { label: '等宽字体（Cascadia Code）', value: 'mono' },
   { label: '楷体', value: 'kaiti' },
 ] as const
+
+/** 文件树排序方式 */
+export const FILE_SORTS: FileSort[] = ['name', 'type', 'size', 'mtime']
 
 /** 鼠标特效颜色预设：默认黑（贴合黑白主题）+ 樱花粉 + 浅海蓝，另支持自定义 */
 export const CURSOR_EFFECT_COLORS = [
@@ -19,10 +22,8 @@ export const CURSOR_EFFECT_COLORS = [
 ] as const
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  // 白色 Google Material 是默认主视觉，深色仅作为备用主题。
-  // 保留字段以兼容旧配置，但界面始终采用白色主题。
+  // 白色 Google Material 是默认主视觉；深色 / 跟随系统为可选主题
   theme: 'light',
-  rainbow: true,
   background: {
     kind: 'none',
     color: '#e8f0fe',
@@ -38,9 +39,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   leftWidth: 280,
   rightWidth: 430,
   showHiddenFiles: false,
+  /** M8：文件树排序方式（名称/类型/大小/修改时间；文件夹始终优先） */
+  fileSort: 'name',
   cursorEffect: false,
   cursorEffectIntensity: 1,
   cursorEffectColor: '#000000',
+  /** M8：铁锈战争安装目录（用户手动配置；自动检测作为兜底） */
+  gamePath: '',
   avatar: { source: 'default', localPath: null, remoteUrl: null, updatedAt: 0 },
   ai: {
     provider: 'deepseek',
@@ -56,6 +61,8 @@ const AI_PROVIDERS: AiProviderType[] = ['deepseek', 'community']
 
 const BACKGROUND_KINDS: BackgroundKind[] = ['none', 'color', 'gradient', 'image']
 
+const THEME_MODES: ThemeMode[] = ['light', 'dark', 'system']
+
 export function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min
   return Math.min(max, Math.max(min, value))
@@ -66,8 +73,7 @@ export function sanitizeSettings(input: unknown): AppSettings {
   const bgRaw = (raw.background && typeof raw.background === 'object' ? raw.background : {}) as Partial<AppSettings['background']>
 
   return {
-    theme: 'light',
-    rainbow: typeof raw.rainbow === 'boolean' ? raw.rainbow : DEFAULT_SETTINGS.rainbow,
+    theme: THEME_MODES.includes(raw.theme as ThemeMode) ? (raw.theme as ThemeMode) : DEFAULT_SETTINGS.theme,
     background: {
       kind: BACKGROUND_KINDS.includes(bgRaw.kind as BackgroundKind) ? (bgRaw.kind as BackgroundKind) : DEFAULT_SETTINGS.background.kind,
       color: typeof bgRaw.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(bgRaw.color) ? bgRaw.color : DEFAULT_SETTINGS.background.color,
@@ -83,6 +89,7 @@ export function sanitizeSettings(input: unknown): AppSettings {
     leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, 220, 420),
     rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, 260, 640),
     showHiddenFiles: typeof raw.showHiddenFiles === 'boolean' ? raw.showHiddenFiles : DEFAULT_SETTINGS.showHiddenFiles,
+    fileSort: FILE_SORTS.includes(raw.fileSort as FileSort) ? (raw.fileSort as FileSort) : DEFAULT_SETTINGS.fileSort,
     cursorEffect: typeof raw.cursorEffect === 'boolean' ? raw.cursorEffect : DEFAULT_SETTINGS.cursorEffect,
     cursorEffectIntensity: clamp(
       typeof raw.cursorEffectIntensity === 'number' ? raw.cursorEffectIntensity : DEFAULT_SETTINGS.cursorEffectIntensity,
@@ -93,6 +100,7 @@ export function sanitizeSettings(input: unknown): AppSettings {
       typeof raw.cursorEffectColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.cursorEffectColor)
         ? raw.cursorEffectColor
         : DEFAULT_SETTINGS.cursorEffectColor,
+    gamePath: typeof raw.gamePath === 'string' ? raw.gamePath.trim() : DEFAULT_SETTINGS.gamePath,
     ai: sanitizeAi(raw.ai),
   }
 }

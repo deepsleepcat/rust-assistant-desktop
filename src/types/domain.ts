@@ -6,6 +6,9 @@
 /** 主题模式 */
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+/** 文件树排序方式 */
+export type FileSort = 'name' | 'type' | 'size' | 'mtime'
+
 /** 背景类型 */
 export type BackgroundKind = 'none' | 'color' | 'gradient' | 'image'
 
@@ -25,8 +28,6 @@ export interface BackgroundSettings {
 
 export interface AppSettings {
   theme: ThemeMode
-  /** 是否启用 Google 彩虹装饰效果 */
-  rainbow: boolean
   background: BackgroundSettings
   /** 是否启用中文翻译显示层 */
   translateMode: boolean
@@ -51,12 +52,16 @@ export interface AppSettings {
   rightWidth: number
   /** 文件树是否显示隐藏文件（以 . 开头） */
   showHiddenFiles: boolean
+  /** M8：文件树排序方式（名称/类型/大小/修改时间；文件夹始终优先） */
+  fileSort: FileSort
   /** M6：鼠标粒子特效开关 */
   cursorEffect: boolean
   /** M6：鼠标粒子特效强度 1-3（粒子数量） */
   cursorEffectIntensity: number
   /** M6：鼠标粒子特效颜色（hex，默认黑，可选樱花粉/浅海蓝等预设） */
   cursorEffectColor: string
+  /** M8：铁锈战争安装目录（用户手动配置；自动检测作为兜底） */
+  gamePath: string
 }
 
 /** 一个项目 = 一个铁锈战争模组目录 */

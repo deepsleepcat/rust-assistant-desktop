@@ -15,6 +15,7 @@ import {
   findCodeByCode,
   findCodesByQuery,
   findCodesBySection,
+  findCodesByType,
   findSectionsByQuery,
   findValueType,
   getZhToEnDict,
@@ -22,7 +23,7 @@ import {
   searchLogicBooleans,
   zhToEnKeySegments,
 } from '../../services/codeData'
-import { findSectionOfLine, isUnclosedSection, keyOfLine } from './rustLanguage'
+import { findSectionOfLine, isUnclosedSection, keyOfLine, collectLocalVariables } from './rustLanguage'
 
 /** 补全数据源接口（可注入） */
 export interface CompletionDataSource {
@@ -31,6 +32,8 @@ export interface CompletionDataSource {
   findCodeByCode(code: string): { code: string; translate: string; description: string; type: string } | undefined
   findValueType(type: string): { external?: string; list?: string; describe?: string } | undefined
   findCodesByQuery(query: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string }>
+  /** 按值类型查代码（@type(类型) 关联联想） */
+  findCodesByType(type: string, query?: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string }>
   /** 项目内资源文件（相对路径），供 @file(类型) 值补全 */
   listResourceFiles?: (exts: string[]) => Promise<string[]> | string[]
   /** 项目内单位名列表（[core] name: 值），供单位引用字段联想 */
@@ -50,6 +53,7 @@ export const realDataSource: CompletionDataSource = {
   findCodeByCode: (c) => findCodeByCode(c),
   findValueType: (t) => findValueType(t),
   findCodesByQuery: (q, l) => findCodesByQuery(q, l),
+  findCodesByType: (t, q, l) => findCodesByType(t, q, l),
 }
 
 /**
@@ -194,6 +198,50 @@ function toSectionCompletion(s: { code: string; translate: string; needName?: bo
   }
 }
 
+/** 图片缩略图缓存：`项目id:相对路径` → dataURL（防跨项目同名路径串图；上限 200 条防内存膨胀） */
+const thumbnailCache = new Map<string, string>()
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'])
+
+/** 懒加载项目图片为 dataURL（失败静默降级，不阻塞补全）；
+ * projectId 由调用方捕获传入——补全弹出后、预览加载前切换项目也不串图 */
+async function loadThumbnail(relPath: string, projectId?: string): Promise<string | null> {
+  const { useWorkspaceStore } = await import('../../stores/workspace')
+  const state = useWorkspaceStore.getState()
+  const id = projectId ?? state.activeProjectId
+  const project = state.projects.find((p) => p.id === id)
+  if (!project) return null
+  const key = `${id}:${relPath}`
+  const cached = thumbnailCache.get(key)
+  if (cached) return cached
+  const { getBridge } = await import('../../services/bridge')
+  const url = await getBridge().project.readImageAsDataUrl(project.rootPath, relPath).catch(() => null)
+  if (url) {
+    if (thumbnailCache.size > 200) thumbnailCache.clear()
+    thumbnailCache.set(key, url)
+  }
+  return url
+}
+
+/** 图片文件补全项附加预览（对齐手机版：@file 图片项显示缩略图）：
+ * 候选被选中时在详情区显示图片预览，懒加载 + 缓存防 IPC 风暴。
+ * projectId 由调用方（async 上下文）捕获传入——预览异步加载期间切换项目也不取错项目的图。 */
+function withThumbnail(c: Completion, projectId: string | null): Completion {
+  const ext = (c.label.split('.').pop() ?? '').toLowerCase()
+  if (!IMAGE_EXTS.has(ext)) return c
+  return {
+    ...c,
+    info: async () => {
+      const url = await loadThumbnail(c.label, projectId ?? undefined)
+      if (!url) return null
+      const img = document.createElement('img')
+      img.src = url
+      img.style.cssText =
+        'max-width:160px;max-height:160px;object-fit:contain;display:block;border-radius:6px;'
+      return img
+    },
+  }
+}
+
 /** 值补全：key 查类型 → 类型 list → 候选（中文模式下键是中文，先回译成英文再查） */
 async function valueCompletions(key: string, query: string, data: CompletionDataSource): Promise<Completion[]> {
   // 中文显示层：key 可能是中文译名或分段翻译的宏字段（建造自_1_名称），
@@ -217,17 +265,47 @@ async function valueCompletions(key: string, query: string, data: CompletionData
       result.push({ label: v, type: 'value', apply: v })
     }
 
-    // @file(类型)：扫描项目内资源文件（png/jpg/ogg/ini…）
-    const fileExts = (vt.list ?? '')
+    // 特殊指令（@file/@type/@customType）：逗号分隔的 list 元素
+    const directives = (vt.list ?? '')
       .split(',')
       .map((s) => s.trim())
+      .filter((s) => s.startsWith('@'))
+
+    // @file(类型)：扫描项目内资源文件（png/jpg/ogg/ini…）
+    const fileExts = directives
       .filter((s) => s.startsWith('@file('))
       .map((s) => s.match(/^@file\((.+)\)$/)?.[1] ?? '')
       .filter((s) => s.length > 0)
     if (fileExts.length > 0 && data.listResourceFiles) {
       const files = (await data.listResourceFiles(fileExts)) ?? []
+      // 捕获当前项目 id（缩略图预览用；模块级 store 需动态 import 避免循环依赖）
+      const { useWorkspaceStore } = await import('../../stores/workspace')
+      const pid = useWorkspaceStore.getState().activeProjectId
       for (const f of files.filter((f) => !q || f.toLowerCase().includes(q))) {
-        result.push({ label: f, type: 'value', apply: f })
+        result.push(withThumbnail({ label: f, type: 'value', apply: f }, pid))
+      }
+    }
+
+    // @type(类型)：从代码库联想同类型的键（对齐手机版 findCodeByCodeInType，
+    // 如 logicBoolean 键值 self.isFlying ← type=noParameterLogicStatement 的键）
+    for (const d of directives) {
+      const m = /^@type\((.+)\)$/.exec(d)
+      if (m) {
+        for (const c of data.findCodesByType(m[1], query, 20)) {
+          result.push(toCompletion(c))
+        }
+      }
+    }
+
+    // @customType(类型)：从当前模组联想自定义值（对齐手机版 FileDataBase.ValueTable；
+    // 桌面版数据源 = 项目内单位名 [core] name，如 unit 值类型引用的 unitName）
+    for (const d of directives) {
+      const m = /^@customType\((.+)\)$/.exec(d)
+      if (m && data.listUnitNames) {
+        const names = (await data.listUnitNames()) ?? []
+        for (const n of names.filter((n) => !q || n.toLowerCase().includes(q))) {
+          result.push({ label: n, type: 'value', apply: n })
+        }
       }
     }
   }
@@ -307,10 +385,35 @@ export async function rustCompletionSource(context: CompletionContext): Promise<
   // 保证节补全（[tur → from 指向 tur）等场景的替换范围正确
   const word = before.split(/[\s:;,()=[\]{}]+/).pop() ?? ''
 
+  // 局部变量补全：行内 ${ 未闭合（对齐手机版 CodeAutoCompleteJob：
+  // } 位置在 ${ 之前 → 响应变量），替换范围从 ${ 开始，避免插入后变成 ${{变量}}
+  const dollarIdx = before.lastIndexOf('${')
+  if (dollarIdx >= 0 && !before.slice(dollarIdx + 1).includes('}')) {
+    const q = before.slice(dollarIdx + 2)
+    const options = localVariableCompletions(lines, q)
+    if (options.length > 0) {
+      // validFor 必须匹配「从替换起点 ${ 到光标」的整段文本（CodeMirror 对整段做检查），
+      // 否则每次输入都会判定失效 → 弹窗闪烁关闭再打开
+      return { from: lineInfo.from + dollarIdx, options, validFor: /^\$\{[\w\u4e00-\u9fff]*$/ }
+    }
+  }
+
   const data = await realResourcesDataSource()
   const completions = await computeRustCompletions(line, section, word, before, lineIndex, lines, data)
 
   if (completions.length === 0) return null
   const from = context.pos - word.length
   return { from, options: completions, validFor: /^[\w\u4e00-\u9fff]*$/ }
+}
+
+/** 局部变量补全候选（纯函数，供测试）：当前文件出现过的 ${名字} */
+export function localVariableCompletions(lines: string[], query: string): Completion[] {
+  const q = query.trim()
+  return collectLocalVariables(lines)
+    .filter((v) => !q || v.toLowerCase().includes(q.toLowerCase()))
+    .map((v) => ({
+      label: v,
+      type: 'variable',
+      apply: `\${${v}}`,
+    }))
 }

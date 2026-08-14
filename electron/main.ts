@@ -13,6 +13,7 @@ import { createStore } from './store'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import { applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, globalOp, importModBuffer, listTemplates, packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources, scanUnits, writeModInfo } from './modTools'
+import { detectGameDir, importOfficialUnits } from './game'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
@@ -296,9 +297,11 @@ function registerIpc(): void {
     }
   })
 
-  ipcMain.handle('fs:readDir', async (_event, rootPath: string, dirPath: string) => {
+  ipcMain.handle('fs:readDir', async (_event, rootPath: string, dirPath: string, showHidden = false) => {
     await requireRealInsideRoot(rootPath, dirPath)
-    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+    const all = await fs.readdir(dirPath, { withFileTypes: true })
+    // M8：显示隐藏文件开关（默认隐藏 . 开头条目；.nomedia 这类游戏文件默认不打扰）
+    const entries = showHidden ? all : all.filter((e) => !e.name.startsWith('.'))
     const out = await Promise.all(
       entries.map(async (entry) => {
         const full = path.join(dirPath, entry.name)
@@ -678,6 +681,74 @@ function registerIpc(): void {
 
   ipcMain.handle('image:readAsDataUrl', async (_event, rootPath: string, imagePath: string) => {
     return readMediaAsDataUrl(rootPath, imagePath, IMAGE_MIME)
+  })
+
+  // M8 游戏集成：检测铁锈战争安装目录、导入官方单位示例、导入游戏内已装模组。
+  // 游戏目录只读；导入目标目录必须是已登记信任锚（dialog:openFolder 选择即登记）
+  ipcMain.handle('game:detect', async (_event, configuredPath?: string) => {
+    return detectGameDir(typeof configuredPath === 'string' && configuredPath ? configuredPath : undefined)
+  })
+
+  ipcMain.handle('game:importSample', async (_event, gamePath: string, targetRoot: string, opts: { title?: string; description?: string } | null) => {
+    if (typeof targetRoot !== 'string' || !allowedRoots.has(normalizePath(targetRoot))) {
+      throw new Error('目标目录未登记，请重新选择文件夹')
+    }
+    const detected = await detectGameDir(typeof gamePath === 'string' ? gamePath : undefined)
+    if (!detected.found || !detected.gamePath) throw new Error('未找到铁锈战争安装目录，请先在设置中配置游戏目录')
+    if (packing) throw new Error('已有打包/优化任务正在进行，请稍候再导入')
+    const meta = opts ?? {}
+    const result = await importOfficialUnits(detected.gamePath, targetRoot, detected.units, {
+      title: typeof meta.title === 'string' && meta.title ? meta.title : '官方单位示例',
+      description:
+        typeof meta.description === 'string' && meta.description
+          ? meta.description
+          : `由铁锈助手从游戏安装目录导入的 ${detected.units.length} 个官方单位（仅供学习参考）`,
+      author: 'Rusted Warfare 官方',
+      version: '1.0',
+    })
+    registerRoot(targetRoot)
+    return { rootPath: targetRoot, ...result }
+  })
+
+  ipcMain.handle('game:importMod', async (_event, gamePath: string, fileName: string, targetRoot: string) => {
+    if (typeof targetRoot !== 'string' || !allowedRoots.has(normalizePath(targetRoot))) {
+      throw new Error('目标目录未登记，请重新选择文件夹')
+    }
+    const detected = await detectGameDir(typeof gamePath === 'string' ? gamePath : undefined)
+    if (!detected.found || !detected.gamePath) throw new Error('未找到铁锈战争安装目录，请先在设置中配置游戏目录')
+    // 文件名白名单：只接受 mods/units 下实际存在的 .rwmod（防路径穿越）
+    if (typeof fileName !== 'string' || fileName !== path.basename(fileName) || !detected.mods.includes(fileName)) {
+      throw new Error('无效的模组包文件名')
+    }
+    if (packing) throw new Error('已有打包/优化任务正在进行，请稍候再导入')
+    const pkg = path.join(detected.gamePath, 'mods', 'units', fileName)
+    const pkgStat = await fs.stat(pkg)
+    if (pkgStat.size > 1024 * 1024 * 1024) {
+      throw new Error(`模组包过大（${(pkgStat.size / 1024 / 1024 / 1024).toFixed(1)}GB，上限 1GB），无法导入`)
+    }
+    // 在用户选定的目录下创建唯一子目录解压（与 mod:import 同款命名/去重），
+    // 绝不直接解压进用户既有目录——解压失败清理也只针对本次创建的子目录，避免误删用户数据
+    let baseName = path.basename(fileName, path.extname(fileName)).replace(/[/:*?"<>|]/g, '-').replace(/^[\s.]+|[\s.]+$/g, '')
+    if (!baseName || baseName === '.' || baseName === '..') baseName = 'imported-mod'
+    // Windows 保留名（CON/NUL/PRN/AUX/COM1-9/LPT1-9）：mkdir 会抛 EINVAL，加后缀避开
+    if (/^(con|nul|prn|aux|com[1-9]|lpt[1-9])$/i.test(baseName)) baseName += '-mod'
+    let destRoot = path.join(targetRoot, baseName)
+    for (let suffix = 2; await exists(destRoot); suffix++) destRoot = path.join(targetRoot, `${baseName}-${suffix}`)
+    const buf = await fs.readFile(pkg)
+    let files: number
+    try {
+      // 解压写盘前创建目录（放 try 内：读包/建目录失败都会清理，不留空目录）
+      await fs.mkdir(destRoot, { recursive: true })
+      ;({ files } = await importModBuffer(buf, destRoot))
+    } catch (err) {
+      // 解压中途失败：只清理本次创建的子目录（不留残留），用户选择的父目录不受影响
+      await fs.rm(destRoot, { recursive: true, force: true }).catch(() => undefined)
+      throw err
+    }
+    registerRoot(destRoot)
+    // 登记为「本次会话创建」：语义与 mod:import 一致（只针对本次创建的目录）
+    importedDirs.add(normalizePath(destRoot))
+    return { rootPath: destRoot, files }
   })
 
   // M6.5 音频预览：与图片同一套安全校验（限项目内 + 白名单 + 大小上限）

@@ -9,7 +9,13 @@ export type AppIconName =
   | 'search' | 'settings' | 'refresh' | 'close' | 'save' | 'delete'
   | 'add' | 'file' | 'folder' | 'font' | 'layout' | 'plus' | 'rename' | 'tools'
   | 'palette' | 'text' | 'check' | 'cross' | 'warn' | 'zoom' | 'box' | 'tower'
-  | 'sparkle' | 'download' | 'import' | 'archive' | 'star' | 'info'
+  | 'sparkle' | 'download' | 'import' | 'archive' | 'star' | 'info' | 'copy'
+  // M8 图标库扩充（570+Icons-CN）
+  | 'music' | 'image' | 'play' | 'pause' | 'undo' | 'redo' | 'upload' | 'export'
+  | 'menu' | 'message' | 'bell' | 'user' | 'avatar' | 'moon' | 'sun' | 'picker'
+  | 'link' | 'lock' | 'unlock' | 'eye' | 'eye-off' | 'code' | 'document' | 'bookmark'
+  | 'ranking' | 'tag' | 'pin' | 'cloud' | 'bolt' | 'zoom-in' | 'zoom-out' | 'share'
+  | 'stop' | 'clock' | 'calendar' | 'expand' | 'edit'
 
 const ICONS: Record<AppIconName, string> = {
   search: './icons/search.svg',
@@ -40,6 +46,44 @@ const ICONS: Record<AppIconName, string> = {
   archive: './icons/archive.svg',
   star: './icons/star.svg',
   info: './icons/info.svg',
+  copy: './icons/copy.svg',
+  music: './icons/music.svg',
+  image: './icons/image.svg',
+  play: './icons/play.svg',
+  pause: './icons/pause.svg',
+  undo: './icons/undo.svg',
+  redo: './icons/redo.svg',
+  upload: './icons/upload.svg',
+  export: './icons/export.svg',
+  menu: './icons/menu.svg',
+  message: './icons/message.svg',
+  bell: './icons/bell.svg',
+  user: './icons/user.svg',
+  avatar: './icons/avatar.svg',
+  moon: './icons/moon.svg',
+  sun: './icons/sun.svg',
+  picker: './icons/picker.svg',
+  link: './icons/link.svg',
+  lock: './icons/lock.svg',
+  unlock: './icons/unlock.svg',
+  eye: './icons/eye.svg',
+  'eye-off': './icons/eye-off.svg',
+  code: './icons/code.svg',
+  document: './icons/document.svg',
+  bookmark: './icons/bookmark.svg',
+  ranking: './icons/ranking.svg',
+  tag: './icons/tag.svg',
+  pin: './icons/pin.svg',
+  cloud: './icons/cloud.svg',
+  bolt: './icons/bolt.svg',
+  'zoom-in': './icons/zoom-in.svg',
+  'zoom-out': './icons/zoom-out.svg',
+  share: './icons/share.svg',
+  stop: './icons/stop.svg',
+  clock: './icons/clock.svg',
+  calendar: './icons/calendar.svg',
+  expand: './icons/expand.svg',
+  edit: './icons/edit.svg',
 }
 
 export function AppIcon({ name, size = 16, className, title }: { name: AppIconName; size?: number; className?: string; title?: string }) {
