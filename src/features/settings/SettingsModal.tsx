@@ -44,7 +44,15 @@ export function SettingsModal() {
   useEffect(() => {
     let alive = true
     void loadCodeData().then(() => {
-      if (alive) setGameVersions(getGameVersions())
+      if (!alive) return
+      const versions = getGameVersions()
+      setGameVersions(versions)
+      // 存储的版本名不在当前版本表（数据更新后旧值残留）→ 归一化回「跟随最新」，
+      // 避免 select 显示与实际存储脱节
+      const stored = useWorkspaceStore.getState().settings.targetGameVersion
+      if (stored && versions.length > 0 && !versions.some((v) => v.versionName === stored)) {
+        useWorkspaceStore.getState().updateSettings({ targetGameVersion: '' })
+      }
     })
     return () => {
       alive = false
@@ -360,7 +368,9 @@ export function SettingsModal() {
                   value={settings.targetGameVersion}
                   onChange={(e) => updateSettings({ targetGameVersion: e.target.value })}
                 >
-                  <option value="">跟随最新（1.15-p10）</option>
+                  <option value="">
+                    跟随最新{gameVersions.length > 0 ? `（${gameVersions[gameVersions.length - 1].versionName}）` : ''}
+                  </option>
                   {gameVersions.map((v) => (
                     <option key={v.versionNumber} value={v.versionName}>
                       {v.versionName}
