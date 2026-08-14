@@ -913,7 +913,7 @@ function registerIpc(): void {
     // 与 writeFile 工具 resolveInside 对齐：剥前导斜杠（AI 可能用 /units/a.txt 写法；
     // win32 上 path.isAbsolute('/units/a.txt') === true，不剥会误拒）
     const rel = relPath.replace(/^\/+/, '')
-    if (path.isAbsolute(rel) || rel.includes('..')) {
+    if (!rel || path.isAbsolute(rel) || rel.includes('..')) {
       throw new Error('无效的文件路径')
     }
     requireInsideRoot(rootPath, path.join(rootPath, rel))

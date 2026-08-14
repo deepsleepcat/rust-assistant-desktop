@@ -26,6 +26,9 @@ const MAX_LINT_FILE_CHARS = 5 * 1024 * 1024
 export function joinProjectPath(rootPath: string, relPath: string): string {
   const root = rootPath.replace(/[\\/]+$/, '')
   const rel = relPath.replace(/^\/+/, '').replace(/\\/g, '/').replace(/^\.\//, '')
+  // 拒绝盘符写法（C:/x）：拼接后词法上会落在根内但物理上不存在（Windows 文件名
+  // 不允许 :），只读通道靠 ENOENT 兜底；显式拒绝更干净，防未来被复用于写通道
+  if (rel.includes(':')) throw new Error('无效的文件路径')
   return `${root}/${rel}`
 }
 

@@ -11,6 +11,11 @@ describe('joinProjectPath', () => {
     expect(joinProjectPath('W:\\proj\\', '/units/rifle.ini')).toBe('W:\\proj/units/rifle.ini')
     expect(joinProjectPath('W:/proj', './units\\rifle.ini')).toBe('W:/proj/units/rifle.ini')
   })
+
+  it('拒绝盘符写法（防未来被复用于写通道）', () => {
+    expect(() => joinProjectPath('W:\\proj', 'C:/evil.txt')).toThrow()
+    expect(() => joinProjectPath('W:\\proj', 'D:\\evil.txt')).toThrow()
+  })
 })
 
 describe('lineStarts / lineNumberAt', () => {

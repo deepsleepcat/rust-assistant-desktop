@@ -9,6 +9,7 @@ import { formatRelativeTime } from '../../utils/conversation'
 import { IconArchive } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { Modal, PromptModal } from '../../components/Modal'
+import { joinProjectPath } from '../ai/aiQualityCheck'
 import type { ToolEvent } from '../../types/domain'
 import type { AiHistoryMeta } from '../../types/ai'
 
@@ -367,18 +368,21 @@ function ToolCard({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
           </span>
         )}
       </div>
-      {isWrite && tool.ok && tool.lint && tool.lint.length > 0 && <LintBox tool={tool} />}
+      {isWrite && tool.ok && tool.lint && tool.lint.length > 0 && <LintBox tool={tool} rootPath={rootPath} />}
       {historyOpen && tool.path && <HistoryModal rootPath={rootPath} relPath={tool.path} onClose={() => setHistoryOpen(false)} />}
     </>
   )
 }
 
 /** 质检结果清单：默认收起；展开后每条含 行号 + 原因 + 修复建议 + 「定位」跳转 */
-function LintBox({ tool }: { tool: ToolEvent }) {
+function LintBox({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
   const jumpToFileLine = useWorkspaceStore((s) => s.jumpToFileLine)
   const [open, setOpen] = useState(false)
   const items = tool.lint ?? []
   const errors = items.filter((l) => l.severity === 'error').length
+  // 定位前把 AI 相对路径拼成项目内绝对路径（openFile 走 fs 通道要求绝对路径；
+  // 相对路径按主进程 CWD 解析必然越界被拒）
+  const openAtLine = (item: { line: number }) => jumpToFileLine(joinProjectPath(rootPath, tool.path ?? ''), item.line)
   return (
     <div className={`lint-box${errors > 0 ? ' has-error' : ''}`}>
       <button className="lint-toggle" onClick={() => setOpen(!open)} title={open ? '收起质检结果' : '展开质检结果'}>
@@ -402,7 +406,7 @@ function LintBox({ tool }: { tool: ToolEvent }) {
                   className="btn"
                   style={{ padding: '1px 8px', fontSize: 11, alignSelf: 'flex-start' }}
                   title={`打开 ${tool.path} 并跳到第 ${item.line} 行`}
-                  onClick={() => jumpToFileLine(tool.path!, item.line)}
+                  onClick={() => openAtLine(item)}
                 >
                   <AppIcon name="search" size={11} /> 定位
                 </button>
