@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { EditorTab } from '../../../types/domain'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import { getBridge } from '../../../services/bridge'
-import { getEnToZhDict } from '../../../services/codeData'
+import { getEnToZhDict, getZhToEnDict } from '../../../services/codeData'
 import { findUnitGroup, UNIT_FORM_GROUPS, type UnitFieldDef } from './unitFormFields'
 import { applyUnitFormValue, fillDefaults, parseUnitForm, validateFormValue, type UnitFormState } from './unitFormSync'
 
@@ -30,9 +30,9 @@ function relativePath(fromDir: string, toPath: string): string {
   return [...Array(up).fill('..'), ...rest].join('/')
 }
 
-/** 当前 tab 是否为单位文件（含 [core] 节） */
+/** 当前 tab 是否为单位文件（含 [core] 或中文 [核心] 节） */
 export function isUnitFile(content: string): boolean {
-  return /^\s*\[core\]\s*(?:#.*)?$/im.test(content)
+  return /^\s*\[(?:core|核心)\]\s*(?:#.*)?$/im.test(content)
 }
 
 export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
@@ -40,7 +40,7 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
   // 表单值（每次内容变化重新解析；本地编辑态缓存带内容快照——
   // 内容外部变更（格式化/重新加载）后旧草稿自动失效，不覆盖新内容）
   const [draft, setDraft] = useState<Record<string, { value: string; content: string }> | null>(null)
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [errors, setErrors] = useState<Record<string, { msg: string; content: string }>>({})
   const [resources, setResources] = useState<{ images: string[]; audios: string[] }>({ images: [], audios: [] })
   const [picking, setPicking] = useState<string | null>(null)
 
@@ -66,12 +66,16 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
     }
   }, [rootPath])
 
-  // 表单状态：内容变化（含外部编辑/撤销）重新解析，本地草稿失效
-  const formState: UnitFormState = useMemo(() => fillDefaults(parseUnitForm(tab.content)), [tab.content])
+  // 表单状态：内容变化（含外部编辑/撤销）重新解析，本地草稿失效；
+  // 中文显示层传 zhToEn 词典（[核心]/名称/生命值 回译成英文键匹配字段定义）
+  const formState: UnitFormState = useMemo(
+    () => fillDefaults(parseUnitForm(tab.content, { zhToEn: tab.translationEnabled ? (k) => getZhToEnDict().get(k) : undefined })),
+    [tab.content, tab.translationEnabled],
+  )
   /** 提交表单值到文件（实时双向同步；中文显示层新键写回中文键名） */
   const commit = (groupSection: string, field: UnitFieldDef, value: string) => {
     const err = validateFormValue(field, value)
-    setErrors((prev) => ({ ...prev, [`${groupSection}.${field.key}`]: err ?? '' }))
+    setErrors((prev) => ({ ...prev, [`${groupSection}.${field.key}`]: { msg: err ?? '', content: tab.content } }))
     if (err) return // 非法值不写回（代码保持上一次合法值，表单显示红框）
     setDraft((prev) => ({ ...(prev ?? {}), [`${groupSection}.${field.key}`]: { value, content: tab.content } }))
     const enToZh = tab.translationEnabled ? (k: string) => getEnToZhDict().get(k) : undefined
@@ -124,10 +128,12 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
                 const field = v ? findUnitGroup(group.section)?.fields.find((f) => f.key === v.key) : undefined
                 if (!field) return null
                 const key = `${group.section}.${field.key}`
-                const err = errors[key] ?? ''
+                const errEntry = errors[key]
+                const err = errEntry && errEntry.content === tab.content ? errEntry.msg : ''
                 const draftEntry = draft?.[key]
                 const draftValue = draftEntry && draftEntry.content === tab.content ? draftEntry.value : undefined
-                const value = draftValue !== undefined ? draftValue : v.value
+                // 文件中不存在的字段显示空（placeholder 提示默认值），不误导为已设置
+                const value = draftValue !== undefined ? draftValue : v.present ? v.value : ''
                 const isResourcePicker = picking === key
                 const pool = field.resourceExts?.includes('ogg') || field.resourceExts?.includes('wav') ? resources.audios : resources.images
                 return (

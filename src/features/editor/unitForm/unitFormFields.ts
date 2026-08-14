@@ -27,6 +27,9 @@ export interface UnitFieldDef {
   /** 数字最小/最大值（非法值即时提示） */
   min?: number
   max?: number
+  /** text 类型正则校验（patternMessage 为不匹配时的提示） */
+  pattern?: RegExp
+  patternMessage?: string
   /** resource 类型允许的扩展名（小写） */
   resourceExts?: string[]
 }
@@ -92,7 +95,7 @@ export const UNIT_FORM_GROUPS: UnitFieldGroup[] = [
     fields: [
       { key: 'canAttack', label: '可以攻击', type: 'enum', options: BOOLEAN_OPTIONS, defaultValue: 'true', description: '是否具备攻击能力' },
       { key: 'maxAttackRange', label: '最大攻击距离', type: 'number', defaultValue: '200', min: 1, description: '攻击最大射程（像素）' },
-      { key: 'shootDelay', label: '射击间隔', type: 'text', defaultValue: '20', description: '两次攻击之间的间隔（帧或秒，如 20 或 5s）' },
+      { key: 'shootDelay', label: '射击间隔', type: 'text', defaultValue: '20', pattern: /^\d+(\.\d+)?s?$/, patternMessage: '格式：数字或数字+s（如 20 或 5s）', description: '两次攻击之间的间隔（帧或秒，如 20 或 5s）' },
       { key: 'turretTurnSpeed', label: '炮塔转向速度', type: 'number', defaultValue: '1', min: 0, description: '炮塔旋转速度' },
       { key: 'turretSize', label: '炮塔尺寸', type: 'number', defaultValue: '10', min: 1, description: '炮塔碰撞/显示尺寸' },
     ],
@@ -138,6 +141,6 @@ export function findUnitGroup(section: string): UnitFieldGroup | undefined {
   const lower = section.toLowerCase()
   const exact = UNIT_FORM_GROUPS.find((g) => g.section.toLowerCase() === lower)
   if (exact) return exact
-  if (lower.startsWith('turret')) return UNIT_FORM_GROUPS.find((g) => g.section === 'turret')
+  if (/^turret(?:_|$)/.test(lower)) return UNIT_FORM_GROUPS.find((g) => g.section === 'turret')
   return undefined
 }

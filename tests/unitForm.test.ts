@@ -144,3 +144,36 @@ describe('M14 审查修复回归', () => {
     expect(out).toBe('[core]\nname: x\n')
   })
 })
+
+describe('M14 第二轮审查回归', () => {
+  it('parse 剥离行内注释（maxHp: 500 # 血 → 500）', () => {
+    const state = parseUnitForm('[core]\nmaxHp: 500 # 血\n')
+    expect(state['core']?.find((v) => v.key === 'maxHp')?.value).toBe('500')
+  })
+
+  it('中文文件替换键保留中文键名（不混入英文键）', () => {
+    const zhToEn = (k: string) => (k === '核心' ? 'core' : k === '名称' ? 'name' : k === '生命值' ? 'maxHp' : undefined)
+    const out = applyUnitFormValue('[核心]\n名称: x\n生命值: 500\n', 'core', 'maxHp', '800', { zhToEn })
+    expect(out).toContain('生命值: 800')
+    expect(out).not.toContain('maxHp: 800')
+  })
+
+  it('无炮塔节时新建 [turret_1]（官方节名）', () => {
+    const out = applyUnitFormValue('[core]\nname: x\n', 'turret', 'x', '10')
+    expect(out).toContain('[turret_1]')
+    expect(out).not.toContain('[turret]\n')
+  })
+
+  it('shootDelay 格式校验（Ns 合法，abc 拒绝）', () => {
+    const field = findUnitField('shootDelay')!
+    expect(validateFormValue(field, '5s')).toBeNull()
+    expect(validateFormValue(field, 'abc')).toContain('格式')
+  })
+
+  it('中文节名 isUnitFile 识别（[核心]）', async () => {
+    const { isUnitFile } = await import('../src/features/editor/unitForm/UnitFormPanel')
+    expect(isUnitFile('[核心]\n名称: x\n')).toBe(true)
+    expect(isUnitFile('[core]\nname: x\n')).toBe(true)
+    expect(isUnitFile('[graphics]\nimage: a.png\n')).toBe(false)
+  })
+})

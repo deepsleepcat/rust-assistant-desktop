@@ -71,7 +71,7 @@ export function parseUnitForm(content: string, options: ParseUnitFormOptions = {
     const list = state[group.section] ?? []
     // 同键重复（多炮塔节 [turret_1]/[turret_2]）：只取第一个（表单管理主炮塔）
     if (!list.some((v) => v.key.toLowerCase() === field.key.toLowerCase())) {
-      list.push({ key: field.key, value: toEnValue(kv[2].trim(), zhToEn), present: true })
+      list.push({ key: field.key, value: toEnValue(kv[2].replace(/[ \t]+#.*$/, '').trim(), zhToEn), present: true })
     }
     state[group.section] = list
   }
@@ -142,7 +142,6 @@ export function applyUnitFormValue(content: string, groupSection: string, key: s
     }
   }
 
-  const newLine = `${key}: ${value}`
   const isEmpty = value.trim() === ''
 
   if (keyLine >= 0) {
@@ -150,25 +149,29 @@ export function applyUnitFormValue(content: string, groupSection: string, key: s
       // 清空非必填字段 → 删除该行（游戏对空值行行为未知，不留空值）
       lines.splice(keyLine, 1)
     } else {
-      // 替换整行，保留缩进与行内注释
+      // 替换整行，保留缩进与行内注释；键名用文件原始写法（中文显示层保持中文键）
       const indent = /^(\s*)/.exec(lines[keyLine])?.[1] ?? ''
       const comment = /[ \t]+(#.*)$/.exec(lines[keyLine])?.[1]
-      lines[keyLine] = `${indent}${newLine}${comment ? ` ${comment}` : ''}`
+      const rawKey = KV_RE.exec(lines[keyLine])?.[1].trim() ?? key
+      lines[keyLine] = `${indent}${rawKey}: ${value}${comment ? ` ${comment}` : ''}`
     }
   } else if (isEmpty) {
     // 键不存在且清空：无操作（不创建空值行）
     return content
   } else if (sectionLine >= 0) {
-    // 节存在：插入到节内最后一个非空行之后（保留节间空行分隔）
+    // 节存在：插入到节内最后一个非空行之后（保留节间空行分隔）；中文模式用中文键
     let insertAt = sectionEnd
     while (insertAt > sectionLine + 1 && lines[insertAt - 1].trim() === '') insertAt--
-    lines.splice(insertAt, 0, newLine)
+    const displayKey = enToZh ? enToZh(key) ?? key : key
+    lines.splice(insertAt, 0, `${displayKey}: ${value}`)
   } else {
     // 节不存在：追加新节到文件尾（前面补空行分隔）
     const displayKey = enToZh ? enToZh(key) ?? key : key
     const displayValue = enToZh && /^(true|false)$/i.test(value) ? (enToZh(value) ?? value) : value
     if (lines.length > 0 && lines[lines.length - 1] !== '') lines.push('')
-    lines.push(`[${groupSection}]`)
+    // 炮塔组新建节用官方编号节名 [turret_1]（裸 [turret] 游戏不识别）
+    const newSection = isTurretGroup ? 'turret_1' : groupSection
+    lines.push(`[${newSection}]`)
     lines.push(`${displayKey}: ${displayValue}`)
   }
   return crlf ? lines.join('\r\n') : lines.join('\n')
@@ -192,6 +195,10 @@ export function validateFormValue(field: UnitFieldDef, value: string): string | 
       if (field.options && !(v in field.options) && !Object.keys(field.options).some((k) => k.toLowerCase() === v.toLowerCase())) {
         return `必须是：${Object.keys(field.options).join(' / ')}`
       }
+      return null
+    }
+    case 'text': {
+      if (field.pattern && !field.pattern.test(v)) return field.patternMessage ?? '格式不正确'
       return null
     }
     case 'resource': {
