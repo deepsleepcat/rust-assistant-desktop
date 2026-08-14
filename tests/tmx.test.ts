@@ -134,3 +134,40 @@ describe('canPreviewSafely', () => {
     expect(canPreviewSafely(huge)).toBe(false)
   })
 })
+
+describe('M15 审查修复回归', () => {
+  it('子目录地图的图块集引用按地图目录解析（标准 maps/ 布局）', async () => {
+    const map = parseTmx(CSV_MAP)!
+    // 地图在 maps/level.tmx：source="ground.tsx" → 实际文件 maps/ground.tsx
+    const ok = await checkTmx(map, { projectFiles: new Set(['maps/ground.tsx']), mapDir: 'maps' })
+    expect(ok.issues.some((i) => i.message.includes('ground.tsx'))).toBe(false)
+    const bad = await checkTmx(map, { projectFiles: new Set(['ground.tsx']), mapDir: 'maps' })
+    expect(bad.issues.some((i) => i.message.includes('maps/ground.tsx'))).toBe(true)
+  })
+
+  it('XML 编码 data（tile 子元素）计入瓦片数', async () => {
+    const xml = `<map version="1.2" width="2" height="2" tilewidth="32" tileheight="32">
+  <layer name="Ground"><data><tile gid="1"/><tile gid="1"/><tile gid="0"/><tile gid="1"/></data></layer>
+</map>`
+    const map = parseTmx(xml)!
+    const result = await checkTmx(map)
+    expect(result.ok).toBe(true)
+  })
+
+  it('CDATA 包裹的数据可解析', () => {
+    const xml = `<map version="1.2" width="2" height="2"><layer name="Ground"><data><![CDATA[1,1,1,1]]></data></layer></map>`
+    const map = parseTmx(xml)!
+    expect(map.layers[0].data).toBe('1,1,1,1')
+  })
+
+  it('深度嵌套 XML 解析器有上限（不爆栈）', () => {
+    const deep = '<a>'.repeat(500) + '</a>'.repeat(500)
+    expect(parseSimpleXml(deep)).toBeNull()
+  })
+
+  it('属性值含 > 不误截断', () => {
+    const root = parseSimpleXml('<map name="a>b"><layer/></map>')!
+    expect(root.attrs['name']).toBe('a>b')
+    expect(root.children.length).toBe(1)
+  })
+})

@@ -19,9 +19,10 @@ export interface SimpleXmlNode {
  * 不做完整 XML 规范（无 CDATA/实体展开——TMX 数据区是纯文本，够用）。 */
 export function parseSimpleXml(xml: string): SimpleXmlNode | null {
   let pos = 0
-  const root = parseElement()
+  const root = parseElement(0)
   return root
-  function parseElement(): SimpleXmlNode | null {
+  function parseElement(depth: number): SimpleXmlNode | null {
+    if (depth > 200) return null // 递归深度上限（防对抗性嵌套卡 UI）
     // 跳过空白/注释/声明
     for (;;) {
       const ws = /^\s*/.exec(xml.slice(pos))?.[0].length ?? 0
@@ -36,6 +37,12 @@ export function parseSimpleXml(xml: string): SimpleXmlNode | null {
         const end = xml.indexOf('?>', pos)
         if (end < 0) return null
         pos = end + 2
+        continue
+      }
+      if (xml.startsWith('<![CDATA[', pos)) {
+        const end = xml.indexOf(']]>', pos)
+        if (end < 0) return null
+        pos = end + 3
         continue
       }
       break
@@ -82,7 +89,15 @@ export function parseSimpleXml(xml: string): SimpleXmlNode | null {
         pos = end + 3
         continue
       }
-      const child = parseElement()
+      // CDATA：作为文本并入（TMX 第三方工具可能用 CDATA 包裹 base64 数据）
+      if (xml.startsWith('<![CDATA[', pos)) {
+        const end = xml.indexOf(']]>', pos)
+        if (end < 0) return null
+        node.text += xml.slice(pos + 9, end)
+        pos = end + 3
+        continue
+      }
+      const child = parseElement(depth + 1)
       if (!child) return null
       node.children.push(child)
     }
@@ -183,10 +198,12 @@ export function parseTmx(xml: string): TmxMap | null {
   }
 }
 
-/** 检查地图（文件级；tileset source 存在性需要项目文件列表——由调用方传入） */
+/** 检查地图（文件级；tileset source 存在性需要项目文件列表——由调用方传入）。
+ * mapDir：地图文件所在目录（相对项目根，如 maps/）——图块集 source 是相对
+ * 地图文件目录的引用，必须拼上目录再比较，否则标准 maps/ 布局必误报 */
 export async function checkTmx(
   map: TmxMap,
-  options: { projectFiles?: ReadonlySet<string> } = {},
+  options: { projectFiles?: ReadonlySet<string>; mapDir?: string } = {},
 ): Promise<TmxCheckResult> {
   const issues: TmxCheckIssue[] = []
   const projectFiles = options.projectFiles
@@ -201,7 +218,15 @@ export async function checkTmx(
   if (!groundLayer) {
     issues.push({ severity: 'warning', message: '缺少 Ground 瓦片层（游戏可能无法识别地形）' })
   } else if (map.width > 0 && map.height > 0) {
-    const tileCount = await decodedTileCount(groundLayer)
+    // XML 编码 data（<data><tile gid=.../></data>）：无 encoding 属性时按子元素计数
+    let xmlTileCount: number | undefined
+    if (!groundLayer.encoding) {
+      // 粗略取 Ground 层 data 内 <tile 出现次数（Tiled XML 编码地图）
+      const re = /<layer\b[^>]*name\s*=\s*"Ground"[^>]*>[\s\S]*?<data\b[^>]*>([\s\S]*?)<\/data>/i
+      const m = re.exec(map.raw)
+      if (m) xmlTileCount = (m[1].match(/<tile\b/g) ?? []).length
+    }
+    const tileCount = await decodedTileCount(groundLayer, xmlTileCount)
     if (tileCount === null) {
       issues.push({
         severity: 'error',
@@ -221,11 +246,15 @@ export async function checkTmx(
     issues.push({ severity: 'warning', message: '缺少 Triggers 对象层（触发器/出生点等对象放这里）' })
   }
 
-  // 4) 图块集引用有效性
+  // 4) 图块集引用有效性（source 相对地图文件目录；mapDir 空 = 地图在项目根）
   if (projectFiles) {
+    const dir = options.mapDir ? options.mapDir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') : ''
     for (const ts of map.tilesets) {
-      if (ts.source && !projectFiles.has(ts.source)) {
-        issues.push({ severity: 'error', message: `图块集引用文件不存在：${ts.source}` })
+      if (ts.source) {
+        const ref = dir ? `${dir}/${ts.source.replace(/^\/+/, '')}` : ts.source.replace(/^\/+/, '')
+        if (!projectFiles.has(ref)) {
+          issues.push({ severity: 'error', message: `图块集引用文件不存在：${ref}` })
+        }
       }
     }
   }
@@ -235,7 +264,9 @@ export async function checkTmx(
 
 /** 解码瓦片层数据并返回瓦片数；无法解码返回 null。
  * 支持 CSV 与 gzip/zlib base64（DecompressionStream 解压）；未知格式返回 null。 */
-export async function decodedTileCount(layer: TmxLayer): Promise<number | null> {
+export async function decodedTileCount(layer: TmxLayer, xmlTileCount?: number): Promise<number | null> {
+  // XML 内嵌瓦片（<data><tile gid=.../></data>，无 encoding）：按子元素计数
+  if (!layer.data && xmlTileCount !== undefined) return xmlTileCount
   if (!layer.data) return 0
   const encoding = layer.encoding ?? 'csv'
   if (encoding === 'csv') {
@@ -262,7 +293,7 @@ export async function decodedTileCount(layer: TmxLayer): Promise<number | null> 
 }
 
 /** gzip/zlib 解压（DecompressionStream；Chromium 与 Node 18+ 均有） */
-async function inflateBytes(bytes: Uint8Array): Promise<Uint8Array | null> {
+export async function inflateBytes(bytes: Uint8Array): Promise<Uint8Array | null> {
   if (typeof DecompressionStream === 'undefined') return null
   try {
     // 先按 gzip 试（TMX 标准是 gzip）；失败再试 deflate（zlib 头部）

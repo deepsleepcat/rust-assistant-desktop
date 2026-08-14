@@ -201,6 +201,8 @@ function EditorPane({ tabId }: { tabId: string }) {
   const [outlineOpen, setOutlineOpen] = useState(false)
   // M14：表单模式（仅单位文件；表单与代码实时双向同步）
   const [formMode, setFormMode] = useState(false)
+  // M15：地图文件「代码编辑」切换（MapViewer 只读，XML 可能需手改）
+  const [mapEditMode, setMapEditMode] = useState(false)
   // 保存为模板：弹窗输入模板名（null 表示关闭）
   const [templateName, setTemplateName] = useState<string | null>(null)
   // 文件被外部修改后「重新加载」的确认（有未保存修改时才需要）
@@ -280,6 +282,16 @@ function EditorPane({ tabId }: { tabId: string }) {
         <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => useWorkspaceStore.getState().updateTabContent(tab.id, formatted)} title="Ctrl+Shift+F">
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="text" size={12} />格式化</span>
         </button>
+        {isMapFile(tab.path) && (
+          <button
+            className={mapEditMode ? 'btn primary' : 'btn'}
+            style={{ padding: '2px 10px', fontSize: 11.5 }}
+            onClick={() => setMapEditMode((v) => !v)}
+            title="地图查看器只读；切换到代码模式可手改 XML"
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="edit" size={12} />{mapEditMode ? '预览模式' : '代码编辑'}</span>
+          </button>
+        )}
         {isUnitFile(tab.content) && (
           <button
             className={formMode ? 'btn primary' : 'btn'}
@@ -329,7 +341,25 @@ function EditorPane({ tabId }: { tabId: string }) {
       )}
       <div className="editor-body">
         {isMapFile(tab.path) && project ? (
-          <MapViewer path={tab.path} rootPath={project.rootPath} />
+          mapEditMode ? (
+            <EditorMirror
+              value={tab.content}
+              onChange={(content) => updateTabContent(tab.id, content)}
+              onCursor={(line, col) => setEditorPos({ line, col })}
+              onSave={() => void saveTab(tab.id)}
+              fontFamily={fontFamily}
+              fontSize={fontSize}
+              chineseMode={tab.translationEnabled}
+              translationMap={tab.translationMap}
+              jumpTo={jumpTo}
+              onJumpDone={handleJumpDone}
+              rootPath={project?.rootPath}
+              semanticCheckers={semanticCheckers}
+              targetVersionName={targetVersionName}
+            />
+          ) : (
+            <MapViewer path={tab.path} rootPath={project.rootPath} />
+          )
         ) : formMode && isUnitFile(tab.content) && project ? (
           <UnitFormPanel tab={tab} rootPath={project.rootPath} />
         ) : (

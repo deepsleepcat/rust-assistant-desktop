@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getBridge } from '../../services/bridge'
-import { canPreviewSafely, checkTmx, parseTmx, type TmxCheckIssue, type TmxMap } from './tmx'
+import { canPreviewSafely, checkTmx, inflateBytes, parseTmx, type TmxCheckIssue, type TmxMap } from './tmx'
 
 interface MapViewerProps {
   path: string
@@ -31,15 +31,21 @@ async function groundGids(map: TmxMap): Promise<number[]> {
   if (encoding === 'base64') {
     try {
       const binary = atob(layer.data.replace(/\s+/g, ''))
-      if (!layer.compression || layer.compression === 'none') {
-        const out: number[] = []
-        const dv = new DataView(new ArrayBuffer(binary.length))
-        for (let i = 0; i < binary.length; i++) dv.setUint8(i, binary.charCodeAt(i))
-        for (let i = 0; i + 4 <= binary.length; i += 4) {
-          out.push(dv.getUint32(i, true))
-        }
-        return out
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      let raw: Uint8Array = bytes
+      if (layer.compression === 'gzip' || layer.compression === 'zlib') {
+        const inflated = await inflateBytes(bytes)
+        if (!inflated) return []
+        raw = inflated
       }
+      const out: number[] = []
+      const buf = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) as ArrayBuffer
+      const dv = new DataView(buf)
+      for (let i = 0; i + 4 <= raw.length; i += 4) {
+        out.push(dv.getUint32(i, true))
+      }
+      return out
     } catch {
       return []
     }
@@ -69,7 +75,8 @@ export function MapViewer({ path, rootPath }: MapViewerProps) {
         // 项目文件列表（图块集引用检查）
         const scan = await getBridge().mod.scanResources(rootPath).catch(() => null)
         if (!alive) return
-        const result = await checkTmx(parsed, { projectFiles: new Set(scan?.files ?? []) })
+        const mapDir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+        const result = await checkTmx(parsed, { projectFiles: new Set(scan?.files ?? []), mapDir })
         if (!alive) return
         setIssues(result.issues)
         const g = await groundGids(parsed)
@@ -87,7 +94,8 @@ export function MapViewer({ path, rootPath }: MapViewerProps) {
   useEffect(() => {
     if (!map || gids.length === 0 || !canvasRef.current) return
     const canvas = canvasRef.current
-    const scale = Math.min(8, Math.max(1, Math.floor(240 / map.width)))
+    // 边长钳制：极端纵横比（1×100000）时画布边长超浏览器上限（约 32767），绘制失效
+    const scale = Math.min(8, Math.max(1, Math.floor(240 / map.width)), Math.floor(2048 / map.height))
     canvas.width = map.width * scale
     canvas.height = map.height * scale
     const ctx = canvas.getContext('2d')
