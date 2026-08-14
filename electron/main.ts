@@ -286,6 +286,24 @@ function registerIpc(): void {
     return p
   })
 
+  // M13：另存为文本（质量报告导出用）——保存位置由用户在系统对话框中选择，
+  // 主进程只写用户确认的文件（defaultName 为建议文件名）
+  ipcMain.handle('dialog:saveText', async (_event, title: unknown, defaultName: unknown, content: unknown) => {
+    if (typeof content !== 'string') return { ok: false, message: '内容无效' }
+    const name = typeof defaultName === 'string' && defaultName ? path.basename(defaultName) : 'report.txt'
+    const result = await dialog.showSaveDialog({
+      title: typeof title === 'string' ? title : '保存文件',
+      defaultPath: name,
+    })
+    if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    try {
+      await fs.writeFile(result.filePath, content, 'utf8')
+      return { ok: true, path: result.filePath }
+    } catch (err) {
+      return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle('project:registerRoots', (_event, roots: string[]) => {
     // A 修复：只接受「主进程自持的持久化信任锚」中的项目根（对话框/导入流程写入）——
     // 渲染层无法通过伪造 workspace 数据凭空登记任意目录为项目根

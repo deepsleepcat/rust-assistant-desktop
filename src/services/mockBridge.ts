@@ -224,6 +224,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     project: {
       openFolderDialog: async () => ({ rootPath: MOCK_PROJECT_ROOT, name: '我的第一个模组' }),
       openImageDialog: async () => MOCK_IMAGE_DATA_URL,
+      saveText: async () => ({ ok: false, message: '模拟环境：无法保存' }),
       registerRoots: async () => undefined,
       readDir: async (_root, dirPath) => listDir(dirPath),
       stat: async (_root, filePath) => statFile(filePath),

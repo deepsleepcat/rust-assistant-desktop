@@ -48,6 +48,8 @@ export interface BridgeApi {
   project: {
     openFolderDialog(): Promise<OpenedProject | null>
     openImageDialog(): Promise<string | null>
+    /** M13：另存为文本（质量报告导出；保存位置由系统对话框决定） */
+    saveText(title: string, defaultName: string, content: string): Promise<{ ok: boolean; canceled?: boolean; path?: string; message?: string }>
     registerRoots(roots: string[]): Promise<void>
     readDir(rootPath: string, dirPath: string, showHidden?: boolean): Promise<DirEntry[]>
     /** 只读元数据（mtimeMs/size）：外部修改轮询用，不传输文件内容 */

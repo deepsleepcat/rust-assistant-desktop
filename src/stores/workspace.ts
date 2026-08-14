@@ -20,6 +20,7 @@ import { RUST_ASSISTANT_SYSTEM_PROMPT } from '../ai/rustSystemPrompt'
 import type { AiStreamEvent } from '../types/ai'
 import type { DiffLine } from '../types/diff'
 import { checkAiWrittenFile } from '../features/ai/aiQualityCheck'
+import { generateModReport as generateModReportFn } from '../features/modTools/modReport'
 
 export interface ConfirmRequest {
   title: string
@@ -87,9 +88,13 @@ interface WorkspaceStoreState {
   /** 「定位到文件行」请求（质检清单跳转用）：{ path, line, seq }，seq 递增保证重复跳转同位置也生效 */
   editorJump: { path: string; line: number; seq: number } | null
   /** M5：模组工具弹窗（null 表示关闭） */
-  modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | null
+  modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'report' | null
   /** M5：单位检查结果 */
   modCheckResult: { issues: Array<{ file: string; level: 'error' | 'warning' | 'info'; message: string }>; unitCount: number; fileCount: number } | null
+  /** M13：模组质量报告（生成中为 null；reportOpen 控制弹窗） */
+  modReport: import('../features/modTools/modReport').ModReport | null
+  modReportOpen: boolean
+  modReportBusy: boolean
   /** M7：优化工具扫描结果 */
   optimizeItems: Array<{ id: string; kind: 'emptyFile' | 'emptyFolder' | 'backupFile' | 'emptyLine' | 'comment'; rel: string; detail?: string }> | null
   /** M8：优化扫描失败信息（null 表示无失败；重试入口由弹窗提供） */
@@ -179,6 +184,12 @@ interface WorkspaceStoreActions {
   packModProject(): Promise<void>
   packModWithOptions(options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }): Promise<void>
   checkModProject(): Promise<void>
+  /** M13：生成模组质量报告 */
+  generateModReport(): Promise<void>
+  /** M13：导出质量报告（text/json；系统保存对话框） */
+  exportModReport(kind: 'text' | 'json'): Promise<void>
+  /** M13：打开/关闭质量报告弹窗 */
+  setModReportOpen(open: boolean): void
   /** M7：优化工具 */
   scanOptimizeProject(): Promise<void>
   applyOptimizeProject(ids: string[]): Promise<void>
@@ -339,6 +350,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       editorJump: null,
       modDialog: null,
       modCheckResult: null,
+      modReport: null,
+      modReportOpen: false,
+      modReportBusy: false,
       optimizeItems: null,
       optimizeError: null,
       updateState: { status: 'idle' },
@@ -1639,6 +1653,46 @@ export function createWorkspaceStore(bridge: BridgeApi) {
           set({ modCheckResult: result, modDialog: 'check' })
         } catch (err) {
           get().notify(`检查失败：${err instanceof Error ? err.message : String(err)}`)
+        }
+      },
+
+      // M13：生成模组质量报告（全量语义检查汇总；脱敏——仅相对路径）
+      async generateModReport() {
+        const project = activeProject()
+        if (!project || get().modReportBusy) return
+        set({ modReportBusy: true, modReportOpen: true })
+        try {
+          const report = await generateModReportFn(project.rootPath, {
+            projectName: project.name,
+            semanticCheckers: get().settings.semanticCheckers,
+            targetVersionName: get().settings.targetGameVersion,
+          })
+          set({ modReport: report })
+        } catch (err) {
+          get().notify(`报告生成失败：${err instanceof Error ? err.message : String(err)}`)
+          set({ modReportOpen: false })
+        } finally {
+          set({ modReportBusy: false })
+        }
+      },
+
+      setModReportOpen(open: boolean) {
+        set({ modReportOpen: open, modReport: open ? get().modReport : null })
+      },
+
+      // M13：导出质量报告（文本/JSON；保存位置由系统对话框决定）
+      async exportModReport(kind: 'text' | 'json') {
+        const report = get().modReport
+        if (!report) return
+        const { reportToJson, reportToText } = await import('../features/modTools/modReport')
+        const content = kind === 'json' ? reportToJson(report) : reportToText(report)
+        const defaultName = `mod-report-${report.meta.projectName}-${new Date().toISOString().slice(0, 10)}.${kind === 'json' ? 'json' : 'txt'}`
+        try {
+          const result = await bridge.project.saveText('导出模组质量报告', defaultName, content)
+          if (result.ok) get().notify(`报告已导出：${result.path}`)
+          else if (!result.canceled) get().notify(`导出失败：${result.message ?? '未知原因'}`)
+        } catch (err) {
+          get().notify(`导出失败：${err instanceof Error ? err.message : String(err)}`)
         }
       },
 

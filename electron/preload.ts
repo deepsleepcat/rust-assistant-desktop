@@ -32,6 +32,7 @@ const api: BridgeApi = {
   project: {
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
     openImageDialog: () => ipcRenderer.invoke('dialog:openImage'),
+    saveText: (title: string, defaultName: string, content: string) => ipcRenderer.invoke('dialog:saveText', title, defaultName, content),
     registerRoots: (roots: string[]) => ipcRenderer.invoke('project:registerRoots', roots),
     readDir: (rootPath: string, dirPath: string, showHidden?: boolean) => ipcRenderer.invoke('fs:readDir', rootPath, dirPath, showHidden),
     stat: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:stat', rootPath, filePath),
