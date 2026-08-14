@@ -14,6 +14,7 @@ import { AppIcon } from '../../components/AppIcon'
 import { LogoR } from '../../components/LogoR'
 import { ConfirmBox, PromptModal } from '../../components/Modal'
 import { EditorMirror } from './EditorMirror'
+import { isUnitFile, UnitFormPanel } from './unitForm/UnitFormPanel'
 import { ImageViewer } from './ImageViewer'
 import { AudioViewer } from './AudioViewer'
 import { isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
@@ -197,6 +198,8 @@ function EditorPane({ tabId }: { tabId: string }) {
   const toggleTranslation = useWorkspaceStore((s) => s.toggleTranslation)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
   const [outlineOpen, setOutlineOpen] = useState(false)
+  // M14：表单模式（仅单位文件；表单与代码实时双向同步）
+  const [formMode, setFormMode] = useState(false)
   // 保存为模板：弹窗输入模板名（null 表示关闭）
   const [templateName, setTemplateName] = useState<string | null>(null)
   // 文件被外部修改后「重新加载」的确认（有未保存修改时才需要）
@@ -276,6 +279,16 @@ function EditorPane({ tabId }: { tabId: string }) {
         <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => useWorkspaceStore.getState().updateTabContent(tab.id, formatted)} title="Ctrl+Shift+F">
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="text" size={12} />格式化</span>
         </button>
+        {isUnitFile(tab.content) && (
+          <button
+            className={formMode ? 'btn primary' : 'btn'}
+            style={{ padding: '2px 10px', fontSize: 11.5 }}
+            onClick={() => setFormMode((v) => !v)}
+            title="表单模式：可视化编辑 Core/Graphics/Attack/Movement/炮塔 字段，实时同步代码"
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="edit" size={12} />{formMode ? '代码模式' : '表单模式'}</span>
+          </button>
+        )}
         <button className={outlineOpen ? 'btn primary' : 'btn'} style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => setOutlineOpen((open) => !open)}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="expand" size={12} />大纲 ({sections.length})</span>
         </button>
@@ -314,6 +327,9 @@ function EditorPane({ tabId }: { tabId: string }) {
         </div>
       )}
       <div className="editor-body">
+        {formMode && isUnitFile(tab.content) && project ? (
+          <UnitFormPanel tab={tab} rootPath={project.rootPath} />
+        ) : (
         <EditorMirror
           value={tab.content}
           onChange={(content) => updateTabContent(tab.id, content)}
@@ -329,6 +345,7 @@ function EditorPane({ tabId }: { tabId: string }) {
           semanticCheckers={semanticCheckers}
           targetVersionName={targetVersionName}
         />
+        )}
       </div>
       {templateName !== null && (
         <PromptModal
