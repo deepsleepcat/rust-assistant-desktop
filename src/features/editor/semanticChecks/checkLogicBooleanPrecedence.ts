@@ -5,7 +5,7 @@
  * 2) and/or 混用且无括号时提示用括号明确优先级（经典优先级陷阱）。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, keyValuesInSection, parseIni, toEnKey } from './helpers'
+import { issue, keyValuesInSection, getIni, toEnKey } from './helpers'
 
 /** 已知的逻辑布尔字段类型（代码表 type 含 logicBoolean / boolean 的键） */
 function isLogicBooleanField(ctx: { findCode?: (k: string) => { type: string } | undefined } | undefined, enKey: string): boolean {
@@ -40,10 +40,10 @@ export const checkLogicBooleanPrecedence: SemanticChecker = {
   check(content, ctx) {
     const issues: SemanticIssue[] = []
     if (!ctx?.findCode) return issues
-    const { sections, keyValues } = parseIni(content)
+    const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     for (const sec of sections) {
-      for (const kv of keyValuesInSection(keyValues, sec)) {
+      for (const kv of keyValuesInSection(sec)) {
         const enKey = toEnKey(kv.key, zhToEn)
         if (!isLogicBooleanField(ctx, enKey)) continue
         const value = kv.value

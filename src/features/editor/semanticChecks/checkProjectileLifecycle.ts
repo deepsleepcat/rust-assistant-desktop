@@ -9,7 +9,7 @@
  *    内置弹体名放行，找不到时给警告让用户确认，不武断报错）。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, keyValuesInSection, parseIni, sectionEnName, toEnKey, toNumber } from './helpers'
+import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey, toNumber } from './helpers'
 
 /** 游戏内置弹体名（官方单位直接引用的常见内置弹体，白名单放行） */
 const BUILTIN_PROJECTILES = new Set([
@@ -29,7 +29,7 @@ export const checkProjectileLifecycle: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { sections, keyValues } = parseIni(content)
+    const { sections, keyValues } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
 
     // 本文件内已定义的弹体名（[projectile_xxx] 节名去前缀，小写）
@@ -56,7 +56,7 @@ export const checkProjectileLifecycle: SemanticChecker = {
       const lower = sectionEnName(sec, zhToEn)
       if (!lower.startsWith('projectile_')) continue
       const name = lower.slice('projectile_'.length)
-      const kvs = keyValuesInSection(keyValues, sec)
+      const kvs = keyValuesInSection(sec)
       const life = kvs.find((kv) => toEnKey(kv.key, zhToEn).toLowerCase() === 'life')
       if (!life) {
         // 未被引用的弹体节：可能是特效弹体（官方 fabricator 的 projectile_explode），放行

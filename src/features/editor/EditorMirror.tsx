@@ -5,7 +5,7 @@
  * - Ctrl+S 保存回调
  */
 import { useEffect, useRef } from 'react'
-import { EditorState, Transaction } from '@codemirror/state'
+import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion } from '@codemirror/autocomplete'
@@ -125,6 +125,9 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
   const onChangeRef = useRef(onChange)
   const onCursorRef = useRef(onCursor)
   const onSaveRef = useRef(onSave)
+  // 语义 lint 专用槽位：配置（开关/项目根）变化时热替换，避免挂载时闭包陈旧
+  // （否则设置页关掉检查器，已打开的编辑器波浪线仍按旧配置检查）
+  const lintCompartment = useRef(new Compartment())
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -163,7 +166,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         drawSelection(),
         history(),
         rustConfigLanguageSupport(),
-        rustLintExtension({ rootPath, semanticCheckers }),
+        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers })),
         rustHoverExtension,
         autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
         search({ top: true }),
@@ -199,6 +202,15 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时创建一次编辑器实例
   }, [])
+
+  // 语义 lint 配置变化（检查器开关/项目根）→ 热替换槽位（不重建编辑器）
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    view.dispatch({
+      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers })),
+    })
+  }, [rootPath, semanticCheckers])
 
   // 外部 value 变化（切换标签、恢复文档）→ 同步进编辑器
   useEffect(() => {

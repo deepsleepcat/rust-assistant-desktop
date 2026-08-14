@@ -7,7 +7,7 @@
  *    显式 range 为负时弹体没有有效射程。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, keyValuesInSection, parseIni, sectionEnName, toEnKey, toNumber } from './helpers'
+import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey, toNumber } from './helpers'
 
 export const checkProjectileRangeSemantics: SemanticChecker = {
   id: 'checkProjectileRangeSemantics',
@@ -16,11 +16,11 @@ export const checkProjectileRangeSemantics: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { sections, keyValues } = parseIni(content)
+    const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     for (const sec of sections) {
       if (!sectionEnName(sec, zhToEn).startsWith('projectile_')) continue
-      for (const kv of keyValuesInSection(keyValues, sec)) {
+      for (const kv of keyValuesInSection(sec)) {
         const key = toEnKey(kv.key, zhToEn).toLowerCase()
         const n = toNumber(kv.value)
         if (key === 'speed' || key === 'range') {

@@ -6,7 +6,7 @@
  * 仅在 ctx.unitNames 提供时生效（编辑器波浪线无项目数据时跳过，写后质检/全量检查会传入）。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { BUILTIN_UNITS, issue, lowerUnitNames, parseIni, toEnKey } from './helpers'
+import { BUILTIN_UNITS, issue, lowerUnitNames, getIni, sectionEnName, toEnKey } from './helpers'
 
 /** 引用单位的键（小写；宏字段 builtFrom_N_name 单独匹配） */
 const UNIT_REF_KEYS = new Set(['requiredunit', 'convertto', 'spawnunit', 'spawnunits'])
@@ -23,13 +23,23 @@ export const checkRiskyUnitReferenceSemantics: SemanticChecker = {
     const unitNames = ctx?.unitNames
     if (!unitNames) return issues // 无项目数据：跳过引用检查
     const known = lowerUnitNames(unitNames)
-    const { keyValues } = parseIni(content)
+    const { sections, keyValues } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     for (const kv of keyValues) {
       const enKey = toEnKey(kv.key, zhToEn)
       const lower = enKey.toLowerCase()
       const isBuiltFrom = /^builtfrom_\d+_name$/.test(lower)
       if (!isBuiltFrom && !UNIT_REF_KEYS.has(lower)) continue
+      // action 节内的 convertTo 由 checkActionReferences 检查，这里跳过避免重复报
+      if (lower === 'convertto') {
+        const inAction = sections.some(
+          (s) =>
+            kv.line >= s.startLine &&
+            kv.line < s.endLine &&
+            (sectionEnName(s, zhToEn).startsWith('action') || sectionEnName(s, zhToEn).startsWith('hiddenaction')),
+        )
+        if (inAction) continue
+      }
       // 宏字段引用（builtFrom_1_name: landFactory, airFactory 逗号分隔）
       for (const raw of kv.value.split(',')) {
         const ref = raw.trim()

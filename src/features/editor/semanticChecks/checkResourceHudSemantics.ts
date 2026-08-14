@@ -8,7 +8,7 @@
  *    只做路径形态校验（避免误报内置 SHARED: 资源）。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, keyValuesInSection, parseIni, sectionEnName, toEnKey } from './helpers'
+import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey } from './helpers'
 
 /** 资源路径类键（小写） */
 const RESOURCE_KEYS = new Set([
@@ -23,11 +23,11 @@ export const checkResourceHudSemantics: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { sections, keyValues } = parseIni(content)
+    const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     for (const sec of sections) {
       if (sectionEnName(sec, zhToEn) !== 'graphics') continue
-      for (const kv of keyValuesInSection(keyValues, sec)) {
+      for (const kv of keyValuesInSection(sec)) {
         const key = toEnKey(kv.key, zhToEn).toLowerCase()
         if (!RESOURCE_KEYS.has(key)) continue
         const value = kv.value

@@ -441,3 +441,55 @@ describe('诊断转换', () => {
     expect(checkKeyTypos.defaultOn).toBe(true)
   })
 })
+
+describe('M10 首轮审查修复回归', () => {
+  it('name 空值报错', () => {
+    const issues = runSemanticChecks(`[core]\nname:\n`, { ctx, ruleIds: new Set(['checkFile']) })
+    expect(issues.some((i) => i.message.includes('为空'))).toBe(true)
+  })
+
+  it('hiddenAction 节内 convertTo 引用检查生效', () => {
+    const issues = runSemanticChecks(`[hiddenAction_autoSwitchBack]\nconvertTo: ghostUnit\n`, {
+      ctx,
+      ruleIds: new Set(['checkActionReferences']),
+    })
+    expect(issues.some((i) => i.message.includes('ghostUnit'))).toBe(true)
+  })
+
+  it('convertTo 引用缺失只报一次（risky 与 action 不重复）', () => {
+    const issues = runSemanticChecks(`[action_upgradeT2]\nconvertTo: ghostUnit\n`, {
+      ctx,
+      ruleIds: new Set(['checkActionReferences', 'checkRiskyUnitReferenceSemantics']),
+    })
+    const count = issues.filter((i) => i.message.includes('ghostUnit')).length
+    expect(count).toBe(1)
+  })
+
+  it('dont_load 大小写/行尾注释均跳过', () => {
+    const issues = runSemanticChecks(`[core]\nDONT_LOAD: TRUE #模板文件\nmaxHp: -5\n`, {
+      ctx,
+      ruleIds: new Set(['checkPositiveCoreStats']),
+    })
+    expect(issues).toEqual([])
+  })
+
+  it('动画时间键支持 armN/legN 前缀与小数，按轴分组单调', () => {
+    const ok = runSemanticChecks(`[animation_idle]\nleg1_0s: {x:0}\nleg2_0s: {x:0}\nleg1_3s: {x:10}\nleg2_0.5s: {x:5}\n`, {
+      ctx,
+      ruleIds: new Set(['checkEventTimingSemantics']),
+    })
+    expect(ok).toEqual([])
+    const bad = runSemanticChecks(`[animation_idle]\nleg1_3s: {x:10}\nleg1_0.5s: {x:5}\n`, {
+      ctx,
+      ruleIds: new Set(['checkEventTimingSemantics']),
+    })
+    expect(bad.some((i) => i.message.includes('跳帧'))).toBe(true)
+    const neg = runSemanticChecks(`[animation_idle]\nbody_-1s: {frame:0}\n`, { ctx, ruleIds: new Set(['checkEventTimingSemantics']) })
+    expect(neg.some((i) => i.message.includes('非负'))).toBe(true)
+  })
+
+  it('动画键（body_0.2s）不触发键名拼写检查', () => {
+    const issues = runSemanticChecks(`[animation_idle]\nbody_0.2s: {frame:1}\n`, { ctx, ruleIds: new Set(['checkKeyTypos']) })
+    expect(issues).toEqual([])
+  })
+})

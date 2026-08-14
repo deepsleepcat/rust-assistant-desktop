@@ -4,7 +4,7 @@
  * 非数字偏移会让阴影渲染异常；两个偏移键通常成对出现，只写一个时提示。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, keyValuesInSection, parseIni, sectionEnName, toEnKey, toNumber } from './helpers'
+import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey, toNumber } from './helpers'
 
 const SHADOW_OFFSET_KEYS = new Set(['shadowoffsetx', 'shadowoffsety'])
 
@@ -15,11 +15,11 @@ export const checkGraphicsShadowOffset: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { sections, keyValues } = parseIni(content)
+    const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     for (const sec of sections) {
       if (sectionEnName(sec, zhToEn) !== 'graphics') continue
-      const kvs = keyValuesInSection(keyValues, sec)
+      const kvs = keyValuesInSection(sec)
       const hasX = kvs.some((kv) => toEnKey(kv.key, zhToEn).toLowerCase() === 'shadowoffsetx')
       const hasY = kvs.some((kv) => toEnKey(kv.key, zhToEn).toLowerCase() === 'shadowoffsety')
       if (hasX !== hasY) {

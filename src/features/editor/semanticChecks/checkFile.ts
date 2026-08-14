@@ -7,7 +7,7 @@
  * 任意已知单位节（core/graphics/movement）时才要求 core 完整。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, keyValuesInSection, parseIni, sectionEnName, toEnKey } from './helpers'
+import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey } from './helpers'
 
 /** 这些节出现即视为单位文件 */
 const UNIT_SECTIONS = new Set(['core', 'graphics', 'movement', 'attack', 'turret_', 'projectile_'])
@@ -19,7 +19,7 @@ export const checkFile: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { sections, keyValues } = parseIni(content)
+    const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     if (sections.length === 0) return issues // 空文件/纯注释：不打扰
 
@@ -43,7 +43,7 @@ export const checkFile: SemanticChecker = {
       )
       return issues
     }
-    const name = keyValuesInSection(keyValues, core).find((kv) => toEnKey(kv.key, zhToEn).toLowerCase() === 'name')
+    const name = keyValuesInSection(core).find((kv) => toEnKey(kv.key, zhToEn).toLowerCase() === 'name')
     if (!name) {
       issues.push(
         issue(
@@ -53,6 +53,17 @@ export const checkFile: SemanticChecker = {
           'checkFile',
           'error',
           `[${core.name}]`,
+        ),
+      )
+    } else if (!name.value.trim()) {
+      issues.push(
+        issue(
+          name.line,
+          `单位 name 为空，单位无法注册`,
+          `填写单位唯一标识（如 name: myTank）`,
+          'checkFile',
+          'error',
+          name.value,
         ),
       )
     } else if (/\s/.test(name.value)) {

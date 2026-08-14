@@ -1347,9 +1347,16 @@ export function createWorkspaceStore(bridge: BridgeApi) {
               if (event.name === 'writeFile' && event.ok && event.path) {
                 const relPath = event.path
                 void (async () => {
+                  // 流进行中项目可能已切换/关闭：重新取当前项目，避免陈旧 rootPath
+                  const current = get().projects.find((p) => p.id === project.id)
+                  if (!current) return
                   const semanticCheckers = get().settings.semanticCheckers
-                  const unitNames = new Set((await getBridge().mod.scanResources(project.rootPath).catch(() => null))?.unitNames ?? [])
-                  const items = await checkAiWrittenFile(project.rootPath, relPath, { semanticCheckers, unitNames })
+                  // 质检必须用最新单位名（AI 刚写的单位要在引用检查中立即可见），
+                  // 不做 30s 缓存；扫描失败/空项目时传 undefined → 引用检查整体跳过，
+                  // 避免「扫描失败被当作空项目」导致 builtFrom/convertTo 全部误报
+                  const scan = await getBridge().mod.scanResources(current.rootPath).catch(() => null)
+                  const unitNames = scan && scan.unitNames.length > 0 ? new Set(scan.unitNames) : undefined
+                  const items = await checkAiWrittenFile(current.rootPath, relPath, { semanticCheckers, unitNames })
                   if (items && items.length > 0) {
                     set({
                       conversations: get().conversations.map((c) =>

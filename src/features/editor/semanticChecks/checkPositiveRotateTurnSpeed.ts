@@ -4,7 +4,7 @@
  * 0 是官方合法语义（固定炮塔/不转向形态），只有负数才报错。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, keyValuesInSection, parseIni, sectionEnName, toEnKey, toNumber } from './helpers'
+import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey, toNumber } from './helpers'
 
 export const checkPositiveRotateTurnSpeed: SemanticChecker = {
   id: 'checkPositiveRotateTurnSpeed',
@@ -13,13 +13,13 @@ export const checkPositiveRotateTurnSpeed: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { sections, keyValues } = parseIni(content)
+    const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     for (const sec of sections) {
       const lower = sectionEnName(sec, zhToEn)
       if (lower !== 'movement' && lower !== 'attack') continue
       const keyName = lower === 'movement' ? 'maxturnspeed' : 'turretturnspeed'
-      for (const kv of keyValuesInSection(keyValues, sec)) {
+      for (const kv of keyValuesInSection(sec)) {
         const key = toEnKey(kv.key, zhToEn).toLowerCase()
         if (key !== keyName) continue
         const n = toNumber(kv.value)

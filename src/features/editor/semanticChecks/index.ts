@@ -9,19 +9,24 @@
  * - AI 写文件后自动质检（转成 AiLintItem 清单展示在对话区）；
  * - 手动全量检查（项目质量报告）。
  */
-import type { SemanticIssue, SemanticCheckOptions } from './types'
+import type { SemanticCheckContext, SemanticIssue, SemanticCheckOptions } from './types'
 import { ALL_SEMANTIC_CHECKERS, enabledRuleIds } from './registry'
+import { parseIni } from './helpers'
 
 export type { SemanticChecker, SemanticCheckContext, SemanticIssue, SemanticCheckOptions } from './types'
 
 /** 运行启用的语义检查器（ruleIds 缺省 = 全部启用；异常检查器隔离）。
- * dont_load: true 的文件（官方模板/槽位文件标记不加载）跳过全部检查。 */
+ * dont_load: true 的文件（官方模板/槽位文件标记不加载）跳过全部检查。
+ * 解析只做一次，经 ctx.parsed 共享给全部检查器（15 个检查器 × 全文扫描
+ * 是 O(16n)，共享后是 O(n) + 各检查器 O(n)）。 */
 export function runSemanticChecks(content: string, options: SemanticCheckOptions = {}): SemanticIssue[] {
   const ruleIds = options.ruleIds ?? enabledRuleIds({})
-  const ctx = options.ctx ?? {}
   const issues: SemanticIssue[] = []
   // 官方「不加载」标记（模板/槽位文件）：检查结果无意义，整体跳过
-  if (/^\s*dont_load\s*:\s*(?:true|1|真)\s*$/im.test(content)) return issues
+  // （i 标志 + 容忍行尾注释：DONT_LOAD: TRUE #模板 同样命中）
+  if (/^\s*dont_load\s*:\s*(?:true|1|真)\s*(?:[ \t]+#.*)?$/im.test(content)) return issues
+  // 共享解析结果（检查器用 getIni(ctx, content) 取，不再各自重扫全文）
+  const ctx: SemanticCheckContext = { ...options.ctx, parsed: parseIni(content) }
   for (const checker of ALL_SEMANTIC_CHECKERS) {
     if (!ruleIds.has(checker.id)) continue
     try {

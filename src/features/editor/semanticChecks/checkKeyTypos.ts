@@ -7,12 +7,12 @@
  * 未知键通常是个位数，单文件开销可忽略。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, parseIni, toEnKey } from './helpers'
+import { issue, getIni, toEnKey } from './helpers'
 
 /** 宏字段段（action_1_convertTo / builtFrom_1_name / resourceAmount_2 等）与
  * 动画时间键（body_0s / arm1_0s / leg3_1s）：跳过拼写检查 */
 function looksLikeMacroField(key: string): boolean {
-  return /_\d+_/.test(key) || /^[a-zA-Z]+_\d+$/.test(key) || /_\d+s$/.test(key)
+  return /_\d+_/.test(key) || /^[a-zA-Z]+_\d+$/.test(key) || /_\d*\.?\d+s$/.test(key)
 }
 
 /** Levenshtein 距离（≤ 2 视为相似；超过 2 提前返回 3 避免无谓计算） */
@@ -58,7 +58,7 @@ export const checkKeyTypos: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { keyValues } = parseIni(content)
+    const { keyValues } = getIni(ctx, content)
     if (!ctx?.findCode || !ctx.codes) return issues
     const allKeys = ctx.codes
     const seen = new Set<string>()

@@ -35,6 +35,8 @@ export interface SemanticCheckContext {
   unitNames?: ReadonlySet<string>
   /** 代码表全部英文键（键名拼写检查的候选池；缺省跳过拼写检查） */
   codes?: readonly string[]
+  /** 共享解析结果（runSemanticChecks 注入，避免每个检查器重复扫描全文；检查器用 getIni 取） */
+  parsed?: import('./helpers').ParsedIni
 }
 
 /** 检查器定义：id 全局唯一，title/description 供设置页展示 */

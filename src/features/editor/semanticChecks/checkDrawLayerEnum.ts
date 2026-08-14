@@ -5,7 +5,7 @@
  * 非法值会被游戏忽略，单位可能显示在错误的层。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { isEnumValue, issue, keyValuesInSection, parseIni, sectionEnName, toEnKey } from './helpers'
+import { isEnumValue, issue, keyValuesInSection, getIni, sectionEnName, toEnKey } from './helpers'
 
 /** 官方 1.15 绘制层枚举（value_type.json drawLayer.list） */
 export const DRAW_LAYERS = new Set(['wreaks', 'underwater', 'bottom', 'ground', 'ground2', 'experimentals', 'air', 'top'])
@@ -17,11 +17,11 @@ export const checkDrawLayerEnum: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
-    const { sections, keyValues } = parseIni(content)
+    const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     for (const sec of sections) {
       if (sectionEnName(sec, zhToEn) !== 'graphics') continue
-      for (const kv of keyValuesInSection(keyValues, sec)) {
+      for (const kv of keyValuesInSection(sec)) {
         const key = toEnKey(kv.key, zhToEn).toLowerCase()
         if (key !== 'drawlayer') continue
         if (!isEnumValue(kv.value, DRAW_LAYERS)) {

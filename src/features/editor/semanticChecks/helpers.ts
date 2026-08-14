@@ -1,20 +1,26 @@
 /**
  * 语义检查器共享解析工具：
- * - 单趟构建「行 → 节」索引，所有检查器共用（避免每个检查器重复扫描全文）；
+ * - 单趟构建「行 → 节」索引，全部检查器共用（避免每个检查器重复扫描全文）：
+ *   runSemanticChecks 解析一次，经 ctx.parsed 注入，检查器用 getIni() 取；
+ * - 每节直接携带键值行列表（keyValuesInSection 变 O(1)，避免节数 × 行数的
+ *   全量 filter）；
  * - 键值解析（剥离行内注释、中文显示层回译）；
  * - 数字解析与正数判定。
  *
  * 行号约定：对外一律 1 基（与 AI 质检清单一致）；内部索引 0 基。
  */
-import type { SemanticIssue } from './types'
+import type { SemanticCheckContext, SemanticIssue } from './types'
 
-/** 已解析的节：name 为节名（原始大小写），startLine/endLine 为 1 基行号（endLine 不含） */
+/** 已解析的节：name 为节名（原始大小写），startLine/endLine 为 1 基行号（endLine 不含）；
+ * kvs 为节内键值行（单趟构建，O(1) 取用） */
 export interface ParsedSection {
   name: string
   /** 节名（小写，匹配用） */
   lower: string
   startLine: number
   endLine: number
+  /** 本节内的键值行（按行号升序） */
+  kvs: ParsedKeyValue[]
 }
 
 /** 键值行：key 为原文键名，value 为剥离行内注释后的值（含中文原样） */
@@ -23,6 +29,14 @@ export interface ParsedKeyValue {
   value: string
   /** 1 基行号 */
   line: number
+}
+
+/** 单趟解析结果（runSemanticChecks 注入 ctx.parsed 供全部检查器共享） */
+export interface ParsedIni {
+  lines: string[]
+  sections: ParsedSection[]
+  /** 全部键值行（节内 + 节外，按行号升序） */
+  keyValues: ParsedKeyValue[]
 }
 
 const SECTION_RE = /^\s*\[(.+?)\]\s*(?:#.*)?$/
@@ -35,8 +49,8 @@ export function stripInlineComment(value: string): string {
   return value.replace(/[ \t]+#.*$/, '').trim()
 }
 
-/** 单趟解析全文：返回行数组（保留原文）、节索引、键值行（按节归属） */
-export function parseIni(content: string): { lines: string[]; sections: ParsedSection[]; keyValues: ParsedKeyValue[] } {
+/** 单趟解析全文：行数组（保留原文）、节索引（含节内键值行）、全部键值行 */
+export function parseIni(content: string): ParsedIni {
   const lines = content.split(/\r?\n/)
   const sections: ParsedSection[] = []
   const keyValues: ParsedKeyValue[] = []
@@ -47,22 +61,29 @@ export function parseIni(content: string): { lines: string[]; sections: ParsedSe
     if (sec) {
       if (current) current.endLine = i + 1 // 前一节结束（不含本行）
       const name = sec[1].trim()
-      current = { name, lower: name.toLowerCase(), startLine: i + 1, endLine: lines.length + 1 }
+      current = { name, lower: name.toLowerCase(), startLine: i + 1, endLine: lines.length + 1, kvs: [] }
       sections.push(current)
       continue
     }
     const kv = KV_RE.exec(text)
     if (kv) {
-      keyValues.push({ key: kv[1].trim(), value: stripInlineComment(kv[2]), line: i + 1 })
+      const entry: ParsedKeyValue = { key: kv[1].trim(), value: stripInlineComment(kv[2]), line: i + 1 }
+      keyValues.push(entry)
+      if (current) current.kvs.push(entry)
     }
     if (current) current.endLine = i + 2 // 已确认仍在本节内
   }
   return { lines, sections, keyValues }
 }
 
-/** 取某节内的键值行（按 1 基行号区间过滤） */
-export function keyValuesInSection(keyValues: ParsedKeyValue[], section: ParsedSection): ParsedKeyValue[] {
-  return keyValues.filter((kv) => kv.line >= section.startLine && kv.line < section.endLine)
+/** 取共享解析结果（检查器统一入口）：框架已注入 ctx.parsed 时直接用，否则兜底自解析 */
+export function getIni(ctx: SemanticCheckContext | undefined, content: string): ParsedIni {
+  return ctx?.parsed ?? parseIni(content)
+}
+
+/** 取某节内的键值行（O(1)：节解析时已归集） */
+export function keyValuesInSection(section: ParsedSection): ParsedKeyValue[] {
+  return section.kvs
 }
 
 /** 键名回译（中文显示层 x坐标 → x）：整串回译 + _ 分段回译 */

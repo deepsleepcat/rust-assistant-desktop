@@ -114,23 +114,35 @@ export async function qualityCheckContent(content: string, options: QualityCheck
   const diagnostics = lintIniText(content, data)
   const items = toLintItems(content, diagnostics)
 
-  // M10：语义检查器（与编辑器波浪线同一套规则；info 降级为 warning 展示）
+  // M10：语义检查器（与编辑器波浪线同一套规则；info 降级为 warning 展示）。
+  // 语义条目与基础 lint 合并后统一截断（基础 lint 已按 200 上限折叠，
+  // 语义条目直接追加会让大文件绕过上限 → UI 渲染数万条卡死）
   const ruleIds = enabledRuleIds(options.semanticCheckers ?? defaultSemanticCheckerConfig())
   const issues = runSemanticChecks(content, {
     ruleIds,
     ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames: options.unitNames },
   })
-  for (const it of issues) {
-    items.push({
-      line: it.line,
-      message: it.message,
-      severity: it.severity === 'error' ? 'error' : 'warning',
-      suggestion: it.suggestion,
-      ruleId: it.ruleId,
-      evidence: it.evidence,
+  const semanticItems: AiLintItem[] = issues.map((it) => ({
+    line: it.line,
+    message: it.message,
+    severity: it.severity === 'error' ? 'error' : 'warning',
+    suggestion: it.suggestion,
+    ruleId: it.ruleId,
+    evidence: it.evidence,
+  }))
+  const merged = [...items, ...semanticItems]
+  if (merged.length > MAX_LINT_ITEMS) {
+    const rest = merged.length - MAX_LINT_ITEMS
+    const errors = merged.slice(MAX_LINT_ITEMS).filter((i) => i.severity === 'error').length
+    merged.length = MAX_LINT_ITEMS
+    merged.push({
+      line: 0,
+      message: `…其余 ${rest} 条问题未列出${errors > 0 ? `（其中 ${errors} 个错误）` : ''}，建议先修复上面的问题后重新让 AI 检查`,
+      severity: 'warning',
+      suggestion: '',
     })
   }
-  return items
+  return merged
 }
 
 /**
