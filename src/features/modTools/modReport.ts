@@ -38,7 +38,12 @@ export interface ModReport {
     imageCount: number
     audioCount: number
     targetVersion: string
+    /** 因超过单文件上限（2MB）未检查的文件数 */
+    skippedLargeFiles: number
   }
+  /** 全量统计（不受问题清单 500 条上限影响——ok/结论必须基于全量计数） */
+  errorCount: number
+  warningCount: number
   checkerSummary: ModReportCheckerSummary[]
   issues: ModReportIssue[]
   versionConclusion: string
@@ -57,6 +62,8 @@ export interface ModReportOptions {
   projectName: string
   semanticCheckers?: Record<string, boolean>
   targetVersionName?: string
+  /** 进度回调（已检查文件数/需检查文件数；用于 UI 显示进度） */
+  onProgress?: (done: number, total: number) => void
 }
 
 /** 语义问题 → 报告条目（info 降级 warning） */
@@ -71,10 +78,15 @@ function toReportIssue(file: string, it: SemanticIssue): ModReportIssue {
   }
 }
 
-/** 生成模组质量报告（纯数据；渲染层调用，bridge 提供 fs 能力） */
-export async function generateModReport(rootPath: string, options: ModReportOptions): Promise<ModReport> {
-  const { getBridge } = await import('../../services/bridge')
-  const scan = await getBridge().mod.scanResources(rootPath)
+/** 生成模组质量报告（纯数据；渲染层调用，bridge 提供 fs 能力）。
+ * bridge 参数为依赖注入（测试用）；缺省从桥服务获取 */
+export async function generateModReport(
+  rootPath: string,
+  options: ModReportOptions,
+  bridgeOverride?: { mod: { scanResources(root: string): Promise<{ files: string[]; unitNames: string[] }> }; project: { readFile(root: string, file: string): Promise<{ content: string }> } },
+): Promise<ModReport> {
+  const bridge = bridgeOverride ?? (await import('../../services/bridge')).getBridge()
+  const scan = await bridge.mod.scanResources(rootPath)
   const files = scan.files ?? []
   const unitNames = new Set(scan.unitNames ?? [])
 
@@ -93,24 +105,35 @@ export async function generateModReport(rootPath: string, options: ModReportOpti
   let unitCount = 0
   let imageCount = 0
   let audioCount = 0
+  let skippedLargeFiles = 0
+  // 全量计数器（不受问题清单 500 条上限影响：ok/版本结论必须基于全量）
+  let totalErrorCount = 0
+  let totalWarningCount = 0
+  let versionIssueCount = 0
+  const codes = getAllCodes().map((c) => c.code)
 
-  // 逐文件全量检查（.ini/.template）；图片/音频只统计不检查
-  for (const file of files) {
+  // 依赖提升到循环外（避免每个文件一次动态 import 解析）
+  const { lintIniText } = await import('../editor/rustLint')
+  const { lineNumberAt, lineStarts } = await import('../ai/aiQualityCheck')
+
+  /** 单文件检查（供并发批次调用） */
+  async function checkOne(file: string): Promise<void> {
     const lower = file.toLowerCase()
     if (IMAGE_EXTS.has(lower.slice(lower.lastIndexOf('.')))) {
       imageCount++
-      continue
+      return
     }
     if (AUDIO_EXTS.has(lower.slice(lower.lastIndexOf('.')))) {
       audioCount++
-      continue
+      return
     }
-    if (!/\.(ini|template)$/i.test(file)) continue
-    const content = await getBridge().project.readFile(rootPath, file).then((r) => r.content).catch(() => '')
-    if (!content || content.length > MAX_REPORT_FILE_CHARS) continue
-    // 基础 lint + 语义检查器（与质检一致）
-    const { lintIniText } = await import('../editor/rustLint')
-    const { lineNumberAt, lineStarts } = await import('../ai/aiQualityCheck')
+    if (!/\.(ini|template)$/i.test(file)) return
+    const content = await bridge.project.readFile(rootPath, file).then((r) => r.content).catch(() => '')
+    if (!content) return
+    if (content.length > MAX_REPORT_FILE_CHARS) {
+      skippedLargeFiles++
+      return
+    }
     const diagnostics = lintIniText(content, data)
     const starts = lineStarts(content)
     const issuesAll: ModReportIssue[] = []
@@ -126,20 +149,35 @@ export async function generateModReport(rootPath: string, options: ModReportOpti
     }
     const semantic = runSemanticChecks(content, {
       ruleIds,
-      ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames, targetVersionNumber },
+      ctx: { ...data, codes, unitNames, targetVersionNumber },
     })
     for (const it of semantic) issuesAll.push(toReportIssue(file, it))
 
-    // 是否单位文件（有 [core] 节）
+    // 是否单位文件（[core] 节，大小写不敏感——与 scanResources/checkMod 判定一致）
     if (/^\s*\[core\]\s*$/im.test(content)) unitCount++
 
     for (const it of issuesAll) {
       const c = checkerCount.get(it.ruleId) ?? { errors: 0, warnings: 0 }
-      if (it.severity === 'error') c.errors++
-      else c.warnings++
+      if (it.severity === 'error') {
+        c.errors++
+        totalErrorCount++
+      } else {
+        c.warnings++
+        totalWarningCount++
+      }
       checkerCount.set(it.ruleId, c)
+      if (it.ruleId === 'checkVersionCompatibility') versionIssueCount++
       if (issues.length < MAX_REPORT_ISSUES) issues.push(it)
     }
+  }
+
+  // 需要检查的 ini/template 文件
+  const checkFiles = files.filter((f) => /\.(ini|template)$/i.test(f) && !IMAGE_EXTS.has(f.slice(f.lastIndexOf('.')).toLowerCase()) && !AUDIO_EXTS.has(f.slice(f.lastIndexOf('.')).toLowerCase()))
+  // 分批并发（每批 6 个），每批之间让出事件循环；进度回调
+  const BATCH = 6
+  for (let i = 0; i < checkFiles.length; i += BATCH) {
+    await Promise.all(checkFiles.slice(i, i + BATCH).map((f) => checkOne(f).catch(() => undefined)))
+    options.onProgress?.(Math.min(i + BATCH, checkFiles.length), checkFiles.length)
   }
   if (issues.length >= MAX_REPORT_ISSUES) {
     issues.push({
@@ -157,11 +195,9 @@ export async function generateModReport(rootPath: string, options: ModReportOpti
     .map(([ruleId, c]) => ({ ruleId, title: ruleId, errors: c.errors, warnings: c.warnings }))
     .sort((a, b) => b.errors - a.errors || b.warnings - a.warnings)
 
-  const totalErrors = issues.filter((i) => i.severity === 'error').length
-  const versionIssues = issues.filter((i) => i.ruleId === 'checkVersionCompatibility')
-  const versionConclusion = versionIssues.length === 0
+  const versionConclusion = versionIssueCount === 0
     ? `目标版本 ${options.targetVersionName || '跟随最新'}：未发现版本兼容问题`
-    : `目标版本 ${options.targetVersionName || '跟随最新'}：发现 ${versionIssues.length} 条版本兼容提示（写入的字段与目标版本不完全兼容）`
+    : `目标版本 ${options.targetVersionName || '跟随最新'}：发现 ${versionIssueCount} 条版本兼容提示（写入的字段与目标版本不完全兼容）`
 
   return {
     meta: {
@@ -172,11 +208,14 @@ export async function generateModReport(rootPath: string, options: ModReportOpti
       imageCount,
       audioCount,
       targetVersion: options.targetVersionName || '跟随最新',
+      skippedLargeFiles,
     },
+    errorCount: totalErrorCount,
+    warningCount: totalWarningCount,
     checkerSummary,
     issues,
     versionConclusion,
-    ok: totalErrors === 0,
+    ok: totalErrorCount === 0,
   }
 }
 
@@ -186,8 +225,8 @@ export function reportToText(r: ModReport): string {
   lines.push(`铁锈助手 · 模组质量报告`)
   lines.push(`项目：${r.meta.projectName}`)
   lines.push(`生成时间：${new Date(r.meta.generatedAt).toLocaleString()}`)
-  lines.push(`文件 ${r.meta.fileCount} · 单位 ${r.meta.unitCount} · 图片 ${r.meta.imageCount} · 音频 ${r.meta.audioCount} · 目标版本 ${r.meta.targetVersion}`)
-  lines.push(`总体：${r.ok ? '通过' : `发现 ${r.issues.filter((i) => i.severity === 'error').length} 个错误`}`)
+  lines.push(`文件 ${r.meta.fileCount} · 单位 ${r.meta.unitCount} · 图片 ${r.meta.imageCount} · 音频 ${r.meta.audioCount} · 目标版本 ${r.meta.targetVersion}${r.meta.skippedLargeFiles > 0 ? ` · 跳过 ${r.meta.skippedLargeFiles} 个超大文件` : ''}`)
+  lines.push(`总体：${r.ok ? '通过' : `发现 ${r.errorCount} 个错误`}`)
   lines.push(`版本兼容：${r.versionConclusion}`)
   lines.push('')
   if (r.checkerSummary.length > 0) {

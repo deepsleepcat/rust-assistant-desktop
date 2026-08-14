@@ -15,7 +15,10 @@ function makeReport(): ModReport {
       imageCount: 8,
       audioCount: 1,
       targetVersion: '跟随最新',
+      skippedLargeFiles: 0,
     },
+    errorCount: 2,
+    warningCount: 1,
     checkerSummary: [
       { ruleId: 'checkPositiveCoreStats', title: 'checkPositiveCoreStats', errors: 2, warnings: 0 },
       { ruleId: 'checkKeyTypos', title: 'checkKeyTypos', errors: 0, warnings: 1 },
@@ -65,5 +68,49 @@ describe('reportToJson / 脱敏', () => {
     const r = makeReport()
     expect(r.checkerSummary[0].ruleId).toBe('checkPositiveCoreStats')
     expect(r.checkerSummary[0].errors).toBeGreaterThan(r.checkerSummary[1].errors)
+  })
+})
+
+import { vi } from 'vitest'
+
+/** 假 bridge（依赖注入：modReport 只用 mod.scanResources + project.readFile） */
+function makeFakeBridge(files: string[], contents: Record<string, string>) {
+  return {
+    mod: { scanResources: async () => ({ files, unitNames: [] }) },
+    project: { readFile: async (_root: string, f: string) => ({ content: contents[f] ?? '', hasBom: false }) },
+  }
+}
+
+describe('generateModReport（假 bridge 集成）', () => {
+  it('全量统计不受 500 条问题上限影响（cap 外 warning 仍计入 warningCount）', async () => {
+    vi.stubGlobal('fetch', () => Promise.reject(new Error('no network')))
+    // 600 行节外键值行 = 600 条基础 lint warning
+    const content = Array.from({ length: 600 }, (_, i) => `key${i}: value${i}`).join('\n')
+    const { generateModReport } = await import('../src/features/modTools/modReport')
+    try {
+      const report = await generateModReport('C:/mock/proj', { projectName: 'x' }, makeFakeBridge(['units/a.ini'], { 'units/a.ini': content }))
+      expect(report.warningCount).toBe(600) // 全量统计不受 cap 影响
+      expect(report.errorCount).toBe(0)
+      expect(report.ok).toBe(true)
+      expect(report.issues.length).toBe(501) // 500 条 + 1 汇总
+      expect(report.issues[500].ruleId).toBe('汇总')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('[CORE] 大写节名计入单位数（与 scanResources 判定一致）', async () => {
+    vi.stubGlobal('fetch', () => Promise.reject(new Error('no network')))
+    const { generateModReport } = await import('../src/features/modTools/modReport')
+    try {
+      const report = await generateModReport(
+        'C:/mock/proj',
+        { projectName: 'x' },
+        makeFakeBridge(['units/a.ini'], { 'units/a.ini': '[CORE]\nname: A\n' }),
+      )
+      expect(report.meta.unitCount).toBe(1)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

@@ -95,6 +95,8 @@ interface WorkspaceStoreState {
   modReport: import('../features/modTools/modReport').ModReport | null
   modReportOpen: boolean
   modReportBusy: boolean
+  /** 报告生成失败信息（保留弹窗内联展示，不突然关闭） */
+  modReportError: string | null
   /** M7：优化工具扫描结果 */
   optimizeItems: Array<{ id: string; kind: 'emptyFile' | 'emptyFolder' | 'backupFile' | 'emptyLine' | 'comment'; rel: string; detail?: string }> | null
   /** M8：优化扫描失败信息（null 表示无失败；重试入口由弹窗提供） */
@@ -353,6 +355,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       modReport: null,
       modReportOpen: false,
       modReportBusy: false,
+      modReportError: null,
       optimizeItems: null,
       optimizeError: null,
       updateState: { status: 'idle' },
@@ -571,6 +574,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             optimizeItems: null,
             optimizeError: null,
             modDialog: null,
+            modReport: null,
+            modReportOpen: false,
           })
           await get().refreshTree()
           persist()
@@ -1660,7 +1665,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       async generateModReport() {
         const project = activeProject()
         if (!project || get().modReportBusy) return
-        set({ modReportBusy: true, modReportOpen: true })
+        set({ modReportBusy: true, modReportOpen: true, modReportError: null })
         try {
           const report = await generateModReportFn(project.rootPath, {
             projectName: project.name,
@@ -1669,15 +1674,15 @@ export function createWorkspaceStore(bridge: BridgeApi) {
           })
           set({ modReport: report })
         } catch (err) {
-          get().notify(`报告生成失败：${err instanceof Error ? err.message : String(err)}`)
-          set({ modReportOpen: false })
+          // 保留弹窗内联展示错误（不突然关闭，用户可重试或关闭）
+          set({ modReportError: err instanceof Error ? err.message : String(err) })
         } finally {
           set({ modReportBusy: false })
         }
       },
 
       setModReportOpen(open: boolean) {
-        set({ modReportOpen: open, modReport: open ? get().modReport : null })
+        set({ modReportOpen: open, modReport: open ? get().modReport : null, modReportError: open ? null : get().modReportError })
       },
 
       // M13：导出质量报告（文本/JSON；保存位置由系统对话框决定）
@@ -1686,7 +1691,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         if (!report) return
         const { reportToJson, reportToText } = await import('../features/modTools/modReport')
         const content = kind === 'json' ? reportToJson(report) : reportToText(report)
-        const defaultName = `mod-report-${report.meta.projectName}-${new Date().toISOString().slice(0, 10)}.${kind === 'json' ? 'json' : 'txt'}`
+        // 项目名可能含 Windows 非法文件名字符：清洗后作为建议文件名
+        const safeName = report.meta.projectName.replace(/[\\/:*?"<>|]/g, '-').replace(/[\s.]+$/g, '')
+        const defaultName = `mod-report-${safeName || 'mod'}-${new Date().toISOString().slice(0, 10)}.${kind === 'json' ? 'json' : 'txt'}`
         try {
           const result = await bridge.project.saveText('导出模组质量报告', defaultName, content)
           if (result.ok) get().notify(`报告已导出：${result.path}`)

@@ -734,13 +734,14 @@ function PackModal({ onClose }: { onClose: () => void }) {
 function ReportModal({ onClose }: { onClose: () => void }) {
   const report = useWorkspaceStore((s) => s.modReport)
   const busy = useWorkspaceStore((s) => s.modReportBusy)
+  const reportError = useWorkspaceStore((s) => s.modReportError)
   const generateModReport = useWorkspaceStore((s) => s.generateModReport)
   const exportModReport = useWorkspaceStore((s) => s.exportModReport)
   useEscapeHandler(onClose)
 
   // 打开弹窗后自动生成（幂等：busy 守卫；已生成不重复跑）
   useEffect(() => {
-    if (!busy && !report) void generateModReport()
+    if (!busy && !report && !reportError) void generateModReport()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在打开时触发一次
   }, [])
 
@@ -756,7 +757,14 @@ function ReportModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {!report ? (
+        {!report && reportError ? (
+          <div className="report-loading report-error">
+            报告生成失败：{reportError}
+            <button className="btn" onClick={() => void generateModReport()}>
+              重试
+            </button>
+          </div>
+        ) : !report ? (
           <div className="report-loading">
             <span className="report-spinner" />
             正在检查全部文件…（{busy ? '语义检查器全量运行中' : '等待开始'}）
