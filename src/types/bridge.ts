@@ -136,6 +136,15 @@ export interface BridgeApi {
     /** M22：读游戏资产图片为 data URL（单位预览的官方贴图；路径限制在游戏目录内） */
     readAssetImage(gamePath: string, relPath: string): Promise<string>
   }
+  /** M25 本地 git 辅助（历史/冲突/回滚；非 git 仓库或未装 git 时返回不可用） */
+  git: {
+    info(rootPath: string): Promise<{ available: boolean; isRepo: boolean; branch: string; ahead: number; behind: number; changedCount: number; branches: string[]; message?: string }>
+    log(rootPath: string, limit?: number): Promise<Array<{ hash: string; short: string; author: string; at: number; subject: string }>>
+    status(rootPath: string): Promise<Array<{ status: string; path: string }>>
+    conflicts(rootPath: string): Promise<string[]>
+    diff(rootPath: string, a: string, b: string, file?: string): Promise<string>
+    restore(rootPath: string, file: string, commit?: string): Promise<{ ok: boolean; message?: string }>
+  }
   ai: {
     /** 健康检查：验证 Key/连接 */
     check(settings: AiSettings): Promise<AiCheckResult>

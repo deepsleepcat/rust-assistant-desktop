@@ -20,6 +20,7 @@ import { CodeTableModal } from './features/editor/CodeTableModal'
 import { VersionDiffModal } from './features/editor/VersionDiffModal'
 import { RelationGraphModal } from './features/graph/RelationGraphModal'
 import { TemplateLibraryModal } from './features/modTools/TemplateLibraryModal'
+import { GitInfoModal } from './features/project/GitInfoModal'
 import { UnitLibraryModal } from './features/editor/UnitLibraryModal'
 import { ValueTypeModal } from './features/settings/ValueTypeModal'
 import { CursorEffect } from './components/CursorEffect'
@@ -32,6 +33,7 @@ export function App() {
   const versionDiffOpen = useWorkspaceStore((s) => s.versionDiffOpen)
   const relationGraphOpen = useWorkspaceStore((s) => s.relationGraphOpen)
   const templateLibraryOpen = useWorkspaceStore((s) => s.templateLibraryOpen)
+  const gitInfoOpen = useWorkspaceStore((s) => s.gitInfoOpen)
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId)
   const unitLibraryOpen = useWorkspaceStore((s) => s.unitLibraryOpen)
   const valueTypeOpen = useWorkspaceStore((s) => s.valueTypeOpen)
@@ -191,6 +193,14 @@ export function App() {
         />
       )}
       {templateLibraryOpen && <TemplateLibraryModal onClose={() => useWorkspaceStore.getState().setTemplateLibraryOpen(false)} />}
+      {gitInfoOpen && (
+        <GitInfoModal
+          // key 跟随项目：切换项目时重挂载
+          key={activeProjectId ?? 'none'}
+          rootPath={useWorkspaceStore.getState().projects.find((p) => p.id === useWorkspaceStore.getState().activeProjectId)?.rootPath ?? ''}
+          onClose={() => useWorkspaceStore.getState().setGitInfoOpen(false)}
+        />
+      )}
       {unitLibraryOpen && <UnitLibraryModal onClose={() => useWorkspaceStore.getState().setUnitLibraryOpen(false)} />}
       {valueTypeOpen && (
         <ValueTypeModal

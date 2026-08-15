@@ -68,6 +68,8 @@ interface WorkspaceStoreState {
   relationGraphOpen: boolean
   /** M23：模板库管理弹窗（P3 任务 2） */
   templateLibraryOpen: boolean
+  /** M25：本地 git 历史/回滚弹窗（P3 任务 4） */
+  gitInfoOpen: boolean
   /** M7：单位库弹窗 */
   unitLibraryOpen: boolean
   /** M8：值类型管理弹窗 */
@@ -169,6 +171,7 @@ interface WorkspaceStoreActions {
   setVersionDiffOpen(open: boolean): void
   setRelationGraphOpen(open: boolean): void
   setTemplateLibraryOpen(open: boolean): void
+  setGitInfoOpen(open: boolean): void
   setUnitLibraryOpen(open: boolean): void
   /** M8：值类型管理弹窗 */
   setValueTypeOpen(open: boolean): void
@@ -357,6 +360,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       versionDiffOpen: false,
       relationGraphOpen: false,
       templateLibraryOpen: false,
+      gitInfoOpen: false,
       unitLibraryOpen: false,
       valueTypeOpen: false,
       turretEditorOpen: false,
@@ -1129,6 +1133,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       },
       setTemplateLibraryOpen(open: boolean) {
         set({ templateLibraryOpen: open })
+      },
+      setGitInfoOpen(open: boolean) {
+        set({ gitInfoOpen: open })
       },
       setUnitLibraryOpen(open: boolean) {
         set({ unitLibraryOpen: open })

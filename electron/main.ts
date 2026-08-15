@@ -17,6 +17,7 @@ import { applyOptimization, checkMod, createMod, createUnit, createUnitFromTempl
 import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck, readGameAssetImage } from './game'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import { createKnowledgePack } from './knowledgePack'
+import { conflictFiles, diffBetween, logHistory, repoInfo, restoreFile, statusFiles } from './gitTools'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
@@ -261,6 +262,31 @@ function registerIpc(): void {
     return knowledgePack.update(sourceUrl)
   })
   ipcMain.handle('knowledge:rollback', () => knowledgePack.rollback())
+  // M25 本地 git 辅助（历史/冲突/回滚；路径与哈希在主进程严格校验）
+  ipcMain.handle('git:info', (_event, root: unknown) => {
+    if (typeof root !== 'string' || !root) throw new Error('参数错误')
+    return repoInfo(root)
+  })
+  ipcMain.handle('git:log', (_event, root: unknown, limit: unknown) => {
+    if (typeof root !== 'string' || !root) throw new Error('参数错误')
+    return logHistory(root, typeof limit === 'number' ? limit : 40)
+  })
+  ipcMain.handle('git:status', (_event, root: unknown) => {
+    if (typeof root !== 'string' || !root) throw new Error('参数错误')
+    return statusFiles(root)
+  })
+  ipcMain.handle('git:conflicts', (_event, root: unknown) => {
+    if (typeof root !== 'string' || !root) throw new Error('参数错误')
+    return conflictFiles(root)
+  })
+  ipcMain.handle('git:diff', (_event, root: unknown, a: unknown, b: unknown, file: unknown) => {
+    if (typeof root !== 'string' || typeof a !== 'string' || typeof b !== 'string') throw new Error('参数错误')
+    return diffBetween(root, a, b, typeof file === 'string' ? file : undefined)
+  })
+  ipcMain.handle('git:restore', (_event, root: unknown, file: unknown, commit: unknown) => {
+    if (typeof root !== 'string' || typeof file !== 'string') throw new Error('参数错误')
+    return restoreFile(root, file, typeof commit === 'string' ? commit : 'HEAD')
+  })
   ipcMain.handle('store:get', (_event, key: string) => store.get(key))
   ipcMain.handle('store:set', (_event, key: string, value: unknown) => {
     // A 修复：主进程自有信任锚键（媒体允许集合/项目根集合/迁移标志）不允许渲染层写入，防伪造

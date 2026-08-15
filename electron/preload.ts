@@ -93,6 +93,14 @@ const api: BridgeApi = {
     listUserTemplateKeys: () => ipcRenderer.invoke('template:listUserKeys'),
     createUnitFromTemplate: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnitFromTemplate', rootPath, params),
   },
+  git: {
+    info: (rootPath: string) => ipcRenderer.invoke('git:info', rootPath),
+    log: (rootPath: string, limit?: number) => ipcRenderer.invoke('git:log', rootPath, limit),
+    status: (rootPath: string) => ipcRenderer.invoke('git:status', rootPath),
+    conflicts: (rootPath: string) => ipcRenderer.invoke('git:conflicts', rootPath),
+    diff: (rootPath: string, a: string, b: string, file?: string) => ipcRenderer.invoke('git:diff', rootPath, a, b, file),
+    restore: (rootPath: string, file: string, commit?: string) => ipcRenderer.invoke('git:restore', rootPath, file, commit),
+  },
   ai: {
     check: (settings) => ipcRenderer.invoke('ai:check', settings),
     info: () => ipcRenderer.invoke('ai:info'),

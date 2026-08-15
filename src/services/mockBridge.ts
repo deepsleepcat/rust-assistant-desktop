@@ -308,7 +308,15 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       deleteUserTemplate: async () => ({ ok: false, message: '模拟环境：无法删除模板' }),
       listUserTemplateKeys: async () => [],
     },
-    ai: {
+    git: {
+    info: async () => ({ available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [], message: '模拟环境：无 git' }),
+    log: async () => [],
+    status: async () => [],
+    conflicts: async () => [],
+    diff: async () => '',
+    restore: async () => ({ ok: false, message: '模拟环境：无法回滚' }),
+  },
+  ai: {
       check: async (settings) => {
         if (settings.provider === 'deepseek') {
           return settings.deepseekApiKey

@@ -422,3 +422,10 @@
 .unitprev-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .unitprev-canvas-wrap { flex: 1; min-height: 0; border: 1px solid var(--divider); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; overflow: auto; background: var(--surface-0); }
 .unitprev-canvas { image-rendering: pixelated; max-width: 100%; max-height: 100%; }
+
+/* ── M25 Git 历史/回滚弹窗 ──────────────────────────── */
+.git-diff-pre { font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--text-primary); background: var(--surface-0); border: 1px solid var(--divider); border-radius: var(--radius-xs); padding: 8px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; }
+.git-conflict-block { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.git-conflict-block pre { margin: 0; }
+.conflict-ours { border-left: 3px solid #188038; }
+.conflict-theirs { border-left: 3px solid #1565c0; }
