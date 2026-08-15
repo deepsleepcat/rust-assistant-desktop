@@ -157,6 +157,19 @@ describe('图像引用分类与候选路径', () => {
     expect(isLocalImageRef('CUSTOM:y.png')).toBe(false)
   })
 
+  it('isLocalImageRef：CORE: 也是游戏内置引用（非本地）', () => {
+    expect(isLocalImageRef('CORE:units/x.png')).toBe(false)
+    expect(isGameImageRef('CORE:units/x.png')).toBe(true)
+  })
+
+  it('炮塔 image 为 NONE（官方 image_turret: NONE）不产出绘制项', () => {
+    const content = '[graphics]\nimage: a.png\nimage_turret: NONE\n[turret_1]\nx: 1\ny: 2\n'
+    const r = parseGraphicsRecipe(content)
+    const turrets = parsePreviewTurrets(content)
+    const items = computeDrawLayout(r, turrets)
+    expect(items.some((i) => i.kind === 'turret')).toBe(false)
+  })
+
   it('isGameImageRef：CORE:/ROOT:/CUSTOM:/SHARED: 前缀', () => {
     expect(isGameImageRef('CORE:units/x.png')).toBe(true)
     expect(isGameImageRef('ROOT:units/x.png')).toBe(true)

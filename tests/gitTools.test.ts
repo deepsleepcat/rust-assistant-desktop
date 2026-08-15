@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { conflictMarkers } from '../src/utils/conflictMarkers'
-import { diffBetween, gitAvailable, isValidCommit, isValidRelPath, logHistory, repoInfo, restoreFile, statusFiles } from '../electron/gitTools'
+import { conflictFiles, diffBetween, gitAvailable, isValidCommit, isValidRelPath, logHistory, repoInfo, restoreFile, statusFiles } from '../electron/gitTools'
 
 function run(root: string, args: string[]): string {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim()
@@ -143,5 +143,34 @@ describe('conflictMarkers（冲突标记解析）', () => {
     expect(conflictMarkers('[core]\nname: x\n')).toEqual([])
     // 只有 <<<<<<< 没有结束：不构成块
     expect(conflictMarkers('<<<<<<< HEAD\nxxx\n')).toEqual([])
+  })
+})
+
+describe('审查回归：statusFiles 空格文件名 / conflictFiles 拼根', () => {
+  it('含空格文件名不引号、重命名合并为新路径', async () => {
+    if (!(await gitAvailable())) return
+    fs.writeFileSync(path.join(repo, 'my unit.ini'), '[core]\nname: x\n')
+    run(repo, ['add', 'my unit.ini'])
+    run(repo, ['commit', '-q', '-m', 'add spaced'])
+    fs.writeFileSync(path.join(repo, 'my unit.ini'), '[core]\nname: y\n')
+    const st = await statusFiles(repo)
+    const hit = st.find((f) => f.path === 'my unit.ini')
+    expect(hit).toBeDefined()
+    expect(hit!.path).not.toContain('"')
+    // 重命名：old → new 合并为一条指向新路径
+    run(repo, ['mv', 'my unit.ini', 'renamed.ini'])
+    const st2 = await statusFiles(repo)
+    const ren = st2.find((f) => f.status.startsWith('R'))
+    expect(ren?.path).toBe('renamed.ini')
+  })
+
+  it('conflictFiles 用项目根拼接读取（非 CWD），能检测到冲突标记', async () => {
+    if (!(await gitAvailable())) return
+    fs.writeFileSync(path.join(repo, 'c.ini'), '[core]\nname: base\n')
+    run(repo, ['add', 'c.ini'])
+    run(repo, ['commit', '-q', '-m', 'base'])
+    fs.writeFileSync(path.join(repo, 'c.ini'), '[core]\nname: base\n<<<<<<< HEAD\nmaxHp: 1\n=======\nmaxHp: 2\n>>>>>>> other\n')
+    const cf = await conflictFiles(repo)
+    expect(cf).toContain('c.ini')
   })
 })

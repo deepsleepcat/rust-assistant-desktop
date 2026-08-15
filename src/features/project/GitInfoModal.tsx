@@ -101,11 +101,11 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
         notify('该文件已没有冲突标记')
         return
       }
-      // 从后往前替换（行号随替换变化，倒序安全）
+      // 从后往前替换（行号随替换变化，倒序安全）；删除整块（startLine..endLine 含标记行）
       const lines = content.split(/\r?\n/)
       for (const block of [...blocks].reverse()) {
         const chosen = (side === 'ours' ? block.ours : block.theirs).split('\n')
-        lines.splice(block.startLine - 1, (block.startLine - 1 + 2 + block.ours.split('\n').length + block.theirs.split('\n').length) - (block.startLine - 1), ...chosen)
+        lines.splice(block.startLine - 1, block.endLine - block.startLine + 1, ...chosen)
       }
       await getBridge().project.writeFile(rootPath, joinProjectPath(rootPath, file), lines.join('\n'), { hasBom: false })
       setConflictOpen(null)
@@ -127,8 +127,15 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
         const r = await getBridge().git.restore(rootPath, file, target)
         if (r.ok) {
           notify(`已回滚「${file}」`)
-          setStatus(await getBridge().git.status(rootPath))
-          setConflicts(await getBridge().git.conflicts(rootPath))
+          // 刷新改动清单、冲突与头部统计（info 重新拉取）
+          const [st, cf, inf] = await Promise.all([
+            getBridge().git.status(rootPath),
+            getBridge().git.conflicts(rootPath),
+            getBridge().git.info(rootPath),
+          ])
+          setStatus(st)
+          setConflicts(cf)
+          setInfo(inf)
         } else {
           notify(`回滚失败：${r.message ?? '未知错误'}`)
         }
@@ -172,7 +179,7 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
                 <span className="vdiff-stat rep">分支 {info.branch}</span>
                 {info.ahead > 0 && <span className="vdiff-stat add">领先 {info.ahead}</span>}
                 {info.behind > 0 && <span className="vdiff-stat del">落后 {info.behind}</span>}
-                <span className="vdiff-stat {info.changedCount > 0 ? 'del' : 'add'}">{info.changedCount} 个未提交改动</span>
+                <span className={`vdiff-stat ${info.changedCount > 0 ? 'del' : 'add'}`}>{info.changedCount} 个未提交改动</span>
                 <span className="grow" />
                 <span className="vdiff-hint">仅本地单人使用；多人协作不在本阶段</span>
               </div>
@@ -186,7 +193,8 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
               {tab === 'history' && (
                 <div className="relgraph-list">
                   <div className="vdiff-hint" style={{ marginBottom: 4 }}>
-                    点击提交选中；选两个后点「对比」（再点一次可取消选中；「工作区」表示未提交的改动）
+                    点击提交选中；选两个后点「对比」（再点一次可取消选中；「工作区」表示未提交的改动）。
+                    差异方向：按选择的先后（第一个 → 第二个），新增/删除以第一个为基准显示。
                   </div>
                   <div className="vdiff-toolbar" style={{ marginBottom: 6 }}>
                     <button className="btn" disabled={selected.length < 2 || diffBusy} onClick={() => void runDiff(selected[0], selected[1])}>

@@ -70,9 +70,13 @@ export function SettingsModal() {
 
   /** 清空本地用量统计（不影响对话历史） */
   const clearUsage = async () => {
-    await getBridge().store.set('aiUsage', []).catch(() => undefined)
-    setUsage({ totalCalls: 0, totalTokens: 0, todayCalls: 0, todayTokens: 0, weekCalls: 0, weekTokens: 0 })
-    notify('本地 AI 用量统计已清空')
+    try {
+      await getBridge().store.set('aiUsage', [])
+      setUsage({ totalCalls: 0, totalTokens: 0, todayCalls: 0, todayTokens: 0, weekCalls: 0, weekTokens: 0 })
+      notify('本地 AI 用量统计已清空')
+    } catch (err) {
+      notify(`清空失败：${err instanceof Error ? err.message : String(err)}（统计记录保留）`)
+    }
   }
 
   // M21：进入「编辑器」页签时加载项目自定义规则（无项目/无 rules 目录时为空）。
@@ -654,7 +658,7 @@ export function SettingsModal() {
                   <div className="desc">M23：客户端只内置 DeepSeek；其他模型由未来的社区后端提供（服务未上线）</div>
                 </span>
                 <div className="seg-group">
-                  <button className="active" onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
+                  <button className={settings.ai.provider === 'deepseek' ? 'active' : ''} onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
                     DeepSeek
                   </button>
                   {/* M23：切换入口禁用——多模型走服务器社区后端，不在客户端接入 */}

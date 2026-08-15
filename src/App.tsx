@@ -201,6 +201,19 @@ export function App() {
           onClose={() => useWorkspaceStore.getState().setGitInfoOpen(false)}
         />
       )}
+      {gitInfoOpen && !activeProjectId && (
+        <div className="modal-overlay" onClick={() => useWorkspaceStore.getState().setGitInfoOpen(false)}>
+          <div className="modal-card vdiff-card">
+            <div className="modal-header">Git 历史与回滚（本地）</div>
+            <div className="modal-body">
+              <p className="codetable-empty">请先打开一个模组项目，再查看 Git 历史。</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn primary" onClick={() => useWorkspaceStore.getState().setGitInfoOpen(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
       {unitLibraryOpen && <UnitLibraryModal onClose={() => useWorkspaceStore.getState().setUnitLibraryOpen(false)} />}
       {valueTypeOpen && (
         <ValueTypeModal

@@ -167,7 +167,7 @@ export function isLocalImageRef(image: string | undefined): boolean {
   if (!image) return false
   const v = image.trim()
   if (!v || v.toUpperCase() === 'NONE' || v.toUpperCase() === 'AUTO') return false
-  return !/^(?:ROOT|CUSTOM|SHARED):/i.test(v)
+  return !/^(?:ROOT|CUSTOM|SHARED|CORE):/i.test(v)
 }
 
 /** 跨模组/官方引用（CORE:/ROOT:/SHARED:/CUSTOM:）——需要游戏路径才能取图 */
@@ -176,9 +176,13 @@ export function isGameImageRef(image: string | undefined): boolean {
   return /^(?:ROOT|CUSTOM|SHARED|CORE):/i.test(image.trim())
 }
 
-/** 本地图像候选路径：先按单位文件所在目录，再按项目根（官方单位习惯图片放同目录） */
+/** 本地图像候选路径：先按单位文件所在目录，再按项目根（官方单位习惯图片放同目录）。
+ * 返回相对项目根的 posix 路径，由调用方拼 rootPath 走桥（fs 通道要求绝对路径） */
 export function resolveImageCandidates(file: string, image: string): string[] {
-  const dir = file.includes('/') ? file.slice(0, file.lastIndexOf('/')) : ''
+  // 正斜杠统一（Windows 路径可能带反斜杠）
+  const norm = file.replace(/\\/g, '/')
+  const idx = norm.lastIndexOf('/')
+  const dir = idx >= 0 ? norm.slice(0, idx) : ''
   const rel = image.trim().replace(/^\/+/, '')
   return dir ? [`${dir}/${rel}`, rel] : [rel]
 }
@@ -213,9 +217,12 @@ export function computeDrawLayout(recipe: GraphicsRecipe, turrets: PreviewTurret
     })
   }
 
-  // 炮塔：节内 image 覆盖 > 配方 image_turret；位置按 turret x/y（不缩放）
+  // 炮塔：节内 image 覆盖 > 配方 image_turret；位置按 turret x/y（不缩放）。
+  // image 为 NONE/AUTO（官方单位常见 image_turret: NONE）表示「无炮塔图」，
+  // 不产出绘制项——不是缺图，不画占位
   for (const t of turrets) {
     const image = t.image || recipe.imageTurret
+    if (!image || !isLocalImageRef(image) && !isGameImageRef(image)) continue
     items.push({
       kind: 'turret',
       image,
@@ -223,7 +230,7 @@ export function computeDrawLayout(recipe: GraphicsRecipe, turrets: PreviewTurret
       cy: t.y,
       scale: recipe.turretImageScale,
       alpha: 1,
-      placeholder: image && isLocalImageRef(image) ? image : `炮塔 ${t.index}`,
+      placeholder: image,
     })
   }
 

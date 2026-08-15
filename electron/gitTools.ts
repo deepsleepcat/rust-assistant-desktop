@@ -9,6 +9,7 @@
  * - 回滚（checkout -- file）只影响工作区指定文件，不碰其它文件与分支。
  * 多人协作（邀请/权限）依赖服务器，不在本阶段。
  */
+import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { conflictMarkers } from '../src/utils/conflictMarkers.js'
 import { promisify } from 'node:util'
@@ -101,10 +102,12 @@ export async function repoInfo(root: string): Promise<GitRepoInfo> {
   // 状态：分支行 `## main...origin/main [ahead 1, behind 2]` + 改动行
   const status = await runGit(root, ['status', '--porcelain=v1', '-b']).catch(() => '')
   const lines = status.split('\n').filter((l) => l.trim())
-  const branchLine = lines.find((l) => l.startsWith('## '))
-  const m = /^## ([^\s.][^...]*?)(?:\.\.\.([^\s\]]+))?(?: \[(.*?)\])?$/.exec(branchLine ?? '')
+  const branchLine = lines.find((l) => l.startsWith('## ')) ?? ''
+  // 空仓提示（No commits yet on main）/ 分离头（HEAD (no branch)）：先剔除再解析
+  const cleaned = branchLine.replace(/^## /, '').replace(/\(no branch\)$/, '').replace(/^No commits yet on /, '')
+  const m = /^([^\s]+?)(?:\.\.\.([^\s\]]+))?(?: \[(.*?)\])?$/.exec(cleaned)
   if (m) {
-    info.branch = m[1]
+    info.branch = m[1] === 'HEAD' ? '(分离头)' : m[1]
     const meta = m[3] ?? ''
     const ahead = /ahead (\d+)/.exec(meta)
     const behind = /behind (\d+)/.exec(meta)
@@ -133,13 +136,26 @@ export async function logHistory(root: string, limit = 40): Promise<GitCommitEnt
     })
 }
 
-/** 工作区改动清单（porcelain v1） */
+/** 工作区改动清单（porcelain v1 -z：NUL 分隔，含空格文件名不带引号，可直接用）。
+ * 重命名条目输出两段（old 段状态 R、new 段状态为空格）——合并为一条指向新路径 */
 export async function statusFiles(root: string): Promise<GitStatusEntry[]> {
-  const out = await runGit(root, ['status', '--porcelain=v1']).catch(() => '')
-  return out
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => ({ status: line.slice(0, 2).trim() || '?', path: line.slice(3) }))
+  const out = await runGit(root, ['status', '--porcelain=v1', '-z']).catch(() => '')
+  const parts = out.split('\u0000').filter((p) => p.length > 0)
+  const entries: GitStatusEntry[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const raw = parts[i]
+    const status = raw.slice(0, 2)
+    // 记录格式 "XY PATH"：2 字符状态 + 1 空格分隔 + 路径
+    const path = raw.slice(3)
+    if (status.trim() === '') {
+      // 重命名的第二段：目标路径——合并到前一条
+      const prev = entries[entries.length - 1]
+      if (prev && prev.status.startsWith('R')) prev.path = path
+      continue
+    }
+    entries.push({ status: status.trim() || '?', path })
+  }
+  return entries
 }
 
 /** 两个提交间的文件差异文本（b 为 'working' 时对比工作区） */
@@ -166,10 +182,12 @@ export async function conflictFiles(root: string): Promise<string[]> {
   for (const f of files) {
     if (out.length >= 10) break
     if (!isValidRelPath(f.path)) continue
+    // 相对仓库根的路径必须拼上 root（主进程 CWD 不是项目根，相对路径读不到文件）
+    const abs = path.join(root, f.path)
     try {
-      const st = await fs.stat(f.path)
+      const st = await fs.stat(abs)
       if (!st.isFile() || st.size > 1024 * 1024) continue
-      const content = await fs.readFile(f.path, 'utf8')
+      const content = await fs.readFile(abs, 'utf8')
       if (conflictMarkers(content).length > 0) out.push(f.path)
     } catch {
       // 文件不存在（已删）等：跳过

@@ -1476,7 +1476,13 @@ function sanitizeTemplateKey(name: string): string {
  * 同名自动追加 -2/-3，绝不静默覆盖；只写 destDir。
  */
 export async function importTemplateFile(destDir: string, sourcePath: string): Promise<TemplateMeta> {
-  const raw = JSON.parse(await fs.readFile(sourcePath, 'utf8')) as RawTemplate
+  // 大小上限（与项目内文件读取一致）：对话框可能选中超大文件，全量读入会拖垮主进程
+  const st = await fs.stat(sourcePath).catch(() => null)
+  if (!st || !st.isFile()) throw new Error('模板文件不存在')
+  if (st.size > MAX_SCAN_READ_SIZE) throw new Error('模板文件过大（超过 64MB），拒绝导入')
+  const parsed = JSON.parse(await fs.readFile(sourcePath, 'utf8')) as unknown
+  if (!parsed || typeof parsed !== 'object') throw new Error('不是有效的模板文件（内容不是 JSON 对象）')
+  const raw = parsed as RawTemplate
   if (typeof raw.name !== 'string' && typeof raw.data !== 'string') {
     throw new Error('不是有效的模板文件（缺少 name 或 data）')
   }

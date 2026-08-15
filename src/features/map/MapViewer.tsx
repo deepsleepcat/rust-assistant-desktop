@@ -131,7 +131,10 @@ export function MapViewer({ path, rootPath }: MapViewerProps) {
       return
     }
     const name = path.split('/').pop() ?? 'map.tmx'
-    await getBridge().project.saveText('导出规范化 TMX', name, normalized)
+    const result = await getBridge().project.saveText('导出规范化 TMX', name, normalized)
+    if (result && !result.ok && !result.canceled) {
+      useWorkspaceStore.getState().notify(`导出失败：${result.message ?? '未知错误'}`)
+    }
   }
   const layerSummary = useMemo(() => {
     if (!map) return ''

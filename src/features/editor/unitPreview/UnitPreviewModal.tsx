@@ -32,8 +32,9 @@ interface Props {
   onClose: () => void
 }
 
-/** 图像加载缓存（同一会话内不重复读盘） */
+/** 图像加载缓存（同一会话内不重复读盘；上限 200 条防长期会话膨胀） */
 const imageCache = new Map<string, Promise<HTMLImageElement | null>>()
+const MAX_CACHE = 200
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -44,15 +45,27 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement | null> {
   })
 }
 
-/** 取一张图像（项目内或游戏资产；失败返回 null） */
+function cacheSet(key: string, value: Promise<HTMLImageElement | null>): void {
+  if (imageCache.size >= MAX_CACHE) {
+    // 简单淘汰：清掉最旧的一半（预览场景图片数量有限，够用）
+    const keys = [...imageCache.keys()].slice(0, Math.floor(MAX_CACHE / 2))
+    for (const k of keys) imageCache.delete(k)
+  }
+  imageCache.set(key, value)
+}
+
+/** 取一张图像（项目内或游戏资产；失败返回 null）。
+ * 本地候选拼成项目内绝对路径再走桥（fs 通道要求绝对路径，相对路径会被主进程拒绝）；
+ * 缓存键含单位文件路径——同名贴图在不同单位目录（units/a/img.png vs units/b/img.png）
+ * 不能串用 */
 async function fetchImage(
   image: string | undefined,
   file: string,
   rootPath: string,
   gamePath: string | undefined,
 ): Promise<{ url: string; img: HTMLImageElement | null } | null> {
-  if (!image || !isLocalImageRef(image) && !isGameImageRef(image)) return null
-  const cacheKey = `${rootPath}\u0000${image}`
+  if (!image || (!isLocalImageRef(image) && !isGameImageRef(image))) return null
+  const cacheKey = `${rootPath}\u0000${file}\u0000${image}`
   const cached = imageCache.get(cacheKey)
   if (cached) return cached.then((img) => (img ? { url: cacheKey, img } : null))
   const promise = (async (): Promise<HTMLImageElement | null> => {
@@ -60,7 +73,7 @@ async function fetchImage(
       if (isLocalImageRef(image)) {
         for (const rel of resolveImageCandidates(file, image)) {
           try {
-            const dataUrl = await getBridge().project.readImageAsDataUrl(rootPath, rel)
+            const dataUrl = await getBridge().project.readImageAsDataUrl(rootPath, `${rootPath}/${rel}`)
             const img = await loadImage(dataUrl)
             if (img) return img
           } catch {
@@ -80,7 +93,7 @@ async function fetchImage(
       return null
     }
   })()
-  imageCache.set(cacheKey, promise)
+  cacheSet(cacheKey, promise)
   return promise.then((img) => (img ? { url: cacheKey, img } : null))
 }
 
@@ -98,7 +111,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, onClose }:
   const turrets = useMemo(() => parsePreviewTurrets(content), [content])
 
   // 帧切片信息：主图加载后才能确定（frameWidth 覆盖 / 默认按图像宽切）
-  const mainImg = recipe.image ? images.get(`${rootPath}\u0000${recipe.image}`) : null
+  const mainImg = recipe.image ? images.get(recipe.image) : null
   const mainImgOrNull = mainImg ?? null
   const frameInfo = useMemo(() => {
     if (!recipe.image || !mainImgOrNull) return { count: 1, frameW: 0, frameH: 0 }

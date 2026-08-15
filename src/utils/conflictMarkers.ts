@@ -7,6 +7,8 @@ export interface ConflictBlock {
   ours: string
   theirs: string
   startLine: number
+  /** 结束标记行（含，1 基）——替换时按行号区间删除 */
+  endLine: number
 }
 
 export function conflictMarkers(content: string): ConflictBlock[] {
@@ -30,6 +32,7 @@ export function conflictMarkers(content: string): ConflictBlock[] {
           ours: lines.slice(start, sep).join('\n'),
           theirs: lines.slice(sep + 1, end).join('\n'),
           startLine: i + 1,
+          endLine: end + 1,
         })
         i = end + 1
         continue
