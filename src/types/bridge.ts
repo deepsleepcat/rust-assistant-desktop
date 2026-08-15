@@ -112,6 +112,12 @@ export interface BridgeApi {
     listTemplates(): Promise<import('./mod').TemplateMeta[]>
     /** M7 模板制作：把单位文件保存为模板（自动生成输入项）；content 为当前编辑内容（可能未落盘） */
     saveFileAsTemplate(rootPath: string, filePath: string, templateName: string, content?: string): Promise<{ key: string }>
+    /** M23 模板库：导入模板文件（系统对话框选择 .json → 复制进用户模板目录；取消返回 null） */
+    importTemplate(): Promise<import('./mod').TemplateMeta | null>
+    /** M23 模板库：删除用户模板（只允许用户目录；内置模板不可删） */
+    deleteUserTemplate(key: string): Promise<{ ok: boolean; message?: string }>
+    /** M23 模板库：用户模板目录的 key 列表（分类展示用） */
+    listUserTemplateKeys(): Promise<string[]>
     createUnitFromTemplate(rootPath: string, params: { name: string; folder?: string; templateKey: string; values: Record<string, string> }): Promise<{ path: string }>
   }
   /** M8 游戏集成：铁锈战争安装目录检测 / 官方单位示例 / 游戏内模组导入 */

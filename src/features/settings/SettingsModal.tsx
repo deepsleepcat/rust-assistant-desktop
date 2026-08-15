@@ -13,6 +13,7 @@ import { AvatarCropModal } from './AvatarCropModal'
 import { GameSettingsTab } from './GameSettingsTab'
 import { ALL_SEMANTIC_CHECKERS } from '../editor/semanticChecks/registry'
 import { loadProjectRuleSets, type ProjectRuleSet } from '../editor/semanticChecks/customRules'
+import { parseStoredUsage, summarizeUsage, type AiUsageSummary } from '../ai/usageStats'
 import { getDataVersionInfo, getGameVersions, loadCodeData, reloadCodeData, type DataVersionInfo } from '../../services/codeData'
 
 const GRADIENT_PRESETS = [
@@ -51,6 +52,28 @@ export function SettingsModal() {
   // M21：项目自定义规则（rules/*.json；编辑器页签展示，可单独开关）
   const activeProject = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const [projectRules, setProjectRules] = useState<{ sets: ProjectRuleSet[]; errors: Array<{ file: string; errors: string[] }> } | null>(null)
+  // M23：本地 AI 用量统计（AI 页签加载）
+  const [usage, setUsage] = useState<AiUsageSummary | null>(null)
+
+  // M23：进入「AI」页签时加载本地用量统计
+  useEffect(() => {
+    if (tab !== 'ai') return
+    let alive = true
+    void getBridge()
+      .store.get('aiUsage')
+      .then((raw) => alive && setUsage(summarizeUsage(parseStoredUsage(raw))))
+      .catch(() => alive && setUsage({ totalCalls: 0, totalTokens: 0, todayCalls: 0, todayTokens: 0, weekCalls: 0, weekTokens: 0 }))
+    return () => {
+      alive = false
+    }
+  }, [tab])
+
+  /** 清空本地用量统计（不影响对话历史） */
+  const clearUsage = async () => {
+    await getBridge().store.set('aiUsage', []).catch(() => undefined)
+    setUsage({ totalCalls: 0, totalTokens: 0, todayCalls: 0, todayTokens: 0, weekCalls: 0, weekTokens: 0 })
+    notify('本地 AI 用量统计已清空')
+  }
 
   // M21：进入「编辑器」页签时加载项目自定义规则（无项目/无 rules 目录时为空）。
   // 切走页签时由 switchTab 清空缓存结果，避免显示陈旧数据
@@ -628,14 +651,15 @@ export function SettingsModal() {
               <div className="setting-row">
                 <span className="label">
                   AI 提供者
-                  <div className="desc">DeepSeek 使用你自己的 API Key；社区后端为预留服务</div>
+                  <div className="desc">M23：客户端只内置 DeepSeek；其他模型由未来的社区后端提供（服务未上线）</div>
                 </span>
                 <div className="seg-group">
-                  <button className={settings.ai.provider === 'deepseek' ? 'active' : ''} onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
+                  <button className="active" onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
                     DeepSeek
                   </button>
-                  <button className={settings.ai.provider === 'community' ? 'active' : ''} onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'community' } })} title="即将上线">
-                    社区后端（即将上线）
+                  {/* M23：切换入口禁用——多模型走服务器社区后端，不在客户端接入 */}
+                  <button className="btn" disabled title="社区后端服务未上线（本地客户端不接入其他模型供应商）">
+                    社区后端（服务未上线）
                   </button>
                 </div>
               </div>
@@ -693,15 +717,36 @@ export function SettingsModal() {
                 </>
               )}
 
+              {/* M23：社区 AI 入口占位——可见但明确「服务未上线」，不报错不假死 */}
               {settings.ai.provider === 'community' && (
                 <div className="setting-row">
                   <span className="label">
                     社区后端
-                    <div className="desc">社区 AI 服务即将上线，届时将自动接入</div>
+                    <div className="desc">社区 AI 服务未上线；届时自动接入（本地无需配置 API Key）。当前请切换回 DeepSeek 使用</div>
                   </span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>预留中</span>
+                  <button className="btn primary" onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
+                    切换回 DeepSeek
+                  </button>
                 </div>
               )}
+
+              <div className="setting-divider" />
+              <div className="setting-title">本地 AI 用量统计（M23）</div>
+              <div className="desc" style={{ marginBottom: 8 }}>
+                调用次数与 token 为估算值（字符数/4），仅保存在本机，供未来服务器阶段对接成本核算。
+              </div>
+              <div className="data-version-list">
+                <div className="data-version-row"><span>今日</span><code>{usage ? `${usage.todayCalls} 次 · ${usage.todayTokens} token` : '…'}</code></div>
+                <div className="data-version-row"><span>近 7 天</span><code>{usage ? `${usage.weekCalls} 次 · ${usage.weekTokens} token` : '…'}</code></div>
+                <div className="data-version-row"><span>累计</span><code>{usage ? `${usage.totalCalls} 次 · ${usage.totalTokens} token` : '…'}</code></div>
+              </div>
+              <div className="setting-row">
+                <span className="label">
+                  清空统计
+                  <div className="desc">删除本地全部用量记录（不影响对话历史）</div>
+                </span>
+                <button className="btn" onClick={() => void clearUsage()}>清空</button>
+              </div>
             </div>
           )}
 

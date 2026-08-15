@@ -13,7 +13,7 @@ import { createStore } from './store'
 import { getHistory, initAiHistory } from './aiHistory'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
-import { applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, globalOp, importModBuffer, listTemplates, packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources, scanUnits, writeModInfo } from './modTools'
+import { applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, deleteUserTemplate, globalOp, importModBuffer, importTemplateFile, listTemplates, listUserTemplateKeys, packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources, scanUnits, writeModInfo } from './modTools'
 import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck, readGameAssetImage } from './game'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import { createKnowledgePack } from './knowledgePack'
@@ -540,6 +540,17 @@ function registerIpc(): void {
   // M7：模板列表合并用户模板目录（userData/templates），并支持把单位文件保存为模板
   const userTemplatesDir = path.join(app.getPath('userData'), 'templates')
   ipcMain.handle('mod:listTemplates', async () => listTemplates([userTemplatesDir]))
+  // M23 模板库管理：导入（文件对话框 → 校验 → 复制进用户目录）/ 删除用户模板 / 用户模板 key 列表
+  ipcMain.handle('template:import', async () => {
+    const picked = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: '模板文件（JSON）', extensions: ['json'] }] })
+    if (picked.canceled || picked.filePaths.length === 0) return null
+    return importTemplateFile(userTemplatesDir, picked.filePaths[0])
+  })
+  ipcMain.handle('template:deleteUser', async (_event, key: unknown) => {
+    if (typeof key !== 'string') return { ok: false, message: '参数错误' }
+    return deleteUserTemplate(userTemplatesDir, key)
+  })
+  ipcMain.handle('template:listUserKeys', async () => listUserTemplateKeys(userTemplatesDir))
   ipcMain.handle('mod:saveFileAsTemplate', async (_event, rootPath: string, filePath: string, templateName: string, content?: string) => {
     requireInsideRoot(rootPath, rootPath)
     return saveFileAsTemplate(rootPath, filePath, templateName, userTemplatesDir, content)

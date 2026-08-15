@@ -1464,3 +1464,54 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
+/** 模板文件名消毒（key 来自文件名：只允许安全字符，保留中文，防路径穿越） */
+function sanitizeTemplateKey(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|]/g, '-').trim()
+  return cleaned || 'custom-template'
+}
+
+/**
+ * 导入模板文件到用户模板目录（M23 模板库管理）：
+ * 来源文件需是合法模板 JSON（损坏拒绝）；key 取文件名（消毒）；
+ * 同名自动追加 -2/-3，绝不静默覆盖；只写 destDir。
+ */
+export async function importTemplateFile(destDir: string, sourcePath: string): Promise<TemplateMeta> {
+  const raw = JSON.parse(await fs.readFile(sourcePath, 'utf8')) as RawTemplate
+  if (typeof raw.name !== 'string' && typeof raw.data !== 'string') {
+    throw new Error('不是有效的模板文件（缺少 name 或 data）')
+  }
+  await fs.mkdir(destDir, { recursive: true })
+  const base = sanitizeTemplateKey(path.basename(sourcePath, '.json'))
+  let key = base
+  for (let suffix = 2; await exists(path.join(destDir, `${key}.json`)); suffix++) key = `${base}-${suffix}`
+  await fs.writeFile(path.join(destDir, `${key}.json`), JSON.stringify(raw, null, 2), 'utf8')
+  return toTemplateMeta(key, raw)
+}
+
+/**
+ * 删除用户模板（M23 模板库管理）：只允许删除 destDir（用户目录）内的模板，
+ * 内置模板目录不可删除；key 越界/非法拒绝。
+ */
+export async function deleteUserTemplate(destDir: string, key: string): Promise<{ ok: boolean; message?: string }> {
+  if (!key || key.includes('/') || key.includes('\\') || key === '.' || key === '..') {
+    return { ok: false, message: '无效的模板名' }
+  }
+  const file = path.join(destDir, `${key}.json`)
+  if (!isPathInside(destDir, file)) return { ok: false, message: '路径越界，拒绝删除' }
+  try {
+    await fs.rm(file, { force: true })
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+/** 用户模板目录的 key 列表（分类：来源 = 用户/内置） */
+export async function listUserTemplateKeys(destDir: string): Promise<string[]> {
+  try {
+    const files = await fs.readdir(destDir)
+    return files.filter((f) => f.endsWith('.json')).map((f) => path.basename(f, '.json'))
+  } catch {
+    return []
+  }
+}

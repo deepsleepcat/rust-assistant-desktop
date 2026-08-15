@@ -88,6 +88,9 @@ const api: BridgeApi = {
     globalOp: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:globalOp', rootPath, params),
     listTemplates: () => ipcRenderer.invoke('mod:listTemplates'),
     saveFileAsTemplate: (rootPath: string, filePath: string, templateName: string, content?: string) => ipcRenderer.invoke('mod:saveFileAsTemplate', rootPath, filePath, templateName, content),
+    importTemplate: () => ipcRenderer.invoke('template:import'),
+    deleteUserTemplate: (key: string) => ipcRenderer.invoke('template:deleteUser', key),
+    listUserTemplateKeys: () => ipcRenderer.invoke('template:listUserKeys'),
     createUnitFromTemplate: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnitFromTemplate', rootPath, params),
   },
   ai: {

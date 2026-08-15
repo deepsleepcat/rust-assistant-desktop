@@ -20,6 +20,7 @@ import { RUST_ASSISTANT_SYSTEM_PROMPT } from '../ai/rustSystemPrompt'
 import type { AiStreamEvent } from '../types/ai'
 import type { DiffLine } from '../types/diff'
 import { checkAiWrittenFile } from '../features/ai/aiQualityCheck'
+import { parseStoredUsage } from '../features/ai/usageStats'
 import { generateModReport as generateModReportFn } from '../features/modTools/modReport'
 
 export interface ConfirmRequest {
@@ -65,6 +66,8 @@ interface WorkspaceStoreState {
   versionDiffOpen: boolean
   /** M20：关系图弹窗（P2 任务 4） */
   relationGraphOpen: boolean
+  /** M23：模板库管理弹窗（P3 任务 2） */
+  templateLibraryOpen: boolean
   /** M7：单位库弹窗 */
   unitLibraryOpen: boolean
   /** M8：值类型管理弹窗 */
@@ -165,6 +168,7 @@ interface WorkspaceStoreActions {
   setCodeTableOpen(open: boolean): void
   setVersionDiffOpen(open: boolean): void
   setRelationGraphOpen(open: boolean): void
+  setTemplateLibraryOpen(open: boolean): void
   setUnitLibraryOpen(open: boolean): void
   /** M8：值类型管理弹窗 */
   setValueTypeOpen(open: boolean): void
@@ -352,6 +356,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       codeTableOpen: false,
       versionDiffOpen: false,
       relationGraphOpen: false,
+      templateLibraryOpen: false,
       unitLibraryOpen: false,
       valueTypeOpen: false,
       turretEditorOpen: false,
@@ -1122,6 +1127,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       setRelationGraphOpen(open: boolean) {
         set({ relationGraphOpen: open })
       },
+      setTemplateLibraryOpen(open: boolean) {
+        set({ templateLibraryOpen: open })
+      },
       setUnitLibraryOpen(open: boolean) {
         set({ unitLibraryOpen: open })
       },
@@ -1445,6 +1453,21 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             if (event.type === 'done') {
               clearGuard()
               unsubscribe()
+              // M23：本地 AI 用量统计（调用次数 + 估算 token；纯本地，供未来服务器阶段对接成本核算）
+              void (async () => {
+                const { addUsageRecord, estimateTokens } = await import('../features/ai/usageStats')
+                const aiSettings = get().settings.ai
+                const assistantMsg = get().conversations.find((c) => c.id === conversationId)?.messages.find((m) => m.id === aiMessageId)
+                const usage = {
+                  at: Date.now(),
+                  provider: aiSettings.provider,
+                  model: aiSettings.provider === 'deepseek' ? aiSettings.deepseekModel : aiSettings.communityModel,
+                  inputTokens: estimateTokens(trimmed),
+                  outputTokens: estimateTokens(assistantMsg?.content ?? ''),
+                }
+                const records = addUsageRecord(parseStoredUsage(await getBridge().store.get('aiUsage').catch(() => null)), usage)
+                await getBridge().store.set('aiUsage', records).catch(() => undefined)
+              })()
               set({ aiStreamingConversationId: null })
               resolve()
             }

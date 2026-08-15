@@ -304,6 +304,9 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       ],
       createUnitFromTemplate: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
       saveFileAsTemplate: async () => ({ key: 'mock-template' }),
+      importTemplate: async () => null,
+      deleteUserTemplate: async () => ({ ok: false, message: '模拟环境：无法删除模板' }),
+      listUserTemplateKeys: async () => [],
     },
     ai: {
       check: async (settings) => {
