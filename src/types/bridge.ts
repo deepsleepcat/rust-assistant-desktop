@@ -70,6 +70,19 @@ export interface BridgeApi {
     saveCropped(dataUrl: string): Promise<string>
     uploadCommunity(): Promise<{ ok: false; message: string }>
   }
+  /** M18 知识包更新器（仅 Electron 真桥提供；浏览器预览回退内置 fetch） */
+  knowledge?: {
+    /** 读数据文件：已更新的知识包优先，否则内置包（name 为白名单内文件名） */
+    readDataFile(name: string): Promise<{ content: string; source: 'builtin' | 'updated'; version: string | null }>
+    /** 本地知识包状态（当前版本/已下载版本目录/内置文件数） */
+    info(): Promise<{ currentVersion: string | null; updatedAt: number; availableVersions: string[]; builtinFileCount: number }>
+    /** 版本检查：拉取远端清单与本地对比（增量变更文件列表） */
+    checkUpdate(sourceUrl: string): Promise<{ hasUpdate: boolean; latestVersion: string; currentVersion: string | null; changedFiles: string[]; error?: string }>
+    /** 增量更新：下载变更文件 + sha256 校验 + 原子切换；失败自动保留旧版 */
+    update(sourceUrl: string): Promise<{ ok: boolean; version?: string; updatedFiles?: number; error?: string }>
+    /** 回滚到上一版本（保留最近两个版本目录） */
+    rollback(): Promise<{ ok: boolean; version?: string; error?: string }>
+  }
   /** M5 模组工具 */
   mod: {    create(rootPath: string, params: { name?: string; title: string; description?: string; author?: string; version?: string; thumbnail?: string; musicFiles?: string[]; musicExclusive?: boolean; updateUrl?: string }): Promise<{ files: string[]; musicFailed?: string[] }>
     /** M6.5 选择背景音乐（多选，返回绝对路径列表；取消返回空数组） */

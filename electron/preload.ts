@@ -52,6 +52,14 @@ const api: BridgeApi = {
     saveCropped: (dataUrl: string) => ipcRenderer.invoke('avatar:saveCropped', dataUrl),
     uploadCommunity: () => ipcRenderer.invoke('avatar:uploadCommunity'),
   },
+  /** M18 知识包更新器（数据文件读取/更新检查/增量更新/回滚） */
+  knowledge: {
+    readDataFile: (name: string) => ipcRenderer.invoke('knowledge:readDataFile', name),
+    info: () => ipcRenderer.invoke('knowledge:info'),
+    checkUpdate: (sourceUrl: string) => ipcRenderer.invoke('knowledge:checkUpdate', sourceUrl),
+    update: (sourceUrl: string) => ipcRenderer.invoke('knowledge:update', sourceUrl),
+    rollback: () => ipcRenderer.invoke('knowledge:rollback'),
+  },
   game: {
     detect: (configuredPath?: string) => ipcRenderer.invoke('game:detect', configuredPath),
     importSample: (gamePath: string, targetRoot: string, opts?: unknown) =>

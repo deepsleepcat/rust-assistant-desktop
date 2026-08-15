@@ -53,6 +53,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   targetGameVersion: '',
   /** M12：上次运行前检查结果（at=0 表示从未检查过） */
   gameLastCheck: { at: 0, ok: true, message: '' },
+  /** M18：知识包数据源（默认未配置——官方数据仓库就绪后在此填写；可加镜像） */
+  knowledgeSourceUrl: '',
+  knowledgeSources: [],
   avatar: { source: 'default', localPath: null, remoteUrl: null, updatedAt: 0 },
   ai: {
     provider: 'deepseek',
@@ -111,8 +114,31 @@ export function sanitizeSettings(input: unknown): AppSettings {
     semanticCheckers: sanitizeCheckerConfig(raw.semanticCheckers),
     targetGameVersion: typeof raw.targetGameVersion === 'string' ? raw.targetGameVersion.trim() : DEFAULT_SETTINGS.targetGameVersion,
     gameLastCheck: sanitizeLastCheck(raw.gameLastCheck),
+    knowledgeSourceUrl:
+      typeof raw.knowledgeSourceUrl === 'string' && /^https?:\/\//i.test(raw.knowledgeSourceUrl.trim())
+        ? raw.knowledgeSourceUrl.trim().slice(0, 500)
+        : DEFAULT_SETTINGS.knowledgeSourceUrl,
+    knowledgeSources: sanitizeSources(raw.knowledgeSources),
     ai: sanitizeAi(raw.ai),
   }
+}
+
+/** 镜像源列表清洗：只保留 http/https、去重、限 10 个、单个限 500 字符 */
+function sanitizeSources(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of input) {
+    if (typeof item !== 'string') continue
+    const url = item.trim()
+    if (!/^https?:\/\//i.test(url)) continue
+    if (url.length > 500) continue
+    if (seen.has(url)) continue
+    seen.add(url)
+    out.push(url)
+    if (out.length >= 10) break
+  }
+  return out
 }
 
 /** 头像配置清洗：旧版本没有头像字段时使用默认头像 */

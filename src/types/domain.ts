@@ -68,6 +68,10 @@ export interface AppSettings {
   targetGameVersion: string
   /** M12：上次运行前检查结果（at=0 表示从未检查过） */
   gameLastCheck: { at: number; ok: boolean; message: string }
+  /** M18：知识包数据源（http/https URL；空 = 未配置，用内置包） */
+  knowledgeSourceUrl: string
+  /** M18：可选镜像源列表（用户添加；下拉切换用） */
+  knowledgeSources: string[]
 }
 
 /** 一个项目 = 一个铁锈战争模组目录 */

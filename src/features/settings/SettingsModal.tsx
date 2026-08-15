@@ -12,7 +12,7 @@ import { Modal } from '../../components/Modal'
 import { AvatarCropModal } from './AvatarCropModal'
 import { GameSettingsTab } from './GameSettingsTab'
 import { ALL_SEMANTIC_CHECKERS } from '../editor/semanticChecks/registry'
-import { getDataVersionInfo, getGameVersions, loadCodeData, type DataVersionInfo } from '../../services/codeData'
+import { getDataVersionInfo, getGameVersions, loadCodeData, reloadCodeData, type DataVersionInfo } from '../../services/codeData'
 
 const GRADIENT_PRESETS = [
   { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
@@ -24,6 +24,7 @@ export function SettingsModal() {
   const settings = useWorkspaceStore((s) => s.settings)
   const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
+  const notify = useWorkspaceStore((s) => s.notify)
   const updateState = useWorkspaceStore((s) => s.updateState)
   const checkUpdate = useWorkspaceStore((s) => s.checkUpdate)
   const downloadUpdate = useWorkspaceStore((s) => s.downloadUpdate)
@@ -41,6 +42,11 @@ export function SettingsModal() {
   const [gameVersions, setGameVersions] = useState<Array<{ versionName: string; versionNumber: number }>>([])
   // M16：离线知识包数据版本信息（关于页展示）
   const [dataVersion, setDataVersion] = useState<DataVersionInfo | null>(null)
+  // M18：知识包更新器状态（检查结果/更新中/本地信息）
+  const [kpInfo, setKpInfo] = useState<{ currentVersion: string | null; updatedAt: number; availableVersions: string[] } | null>(null)
+  const [kpCheck, setKpCheck] = useState<{ hasUpdate: boolean; latestVersion: string; changedFiles: string[]; error?: string } | null>(null)
+  const [kpBusy, setKpBusy] = useState(false)
+  const [newMirror, setNewMirror] = useState('')
 
   // M11：目标游戏版本下拉数据（异步加载版本表；失败时只显示「跟随最新」）
   useEffect(() => {
@@ -50,6 +56,11 @@ export function SettingsModal() {
       const versions = getGameVersions()
       setGameVersions(versions)
       setDataVersion(getDataVersionInfo())
+      // M18：读取知识包本地状态（更新版本/回滚入口）
+      void getBridge()
+        .knowledge?.info()
+        .then((info) => alive && setKpInfo(info))
+        .catch(() => undefined)
       // 存储的版本名不在当前版本表（数据更新后旧值残留）→ 归一化回「跟随最新」，
       // 避免 select 显示与实际存储脱节
       const stored = useWorkspaceStore.getState().settings.targetGameVersion
@@ -75,6 +86,79 @@ export function SettingsModal() {
   }, [bg.kind, bg.imagePath])
 
   const imageUrl = image.path === bg.imagePath ? image.url : null
+
+  // M18：知识包更新操作（检查/更新/回滚；更新成功后重载数据，补全与检查立即生效）
+  const activeSource = settings.knowledgeSourceUrl.trim() || settings.knowledgeSources[0] || ''
+  const refreshKpInfo = async () => {
+    const info = await getBridge().knowledge?.info()
+    if (info) setKpInfo(info)
+  }
+  const checkKp = async () => {
+    if (!activeSource) {
+      notify('请先配置知识包数据源（官方源或镜像地址）')
+      return
+    }
+    setKpBusy(true)
+    setKpCheck(null)
+    try {
+      const r = await getBridge().knowledge!.checkUpdate(activeSource)
+      setKpCheck({ hasUpdate: r.hasUpdate, latestVersion: r.latestVersion, changedFiles: r.changedFiles, error: r.error })
+    } catch (err) {
+      setKpCheck({ hasUpdate: false, latestVersion: '', changedFiles: [], error: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setKpBusy(false)
+    }
+  }
+  const updateKp = async () => {
+    setKpBusy(true)
+    try {
+      const r = await getBridge().knowledge!.update(activeSource)
+      if (r.ok) {
+        // 更新成功：清缓存重载数据（补全/检查/翻译立即用新数据）
+        reloadCodeData()
+        setDataVersion(null)
+        void loadCodeData().then(() => setDataVersion(getDataVersionInfo()))
+        await refreshKpInfo()
+        notify(r.updatedFiles === 0 ? '知识包已是最新版本' : `知识包更新完成（${r.updatedFiles} 个文件），数据已重新加载`)
+      } else {
+        notify(`更新失败：${r.error ?? '未知错误'}（旧版不受影响）`)
+      }
+    } catch (err) {
+      notify(`更新失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setKpBusy(false)
+    }
+  }
+  const rollbackKp = async () => {
+    setKpBusy(true)
+    try {
+      const r = await getBridge().knowledge!.rollback()
+      if (r.ok) {
+        reloadCodeData()
+        await refreshKpInfo()
+        notify(`已回滚到知识包版本 ${r.version ?? '内置包'}，数据已重新加载`)
+      } else {
+        notify(`回滚失败：${r.error ?? '未知错误'}`)
+      }
+    } catch (err) {
+      notify(`回滚失败：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setKpBusy(false)
+    }
+  }
+  const addMirror = () => {
+    const url = newMirror.trim()
+    if (!/^https?:\/\//i.test(url)) {
+      notify('镜像地址需以 http:// 或 https:// 开头')
+      return
+    }
+    if (settings.knowledgeSources.includes(url)) {
+      notify('该镜像已在列表中')
+      return
+    }
+    updateSettings({ knowledgeSources: [...settings.knowledgeSources, url] })
+    setNewMirror('')
+  }
 
   const previewStyle: React.CSSProperties = {
     opacity: bg.opacity / 100,
@@ -619,6 +703,109 @@ export function SettingsModal() {
               {dataVersion && !dataVersion.loaded && (
                 <div className="setting-error">数据加载失败——补全/检查/翻译将不可用，请重新启动应用</div>
               )}
+              <div className="setting-divider" />
+              <div className="setting-title">知识包更新</div>
+              <div className="desc" style={{ marginBottom: 8 }}>
+                官方数据（代码表/版本表/翻译等）可检测更新并增量下载，下载后校验哈希，失败自动保留旧版；
+                无网络或未配置数据源时，内置知识包照常工作。
+              </div>
+              <div className="setting-row">
+                <span className="label">
+                  数据源
+                  <div className="desc">选择官方源或已添加的镜像（需 http/https 地址）</div>
+                </span>
+                <select
+                  value={settings.knowledgeSourceUrl}
+                  onChange={(e) => updateSettings({ knowledgeSourceUrl: e.target.value })}
+                  style={{ maxWidth: 320 }}
+                >
+                  <option value="">未配置（仅内置包）</option>
+                  {settings.knowledgeSourceUrl && <option value={settings.knowledgeSourceUrl}>{settings.knowledgeSourceUrl}</option>}
+                  {settings.knowledgeSources
+                    .filter((s) => s !== settings.knowledgeSourceUrl)
+                    .map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div className="setting-row">
+                <span className="label">添加镜像源</span>
+                <input
+                  style={{ width: 280 }}
+                  placeholder="https://example.com/knowledge-pack"
+                  value={newMirror}
+                  onChange={(e) => setNewMirror(e.target.value)}
+                />
+                <button className="btn" onClick={addMirror}>
+                  添加
+                </button>
+              </div>
+              {settings.knowledgeSources.map((s, i) => (
+                <div key={s} className="setting-row">
+                  <code style={{ fontSize: 12, color: 'var(--text-2)', wordBreak: 'break-all' }}>{s}</code>
+                  <button
+                    className="btn"
+                    onClick={() => {
+                      const next = settings.knowledgeSources.filter((_, idx) => idx !== i)
+                      updateSettings({
+                        knowledgeSources: next,
+                        // 删掉正在使用的镜像时，活动源一并清空
+                        knowledgeSourceUrl: settings.knowledgeSourceUrl === s ? next[0] ?? '' : settings.knowledgeSourceUrl,
+                      })
+                    }}
+                  >
+                    移除
+                  </button>
+                </div>
+              ))}
+              <div className="setting-row">
+                <span className="label">
+                  当前知识包
+                  <div className="desc">
+                    {kpInfo?.currentVersion
+                      ? `版本 ${kpInfo.currentVersion}（${new Date(kpInfo.updatedAt).toLocaleString()} 更新）`
+                      : '使用应用内置数据'}
+                  </div>
+                </span>
+                <button className="btn" disabled={kpBusy} onClick={() => void checkKp()}>
+                  {kpBusy ? '处理中…' : '检查更新'}
+                </button>
+              </div>
+              {kpCheck?.error && <div className="setting-error">检查更新失败：{kpCheck.error}</div>}
+              {kpCheck && !kpCheck.error && !kpCheck.hasUpdate && kpCheck.latestVersion && (
+                <div className="setting-row">
+                  <span className="label">
+                    <AppIcon name="check" size={13} />
+                    已是最新知识包（版本 {kpCheck.latestVersion}）
+                  </span>
+                </div>
+              )}
+              {kpCheck?.hasUpdate && (
+                <div className="setting-row">
+                  <span className="label">
+                    发现新版本 {kpCheck.latestVersion}
+                    <div className="desc">变更 {kpCheck.changedFiles.length} 个文件：{kpCheck.changedFiles.join('、') || '（无）'}</div>
+                  </span>
+                  <button className="btn primary" disabled={kpBusy} onClick={() => void updateKp()}>
+                    <AppIcon name="download" size={13} />
+                    立即更新
+                  </button>
+                </div>
+              )}
+              {kpInfo && kpInfo.availableVersions.length > 1 && (
+                <div className="setting-row">
+                  <span className="label">
+                    回滚知识包
+                    <div className="desc">恢复到上一个版本（更新失败不会影响旧版，无需手动回滚）</div>
+                  </span>
+                  <button className="btn" disabled={kpBusy} onClick={() => void rollbackKp()}>
+                    回滚
+                  </button>
+                </div>
+              )}
+              <div className="setting-divider" />
               <div className="setting-row">
                 <span className="label">
                   自动更新

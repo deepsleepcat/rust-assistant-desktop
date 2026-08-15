@@ -90,9 +90,22 @@ export function dataReady(): boolean {
   return loaded !== null
 }
 
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`加载数据失败：${url} (${res.status})`)
+async function fetchJson<T>(name: string): Promise<T> {
+  // M18：Electron 环境优先读「知识包」数据（已更新 → 更新版，否则内置 public/data）；
+  // 浏览器预览/测试环境没有 knowledge 桥 → 回退 fetch 内置资源
+  try {
+    const { getBridge } = await import('./bridge')
+    const kp = getBridge().knowledge
+    if (kp) {
+      const res = await kp.readDataFile(name)
+      return JSON.parse(res.content) as T
+    }
+  } catch {
+    // 读失败（更新包损坏等）回退内置 fetch，不阻塞编辑器
+  }
+  const base = import.meta.env.BASE_URL || '/'
+  const res = await fetch(`${base}data/${name}`)
+  if (!res.ok) throw new Error(`加载数据失败：${name} (${res.status})`)
   return (await res.json()) as T
 }
 
@@ -134,16 +147,15 @@ export function loadCodeData(): Promise<void> {
   if (!loaded) {
     loaded = (async () => {
       try {
-        const base = import.meta.env.BASE_URL || '/'
         const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw] = await Promise.all([
-          fetchJson<RawDataset>(`${base}data/code.json`),
-          fetchJson<RawDataset>(`${base}data/section.json`),
-          fetchJson<RawDataset>(`${base}data/value_type.json`),
-          fetchJson<RawDataset>(`${base}data/translations.json`),
-          fetchJson<RawDataset>(`${base}data/vocabulary.json`),
-          fetchJson<RawDataset>(`${base}data/logicboolean.json`).catch(() => ({ data: [] })),
-          fetchJson<RawDataset>(`${base}data/units.json`).catch(() => ({ data: [] })),
-          fetchJson<RawDataset>(`${base}data/game_version.json`).catch(() => ({ data: [] })),
+          fetchJson<RawDataset>('code.json'),
+          fetchJson<RawDataset>('section.json'),
+          fetchJson<RawDataset>('value_type.json'),
+          fetchJson<RawDataset>('translations.json'),
+          fetchJson<RawDataset>('vocabulary.json'),
+          fetchJson<RawDataset>('logicboolean.json').catch(() => ({ data: [] })),
+          fetchJson<RawDataset>('units.json').catch(() => ({ data: [] })),
+          fetchJson<RawDataset>('game_version.json').catch(() => ({ data: [] })),
         ])
 
         codes = (codeRaw.data ?? []) as CodeInfo[]

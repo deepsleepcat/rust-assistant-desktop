@@ -16,6 +16,7 @@ import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import { applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, globalOp, importModBuffer, listTemplates, packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources, scanUnits, writeModInfo } from './modTools'
 import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck } from './game'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
+import { createKnowledgePack } from './knowledgePack'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
@@ -184,6 +185,11 @@ async function readMediaAsDataUrl(rootPath: string, mediaPath: string, mimeByExt
 const store = createStore(path.join(app.getPath('userData'), 'app-state.json'))
 // AI 修改历史（任务 2）：独立 JSON 文件，避免与主 store 共用导致每次设置变更重写大文件
 initAiHistory(path.join(app.getPath('userData'), 'ai-history.json'))
+// M18 知识包更新器：可更新数据放 userData/knowledge-pack，内置数据回退 public/data
+const knowledgePack = createKnowledgePack(
+  path.join(app.getPath('userData'), 'knowledge-pack'),
+  path.join(__dirname, '..', '..', 'public', 'data'),
+)
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -240,6 +246,21 @@ function createWindow(): BrowserWindow {
 }
 
 function registerIpc(): void {
+  // M18 知识包更新器（数据文件读取/更新检查/增量更新/回滚；源 URL 由渲染层设置提供）
+  ipcMain.handle('knowledge:readDataFile', (_event, name: unknown) => {
+    if (typeof name !== 'string') throw new Error('参数错误')
+    return knowledgePack.readDataFile(name)
+  })
+  ipcMain.handle('knowledge:info', () => knowledgePack.info())
+  ipcMain.handle('knowledge:checkUpdate', (_event, sourceUrl: unknown) => {
+    if (typeof sourceUrl !== 'string') throw new Error('参数错误')
+    return knowledgePack.checkUpdate(sourceUrl)
+  })
+  ipcMain.handle('knowledge:update', (_event, sourceUrl: unknown) => {
+    if (typeof sourceUrl !== 'string') throw new Error('参数错误')
+    return knowledgePack.update(sourceUrl)
+  })
+  ipcMain.handle('knowledge:rollback', () => knowledgePack.rollback())
   ipcMain.handle('store:get', (_event, key: string) => store.get(key))
   ipcMain.handle('store:set', (_event, key: string, value: unknown) => {
     // A 修复：主进程自有信任锚键（媒体允许集合/项目根集合/迁移标志）不允许渲染层写入，防伪造
