@@ -10,6 +10,7 @@
  */
 import { parseIni, sectionEnName, toEnKey } from '../editor/semanticChecks/helpers'
 import { BUILTIN_UNITS } from '../editor/semanticChecks/helpers'
+import { joinProjectPath } from '../../utils/projectPath'
 
 export type RefKind = 'image' | 'audio' | 'unit' | 'turret'
 
@@ -110,7 +111,8 @@ export async function buildRelationGraph(
   const crossModMap = new Map<string, CrossModRef>()
 
   async function scanOne(file: string): Promise<void> {
-    const content = await bridge.project.readFile(rootPath, file).then((r) => r.content).catch(() => '')
+    // bridge fs 通道要求项目内绝对路径（相对路径会被主进程拒绝）
+    const content = await bridge.project.readFile(rootPath, joinProjectPath(rootPath, file)).then((r) => r.content).catch(() => '')
     if (!content || content.length > MAX_FILE_CHARS) return
     const ini = parseIni(content)
     // 单位判定：存在 [core] 节（名称缺失回退文件名——名称缺失本身由检查器报）
@@ -131,8 +133,9 @@ export async function buildRelationGraph(
       let missing = false
       if (!crossMod) {
         if (kind === 'image' || kind === 'audio') {
-          // 资源路径：文件清单里存在（大小写不敏感）才算存在
-          missing = !fileSet.has(target.toLowerCase())
+          // 资源路径：文件清单里存在才算存在（大小写不敏感 + 反斜杠归一化——
+          // Windows 用户可能写 images\rifle.png，scanResources 返回正斜杠）
+          missing = !fileSet.has(target.replace(/\\/g, '/').toLowerCase())
         } else if (kind === 'unit') {
           const lref = target.toLowerCase()
           missing = !(unitNames.has(lref) || BUILTIN_UNITS.has(lref) || SPECIAL_UNIT_VALUES.has(lref) || lref.startsWith('custom:'))

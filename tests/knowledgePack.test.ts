@@ -9,7 +9,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createKnowledgePack, sanitizeVersion, sha256Hex, validateSourceUrl, type KnowledgeManifest } from '../electron/knowledgePack'
+import { compareVersions, createKnowledgePack, sanitizeVersion, sha256Hex, validateSourceUrl, type KnowledgeManifest } from '../electron/knowledgePack'
 
 let packDir: string
 let builtinDir: string
@@ -73,7 +73,7 @@ afterEach(() => {
   fs.rmSync(packDir, { recursive: true, force: true })
 })
 
-describe('validateSourceUrl / sanitizeVersion', () => {
+describe('validateSourceUrl / sanitizeVersion / compareVersions', () => {
   it('只允许 http/https（file:// 可读本地文件，拒绝）', () => {
     expect(validateSourceUrl('https://example.com/pack')).toBeNull()
     expect(validateSourceUrl('http://example.com')).toBeNull()
@@ -88,6 +88,16 @@ describe('validateSourceUrl / sanitizeVersion', () => {
     expect(sanitizeVersion('v1.0/../x')).toBe('v1.0_.._x')
     expect(sanitizeVersion('')).toBe('unknown')
     expect(sanitizeVersion('2026-08-15')).toBe('2026-08-15')
+  })
+
+  it('版本数值化比较：多位数/补丁版本不按字典序（1.9 < 1.15、p9 < p10）', () => {
+    expect(compareVersions('1.9', '1.15')).toBeLessThan(0)
+    expect(compareVersions('1.15', '1.9')).toBeGreaterThan(0)
+    expect(compareVersions('1.15-p9', '1.15-p10')).toBeLessThan(0)
+    expect(compareVersions('v9', 'v10')).toBeLessThan(0)
+    expect(compareVersions('1.15-p10', '1.16')).toBeLessThan(0)
+    expect(compareVersions('v2', 'v2')).toBe(0)
+    expect(compareVersions('1.15-p6', '1.15')).toBeGreaterThan(0)
   })
 })
 
@@ -172,6 +182,42 @@ describe('checkUpdate / update（增量）', () => {
     const after = await kp.readDataFile('code.json')
     expect(after.version).toBe('v2b')
     expect(after.content).toContain('v2b')
+  })
+
+  it('全量快照：增量更新后未变更文件仍是更新版（不静默回退内置）', async () => {
+    const kp = createKnowledgePack(packDir, builtinDir)
+    await kp.update(baseUrl) // v1：只含 code.json（updatedField）
+    // v2：section.json 变更（新增），code.json 不变
+    writeSource(
+      {
+        'section.json': '{"data":[{"code":"core","translate":"核心"}]}',
+      },
+      'v2',
+    )
+    await kp.update(baseUrl)
+    // v2 目录应包含从 v1 复制来的 code.json（全量快照）
+    const code = await kp.readDataFile('code.json')
+    expect(code.version).toBe('v2')
+    expect(code.content).toContain('updatedField')
+    expect(code.source).toBe('updated')
+    const section = await kp.readDataFile('section.json')
+    expect(section.content).toContain('核心')
+  })
+
+  it('多位数版本清理/回滚按数值序（v9→v10 不误删当前版本）', async () => {
+    const kp = createKnowledgePack(packDir, builtinDir)
+    writeSource({ 'code.json': UPDATED_CODE }, 'v9')
+    await kp.update(baseUrl)
+    writeSource({ 'code.json': '{"data":[{"code":"v10x","translate":"V10","type":"string","section":"core"}]}' }, 'v10')
+    await kp.update(baseUrl)
+    const info = await kp.info()
+    expect(info.currentVersion).toBe('v10')
+    expect(info.availableVersions.sort()).toEqual(['v10', 'v9'])
+    // 回滚应回到 v9（字典序会选错）
+    const rb = await kp.rollback()
+    expect(rb.ok).toBe(true)
+    expect(rb.version).toBe('v9')
+    expect((await kp.readDataFile('code.json')).content).toContain(UPDATED_CODE)
   })
 
   it('无网络/服务不可用：返回错误，本地包不受影响', async () => {

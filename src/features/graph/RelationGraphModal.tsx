@@ -144,7 +144,7 @@ export function RelationGraphModal({ onClose }: Props) {
                       onChange={(e) => setQuery(e.target.value)}
                     />
                     <div className="relgraph-unit-list">
-                      {units.map((u) => {
+                      {units.slice(0, 200).map((u) => {
                         const missing = u.refs.filter((r) => r.missing).length
                         return (
                           <button
@@ -161,6 +161,7 @@ export function RelationGraphModal({ onClose }: Props) {
                         )
                       })}
                       {units.length === 0 && <p className="codetable-empty">没有匹配的单位</p>}
+                      {units.length > 200 && <p className="codetable-empty">…共 {units.length} 个单位，仅显示前 200 个（用搜索过滤）</p>}
                     </div>
                   </div>
                   <div className="relgraph-canvas">

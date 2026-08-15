@@ -183,6 +183,21 @@ describe('runCustomRules（执行）', () => {
     expect(hp[0].line).toBe(2)
   })
 
+  it('规则侧中文 key/section 对英文文件同样匹配（双向回译）', () => {
+    const zhToEn = (s: string) => ({ 血量: 'maxHp', 核心: 'core' })[s]
+    const zhRules = [
+      { id: 'zh-key', title: '中文键', section: '核心', key: '血量', check: { type: 'numeric-range', min: 1, max: 100 } },
+      { id: 'zh-required', title: '中文必需键', section: '核心', key: '血量', check: { type: 'required-key' } },
+    ]
+    const issues = runCustomRules('[core]\nmaxHp: 999\n', zhRules as never, { zhToEn })
+    // 英文文件 + 中文规则 key：数值越界命中 + required 通过
+    expect(issues.filter((i) => i.ruleId === 'custom:zh-key').length).toBe(1)
+    expect(issues.some((i) => i.ruleId === 'custom:zh-required')).toBe(false)
+    // 无词典时中文规则 key 不误报（英文文件键不匹配 → 不检查）
+    const noDict = runCustomRules('[core]\nmaxHp: 999\n', zhRules as never, undefined)
+    expect(noDict.some((i) => i.ruleId === 'custom:zh-key')).toBe(false)
+  })
+
   it('配置过滤：custom: 前缀显式 false 的规则不执行（默认全部执行）', () => {
     const issues = runCustomRules(SAMPLE, SAMPLE_RULES as never, undefined, { 'custom:price-positive': false })
     expect(issues.some((i) => i.ruleId === 'custom:price-positive')).toBe(false)
@@ -231,14 +246,15 @@ describe('runCustomRulesOnText / runSemanticChecks 集成', () => {
 })
 
 describe('loadProjectRuleSets（项目 rules/ 目录加载）', () => {
+  const ROOT = '/fake/root'
   function fakeBridge(files: Record<string, string>) {
     return {
       project: {
         readDir: async (_root: string, dir: string) => {
-          if (dir !== 'rules') throw new Error('目录不存在')
+          if (dir !== `${ROOT}/rules`) throw new Error('目录不存在')
           return Object.keys(files).map((name) => ({ name, isDirectory: false }))
         },
-        readFile: async (_root: string, file: string) => ({ content: files[file.replace(/^rules\//, '')] ?? '' }),
+        readFile: async (_root: string, file: string) => ({ content: files[file.replace(`${ROOT}/rules/`, '')] ?? '' }),
       },
     }
   }
@@ -250,7 +266,7 @@ describe('loadProjectRuleSets（项目 rules/ 目录加载）', () => {
       'broken.json': 'not json at all',
       'readme.md': '不是规则文件',
     })
-    const r = await loadProjectRuleSets('/fake/root', bridge)
+    const r = await loadProjectRuleSets(ROOT, bridge)
     expect(r.sets.length).toBe(1)
     expect(r.sets[0].file).toBe('rules/good.json')
     expect(r.sets[0].rules[0].id).toBe('hp-range')
@@ -259,6 +275,18 @@ describe('loadProjectRuleSets（项目 rules/ 目录加载）', () => {
     expect(r.errors.some((e) => e.file === 'rules/broken.json')).toBe(true)
     // readme.md 不是 .json → 忽略
     expect(r.errors.some((e) => e.file.includes('readme'))).toBe(false)
+  })
+
+  it('跨文件重复规则 id 报错提示（开关会互相干扰）', async () => {
+    const bridge = fakeBridge({
+      'a.json': JSON.stringify({ formatVersion: 1, name: 'A', rules: [{ id: 'dup', title: 't1', check: { type: 'numeric-range', min: 1 } }] }),
+      'b.json': JSON.stringify({ formatVersion: 1, name: 'B', rules: [{ id: 'dup', title: 't2', check: { type: 'numeric-range', min: 1 } }] }),
+    })
+    const r = await loadProjectRuleSets(ROOT, bridge)
+    expect(r.sets.length).toBe(2) // 两集都加载，但给出重复警告
+    const dupErr = r.errors.find((e) => e.file === 'rules/b.json')
+    expect(dupErr?.errors[0]).toContain('重复')
+    expect(dupErr?.errors[0]).toContain('rules/a.json')
   })
 
   it('没有 rules/ 目录 → 空结果（不抛错）', async () => {
@@ -270,7 +298,7 @@ describe('loadProjectRuleSets（项目 rules/ 目录加载）', () => {
         readFile: async () => ({ content: '' }),
       },
     }
-    const r = await loadProjectRuleSets('/fake/root', bridge)
+    const r = await loadProjectRuleSets(ROOT, bridge)
     expect(r.sets).toEqual([])
     expect(r.errors).toEqual([])
   })

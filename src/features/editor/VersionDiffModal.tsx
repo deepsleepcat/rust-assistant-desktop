@@ -112,8 +112,10 @@ export function VersionDiffModal({ onClose }: Props) {
       <div className="modal-card vdiff-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">版本差异对比</div>
         <div className="modal-body vdiff-body">
-          {!ready || versions.length === 0 ? (
+          {!ready ? (
             <p className="codetable-empty">正在加载版本数据…</p>
+          ) : versions.length === 0 ? (
+            <p className="codetable-empty">版本数据不可用（离线数据缺失，重启应用后重试）</p>
           ) : (
             <>
               <div className="vdiff-toolbar">
@@ -143,7 +145,7 @@ export function VersionDiffModal({ onClose }: Props) {
                   设为目标版本
                 </button>
                 {project ? (
-                  <button className="btn primary" disabled={reportBusy || !!diffError} onClick={() => void runUpgradeReport()}>
+                  <button className="btn primary" disabled={reportBusy || !diff || !!diffError} onClick={() => void runUpgradeReport()}>
                     <AppIcon name="tools" size={12} />
                     {reportBusy ? `生成中… ${progress ? `${progress.done}/${progress.total}` : ''}` : '生成升级改动清单'}
                   </button>
@@ -215,7 +217,7 @@ export function VersionDiffModal({ onClose }: Props) {
                       <div className="vdiff-group">
                         <div className="vdiff-group-title">
                           <span className="vdiff-badge rep">改版替代</span>
-                          <span className="vdiff-desc">官方描述声明旧字段被新字段取代</span>
+                          <span className="vdiff-desc">官方描述声明的旧名→现名替代（历史全量，不限于本次版本窗口）</span>
                         </div>
                         {diff.replaced.map((p) => (
                           <div key={`${p.oldCode}->${p.newCode}`} className="vdiff-row" onClick={() => copy(p.newCode)} title="点击复制新键名">

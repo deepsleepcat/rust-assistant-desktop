@@ -11,6 +11,7 @@ import { runSemanticChecks, type SemanticIssue } from '../editor/semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
 import { loadProjectRuleSets } from '../editor/semanticChecks/customRules'
 import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
+import { joinProjectPath } from '../../utils/projectPath'
 
 /** 报告中的单条问题（file 为相对项目根的 posix 路径，脱敏） */
 export interface ModReportIssue {
@@ -126,7 +127,8 @@ export async function generateModReport(
   /** 单文件检查（供并发批次调用；只处理 ini/template——图片/音频已在 checkFiles 构建时统计） */
   let checkFailedFiles = 0
   async function checkOne(file: string): Promise<void> {
-    const content = await bridge.project.readFile(rootPath, file).then((r) => r.content).catch(() => '')
+    // bridge fs 通道要求项目内绝对路径（相对路径会被主进程拒绝）
+    const content = await bridge.project.readFile(rootPath, joinProjectPath(rootPath, file)).then((r) => r.content).catch(() => '')
     if (!content) return
     if (content.length > MAX_REPORT_FILE_CHARS) {
       skippedLargeFiles++

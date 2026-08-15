@@ -15,6 +15,9 @@ import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData
 import { runSemanticChecks, type CustomRule } from '../editor/semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
 import { loadProjectRuleSets } from '../editor/semanticChecks/customRules'
+import { joinProjectPath } from '../../utils/projectPath'
+
+export { joinProjectPath }
 
 /** 清单上限：超出后折叠为汇总条目（防大文件产生数万条诊断拖垮渲染） */
 const MAX_LINT_ITEMS = 200
@@ -22,21 +25,6 @@ const MAX_LINT_ITEMS = 200
  * 与编辑器 rustLint 的 2MB 语义上限不同：质检是一次性动作（非每次输入），
  * 且覆盖「AI 写大文件后的完整检查」场景，故保留 5MB 上限 */
 const MAX_LINT_FILE_CHARS = 5 * 1024 * 1024
-
-/**
- * 项目内绝对路径拼接（渲染层无 node:path）：
- * AI 工具给的 relPath 是相对写法（units/rifle.ini），而 bridge 的 fs 通道要求
- * 绝对路径（按主进程 CWD 解析相对路径会与项目根无关，必然「超出项目目录范围」）。
- * Windows-only 应用：统一正斜杠拼接（Node fs 兼容），与主进程 requireRealInsideRoot 一致。
- */
-export function joinProjectPath(rootPath: string, relPath: string): string {
-  const root = rootPath.replace(/[\\/]+$/, '')
-  const rel = relPath.replace(/^\/+/, '').replace(/\\/g, '/').replace(/^\.\//, '')
-  // 拒绝盘符写法（C:/x）：拼接后词法上会落在根内但物理上不存在（Windows 文件名
-  // 不允许 :），只读通道靠 ENOENT 兜底；显式拒绝更干净，防未来被复用于写通道
-  if (rel.includes(':')) throw new Error('无效的文件路径')
-  return `${root}/${rel}`
-}
 
 /** 每行起始偏移表（单趟构建，行号查询 O(1)） */
 export function lineStarts(content: string): number[] {

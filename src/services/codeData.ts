@@ -168,6 +168,11 @@ export function loadCodeData(): Promise<void> {
         const translations = (transRaw.words ?? transRaw.data ?? []) as Array<{ en?: string; zh?: string }>
         const vocab = (vocabRaw.words ?? vocabRaw.data ?? []) as VocabularyItem[]
 
+        // M18：知识包更新/回滚后重载时，旧数据独有的词条必须清掉——
+        // 只 set 不 clear 会让已删除字段的翻译/回译残留，造成「数据说没有这个
+        // 字段，翻译却认得它」的不一致
+        enToZhDict.clear()
+        zhToEnDict.clear()
         // 翻译词典构建顺序：先并入补充词条（translations.json），
         // 再并入主数据（code.json / section.json）——主数据优先，
         // 防止补充词条里的垃圾值覆盖正确翻译。

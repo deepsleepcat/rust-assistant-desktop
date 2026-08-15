@@ -19,6 +19,7 @@
 import type { CodeInfo } from './codeData'
 import { findCodeByCode, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber, versionNumberToName } from './codeData'
 import { parseIni, toEnKey } from '../features/editor/semanticChecks/helpers'
+import { joinProjectPath } from '../utils/projectPath'
 
 /** 单条字段差异 */
 export interface FieldChange {
@@ -182,7 +183,9 @@ export function getVersionDiff(fromName: string, toName: string, codes: CodeInfo
     }
   }
 
-  // 改版替代：全部派生映射（旧名在代码表内），按旧名排序
+  // 改版替代：全部派生映射（旧名在代码表内）。历史替代关系不按版本窗口过滤——
+  // 窗口过滤会让真实数据（替代对双方都是 addVersion 1）永远为空；UI 已标注
+  // 「历史全量，不限窗口」避免误解
   const replaceMap = buildReplaceMap(codes)
   for (const [oldLower, newer] of replaceMap) {
     const old = codes.find((c) => c.code.toLowerCase() === oldLower)
@@ -263,7 +266,8 @@ export async function buildUpgradeReport(
   let newFieldCount = 0
 
   async function checkOne(file: string): Promise<void> {
-    const content = await bridge.project.readFile(rootPath, file).then((r) => r.content).catch(() => '')
+    // bridge fs 通道要求项目内绝对路径（相对路径会被主进程拒绝）
+    const content = await bridge.project.readFile(rootPath, joinProjectPath(rootPath, file)).then((r) => r.content).catch(() => '')
     if (!content) return
     if (content.length > MAX_UPGRADE_FILE_CHARS) return
     const { keyValues } = parseIni(content)

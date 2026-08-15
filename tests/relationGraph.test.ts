@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest'
 import { buildRelationGraph } from '../src/features/graph/relationGraph'
 
 function fakeBridge(files: Record<string, string>) {
+  const ROOT = '/fake/root'
+  void ROOT
   return {
     mod: {
       scanResources: async () => ({
@@ -14,7 +16,8 @@ function fakeBridge(files: Record<string, string>) {
       }),
     },
     project: {
-      readFile: async (_root: string, file: string) => ({ content: files[file] ?? '' }),
+      // 真实桥要求项目内绝对路径：fake 把前缀剥掉模拟
+      readFile: async (_root: string, file: string) => ({ content: files[file.replace(/^\/fake\/root\//, '')] ?? '' }),
     },
   }
 }
@@ -109,8 +112,8 @@ describe('buildRelationGraph', () => {
     expect(g.missingRefs.length).toBe(0)
   })
 
-  it('大小写不敏感的资源存在性判定（Windows 文件系统）', async () => {
-    const content = UNIT_CONTENT.replace('images/rifle.png', 'Images/Rifle.PNG')
+  it('大小写不敏感 + 反斜杠归一化的资源存在性判定（Windows 文件系统）', async () => {
+    const content = UNIT_CONTENT.replace('images/rifle.png', 'Images\\Rifle.PNG')
     const g = await buildRelationGraph('/fake/root', {}, fakeBridge({ 'units/rifle.ini': content }))
     const image = g.units[0].refs.find((r) => r.kind === 'image')
     expect(image?.missing).toBe(false)

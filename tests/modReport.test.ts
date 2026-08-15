@@ -78,7 +78,7 @@ import { vi } from 'vitest'
 function makeFakeBridge(files: string[], contents: Record<string, string>) {
   return {
     mod: { scanResources: async () => ({ files, unitNames: [] }) },
-    project: { readFile: async (_root: string, f: string) => ({ content: contents[f] ?? '', hasBom: false }) },
+    project: { readFile: async (_root: string, f: string) => ({ content: contents[f.replace(/^C:\/mock\/proj\//, '')] ?? '', hasBom: false }) },
   }
 }
 

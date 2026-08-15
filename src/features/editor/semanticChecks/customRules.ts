@@ -34,15 +34,21 @@
 import type { SemanticCheckContext, SemanticIssue } from './types'
 import { getIni, sectionEnName, toEnKey, toNumber } from './helpers'
 import { validateRuleSet, type CustomRule, type CustomRuleSet } from './ruleSchema'
+import { joinProjectPath } from '../../../utils/projectPath'
 
 export type { CustomCheckType, CustomRule, CustomRuleSet } from './ruleSchema'
 export { validateRuleSet, CHECK_TYPES } from './ruleSchema'
 
-/** 键匹配：规则 key（英文或中文）命中 kv 键（原文或回译后） */
+/** 键匹配（双向回译）：规则 key 与文件键都可能用中文（中文显示层）；
+ * 四个方向任一命中即匹配——原文相等 / 文件键回译 / 规则键回译 / 双方回译 */
 function keyMatches(kvKey: string, ruleKey: string, ctx: SemanticCheckContext | undefined): boolean {
-  if (kvKey.toLowerCase() === ruleKey.toLowerCase()) return true
-  const en = toEnKey(kvKey, ctx?.zhToEn)
-  return en.toLowerCase() === ruleKey.toLowerCase()
+  const kvLower = kvKey.toLowerCase()
+  const ruleLower = ruleKey.toLowerCase()
+  if (kvLower === ruleLower) return true
+  const kvEn = toEnKey(kvKey, ctx?.zhToEn).toLowerCase()
+  if (kvEn === ruleLower) return true
+  const ruleEn = toEnKey(ruleKey, ctx?.zhToEn).toLowerCase()
+  return kvLower === ruleEn || kvEn === ruleEn
 }
 
 /** 执行一组自定义规则（config 为设置配置：custom: 前缀键显式 false 时跳过；
@@ -55,10 +61,12 @@ export function runCustomRules(content: string, rules: CustomRule[], ctx: Semant
     const ruleKey = `custom:${rule.id}`
     if (config && config[ruleKey] === false) continue
     const severity = rule.severity ?? 'warning'
+    // 节过滤：规则 section 支持中文，双向回译后比对（[核心] ↔ core）
     const sectionFilter = rule.section?.toLowerCase()
+    const sectionFilterEn = rule.section ? toEnKey(rule.section, ctx?.zhToEn).toLowerCase() : undefined
     for (const section of ini.sections) {
       const secLower = sectionEnName(section, ctx?.zhToEn)
-      if (sectionFilter && secLower !== sectionFilter && section.name.toLowerCase() !== sectionFilter) continue
+      if (sectionFilter && secLower !== sectionFilter && section.name.toLowerCase() !== sectionFilter && secLower !== sectionFilterEn) continue
       if (rule.check.type === 'required-key') {
         // 节内必须存在该键（键匹配：原文或回译）
         if (rule.key && !section.kvs.some((kv) => keyMatches(kv.key, rule.key!, ctx))) {
@@ -145,8 +153,9 @@ export interface ProjectRuleLoadResult {
 
 /**
  * 加载项目 rules/ 目录下的全部 .json 规则文件（M21）：
- * 单个文件损坏只影响该文件（收集错误，不中断其它文件）。
- * bridgeOverride 供测试注入；缺省从桥服务读取。
+ * 单个文件损坏只影响该文件（收集错误，不中断其它文件）；
+ * 跨文件重复规则 id 会互相干扰开关/去重，作为错误提示用户改名。
+ * 路径统一拼成项目内绝对路径再走桥（bridge fs 通道要求绝对路径）。
  */
 export async function loadProjectRuleSets(
   rootPath: string,
@@ -156,23 +165,34 @@ export async function loadProjectRuleSets(
   const bridge = bridgeOverride ?? (await import('../../../services/bridge')).getBridge()
   let entries: Array<{ name: string; isDirectory: boolean }>
   try {
-    entries = await bridge.project.readDir(rootPath, 'rules')
+    entries = await bridge.project.readDir(rootPath, joinProjectPath(rootPath, 'rules'))
   } catch {
     return result // 没有 rules/ 目录：正常情况
   }
   const files = entries.filter((e) => !e.isDirectory && /\.json$/i.test(e.name))
+  const seenIds = new Map<string, string>() // id → 首个出现的文件
   for (const f of files) {
+    const rel = `rules/${f.name}`
     try {
-      const { content } = await bridge.project.readFile(rootPath, `rules/${f.name}`)
+      const { content } = await bridge.project.readFile(rootPath, joinProjectPath(rootPath, rel))
       const parsed = JSON.parse(content) as unknown
       const v = validateRuleSet(parsed)
       if (v.ok) {
-        result.sets.push({ file: `rules/${f.name}`, name: v.set.name, rules: v.set.rules })
+        // 跨文件重复 id：开关会互相干扰，报错提示改名（本集仍然加载）
+        const dup = v.set.rules.map((r) => r.id).filter((id) => seenIds.has(id))
+        for (const id of dup) {
+          result.errors.push({
+            file: rel,
+            errors: [`规则 id「${id}」与 ${seenIds.get(id)} 重复，开关会互相干扰，请改名`],
+          })
+        }
+        for (const r of v.set.rules) if (!seenIds.has(r.id)) seenIds.set(r.id, rel)
+        result.sets.push({ file: rel, name: v.set.name, rules: v.set.rules })
       } else {
-        result.errors.push({ file: `rules/${f.name}`, errors: v.errors })
+        result.errors.push({ file: rel, errors: v.errors })
       }
     } catch (err) {
-      result.errors.push({ file: `rules/${f.name}`, errors: [err instanceof Error ? `读取/解析失败：${err.message}` : '读取/解析失败'] })
+      result.errors.push({ file: rel, errors: [err instanceof Error ? `读取/解析失败：${err.message}` : '读取/解析失败'] })
     }
   }
   return result

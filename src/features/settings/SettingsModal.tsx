@@ -825,8 +825,12 @@ export function SettingsModal() {
                       const next = settings.knowledgeSources.filter((_, idx) => idx !== i)
                       updateSettings({
                         knowledgeSources: next,
-                        // 删掉正在使用的镜像时，活动源一并清空
-                        knowledgeSourceUrl: settings.knowledgeSourceUrl === s ? next[0] ?? '' : settings.knowledgeSourceUrl,
+                        // 删掉正在使用的镜像时清空活动源；未配置活动源时隐式活动源是
+                        // 列表第一个——删它时把活动源交给下一个，避免静默切换
+                        knowledgeSourceUrl:
+                          settings.knowledgeSourceUrl === s || (settings.knowledgeSourceUrl === '' && i === 0)
+                            ? (next[0] ?? '')
+                            : settings.knowledgeSourceUrl,
                       })
                     }}
                   >

@@ -162,7 +162,7 @@ describe('buildUpgradeReport（项目升级改动清单）', () => {
     project: {
       readFile: async (_root: string, file: string) => ({
         content:
-          file === 'units/rifle.ini'
+          file === '/fake/root/units/rifle.ini'
             ? '[core]\r\nname: 步枪兵\r\nlegacyField: 5\r\nwindowAdded: 3\r\nstableField: 2\r\n[attack]\r\nnewField: 0.5\r\n'
             : '[core]\r\nname: 弓手\r\nnewField: 0.3\r\n',
       }),

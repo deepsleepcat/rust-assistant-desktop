@@ -30,6 +30,7 @@ export function App() {
   const codeTableOpen = useWorkspaceStore((s) => s.codeTableOpen)
   const versionDiffOpen = useWorkspaceStore((s) => s.versionDiffOpen)
   const relationGraphOpen = useWorkspaceStore((s) => s.relationGraphOpen)
+  const activeProjectId = useWorkspaceStore((s) => s.activeProjectId)
   const unitLibraryOpen = useWorkspaceStore((s) => s.unitLibraryOpen)
   const valueTypeOpen = useWorkspaceStore((s) => s.valueTypeOpen)
   const toast = useWorkspaceStore((s) => s.toast)
@@ -180,7 +181,13 @@ export function App() {
       <ModToolModals />
       {codeTableOpen && <CodeTableModal onClose={() => useWorkspaceStore.getState().setCodeTableOpen(false)} />}
       {versionDiffOpen && <VersionDiffModal onClose={() => useWorkspaceStore.getState().setVersionDiffOpen(false)} />}
-      {relationGraphOpen && <RelationGraphModal onClose={() => useWorkspaceStore.getState().setRelationGraphOpen(false)} />}
+      {relationGraphOpen && (
+        <RelationGraphModal
+          // key 跟随项目：切换项目时整体重挂载，避免旧项目的关系图/错误横幅残留
+          key={activeProjectId ?? 'none'}
+          onClose={() => useWorkspaceStore.getState().setRelationGraphOpen(false)}
+        />
+      )}
       {unitLibraryOpen && <UnitLibraryModal onClose={() => useWorkspaceStore.getState().setUnitLibraryOpen(false)} />}
       {valueTypeOpen && (
         <ValueTypeModal

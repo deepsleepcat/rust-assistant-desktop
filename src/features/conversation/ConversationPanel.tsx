@@ -387,6 +387,14 @@ function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: 
   const [runState, setRunState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [runResult, setRunResult] = useState<Array<{ rule: string; hits: Array<{ line: number; message: string }> }> | null>(null)
   const [saved, setSaved] = useState(false)
+  // 卸载守卫：试运行/保存是异步的，对话被删除/切换时组件卸载，不再 setState
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   // 从工具参数还原规则集（AI 生成 + 主进程校验通过；渲染层再校验一次防御）
   const set = useMemo<CustomRuleSet | null>(() => {
@@ -414,26 +422,33 @@ function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: 
         if (!byRule.has(key)) byRule.set(key, [])
         byRule.get(key)!.push({ line: it.line, message: it.message })
       }
+      if (!mountedRef.current) return
       setRunResult([...byRule.entries()].map(([rule, hits]) => ({ rule: rule.replace(/^custom:/, ''), hits })))
       setRunState('done')
     } catch (err) {
+      if (!mountedRef.current) return
       setRunState('error')
       setRunResult(null)
       notify(`试运行失败：${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
-  /** 保存为项目规则：写入 rules/ai-rules.json（用户点击触发，非 AI 直接写盘） */
+  /** 保存为项目规则：写入 rules/ai-rules.json（用户点击触发，非 AI 直接写盘）；
+   * rules/ 目录可能不存在，先建目录再写（与 AI writeFile 的 mkdir 语义对齐） */
   const saveRules = async () => {
     if (!set) return
     try {
       const { getBridge } = await import('../../services/bridge')
+      // rules/ 目录可能不存在：先建目录（已存在时报错，忽略继续）
+      await getBridge().project.createFolder(rootPath, rootPath, 'rules').catch(() => undefined)
       const payload = JSON.stringify({ ...set, name: `AI 生成规则（${new Date().toLocaleDateString()}）` }, null, 2)
-      await getBridge().project.writeFile(rootPath, 'rules/ai-rules.json', payload, { hasBom: false })
+      await getBridge().project.writeFile(rootPath, joinProjectPath(rootPath, 'rules/ai-rules.json'), payload, { hasBom: false })
       invalidateProjectRulesCache(rootPath)
+      if (!mountedRef.current) return
       setSaved(true)
       notify(`已保存 ${set.rules.length} 条规则到 rules/ai-rules.json，编辑器/质检/报告即时生效`)
     } catch (err) {
+      if (!mountedRef.current) return
       notify(`保存失败：${err instanceof Error ? err.message : String(err)}`)
     }
   }
@@ -453,7 +468,7 @@ function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: 
             <button
               className="btn"
               style={{ padding: '1px 8px', fontSize: 11 }}
-              disabled={runState === 'running'}
+              disabled={runState === 'running' || !targetPath}
               title={targetPath ? '把用例跑在目标单位文件上查看命中' : 'AI 未指定目标文件，无法试运行'}
               onClick={() => void trialRun()}
             >

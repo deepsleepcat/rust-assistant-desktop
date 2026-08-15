@@ -1375,7 +1375,12 @@ export function createWorkspaceStore(bridge: BridgeApi) {
               armGuard()
             }
             if (event.type === 'tool_end') {
-              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_end', name: event.name, ok: event.ok, summary: event.summary, createdAt: Date.now(), path: event.path, snapshotId: event.snapshotId, snapshotSkipped: event.snapshotSkipped }
+              // M19：generateCheckCases 等工具卡片需要参数（规则/目标文件）——
+              // tool_end 事件本身不带 args，从同名的最近一次 tool_start 取（配对还原）
+              const startArgs = [...(get().conversations.find((c) => c.id === conversationId)?.toolEvents ?? [])]
+                .reverse()
+                .find((t) => t.type === 'tool_start' && t.name === event.name)?.args
+              const toolEvent: import('../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_end', name: event.name, ok: event.ok, summary: event.summary, createdAt: Date.now(), path: event.path, snapshotId: event.snapshotId, snapshotSkipped: event.snapshotSkipped, args: startArgs }
               set({
                 conversations: get().conversations.map((c) =>
                   c.id === conversationId ? { ...c, toolEvents: [...(c.toolEvents ?? []), toolEvent] } : c,
