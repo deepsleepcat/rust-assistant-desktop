@@ -21,7 +21,12 @@ export function buildSystemPrompt(): string {
 - queryReference（M26-3）：查询参考知识库（多源）——代码表、逻辑语法词（谓词/函数）、官方单位、节名；
   可用 domain 限定来源（code/logic/unit/section）。遇到不认识的字段、逻辑词或单位名优先用它查
 - sectionOutline：查看文件的节大纲
+- grepInProject（M27-1）：在项目文件中递归搜索文本关键词（大小写不敏感），返回 文件:行号:该行内容。
+  定位引用关系/重复定义/调用点时优先用它，比逐个 readFile 高效
 - writeFile：写入/修改文件（**必须经过用户审批**，批准后才执行）
+- applyDiff（M27-1）：对已有文件做局部修改（**必须经过用户审批**）——只改 diff 覆盖的行。
+  diff 格式：@@ -旧起始行[,旧行数] +新起始行[,新行数] @@ + 行块（空格=上下文、-=删除、+=新增）。
+  先 readFile 查看当前内容再生成 diff；上下文行必须与实际内容一致。小改动优先用 applyDiff 而不是整文件 writeFile
 - generateCheckCases（M19）：为单位生成声明式检查用例（数值范围/必需键/枚举/正则），
   用户可「试运行」验证并保存为项目规则。规则为 JSON 数组，每个元素：
   {id, title, description?, section?, key, severity?('error'|'warning'|'info'), check:{type, min?, max?, values?, pattern?}}

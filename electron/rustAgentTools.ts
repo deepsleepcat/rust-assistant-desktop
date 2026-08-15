@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto'
 import { Type } from 'typebox'
 import { assertNoLinkEscape, isPathInside } from './paths'
 import { getHistory, DEFAULT_HISTORY_LIMITS } from './aiHistory'
+import { MAX_HUNKS, MAX_TARGET_BYTES, applyUnifiedDiff, parseUnifiedDiff, type DiffHunk } from './applyDiff'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 
 const pathSchema = Type.String({ description: '相对项目根目录的路径，如 units/rifle.txt' })
@@ -218,6 +219,235 @@ export function createWriteFileTool(): AgentTool {
       return {
         content: [{ type: 'text', text: `${existed ? '已修改' : '已新增'} ${p.path}（${p.content.length} 字符）` }],
         details: { path: p.path },
+      }
+    },
+  }
+}
+
+/** 局部补丁编辑（M27-1）：对已有文件应用 unified diff（不改动 diff 之外的内容）。
+ * 与 writeFile 相同的安全边界：路径校验、大小上限、写前快照（撤销入口）、原子替换。
+ * 审批流程在 ai.ts 的 beforeToolCall 中与 writeFile 共用（应用后的完整内容参与行级 diff 预览）。 */
+export function createApplyDiffTool(): AgentTool {
+  return {
+    name: 'applyDiff',
+    label: '局部修改文件',
+    description:
+      '对已有文件应用 unified diff 做局部修改（只改 diff 覆盖的行，其余内容不动）。' +
+      'diff 格式：@@ -旧起始行[,旧行数] +新起始行[,新行数] @@ 头 + 行块（空格=上下文行、-=删除行、+=新增行）。' +
+      '先 readFile 查看当前内容再生成 diff；diff 中的上下文行必须与文件实际内容一致，' +
+      '行号/行数不符会被拒绝。新建文件请用 writeFile。**必须等待用户审批**。',
+    parameters: Type.Object({
+      path: pathSchema,
+      diff: Type.String({ description: 'unified diff 补丁（@@ 头 + 行块）' }),
+    }),
+    async execute(toolCallId, params) {
+      const p = params as { path: string; diff: string }
+      const file = await resolveInsideReal(getAgentRoot(), p.path)
+      const st = await fs.stat(file).catch(() => null)
+      if (!st?.isFile()) {
+        return {
+          content: [{ type: 'text', text: '目标文件不存在：applyDiff 只能修改已有文件，新建文件请用 writeFile' }],
+          details: {},
+        }
+      }
+      if (st.size > MAX_TARGET_BYTES) {
+        return {
+          content: [{ type: 'text', text: `文件过大（${(st.size / 1024 / 1024).toFixed(1)}MB，超过 64MB 上限），无法应用 diff` }],
+          details: { size: st.size },
+        }
+      }
+      let hunks: DiffHunk[]
+      try {
+        hunks = parseUnifiedDiff(p.diff)
+      } catch (err) {
+        return {
+          content: [{ type: 'text', text: `diff 解析失败：${err instanceof Error ? err.message : String(err)}。请修正后重试` }],
+          details: { ok: false },
+        }
+      }
+      if (hunks.length > MAX_HUNKS) {
+        return {
+          content: [{ type: 'text', text: `diff 片段过多（${hunks.length} 个，超过 ${MAX_HUNKS} 个上限）：请精简为少量精确修改` }],
+          details: { ok: false },
+        }
+      }
+      // BOM 剥离后应用（readFile 工具给 AI 看的内容也是剥 BOM 的——AI 按所见
+      // 内容生成 diff，第 1 行 hunk 才不会误拒；写回时保留 BOM 原样）
+      const buf = await fs.readFile(file)
+      const hasBom = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf
+      const oldText = hasBom ? buf.subarray(3).toString('utf8') : buf.toString('utf8')
+      const applied = applyUnifiedDiff(oldText, hunks)
+      if (!applied.ok) {
+        return { content: [{ type: 'text', text: `diff 应用失败：${applied.error}` }], details: { ok: false } }
+      }
+      // 写盘前快照（撤销入口）：与 writeFile 同一机制；文件过大时跳过（不可撤销提示）。
+      // 快照存原始字节内容（含 BOM）：撤销恢复 = 与修改前完全一致
+      let snapshot: SnapshotInfo
+      try {
+        if (st.size <= DEFAULT_HISTORY_LIMITS.maxEntryBytes) {
+          const id = await getHistory().addSnapshot(getAgentRoot(), p.path, buf.toString('utf8'))
+          if (id) snapshot = { id, skipped: false }
+          else snapshot = { skipped: true }
+        } else {
+          snapshot = { skipped: true }
+        }
+      } catch (err) {
+        console.warn('[applyDiff] 快照失败，本次修改不可撤销:', err)
+        snapshot = { skipped: true }
+      }
+      snapshotInfo.set(toolCallId, snapshot)
+      const tmp = path.join(path.dirname(file), `.${path.basename(file)}.ai-${randomUUID()}.tmp`)
+      try {
+        await fs.writeFile(tmp, (hasBom ? '\uFEFF' : '') + applied.text, 'utf8')
+        await fs.rename(tmp, file)
+      } catch (err) {
+        await fs.rm(tmp, { force: true }).catch(() => undefined)
+        throw err
+      }
+      return {
+        content: [{ type: 'text', text: `已应用补丁到 ${p.path}（${hunks.length} 个片段）` }],
+        details: { path: p.path, hunks: hunks.length },
+      }
+    },
+  }
+}
+
+/** grep 跳过目录：工具链/版本库/构建产物，防止误搜无关内容与拖慢遍历 */
+const GREP_SKIP_DIRS = new Set(['node_modules', '.git', 'dist', '.zcode', 'build', 'coverage', '.vite'])
+/** 单次 grep 遍历文件数上限（防止超大项目递归把主进程卡死） */
+const GREP_MAX_FILES = 2000
+/** 单文件大小上限（1MB）：大文件不可能是合理搜索目标 */
+const GREP_MAX_FILE_BYTES = 1024 * 1024
+/** 单文件搜索行数上限（防单行海量文件拖慢） */
+const GREP_MAX_LINES_PER_FILE = 5000
+/** 单次 grep 累计读取字节预算（20MB）：防止 AI 反复调用拖垮主进程 */
+const GREP_READ_BUDGET = 20 * 1024 * 1024
+/** 命中行展示长度上限 */
+const GREP_LINE_SHOW = 120
+
+/** 项目内容搜索（M27-1）：递归搜索文本关键词，返回 文件:行号:该行内容。
+ * 只读工具（无需审批）。安全边界：目录遍历逐级做链接逃逸校验（junction 不能把
+ * 搜索引到项目外）；二进制/超大文件/工具链目录一律跳过。 */
+export function createGrepTool(): AgentTool {
+  return {
+    name: 'grepInProject',
+    label: '搜索项目内容',
+    description:
+      '在项目文件中递归搜索文本关键词（大小写不敏感），返回 文件:行号:该行内容。' +
+      '用于定位引用关系、查找重复定义/调用点。可限定子目录（path 参数），maxResults 控制结果上限。',
+    parameters: Type.Object({
+      query: Type.String({ description: '搜索关键词，如 isFlying、maxHp、单位名' }),
+      path: Type.Optional(pathSchema),
+      maxResults: Type.Optional(Type.Number({ description: '结果上限（默认 20，最大 50）' })),
+    }),
+    async execute(_id, params) {
+      const p = params as { query: string; path?: string; maxResults?: number }
+      const keyword = String(p.query ?? '').trim()
+      if (!keyword) return { content: [{ type: 'text', text: '请输入搜索关键词' }], details: {} }
+      const root = getAgentRoot()
+      const start = p.path ? await resolveInsideReal(root, p.path) : root
+      const limit = Math.min(Math.max(1, Math.floor(Number(p.maxResults) || 20)), 50)
+      const lower = keyword.toLowerCase()
+
+      // 迭代式收集文件（显式栈防深层目录递归栈溢出；逐级链接逃逸校验）。
+      // visited 按真实路径去重：多个链接指向同一真实目录只进一次，
+      // 也防「互为链接的目录环」无限展开（某些环境下 junction 可能被报为目录）
+      const files: string[] = []
+      const visited = new Set<string>()
+      const stack: string[] = [start]
+      while (stack.length > 0 && files.length < GREP_MAX_FILES) {
+        const dir = stack.pop() as string
+        const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => null)
+        if (!entries) continue
+        for (const e of entries) {
+          if (files.length >= GREP_MAX_FILES) break
+          const child = path.join(dir, e.name)
+          if (e.isDirectory()) {
+            if (GREP_SKIP_DIRS.has(e.name)) continue
+            // 目录本身也可能被替换为链接（junction）：真实路径在项目内才进入
+            try {
+              const real = await fs.realpath(child)
+              await assertNoLinkEscape(root, child)
+              if (visited.has(real)) continue
+              visited.add(real)
+            } catch {
+              continue // 链接指向项目外/不可解析：跳过
+            }
+            stack.push(child)
+          } else if (e.isFile()) {
+            files.push(child)
+          } else if (e.isSymbolicLink()) {
+            // 符号链接文件/目录：目标在项目内才跟随（防链接把搜索引到项目外）
+            try {
+              const real = await fs.realpath(child)
+              await assertNoLinkEscape(root, child)
+              const st = await fs.stat(child)
+              if (st.isDirectory()) {
+                if (visited.has(real)) continue
+                visited.add(real)
+                stack.push(child)
+              } else if (st.isFile()) {
+                files.push(child)
+              }
+            } catch {
+              continue
+            }
+          }
+        }
+      }
+
+      const hits: string[] = []
+      let readBytes = 0
+      for (const f of files) {
+        if (hits.length >= limit || readBytes >= GREP_READ_BUDGET) break
+        // TOCTOU 防护：目录校验与读取之间文件可能被替换为指向项目外的链接
+        try {
+          await assertNoLinkEscape(root, f)
+        } catch {
+          continue
+        }
+        const st = await fs.stat(f).catch(() => null)
+        if (!st?.isFile() || st.size === 0 || st.size > GREP_MAX_FILE_BYTES) continue
+        // 二进制检测：读前 8KB 查 NUL 字节（文本文件不会含 NUL）；读取失败跳过该文件
+        const head = Buffer.alloc(Math.min(8192, st.size))
+        let isBinary: boolean
+        try {
+          const fh = await fs.open(f, 'r')
+          try {
+            await fh.read(head, 0, head.length, 0)
+          } finally {
+            await fh.close()
+          }
+          isBinary = head.includes(0)
+        } catch {
+          continue
+        }
+        if (isBinary) continue
+        const content = await fs.readFile(f, 'utf8').catch(() => null)
+        if (content === null) continue
+        readBytes += content.length
+        const rel = path.relative(root, f).split(path.sep).join('/')
+        const lines = content.split(/\r?\n/)
+        const scanLines = Math.min(lines.length, GREP_MAX_LINES_PER_FILE)
+        for (let i = 0; i < scanLines; i++) {
+          if (hits.length >= limit) break
+          const line = lines[i]
+          if (line.toLowerCase().includes(lower)) {
+            hits.push(`${rel}:${i + 1}: ${line.slice(0, GREP_LINE_SHOW)}`)
+          }
+        }
+      }
+      const truncated = readBytes >= GREP_READ_BUDGET || files.length >= GREP_MAX_FILES
+      return {
+        content: [
+          {
+            type: 'text',
+            text: hits.length
+              ? `找到 ${hits.length} 处匹配：\n${hits.join('\n')}${truncated ? '\n（搜索达到预算上限，结果可能不完整）' : ''}`
+              : `未找到包含「${keyword}」的内容`,
+          },
+        ],
+        details: { count: hits.length, truncated },
       }
     },
   }
@@ -494,7 +724,9 @@ export function createRustAgentTools(): AgentTool[] {
     createCodeTableTool(),
     createQueryReferenceTool(),
     createOutlineTool(),
+    createGrepTool(),
     createWriteFileTool(),
+    createApplyDiffTool(),
     createGenerateCheckCasesTool(),
   ]
 }

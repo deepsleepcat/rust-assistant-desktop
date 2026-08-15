@@ -13,6 +13,7 @@ import type { AiCheckResult, AiApprovalResponse, AiChatParams, AiProviderType, A
 import type { DiffLine } from '../src/types/diff'
 import { diffLinesWithStats } from './diff'
 import { clearSnapshotInfo, createRustAgentTools, resolveAgentPath, setAgentRoot, takeSnapshotInfo } from './rustAgentTools'
+import { MAX_HUNKS, MAX_TARGET_BYTES, applyUnifiedDiff, parseUnifiedDiff } from './applyDiff'
 import type { AgentTool } from '@earendil-works/pi-agent-core'
 
 let piAi: typeof import('@earendil-works/pi-ai') | null = null
@@ -146,16 +147,38 @@ export async function streamAgent(
       if (cancelled.current) {
         return { block: true, reason: '此请求已超时取消，请重新发起对话' }
       }
-      if (context.toolCall.name !== 'writeFile') return undefined
-      const args = (context.args ?? {}) as { path?: string; content?: string }
+      // 写类工具（writeFile 整文件覆盖 / applyDiff 局部补丁）：都必须经过审批。
+      // applyDiff 先在本钩子内算出「补丁后的完整内容」参与行级 diff 预览——
+      // 用户批准的依据与实际落盘内容严格一致
+      if (context.toolCall.name !== 'writeFile' && context.toolCall.name !== 'applyDiff') return undefined
+      const args = (context.args ?? {}) as { path?: string; content?: string; diff?: string }
       const id = context.toolCall.id ?? randomUUID()
-      if (args.path) {
-        writePaths.set(id, args.path)
-        writeHappened = true
+      if (args.path) writePaths.set(id, args.path)
+      let full: string
+      if (context.toolCall.name === 'writeFile') {
+        full = String(args.content ?? '')
+      } else {
+        try {
+          const file = await resolveAgentPath(args.path ?? '')
+          const st = await fs.stat(file).catch(() => null)
+          if (!st?.isFile()) throw new Error('目标文件不存在：applyDiff 只能修改已有文件')
+          if (st.size > MAX_TARGET_BYTES) throw new Error('目标文件过大（超过 64MB 上限）')
+          const hunks = parseUnifiedDiff(String(args.diff ?? ''))
+          if (hunks.length > MAX_HUNKS) throw new Error(`diff 片段过多（超过 ${MAX_HUNKS} 个上限）`)
+          // BOM 剥离后应用（与 readFile 工具/工具 execute 一致——AI 按所见内容生成
+          // diff，第 1 行 hunk 才不会误拒）。full 不带 BOM：与剥 BOM 的磁盘旧内容
+          // 同基准做行级 diff，审批预览不会出现首行「幽灵改动」（落盘时 execute 会加回 BOM）
+          const buf = await fs.readFile(file)
+          const hasBom = buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf
+          const raw = hasBom ? buf.subarray(3).toString('utf8') : buf.toString('utf8')
+          const applied = applyUnifiedDiff(raw, hunks)
+          if (!applied.ok) throw new Error(applied.error)
+          full = applied.text
+        } catch (err) {
+          // 补丁无法应用：不发起审批，错误直接回给 AI 让它修正
+          return { block: true, reason: `applyDiff 无法应用补丁：${err instanceof Error ? err.message : String(err)}` }
+        }
       }
-      // 预览 2000 字符 + 完整长度：让用户批准前能看到足够内容和规模
-      //（400 字符预览时恶意尾部内容可能被跳过，用户批准的实际写盘内容远超所见）
-      const full = String(args.content ?? '')
       const preview = full.slice(0, 2000)
       // 行级 diff 预览（任务 1）：读取磁盘上的旧内容（≤2MB，BOM 剥离），
       // 与本次写入内容逐行对比——用户批准前能看清「哪几行改了、改成什么」。
@@ -184,7 +207,7 @@ export async function streamAgent(
           diff = null
         }
       }
-      emit({ type: 'approval_request', id, tool: 'writeFile', path: args.path ?? '?', contentPreview: preview, contentLength: full.length, diff, diffSummary, oldExists, newFile })
+      emit({ type: 'approval_request', id, tool: context.toolCall.name, path: args.path ?? '?', contentPreview: preview, contentLength: full.length, diff, diffSummary, oldExists, newFile })
       const response = await new Promise<AiApprovalResponse>((resolve) => {
         let settled = false
         const finish = (approved: boolean) => {
@@ -201,9 +224,13 @@ export async function streamAgent(
         // 把请求 id 一并交给主进程：界面响应时按 id 匹配，过期响应一律忽略
         approvalResolver(id, (r) => finish(r.approved))
       })
-      return response.approved
-        ? undefined
-        : { block: true, reason: '用户拒绝了此修改，请调整方案或询问用户' }
+      // 只有被批准执行的写操作才进入写后质检反馈窗口——拒绝/失败不等待
+      //（否则流结束会白等 10s 反馈超时）
+      if (response.approved) {
+        writeHappened = true
+        return undefined
+      }
+      return { block: true, reason: '用户拒绝了此修改，请调整方案或询问用户' }
     }
 
     // 硬停止：AbortController 联动 cancelled——abort 时中断在途模型请求（停止计费）。
@@ -259,9 +286,9 @@ export async function streamAgent(
       if (event.type === 'tool_execution_end') {
         const e = event as { toolName: string; toolCallId: string; result: { content?: Array<{ text?: string }> }; isError: boolean }
         const summary = e.isError ? '执行失败' : (e.result?.content?.[0]?.text ?? '完成').slice(0, 120)
-        // writeFile：按 toolCallId 取回本次调用的路径（质检/历史入口）与快照信息
-        //（撤销入口；skipped = 文件过大等导致未存档，界面提示不可撤销）
-        if (e.toolName === 'writeFile') {
+        // 写类工具（writeFile/applyDiff）：按 toolCallId 取回本次调用的路径（质检/历史入口）
+        // 与快照信息（撤销入口；skipped = 文件过大等导致未存档，界面提示不可撤销）
+        if (e.toolName === 'writeFile' || e.toolName === 'applyDiff') {
           const path = writePaths.get(e.toolCallId) ?? undefined
           writePaths.delete(e.toolCallId)
           const snapshot = takeSnapshotInfo(e.toolCallId)

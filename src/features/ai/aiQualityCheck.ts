@@ -181,7 +181,7 @@ export async function checkAiWrittenFile(
 export function lintItemsToFeedback(items: AiLintItem[]): string {
   const MAX_BYTES = 7 * 1024
   const head = '（自动质检反馈）你刚才写入的文件存在以下问题，请直接修复后重新写入：\n'
-  const tail = '\n修复完成后用 writeFile 重新写入完整文件。'
+  const tail = '\n修复完成后用 writeFile（整文件）或 applyDiff（局部修改）重新写入修复后的内容。'
   const lines: string[] = []
   let bytes = Buffer.byteLength(head, 'utf8') + Buffer.byteLength(tail, 'utf8')
   for (const it of items) {

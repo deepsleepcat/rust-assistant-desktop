@@ -181,10 +181,12 @@ export function createAiSlice(deps: AiSliceDeps) {
               armGuard()
             }
             if (event.type === 'tool_start') {
-              // writeFile 的 args 含完整写入内容：剥离后随对话持久化（防 workspace store
-              // 长期使用后膨胀到主进程体积上限；工具卡片只需要 path 等元信息）
+              // 写类工具 args 含完整内容（writeFile=content / applyDiff=diff 补丁）：
+              // 剥离后随对话持久化（防 workspace store 长期使用后膨胀到主进程体积上限；
+              // 工具卡片只需要 path 等元信息）
               const args = { ...(event.args ?? {}) }
               if (event.name === 'writeFile' && 'content' in args) delete (args as Record<string, unknown>).content
+              if (event.name === 'applyDiff' && 'diff' in args) delete (args as Record<string, unknown>).diff
               const toolEvent: import('../../types/domain').ToolEvent = { id: crypto.randomUUID(), type: 'tool_start', name: event.name, args, createdAt: Date.now() }
               set({
                 conversations: get().conversations.map((c) =>
@@ -208,7 +210,7 @@ export function createAiSlice(deps: AiSliceDeps) {
               // 任务 3 + M10：AI 写文件成功后自动质检（异步，不阻塞流；结果挂到该工具卡片上）。
               // 与撤销/历史完全独立——质检发现问题不影响撤销能力；
               // 语义检查器按设置开关过滤，引用完整性检查使用项目单位名（扫描后传入）
-              if (event.name === 'writeFile') {
+              if (event.name === 'writeFile' || event.name === 'applyDiff') {
                 if (!event.ok || !event.path) {
                   // 被拒/执行失败：不会质检 → 立即释放主进程的反馈等待窗口（空串 = 不修正）
                   void deps.bridge.ai.feedbackLint('').catch(() => undefined)

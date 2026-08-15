@@ -139,6 +139,7 @@ describe('lintItemsToFeedback（M26-3 自纠反馈格式化）', () => {
     expect(msg).toContain('第3行：血量超出推荐范围（建议：调低 maxHp）')
     expect(msg).toContain('第8行：缺少 name')
     expect(msg).toContain('writeFile')
+    expect(msg).toContain('applyDiff')
   })
 
   it('超过 30 条时截断并标注剩余数量', () => {
