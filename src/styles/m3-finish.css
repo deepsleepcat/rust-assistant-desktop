@@ -352,3 +352,45 @@
 .data-version-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .data-version-row code { font-size: 11.5px; color: var(--text-2); }
 .data-version-bad { color: var(--danger); }
+
+/* ── M17 版本差异对比弹窗 ───────────────────────────── */
+.vdiff-card { width: min(880px, 96vw); height: min(640px, 90vh); display: flex; flex-direction: column; }
+.vdiff-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1; overflow-y: auto; }
+.vdiff-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vdiff-select { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.vdiff-select select { padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-input); color: var(--text-primary); font: 13px var(--font-ui); outline: 0; }
+.vdiff-arrow { color: var(--text-muted); font-size: 13px; }
+.vdiff-hint { font-size: 11.5px; color: var(--text-muted); }
+.vdiff-stats { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vdiff-stat { padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.vdiff-stat.add { background: rgba(24,128,56,.14); color: #188038; }
+.vdiff-stat.del { background: rgba(197,34,31,.14); color: var(--danger); }
+.vdiff-stat.rep { background: rgba(21,101,192,.14); color: #1565c0; }
+.vdiff-groups { display: flex; flex-direction: column; gap: 12px; }
+.vdiff-group { border: 1px solid var(--divider); border-radius: var(--radius-sm); display: flex; flex-direction: column; min-height: 0; }
+.vdiff-group-title { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--divider); }
+.vdiff-badge { padding: 1px 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; }
+.vdiff-badge.add { background: rgba(24,128,56,.14); color: #188038; }
+.vdiff-badge.del { background: rgba(197,34,31,.14); color: var(--danger); }
+.vdiff-badge.rep { background: rgba(21,101,192,.14); color: #1565c0; }
+.vdiff-desc { font-size: 11.5px; color: var(--text-muted); min-width: 0; overflow-wrap: anywhere; }
+.vdiff-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 10px; cursor: pointer; flex-wrap: wrap; }
+.vdiff-row:hover { background: var(--surface-hover); }
+.vdiff-code { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.vdiff-code.old { color: var(--danger); text-decoration: line-through; }
+.vdiff-zh { font-size: 12px; color: var(--text-2); }
+.vdiff-meta { font-size: 10.5px; color: var(--text-muted); background: var(--surface-1); border: 1px solid var(--divider); border-radius: 8px; padding: 0 6px; }
+.vdiff-version { font-size: 11px; font-weight: 600; }
+.vdiff-version.add { color: #188038; }
+.vdiff-version.del { color: var(--danger); }
+.vdiff-migrate { width: 100%; font-size: 11.5px; color: #1565c0; }
+.vdiff-report { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.vdiff-report-title { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; flex-wrap: wrap; }
+.vdiff-report-list { display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
+.vdiff-report-item { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 4px 8px; border-radius: var(--radius-xs); flex-wrap: wrap; }
+.vdiff-report-item code { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-2); }
+.vdiff-report-item.must { background: rgba(197,34,31,.08); }
+.vdiff-report-item.new { background: var(--surface-0); }
+.vdiff-report-kind { flex-shrink: 0; padding: 0 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.vdiff-report-item.must .vdiff-report-kind { background: rgba(197,34,31,.14); color: var(--danger); }
+.vdiff-report-item.new .vdiff-report-kind { background: rgba(24,128,56,.14); color: #188038; }

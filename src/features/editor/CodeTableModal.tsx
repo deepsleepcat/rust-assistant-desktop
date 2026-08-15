@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { getAllCodes, getAllSections, loadCodeData } from '../../services/codeData'
 import { AppIcon } from '../../components/AppIcon'
 import { useEscapeHandler } from '../../utils/modalStack'
+import { useWorkspaceStore } from '../../stores/workspace'
 
 interface Props {
   onClose: () => void
@@ -136,6 +137,10 @@ export function CodeTableModal({ onClose, onCopy }: Props) {
         <div className="modal-footer">
           {copied && <span className="codetable-copied"><AppIcon name="check" size={12} /> 已复制 {copied}</span>}
           <span className="grow" />
+          {/* M17：版本差异对比（P2 任务 1）——叠加在代码表之上，Esc 先关差异视图 */}
+          <button className="btn" onClick={() => useWorkspaceStore.getState().setVersionDiffOpen(true)} title="对比两个游戏版本的字段差异">
+            版本差异…
+          </button>
           <button className="btn primary" onClick={onClose}>关闭</button>
         </div>
       </div>
