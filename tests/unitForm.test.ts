@@ -176,4 +176,11 @@ describe('M14 第二轮审查回归', () => {
     expect(isUnitFile('[core]\nname: x\n')).toBe(true)
     expect(isUnitFile('[graphics]\nimage: a.png\n')).toBe(false)
   })
+
+  it('drawLayer 表单选项只含引擎真实绘制层（8 个，无 water——water 是 movementType 的值）', () => {
+    const field = findUnitField('drawLayer')!
+    const opts = Object.keys(field.options ?? {})
+    expect([...opts].sort()).toEqual(['air', 'bottom', 'experimentals', 'ground', 'ground2', 'top', 'underwater', 'wreaks'].sort())
+    expect(opts).not.toContain('water')
+  })
 })

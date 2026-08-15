@@ -53,14 +53,14 @@ describe('suggestionFor', () => {
 
 describe('toLintItems', () => {
   it('诊断 → 文件行号 + 原因 + 修复建议', () => {
-    const content = '[core]\nname: x\nhp: -1\n'
+    const content = '[core]\nname: x\nmaxHp: -1\n'
     const items = toLintItems(content, [
       { from: 7, to: 14, message: '「name」的值「x」不符合类型 int（期望：整数）', severity: 'error' },
-      { from: 15, to: 21, message: '「hp」的值「-1」不符合类型 int', severity: 'error' },
+      { from: 15, to: 21, message: '「maxHp」的值「-1」不符合类型 int', severity: 'error' },
     ])
     expect(items).toEqual([
       { line: 2, message: '「name」的值「x」不符合类型 int（期望：整数）', severity: 'error', suggestion: expect.stringContaining('代码表') },
-      { line: 3, message: '「hp」的值「-1」不符合类型 int', severity: 'error', suggestion: expect.stringContaining('代码表') },
+      { line: 3, message: '「maxHp」的值「-1」不符合类型 int', severity: 'error', suggestion: expect.stringContaining('代码表') },
     ])
   })
 

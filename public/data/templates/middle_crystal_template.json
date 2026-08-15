@@ -1,42 +1,42 @@
-{
-    "name": "中级模板-水晶矿石",
-    "data": "#中级模板\n[core]\nname: crystal_mid-Template\nclass: CustomUnitMetadata\n\n#提取的资源通过price定义\nprice: 5000\nmaxHp: 1800\nmass: 9000\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: -1,-1,1,1\n\n#used for placement, and placement of other buildings\nconstructionFootprint: -1,-1,1,1\n\n#多语言\ndisplayText: Crystal(Template)\ndisplayDescription: -The resources of the crystal can be extracted through the builder.\n\ndisplayText_zh: 示范水晶\ndisplayDescription_zh: -通过建造者可以提取水晶的资源\n\n\ntechLevel: 1\nbuildSpeed: 0.001\n#availableInDemo: true\n\nradius: 35\n#displayRadius: 25\nisBio: false\nisBuilding: true\n\n#设置为中立单位\nstayNeutral: true\n\n#创建中立\ncreateNeutral: true\n\n#水晶的资源回收率\n#resourceReclaimRate: 0.1\nresourceRate: 0.1\n\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/resource_deposits/crystal.png\nimage_wreak:  NONE\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\nmaxAttackRange: 0\n\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nmaxTurnSpeed: 0\nturnAcceleration: 0.1",
-    "language": "ALL",
-    "icon": "/icon.png",
-    "attachFile": [
-        "/resource/unit.png",
-        "/resource/unit_die.png"
-    ],
-    "action": [
-        {
-            "name": "名称",
-            "name_zh_TW": "名稱",
-            "name_en": "name",
-            "name_ja": "名前",
-            "key": "name",
-            "section": "core",
-            "type": "input",
-            "tag": "name-core"
-        },
-        {
-            "name": "血量",
-            "name_zh_TW": "血量",
-            "name_en": "maxHp",
-            "name_ja": "ライフバリュー",
-            "key": "maxHp",
-            "section": "core",
-            "type": "input",
-            "tag": "maxHp-core"
-        },
-        {
-            "name": "价格",
-            "name_zh_TW": "價格",
-            "name_ja": "価格",
-            "name_en": "price",
-            "key": "price",
-            "section": "core",
-            "type": "input",
-            "tag": "price-core"
-        }
-    ]
+{
+    "name": "中级模板-水晶矿石",
+    "data": "#中级模板\n[core]\nname: crystal_mid-Template\nclass: CustomUnitMetadata\n\n#提取的资源通过price定义\nprice: 5000\nmaxHp: 1800\nmass: 9000\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: -1,-1,1,1\n\n#used for placement, and placement of other buildings\nconstructionFootprint: -1,-1,1,1\n\n#多语言\ndisplayText: Crystal(Template)\ndisplayDescription: -The resources of the crystal can be extracted through the builder.\n\n\ntechLevel: 1\nbuildSpeed: 0.001\n#availableInDemo: true\n\nradius: 35\n#displayRadius: 25\nisBio: false\nisBuilding: true\n\n#设置为中立单位\nstayNeutral: true\n\n#创建中立\ncreateNeutral: true\n\n#水晶的资源回收率\n#resourceReclaimRate: 0.1\nresourceRate: 0.1\n\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/resource_deposits/crystal.png\nimage_wreak:  NONE\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\nmaxAttackRange: 0\n\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nmaxTurnSpeed: 0\nturnAcceleration: 0.1",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        }
+    ]
 }

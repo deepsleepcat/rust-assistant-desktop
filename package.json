@@ -19,6 +19,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run test",
+    "check:real-mods": "node scripts/check-real-mods.mjs",
     "pack": "npm run build && electron-builder --win",
     "pack:dir": "npm run build && electron-builder --dir",
     "pack:release": "npm run build && electron-builder --win --publish always"

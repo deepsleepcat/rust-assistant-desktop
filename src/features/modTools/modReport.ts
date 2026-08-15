@@ -10,7 +10,7 @@ import type { AiLintItem } from '../../types/ai'
 import { runSemanticChecks, type SemanticIssue } from '../editor/semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
 import { loadProjectRuleSets } from '../editor/semanticChecks/customRules'
-import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
 import { joinProjectPath } from '../../utils/projectPath'
 
 /** 报告中的单条问题（file 为相对项目根的 posix 路径，脱敏） */
@@ -96,10 +96,12 @@ export async function generateModReport(
 
   await loadCodeData()
   const zhToEnDict = getZhToEnDict()
+  const keyZhToEnDict = getKeyZhToEnDict()
   const data = {
     findCode: (k: string) => findCodeByCode(k),
     findType: (t: string) => findValueType(t),
-    zhToEn: (k: string) => zhToEnDict.get(k),
+    // 键位置回译先查键名表（键译名不被节名覆盖，如「价格」→price）
+    zhToEn: (k: string) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
   }
   const ruleIds = enabledRuleIds(options.semanticCheckers ?? defaultSemanticCheckerConfig())
   const targetVersionNumber = options.targetVersionName ? versionNameToNumber(options.targetVersionName) : undefined
@@ -149,14 +151,15 @@ export async function generateModReport(
     }
     const semantic = runSemanticChecks(content, {
       ruleIds,
-      ctx: { ...data, codes, unitNames, targetVersionNumber },
+      ctx: { ...data, codes, unitNames, targetVersionNumber, file, projectProjectiles },
       customRules,
       customRuleConfig: options.semanticCheckers,
     })
     for (const it of semantic) issuesAll.push(toReportIssue(file, it))
 
-    // 是否单位文件（[core] 节，大小写不敏感——与 scanResources/checkMod 判定一致）
-    if (/^\s*\[core\]\s*$/im.test(content)) unitCount++
+    // 是否单位文件（[core]/[CORE]/[核心] 节，容忍行尾注释——
+    // 与 scanResources/checkMod 判定一致，节名大小写不敏感）
+    if (/^\s*\[(?:core|核心)\]\s*(?:#.*)?$/im.test(content)) unitCount++
 
     for (const it of issuesAll) {
       const c = checkerCount.get(it.ruleId) ?? { errors: 0, warnings: 0 }
@@ -183,6 +186,18 @@ export async function generateModReport(
       audioCount++
     } else if (/\.(ini|template)$/i.test(f)) {
       checkFiles.push(f)
+    }
+  }
+  // 项目级弹体节名集合（[projectile_xxx]，跨文件弹体引用检查用——
+  // 引擎弹体是全局资源，可在任意单位文件定义）。只读 ini/template。
+  const projectProjectiles = new Set<string>()
+  for (const f of checkFiles) {
+    const content = await bridge.project
+      .readFile(rootPath, joinProjectPath(rootPath, f))
+      .then((r) => r.content)
+      .catch(() => '')
+    for (const m of content.matchAll(/^\s*\[projectile_([^\]]+)\]\s*(?:#.*)?$/gm)) {
+      projectProjectiles.add(m[1].trim().toLowerCase())
     }
   }
   // 分批并发（每批 6 个），每批之间让出事件循环；进度回调

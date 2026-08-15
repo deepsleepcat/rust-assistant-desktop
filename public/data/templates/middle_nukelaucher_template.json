@@ -1,62 +1,62 @@
-{
-    "name": "中级模板-核弹发射井",
-    "data": "#中级模板不会像基础模板那样注释特别详细，在这里只有新知识和主要的知识点会有注释说明\n#请结合注释和助手代码表综合使用该模板\n[core]\nname: nukeLauncherTemplate\nclass: CustomUnitMetadata\n\n#直接调用原版核弹发射井描述 请和下方多语言任选一个 去注释即可使用\n\n#displayLocaleKey: NukeLaucher\n\n#多语言\ndisplayText: NukeLaucher(Template)\ndisplayDescription: -Launch a nuclear bomb of massive destruction that can be intercepted by anti-nuclear defenses.\n\ndisplayText_zh: 示范核弹发射井\ndisplayDescription_zh: -发射拥有巨大毁灭性的核弹，可以被反核防御拦截。\n\n#是否替换原版核弹发射井 下行这里注释了 如果要使用去掉注释\n#overrideAndReplace: NukeLaucher\n\n#在禁核模式中是否不能使用这个单位 这里是真 即代表禁核模式中不能使用\nisLockedIfGameModeNoNuke:true\n\nprice: 45000\nmaxHp: 1500\nmass: 9000\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: -1,-1,1,1\n\n#used for placement, and placement of other buildings\nconstructionFootprint: -2,-1,2,2\n\n\ntechLevel: 1\nbuildSpeed: 0.001\n#availableInDemo: true\n\nradius: 35\n#displayRadius: 25\nisBio: false\nisBuilding: true\n\n\n\n\nexit_x:0\nexit_y:-1\n\n#建造核弹\n[action_buildNuke]\nprice:  11000\ntext: i:gui.actions.buildNuke\ndescription:i:gui.actions.buildNuke.description\ndisplayType: NONE\nbuildSpeed: 0.0003\npos: 0.2\n\n#如果弹药大于4就会禁止继续建造核弹 也就是原版一个核弹发射井最多4个核弹\nisActive:if self.ammoIncludingQueued(lessThan=4)\n\n#添加ammo资源 是一个原版的一个局部资源 它们互不影响 可多用\naddResources: ammo=1\n\n#图标图像\niconImage: SHARED:icon_build.png\n\n#AI怎么使用这个单位 Luke虽然写了这些代码但游戏里面AI暂时还不会用核弹攻击玩家\naiUse: launchAmmo\n\n\n#贴花 就是最新版的核弹发射井没有任何核弹时的那个禁止图标一闪一闪的那个效果\n[decal_targetGuide]\nalwaysStartDirAtZero: true\nlayer: inactive\n\nimage: SHARED:area_guide.png\nteamColors: false\n\n@define area_guide_size: 100\n@define area_guide_radius: 50\n\n@define lowDamageBorder: 30\n\nimageScale: ${ projectile_nukeProjectile.areaRadius - lowDamageBorder }/${area_guide_radius}\n\nalpha: 0.4\ncolor: #960d06\n\n\n\n#发射核弹\n[action_launchNuke]\nfireTurretXAtGround: siloTop\nfireTurretXAtGround_showGuideDecals: targetGuide\n\n#消耗一个ammo\nprice:  ammo=1\n\ntext: i:gui.actions.launchNuke\ndescription:i:gui.actions.launchNuke.description\ndisplayType: action\nbuildSpeed: 3.5s\npos: 0.1\n\n#播放动画\nwhenBuilding_playAnimation: fireNuke\n\n\ndisplayRemainingStockpile: true\nhighPriorityQueue: true\nonlyOneUnitAtATime: true\n\n\n#isAlsoViewableByEnemies: true\niconImage: SHARED:icon_attack_point.png\n\naiUse: launch\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/nukes/nuke_launcher_front.png\nimage_back:   CORE:/nukes/nuke_launcher_back.png\nimage_wreak:  CORE:/nukes/nuke_launcher_dead.png\n\ndrawLayer: bottom\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\nmaxAttackRange: 9999\n\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nmaxTurnSpeed: 0\nturnAcceleration: 0.1\n\n\n\n\n[turret_siloTop]\n#nuke turret\ncanShoot: false\n\nx: 0\ny: -5\nidleDir:0\n\ninvisible: true\n\nshoot_sound:nuke_launch\nshoot_sound_vol:0.27\nshoot_light:#FFEECCCC\n\nprojectile: nukeProjectile\nsize: 1\n\nturnSpeed: 40\n\n\n#shoot_flame:shockwave\nshoot_flame:custom:nukeLaunch_wave, custom:nukeLaunch_light\n#custom:nukeLaunch_smoke*6\n\n\nlimitingMinRange: 260\n\n[projectile_nukeProjectile]\n#nuke\n\n#这里的标签将会判定为反核防御的具体目标tag\ntags: nuke\n\ndirectDamage: 123\n\nlife: 99999\nspeed: 0.1\ntargetSpeed: 2.7\ntargetSpeedAcceleration:0.02\n\n\nlargeHitEffect: true\nballistic: true\nballistic_delaymove_height:80\nballistic_height: 110\nframe: 0\nshadowFrame:1\n\ndrawType:1\n\ntargetGround: true\nareaDamage: 5400\n\n#hullDamageMultiplier:0 for EMP version\n#hullDamageMultiplier: 0\n\nareaHitAirAndLandAtSameTime: true\nalwaysVisibleInFog: true\n\nareaRadius: 250\n\nareaExpandTime:75\n\ndeflectionPower:-1\n\n#炸的时候揭开这里的迷雾\nshouldRevealFog:true\n\n#核武抛射体 小地图全图警告\nnukeWeapon:true\n\nlightColor: #FFEEEE00\nlightSize: 1\n\n#友伤 但是伤不了盟军()\nfriendlyFire: true\n\n#trailEffect: true\ntrailEffect: CUSTOM:projectileTrail\ntrailEffectRate:4\n\n#效果组\n[effect_projectileTrail]\n\nstripIndex: effects\nframeIndex: 0\n\n\nlife: 120\nfadeOut: true\nattachedToUnit: false\ncolor: #FFFFFF\nfadeInTime:5\nscaleFrom: 0.5\nscaleTo: 3.5\nalpha: 0.6\ndrawUnderUnits:false\n#ySpeedRelative:-1\natmospheric:true\n\ndirOffsetRandom:180\n\nshadow:true\n\nxSpeedAbsoluteRandom: 0.2\nySpeedAbsoluteRandom: 0.2\n\n\n[effect_nukeLaunch_wave]\npriority:high\n\nstripIndex:shockwave\nlife: 50\nscaleFrom: 0.5\nscaleTo: 2.5\n\n[effect_nukeLaunch_smoke]\npriority:high\n\nxOffsetAbsoluteRandom: 10\nyOffsetAbsoluteRandom: 10\n\nframeIndex: 0\nstripIndex: smoke_black\n\nspawnChance: 0.3\n\nlife: 90\nfadeOut: true\nattachedToUnit: false\n#color: #fdc14d\ncolor: #FFEEEE00\n\nfadeInTime:5\nscaleFrom: 0.3\nscaleTo: 0.8\nalpha: 0.9\ndrawUnderUnits:false\nliveAfterAttachedDies: false\nhSpeed:0.4\nxSpeedAbsoluteRandom:0.9\nySpeedAbsoluteRandom:0.9\ndirOffsetRandom:180\natmospheric: true\n\n\n[effect_nukeLaunch_light]\nimage: SHARED:light_50.png\nlife: 40\nfadeOut: true\nattachedToUnit: true\ncolor: #FFFFFF\nscaleFrom: 1.7\nscaleTo: 1.7\nalpha: 0.7\ndrawUnderUnits:false\n\n\n#随机生成一个坦克并被炸死（\n[projectile_randomTankNuke]\n#tank nuke :p\n\ndirectDamage: 123\n\nspawnUnit: tank\n\nlife: 99999\nspeed: 0.1\ntargetSpeed: 2.7\ntargetSpeedAcceleration:0.02\n\ntrailEffect: true\nlargeHitEffect: true\nballistic: true\nballistic_delaymove_height:80\nballistic_height: 110\nframe: 0\nshadowFrame:1\n\ndrawType:1\n\ntargetGround: true\n\n#激光拦截-1，即无法使用激光拦截该炮弹\ndeflectionPower:-1\n\nlightColor: #FFEEEE00\nlightSize: 1\n\n\n#核弹发射井的那两个门\n[arm_1]\nx:3\ny:-1\nimage_end:CORE:/nukes/nuke_launcher_door_r.png\n\n\n#x:13\n#y:-9\n\n#核弹发射井的那两个门\n[arm_2]\nx:-5\ny:9\nimage_end:CORE:/nukes/nuke_launcher_door_l.png\n\n#x:-14\n#y:14\n\n#核弹发射井的发射前的开门动画\n[animation_fireNuke]\n\nblendIn: 2s\nblendOut: 2.5s\n\narm1_0: {x:10, y:-8}\narm2_0: {x:-9, y:5}\n\n#arm1_0s: {x:0, y:0}\n#arm2_0s: {x:0, y:0} \n\n#arm1_1.400s: {x:10, y:-8}\n#arm2_1.400s: {x:-9, y:5}\n\n[ai]\n\nbuildPriority: 0.01\n\nnoneInBaseExtraPriority: 0.04\n\nnoneGlobalExtraPriority: 0.1\n\n\nmaxEachBase: 0\n\nai_upgradePriority: 0.2\n\naiTags: nukeLauncher, launcher",
-    "language": "ALL",
-    "icon": "/icon.png",
-    "attachFile": [
-        "/resource/unit.png",
-        "/resource/unit_die.png"
-    ],
-    "action": [
-        {
-            "name": "名称",
-            "name_zh_TW": "名稱",
-            "name_en": "name",
-            "name_ja": "名前",
-            "key": "name",
-            "section": "core",
-            "type": "input",
-            "tag": "name-core"
-        },
-        {
-            "name": "血量",
-            "name_zh_TW": "血量",
-            "name_en": "maxHp",
-            "name_ja": "ライフバリュー",
-            "key": "maxHp",
-            "section": "core",
-            "type": "input",
-            "tag": "maxHp-core"
-        },
-        {
-            "name": "价格",
-            "name_zh_TW": "價格",
-            "name_ja": "価格",
-            "name_en": "price",
-            "key": "price",
-            "section": "core",
-            "type": "input",
-            "tag": "price-core"
-        },
-        {
-            "name": "直接伤害",
-            "name_en":"directDamage",
-            "name_ja":"直接傷害",
-            "name_zh_TW":"直接傷害",
-            "key": "directDamage",
-            "section": "projectile_nukeProjectile",
-            "type": "input",
-            "tag": "projectile-core"
-        },
-        {
-            "name": "范围伤害",
-            "name_en":"areaDamage",
-            "name_ja":"範囲ダメージ",
-            "name_zh_TW":"範圍傷害",
-            "key": "areaDamage",
-            "section": "projectile_nukeProjectile",
-            "type": "input",
-            "tag": "projectile-core"
-        }
-    ]
+{
+    "name": "中级模板-核弹发射井",
+    "data": "#中级模板不会像基础模板那样注释特别详细，在这里只有新知识和主要的知识点会有注释说明\n#请结合注释和助手代码表综合使用该模板\n[core]\nname: nukeLauncherTemplate\nclass: CustomUnitMetadata\n\n#直接调用原版核弹发射井描述 请和下方多语言任选一个 去注释即可使用\n\n#displayLocaleKey: NukeLaucher\n\n#多语言\ndisplayText: NukeLaucher(Template)\ndisplayDescription: -Launch a nuclear bomb of massive destruction that can be intercepted by anti-nuclear defenses.\n\n#是否替换原版核弹发射井 下行这里注释了 如果要使用去掉注释\n#overrideAndReplace: NukeLaucher\n\n#在禁核模式中是否不能使用这个单位 这里是真 即代表禁核模式中不能使用\nisLockedIfGameModeNoNuke:true\n\nprice: 45000\nmaxHp: 1500\nmass: 9000\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: -1,-1,1,1\n\n#used for placement, and placement of other buildings\nconstructionFootprint: -2,-1,2,2\n\n\ntechLevel: 1\nbuildSpeed: 0.001\n#availableInDemo: true\n\nradius: 35\n#displayRadius: 25\nisBio: false\nisBuilding: true\n\n\n\n\nexit_x:0\nexit_y:-1\n\n#建造核弹\n[action_buildNuke]\nprice:  11000\ntext: i:gui.actions.buildNuke\ndescription:i:gui.actions.buildNuke.description\ndisplayType: NONE\nbuildSpeed: 0.0003\npos: 0.2\n\n#如果弹药大于4就会禁止继续建造核弹 也就是原版一个核弹发射井最多4个核弹\nisActive:if self.ammoIncludingQueued(lessThan=4)\n\n#添加ammo资源 是一个原版的一个局部资源 它们互不影响 可多用\naddResources: ammo=1\n\n#图标图像\niconImage: SHARED:icon_build.png\n\n#AI怎么使用这个单位 Luke虽然写了这些代码但游戏里面AI暂时还不会用核弹攻击玩家\naiUse: launchAmmo\n\n\n#贴花 就是最新版的核弹发射井没有任何核弹时的那个禁止图标一闪一闪的那个效果\n[decal_targetGuide]\nalwaysStartDirAtZero: true\nlayer: inactive\n\nimage: SHARED:area_guide.png\nteamColors: false\n\n@define area_guide_size: 100\n@define area_guide_radius: 50\n\n@define lowDamageBorder: 30\n\nimageScale: ${ projectile_nukeProjectile.areaRadius - lowDamageBorder }/${area_guide_radius}\n\nalpha: 0.4\ncolor: #960d06\n\n\n\n#发射核弹\n[action_launchNuke]\nfireTurretXAtGround: siloTop\nfireTurretXAtGround_showGuideDecals: targetGuide\n\n#消耗一个ammo\nprice:  ammo=1\n\ntext: i:gui.actions.launchNuke\ndescription:i:gui.actions.launchNuke.description\ndisplayType: action\nbuildSpeed: 3.5s\npos: 0.1\n\n#播放动画\nwhenBuilding_playAnimation: fireNuke\n\n\ndisplayRemainingStockpile: true\nhighPriorityQueue: true\nonlyOneUnitAtATime: true\n\n\n#isAlsoViewableByEnemies: true\niconImage: SHARED:icon_attack_point.png\n\naiUse: launch\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/nukes/nuke_launcher_front.png\nimage_back:   CORE:/nukes/nuke_launcher_back.png\nimage_wreak:  CORE:/nukes/nuke_launcher_dead.png\n\ndrawLayer: bottom\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\nmaxAttackRange: 9999\n\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nmaxTurnSpeed: 0\nturnAcceleration: 0.1\n\n\n\n\n[turret_siloTop]\n#nuke turret\ncanShoot: false\n\nx: 0\ny: -5\nidleDir:0\n\ninvisible: true\n\nshoot_sound:nuke_launch\nshoot_sound_vol:0.27\nshoot_light:#FFEECCCC\n\nprojectile: nukeProjectile\nsize: 1\n\nturnSpeed: 40\n\n\n#shoot_flame:shockwave\nshoot_flame:custom:nukeLaunch_wave, custom:nukeLaunch_light\n#custom:nukeLaunch_smoke*6\n\n\nlimitingMinRange: 260\n\n[projectile_nukeProjectile]\n#nuke\n\n#这里的标签将会判定为反核防御的具体目标tag\ntags: nuke\n\ndirectDamage: 123\n\nlife: 99999\nspeed: 0.1\ntargetSpeed: 2.7\ntargetSpeedAcceleration:0.02\n\n\nlargeHitEffect: true\nballistic: true\nballistic_delaymove_height:80\nballistic_height: 110\nframe: 0\nshadowFrame:1\n\ndrawType:1\n\ntargetGround: true\nareaDamage: 5400\n\n#hullDamageMultiplier:0 for EMP version\n#hullDamageMultiplier: 0\n\nareaHitAirAndLandAtSameTime: true\nalwaysVisibleInFog: true\n\nareaRadius: 250\n\nareaExpandTime:75\n\ndeflectionPower:-1\n\n#炸的时候揭开这里的迷雾\nshouldRevealFog:true\n\n#核武抛射体 小地图全图警告\nnukeWeapon:true\n\nlightColor: #FFEEEE00\nlightSize: 1\n\n#友伤 但是伤不了盟军()\nfriendlyFire: true\n\n#trailEffect: true\ntrailEffect: CUSTOM:projectileTrail\ntrailEffectRate:4\n\n#效果组\n[effect_projectileTrail]\n\nstripIndex: effects\nframeIndex: 0\n\n\nlife: 120\nfadeOut: true\nattachedToUnit: false\ncolor: #FFFFFF\nfadeInTime:5\nscaleFrom: 0.5\nscaleTo: 3.5\nalpha: 0.6\ndrawUnderUnits:false\n#ySpeedRelative:-1\natmospheric:true\n\ndirOffsetRandom:180\n\nshadow:true\n\nxSpeedAbsoluteRandom: 0.2\nySpeedAbsoluteRandom: 0.2\n\n\n[effect_nukeLaunch_wave]\npriority:high\n\nstripIndex:shockwave\nlife: 50\nscaleFrom: 0.5\nscaleTo: 2.5\n\n[effect_nukeLaunch_smoke]\npriority:high\n\nxOffsetAbsoluteRandom: 10\nyOffsetAbsoluteRandom: 10\n\nframeIndex: 0\nstripIndex: smoke_black\n\nspawnChance: 0.3\n\nlife: 90\nfadeOut: true\nattachedToUnit: false\n#color: #fdc14d\ncolor: #FFEEEE00\n\nfadeInTime:5\nscaleFrom: 0.3\nscaleTo: 0.8\nalpha: 0.9\ndrawUnderUnits:false\nliveAfterAttachedDies: false\nhSpeed:0.4\nxSpeedAbsoluteRandom:0.9\nySpeedAbsoluteRandom:0.9\ndirOffsetRandom:180\natmospheric: true\n\n\n[effect_nukeLaunch_light]\nimage: SHARED:light_50.png\nlife: 40\nfadeOut: true\nattachedToUnit: true\ncolor: #FFFFFF\nscaleFrom: 1.7\nscaleTo: 1.7\nalpha: 0.7\ndrawUnderUnits:false\n\n\n#随机生成一个坦克并被炸死（\n[projectile_randomTankNuke]\n#tank nuke :p\n\ndirectDamage: 123\n\nspawnUnit: tank\n\nlife: 99999\nspeed: 0.1\ntargetSpeed: 2.7\ntargetSpeedAcceleration:0.02\n\ntrailEffect: true\nlargeHitEffect: true\nballistic: true\nballistic_delaymove_height:80\nballistic_height: 110\nframe: 0\nshadowFrame:1\n\ndrawType:1\n\ntargetGround: true\n\n#激光拦截-1，即无法使用激光拦截该炮弹\ndeflectionPower:-1\n\nlightColor: #FFEEEE00\nlightSize: 1\n\n\n#核弹发射井的那两个门\n[arm_1]\nx:3\ny:-1\nimage_end:CORE:/nukes/nuke_launcher_door_r.png\n\n\n#x:13\n#y:-9\n\n#核弹发射井的那两个门\n[arm_2]\nx:-5\ny:9\nimage_end:CORE:/nukes/nuke_launcher_door_l.png\n\n#x:-14\n#y:14\n\n#核弹发射井的发射前的开门动画\n[animation_fireNuke]\n\nblendIn: 2s\nblendOut: 2.5s\n\narm1_0: {x:10, y:-8}\narm2_0: {x:-9, y:5}\n\n#arm1_0s: {x:0, y:0}\n#arm2_0s: {x:0, y:0} \n\n#arm1_1.400s: {x:10, y:-8}\n#arm2_1.400s: {x:-9, y:5}\n\n[ai]\n\nbuildPriority: 0.01\n\nnoneInBaseExtraPriority: 0.04\n\nnoneGlobalExtraPriority: 0.1\n\n\nmaxEachBase: 0\n\nai_upgradePriority: 0.2\n\naiTags: nukeLauncher, launcher",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "直接伤害",
+            "name_en":"directDamage",
+            "name_ja":"直接傷害",
+            "name_zh_TW":"直接傷害",
+            "key": "directDamage",
+            "section": "projectile_nukeProjectile",
+            "type": "input",
+            "tag": "projectile-core"
+        },
+        {
+            "name": "范围伤害",
+            "name_en":"areaDamage",
+            "name_ja":"範囲ダメージ",
+            "name_zh_TW":"範圍傷害",
+            "key": "areaDamage",
+            "section": "projectile_nukeProjectile",
+            "type": "input",
+            "tag": "projectile-core"
+        }
+    ]
 }

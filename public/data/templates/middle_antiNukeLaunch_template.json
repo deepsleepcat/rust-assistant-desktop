@@ -1,42 +1,42 @@
-{
-    "name": "中级模板-反核防御",
-    "data": "#中级模板不会像基础模板那样注释特别详细，在这里只有新知识和主要的知识点会有注释说明\n#请结合注释和助手代码表综合使用该模板\n#注：你应该先看核弹发射井的模板再来看这个\n[core]\nname: antiNukeLauncherTemplate\nclass: CustomUnitMetadata\n\n#是否替换原版反核防御 下行这里注释了 如果要使用去掉注释\n#overrideAndReplace: AntiNukeLaucher\n\n#直接调用原版反核防御描述 请和下方多语言任选一个 去注释即可使用\n#displayLocaleKey: AntiNukeLaucher\n\n#多语言\ndisplayText: AntiNukeLaucher(Template)\ndisplayDescription: -AntiNukeLaucher\n\ndisplayText_zh: 示范反核防御\ndisplayDescription_zh: -拦截核导弹\n\nisLockedIfGameModeNoNuke:true\n\nprice: 15000\nmaxHp: 2800\nmass: 9000\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: -1,-1,1,1\n\n#used for placement, and placement of other buildings\nconstructionFootprint: -1,-1,1,1\n\n\ntechLevel: 1\nbuildSpeed: 0.001\n#availableInDemo: true\n\nradius: 35\n#displayRadius: 25\nisBio: false\nisBuilding: true\n\n\n\n\nexit_x:0\nexit_y:-1\n\n[action_buildAntiNuke]\nprice:  4000\ntext: i:gui.actions.buildAntiNuke\ndescription:i:gui.actions.buildAntiNuke.description\ndisplayType: NONE\nbuildSpeed: 0.0007\npos: 0.2\nisActive:if self.ammoIncludingQueued(lessThan=12)\naddResources: ammo=1\n\nai_isDisabled: if self.ammo(greaterThan=3)\n\niconImage: SHARED:icon_build.png\n\n\n[action_showAntiNukeCount]\n#infoOnly: true\naddResources: ammo=1\nprice:  ammo=1\ntext: i:gui.actions.antiNukeCount\ndescription:i:gui.actions.antiNukeCount.description\nbuildSpeed: 0s\npos: 0.1\ndisplayRemainingStockpile: true\ndisplayType: infoOnlyStockpile\n\n\nisActive:false\nisVisible: if self.ammo(greaterThan=0)\n\niconImage: SHARED:icon_nuke_stockpile.png\n\n\n\n[action_showAntiNukeCountEmpty]\n#infoOnly: true\n\ntext: i:gui.actions.antiNukeCountEmpty\ndescription:i:gui.actions.antiNukeCount.descriptionEmpty\nbuildSpeed: 0s\npos: 0.1\n#displayRemainingStockpile: true\ndisplayType: infoOnlyStockpile\n\n\nisActive:false\nisVisible: if self.ammo(lessThan=1)\n\niconImage: SHARED:icon_nuke_stockpile.png\n\nisGuiBlinking: true\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/nukes/antinuke_launcher_front.png\nimage_back:   CORE:/nukes/antinuke_launcher_back.png\nimage_wreak:  CORE:/nukes/antinuke_launcher_dead.png\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\nmaxAttackRange: 9999\n\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nmaxTurnSpeed: 0\nturnAcceleration: 0.1\n\n\n\n[decal_noAmmoIcon]\nonlyWhileActive: true\nonlyWhileAlive: true\nonlyOnNonPreview: true\nonlyPlayersWithUnitControl: true\nonlyWithZoomLevelOrMore: 0.7\nalwaysStartDirAtZero: true\nlayer: beforeUI\nisVisible: if self.ammo==0\n\n@define timer_2s: ((self.timeAlive() % 2) / 2)\nalpha: 0.3+cos( ${timer_2s} * 360) * 0.2\n\nimage: SHARED:icon_nuke_stockpile.png\nteamColors: false\nimageScale: 1\n\n[decal_noAmmoIcon2]\n@copyFromSection: decal_noAmmoIcon\nimage:SHARED:no_icon.png\nimageScale: 0.5\n\n[turret_silo]\n#anti-nuke turret\nx: 0\ny: 10\nidleDir:0\n\ninvisible: true\n\n#这里就是拦截核弹的具体方法了\n\n#拦截的标签\ninterceptProjectiles_withTags: nuke\n#拦截的三大距离 参考代码表进行使用\n\n#拦截抛射体搜索范围\ninterceptProjectiles_andTargetingGroundUnderDistance: 1000\n\n#拦截抛射体守护范围\ninterceptProjectiles_andUnderDistance: 2200\n\n#拦截抛射体高度\ninterceptProjectiles_andOverHeight:50\n\n\nshoot_sound:nuke_launch\nshoot_sound_vol:0.15\nshoot_light:#FFEECCCC\n\nprojectile: antiNukeProjectile\nsize: 1\n\nturnSpeed: 40\n\n#该拦截器需要消耗1点ammo才可以工作\nresourceUsage: ammo=1\n\nshoot_flame:shockwave, smoke\n#shoot_flame:custom:nukeLaunch\n\n#播放动画\nonShoot_playAnimation: fireNuke\n\n[projectile_antiNukeProjectile]\n#anti-nuke\ndirectDamage: 600\n\nlife: 99999\nspeed: 0.2\ntargetSpeed: 6.5\ntargetSpeedAcceleration:0.05\n\ntrailEffect: true\nlargeHitEffect: true\nballistic: true\nballistic_delaymove_height:80\nballistic_height: 110\nframe: 10\n#shadowFrame:1\n\ndrawType:0\n\ntargetGround: true\nareaDamage: 100\nareaRadius: 60\n\nareaExpandTime:75\n\ndeflectionPower:-1\n\n\nlightColor: #FFEEEE00\nlightSize: 1\n\nalwaysVisibleInFog: true\n\n[arm_1]\nx:1\ny:12\nimage_end:CORE:/nukes/antinuke_launcher_door_r.png\nimage_end_teamColors:true\n\n#x:13\n#y:-9\n\n[arm_2]\nx:-2\ny:11\nimage_end:CORE:/nukes/antinuke_launcher_door_l.png\nimage_end_teamColors:true\n\n#x:-14\n#y:14\n\n[animation_fireNuke]\n\nblendIn: 0.5s\nblendOut: 3.5s\n\narm1_0: {x:5, y:0}\narm2_0: {x:-5, y:0}\n\narm1_1.2s: {x:3, y:0}\narm2_1.2s: {x:-3, y:0}\n\n\n#arm1_0s: {x:0, y:0}\n#arm2_0s: {x:0, y:0} \n\n#arm1_1.400s: {x:10, y:-8}\n#arm2_1.400s: {x:-9, y:5}\n\n\n[effect_nukeLaunch]\n\n#image: shockwave_large.png\n\n\n\n[ai]\n\nbuildPriority: 0.01\n\nnoneInBaseExtraPriority: 0.04\n\nnoneGlobalExtraPriority: 0.1\n\n\nmaxEachBase: 1\nmaxGlobal: 2\n\n\nai_upgradePriority: 0.4",
-    "language": "ALL",
-    "icon": "/icon.png",
-    "attachFile": [
-        "/resource/unit.png",
-        "/resource/unit_die.png"
-    ],
-    "action": [
-        {
-            "name": "名称",
-            "name_zh_TW": "名稱",
-            "name_en": "name",
-            "name_ja": "名前",
-            "key": "name",
-            "section": "core",
-            "type": "input",
-            "tag": "name-core"
-        },
-        {
-            "name": "血量",
-            "name_zh_TW": "血量",
-            "name_en": "maxHp",
-            "name_ja": "ライフバリュー",
-            "key": "maxHp",
-            "section": "core",
-            "type": "input",
-            "tag": "maxHp-core"
-        },
-        {
-            "name": "价格",
-            "name_zh_TW": "價格",
-            "name_ja": "価格",
-            "name_en": "price",
-            "key": "price",
-            "section": "core",
-            "type": "input",
-            "tag": "price-core"
-        }
-    ]
+{
+    "name": "中级模板-反核防御",
+    "data": "#中级模板不会像基础模板那样注释特别详细，在这里只有新知识和主要的知识点会有注释说明\n#请结合注释和助手代码表综合使用该模板\n#注：你应该先看核弹发射井的模板再来看这个\n[core]\nname: antiNukeLauncherTemplate\nclass: CustomUnitMetadata\n\n#是否替换原版反核防御 下行这里注释了 如果要使用去掉注释\n#overrideAndReplace: AntiNukeLaucher\n\n#直接调用原版反核防御描述 请和下方多语言任选一个 去注释即可使用\n#displayLocaleKey: AntiNukeLaucher\n\n#多语言\ndisplayText: AntiNukeLaucher(Template)\ndisplayDescription: -AntiNukeLaucher\n\nisLockedIfGameModeNoNuke:true\n\nprice: 15000\nmaxHp: 2800\nmass: 9000\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: -1,-1,1,1\n\n#used for placement, and placement of other buildings\nconstructionFootprint: -1,-1,1,1\n\n\ntechLevel: 1\nbuildSpeed: 0.001\n#availableInDemo: true\n\nradius: 35\n#displayRadius: 25\nisBio: false\nisBuilding: true\n\n\n\n\nexit_x:0\nexit_y:-1\n\n[action_buildAntiNuke]\nprice:  4000\ntext: i:gui.actions.buildAntiNuke\ndescription:i:gui.actions.buildAntiNuke.description\ndisplayType: NONE\nbuildSpeed: 0.0007\npos: 0.2\nisActive:if self.ammoIncludingQueued(lessThan=12)\naddResources: ammo=1\n\nai_isDisabled: if self.ammo(greaterThan=3)\n\niconImage: SHARED:icon_build.png\n\n\n[action_showAntiNukeCount]\n#infoOnly: true\naddResources: ammo=1\nprice:  ammo=1\ntext: i:gui.actions.antiNukeCount\ndescription:i:gui.actions.antiNukeCount.description\nbuildSpeed: 0s\npos: 0.1\ndisplayRemainingStockpile: true\ndisplayType: infoOnlyStockpile\n\n\nisActive:false\nisVisible: if self.ammo(greaterThan=0)\n\niconImage: SHARED:icon_nuke_stockpile.png\n\n\n\n[action_showAntiNukeCountEmpty]\n#infoOnly: true\n\ntext: i:gui.actions.antiNukeCountEmpty\ndescription:i:gui.actions.antiNukeCount.descriptionEmpty\nbuildSpeed: 0s\npos: 0.1\n#displayRemainingStockpile: true\ndisplayType: infoOnlyStockpile\n\n\nisActive:false\nisVisible: if self.ammo(lessThan=1)\n\niconImage: SHARED:icon_nuke_stockpile.png\n\nisGuiBlinking: true\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/nukes/antinuke_launcher_front.png\nimage_back:   CORE:/nukes/antinuke_launcher_back.png\nimage_wreak:  CORE:/nukes/antinuke_launcher_dead.png\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\nmaxAttackRange: 9999\n\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmoveAccelerationSpeed: 0.01\nmoveDecelerationSpeed: 0.01\n\nmaxTurnSpeed: 0\nturnAcceleration: 0.1\n\n\n\n[decal_noAmmoIcon]\nonlyWhileActive: true\nonlyWhileAlive: true\nonlyOnNonPreview: true\nonlyPlayersWithUnitControl: true\nonlyWithZoomLevelOrMore: 0.7\nalwaysStartDirAtZero: true\nlayer: beforeUI\nisVisible: if self.ammo==0\n\n@define timer_2s: ((self.timeAlive() % 2) / 2)\nalpha: 0.3+cos( ${timer_2s} * 360) * 0.2\n\nimage: SHARED:icon_nuke_stockpile.png\nteamColors: false\nimageScale: 1\n\n[decal_noAmmoIcon2]\n@copyFromSection: decal_noAmmoIcon\nimage:SHARED:no_icon.png\nimageScale: 0.5\n\n[turret_silo]\n#anti-nuke turret\nx: 0\ny: 10\nidleDir:0\n\ninvisible: true\n\n#这里就是拦截核弹的具体方法了\n\n#拦截的标签\ninterceptProjectiles_withTags: nuke\n#拦截的三大距离 参考代码表进行使用\n\n#拦截抛射体搜索范围\ninterceptProjectiles_andTargetingGroundUnderDistance: 1000\n\n#拦截抛射体守护范围\ninterceptProjectiles_andUnderDistance: 2200\n\n#拦截抛射体高度\ninterceptProjectiles_andOverHeight:50\n\n\nshoot_sound:nuke_launch\nshoot_sound_vol:0.15\nshoot_light:#FFEECCCC\n\nprojectile: antiNukeProjectile\nsize: 1\n\nturnSpeed: 40\n\n#该拦截器需要消耗1点ammo才可以工作\nresourceUsage: ammo=1\n\nshoot_flame:shockwave, smoke\n#shoot_flame:custom:nukeLaunch\n\n#播放动画\nonShoot_playAnimation: fireNuke\n\n[projectile_antiNukeProjectile]\n#anti-nuke\ndirectDamage: 600\n\nlife: 99999\nspeed: 0.2\ntargetSpeed: 6.5\ntargetSpeedAcceleration:0.05\n\ntrailEffect: true\nlargeHitEffect: true\nballistic: true\nballistic_delaymove_height:80\nballistic_height: 110\nframe: 10\n#shadowFrame:1\n\ndrawType:0\n\ntargetGround: true\nareaDamage: 100\nareaRadius: 60\n\nareaExpandTime:75\n\ndeflectionPower:-1\n\n\nlightColor: #FFEEEE00\nlightSize: 1\n\nalwaysVisibleInFog: true\n\n[arm_1]\nx:1\ny:12\nimage_end:CORE:/nukes/antinuke_launcher_door_r.png\nimage_end_teamColors:true\n\n#x:13\n#y:-9\n\n[arm_2]\nx:-2\ny:11\nimage_end:CORE:/nukes/antinuke_launcher_door_l.png\nimage_end_teamColors:true\n\n#x:-14\n#y:14\n\n[animation_fireNuke]\n\nblendIn: 0.5s\nblendOut: 3.5s\n\narm1_0: {x:5, y:0}\narm2_0: {x:-5, y:0}\n\narm1_1.2s: {x:3, y:0}\narm2_1.2s: {x:-3, y:0}\n\n\n#arm1_0s: {x:0, y:0}\n#arm2_0s: {x:0, y:0} \n\n#arm1_1.400s: {x:10, y:-8}\n#arm2_1.400s: {x:-9, y:5}\n\n\n[effect_nukeLaunch]\n\n#image: shockwave_large.png\n\n\n\n[ai]\n\nbuildPriority: 0.01\n\nnoneInBaseExtraPriority: 0.04\n\nnoneGlobalExtraPriority: 0.1\n\n\nmaxEachBase: 1\nmaxGlobal: 2\n\n\nai_upgradePriority: 0.4",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        }
+    ]
 }

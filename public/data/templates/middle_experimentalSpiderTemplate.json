@@ -1,56 +1,56 @@
-{
-    "name": "中级模板-实验蜘蛛",
-    "data": "#中级模板注释会更少，还请留意\n[core]\nname: experimentalSpiderTemplate\nclass: CustomUnitMetadata\n#price: 2\nprice: 70000\n\nmaxHp: 10000\nmass: 90000\n\nisPickableStartingUnit: true\nstartFallingWhenStartingUnit: true\n\n#单位标题\ndisplayText:示范实验蜘蛛\n\n#单位描述\ndisplayDescription:强大的实验蜘蛛，死亡会核爆，不错的攻击和高耐久度。请参考ini里面的注释和结合代码表使用。\n\n\ntechLevel: 1\nexperimental: true\n\nbuildSpeed: 0.0002\n#buildSpeed: 1\n\n#availableInDemo: true\n\nradius: 39\ndisplayRadius: 39\n\n\nfogOfWarSightRange:19\n\ntransportSlotsNeeded: 8\n\nisBio: false\nisBuilder: true\n\nsoftCollisionOnAll: 3\n\n#nanoFactorySpeed:2.5\n\ngeneration_credits: 18\ngeneration_delay: 40\n\nselfRegenRate:0.4\n\n#builtFrom_1_name: commandCenter\n#builtFrom_1_pos:  2\n\nbuiltFrom_1_name: experimentalLandFactory\nbuiltFrom_1_pos:  6.1\n\nenergyMax: 2\nenergyRegen: 0.0003\n\n\ncanRepairBuildings: true\ncanRepairUnits : true\n\ncanReclaimResources: true\n\nautoRepair: true\n\nnanoRange: 220\n\nnanoRepairSpeed: 0.4\nnanoBuildSpeed: 8\n\n#死亡核爆\nnukeOnDeath: true\n#核爆范围\nnukeOnDeathRange: 200\n#核爆伤害\nnukeOnDeathDamage: 4400\n#启用禁核后是否继续生效\nnukeOnDeathDisableWhenNoNuke: true\n\n#可建造这个也可以封装为一个节\n[canBuild_1]\nname: builder\npos:  1\n#强制为建筑建造，无论目标是不是建筑单位\nforceNano: true\n\n[canBuild_2]\nname: combatEngineer\npos:  1\nforceNano: true\n\n[canBuild_3]\nname: heavyTank\npos:  1\nforceNano: true\n\n[canBuild_4]\nname: heavyHoverTank\npos:  1\nforceNano: true\n\n[canBuild_5]\nname: artillery\npos:  1\nforceNano: true\n\n[canBuild_6]\nname: scout\npos:  1\nforceNano: true\n\n[canBuild_7]\nname: turret, turret_artillery, antiAirTurret\npos:  0.1\n\n[canBuild_8]\nname: extractor\npos:  0.3\n\n[canBuild_9]\nname: landFactory, mechFactory, airFactory\npos:  0.4\n\n[canBuild_10]\nname: laserDefence, repairBay\npos:  0.5\n\n[canBuild_11]\nname: bomber\npos:  1\nforceNano: true\n\n[canBuild_showReclaimAction]\nname: reclaim\npos:  -1\n\n#Luke的蜘蛛跳舞 官方烂活\n[action_dance]\naddEnergy: 0\ndisplayType: action\nprice:  0\n\n#多语言\ntext: Dance\ntext_zh:跳舞\n\nbuildSpeed: 5.5s\nwhenBuilding_cannotMove: true\nwhenBuilding_playAnimation:dance\n\n#Luke的蜘蛛攻击跳舞 官方烂活\n[action_attack_dance]\naddEnergy: 0\ndisplayType: action\nprice:  0\n\n#多语言\ntext: Attack\ntext_zh:攻击跳舞\n\nbuildSpeed: 4.5s\nwhenBuilding_playAnimation:attack\n\n\n[graphics]\n#实验级\ndrawLayer: experimentals\n\ntotal_frames: 1\n\nimage:        CORE:/experimental_spider/body.png\nimage_wreak:  CORE:/experimental_spider/body_dead.png\nimage_turret: SHARED:nano_turret.png\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#teamColorsOnTurret: true\n\nimage_shadow: AUTO\nshadowOffsetX:3\nshadowOffsetY:3\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: true\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nturretSize: 30\nturretTurnSpeed: 2\nmaxAttackRange: 290\nshootDelay: 85\n\nturretMultiTargeting: true\n\n[turret_nanoTurret]\n\nx: 14\ny: 18\n\nidleDir:-50\nidleDirReversing: -110\n\nwarmup:30\n\nturnSpeed: 4\nsize: 8\n\nimage: SHARED:nano_turret.png\n\ncanShoot: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\n\nisMainNanoTurret: true\n\n\n[turret_laserDefence]\nx: 0\ny: 18\ncanShoot: false\ninvisible: true\nlaserDefenceEnergyUse: 0.05\nlimitingRange: 160\nsize:1\n\n\n[turret_smallLaser1]\nx: 16\ny: -23\n\nidleDir:10\nidleDirReversing: 170\n\nshoot_sound:plasma_fire\nshoot_sound_vol:0.05\nshoot_flame:small\nshoot_light:#FFccCCEE\n\nimage: SHARED:turret_small.png\nprojectile: laserShot\n\ndelay: 40\nwarmup: 0\n\nsize: 17\n\nturnSpeedAcceleration: 0.2\nturnSpeed: 5\n\nrecoilOffset: -1\nrecoilOutTime: 3\nrecoilReturnTime: 4\nlimitingRange: 200\n\n[turret_smallLaser2]\nx: -16\ny: -23\n\nidleDir:-10\nidleDirReversing: 190\n\ncopyFrom: smallLaser1\nlinkDelayWithTurret:smallLaser1\nwarmup:12\n\n[projectile_laserShot]\ndirectDamage: 80\nlife: 70\nspeed: 9\n\nframe: 11\n\n\n\n\n[turret_mainCannon]\nx: -0.5\ny: 20\n#projectile: cannonShot\nprojectile: plasma\nattachedTo: mainCannonBase\nslave: true\n\n\n#image: SHARED:experimental_tank_turret.png\n#image: SHARED:turret_artillery_large.png\nimage: CORE:/experimental_spider/experimental_tank_turret2.png\n\n\n#canAttackFlyingUnits: false\n#canAttackLandUnits:   true\n#canAttackUnderwaterUnits: false\n\n#delay: 190\ndelay: 110\n\nwarmup: 20\nidleDir:0\n\nshoot_sound:large_gun_fire2\nshoot_sound_vol:0.3\nshoot_flame:large,CUSTOM:lightSlowFade\nshoot_light:#EEEECCCC\n\n\n\n#warmupStartEffect:CUSTOM:lightSlowFadeBase\n\n\nsize:16\nturnSpeedAcceleration: 0.1\nturnSpeed: 0\nrecoilOffset: -5\nrecoilOutTime: 3\nrecoilReturnTime: 38\n\n\n\n#chargeEffectImage: SHARED:lighting_charge.png\n\n[turret_mainCannonBase]\nx: 0\ny: -8\n\n\n#image: SHARED:experimental_tank_turret.png\n#image: SHARED:turret_artillery_large.png\nimage: CORE:/experimental_spider/spider_turret_base.png\n\nimage_applyTeamColors: true\n\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\n\ncanShoot: false\n\n#delay: 190\ndelay: 110\n\nwarmup: 20\nidleDir:0\n\nshoot_sound:large_gun_fire2\nshoot_sound_vol:0.3\n#shoot_flame:large\nshoot_light:#EEEECCCC\n\nshoot_flame:CUSTOM:lightSlowFade\n\n#warmupStartEffect:CUSTOM:lightSlowFadeBase\n\n\nsize:40\nturnSpeedAcceleration: 0.1\nturnSpeed: 2\nrecoilOffset: -1\nrecoilOutTime: 3\nrecoilReturnTime: 38\n\n\n\n#chargeEffectImage: SHARED:lighting_charge.png\n\n\n\n\n\n[projectile_cannonShot]\n#main turret projectile\n#directDamage: 0 #no directDamage with targetGround\nlife: 150\nspeed: 5\nlargeHitEffect: true\nframe: 2\ntargetGround: true\nareaDamage: 160\nareaRadius: 45\n\n\n[projectile_plasma]\ndirectDamage: 190\nlife: 80\nspeed: 16\ntargetSpeed: 16\ntargetSpeedAcceleration: 0.7\n\ndrawType:2\nframe:4\ndrawSize: 1\n#trailEffect: CUSTOM:projectileTrail\ntrailEffectRate:2\n\n#trailEffectRate: true\n\n#lightColor:#ffffff\n\nexplodeEffect: smallExplosion, CUSTOM:hitLightFlash, CUSTOM:projectilePassThough\n\n\n\n#explodeEffectOnShield: CUSTOM:hitLightFlash\n\neffectOnCreate: CUSTOM:projectileLight\n\n\n\n[effect_warmup]\npriority:high\nimage: SHARED:light_50.png\nlife: 25\nfadeOut: true\nattachedToUnit: true\ncolor: #e89263\nscaleFrom: 0.1\nscaleTo: 0.1\nalpha: 0.8\ndrawUnderUnits:false\nySpeedRelative:3.9\n\n[effect_lightSlowFade]\nimage: SHARED:light_50.png\nlife: 40\nfadeOut: true\nattachedToUnit: true\ncolor: #e89263\nscaleFrom: 0.4\nscaleTo: 0.4\nalpha: 0.5\n#drawUnderUnits:true\n\n\n[effect_lightSlowFadeBase]\nimage: SHARED:light_50.png\nlife: 30\nfadeOut: true\nattachedToUnit: true\ncolor: #AAAAFF\nscaleFrom: 0.2\nscaleTo: 0.6\nalpha: 0.7\n#drawUnderUnits:true\n\nyOffsetRelative:-41\nySpeedRelative:0.3\n\n\n[effect_projectileTrail]\nimage: SHARED:light_50.png\nlife: 20\nfadeOut: true\nattachedToUnit: false\ncolor: #e89263\nfadeInTime:2\nscaleFrom: 0.4\nscaleTo: 0.4\nalpha: 0.6\ndrawUnderUnits:true\n#ySpeedRelative:-1\n\n\n[effect_projectileLight]\npriority:veryhigh\n\nimage: SHARED:light_50.png\nlife: 100\nfadeOut: true\nattachedToUnit: true\ncolor: #e89263\nfadeInTime:2\nscaleFrom: 0.8\nscaleTo: 0.8\nalpha: 0.6\ndrawUnderUnits:false\nliveAfterAttachedDies: false\n\n[effect_hitLightFlash]\npriority:high\n\nimage: SHARED:light_50.png\nlife: 14\nfadeOut: true\nattachedToUnit: false\ncolor: #e89263\n\nscaleFrom: 1.8\nscaleTo: 1.8\nalpha: 0.6\ndrawUnderUnits:false\n\n[effect_projectilePassThough]\n\npriority:high\nframeIndex: 4\nstripIndex: projectiles2\nlife: 20\nfadeOut: true\nattachedToUnit: false\ncolor: #FFFFFF\nscaleFrom: 1\nscaleTo: 0.5\nalpha: 1\ndrawUnderUnits:false\nySpeedRelative:2\natmospheric: true\n\n\n\n\n[leg_1]\nx: -40\ny: 0\nattach_x: -15\nattach_y: 0\nmoveSpeed: 2.6\n\nheightSpeed:0.6\nmoveWarmUp:4\n\nresetAngle:20\n\nholdDisMin: 12\nholdDisMax: 25\n\nimage_leg:  CORE:/experimental_spider/leg.png\nimage_foot: CORE:/experimental_spider/foot.png\nimage_foot_shadow: SHADOW:CORE:/experimental_spider/foot.png\n\n#drawUnderAllUnits:true\n\nfavourOppositeSideNeighbours: true\n\n\ndrawLegWhenZoomedOut: true\ndrawFootWhenZoomedOut: true\n\n[leg_2]\nx: 40\ny: 0\nattach_x: 15\nattach_y: 0\ncopyFrom: 1\n\n[leg_3]\nx: -35\ny: 40\nattach_x: -15\nattach_y: 25\ncopyFrom: 1\n\n[leg_4]\nx: 35\ny: 40\nattach_x: 15\nattach_y: 25\ncopyFrom: 1\n\n[leg_5]\nx: -35\ny: -40\nattach_x: -15\nattach_y: -25\ncopyFrom: 1\n\n[leg_6]\nx: 35\ny: -40\nattach_x: 15\nattach_y: -25\ncopyFrom: 1\n\n#让我们一起摇摆()\n[animation_dance]\n\nblendIn: 0.1s\nblendOut: 0.7s\n\nleg1_0.5s: {dir:90}\n\nleg2_0.5s: {dir:90}\nleg2_3s: {x:20}\nleg2_3.0s: {dir:0}\nleg2_3.5s: {dir:-45}\nleg2_4.0s: {dir:45}\nleg2_4.5s: {dir:0}\n\nleg3_0.5s: {x:-10, y:20}\n\nleg3_3s: {x:-10, dir:0}\nleg3_4s: {x:45, dir:0}\nleg3_5s: {x:0, dir:0}\n\nleg5_2.5s: {x:-20, y:18}\nleg6_3.5s: {x:20, y:18}\n#body_0s: {scale:1}\n#body_4s: {scale:1.8}\n\n[effect_lightFlash]\npriority:high\n\nimage: SHARED:light_50.png\nlife: 14\nfadeOut: true\nattachedToUnit: false\ncolor: #63e6e8\n\nscaleFrom: 1.8\nscaleTo: 1.8\nalpha: 0.6\ndrawUnderUnits:false\n\n#动画节\n[animation_attack]\n\nblendIn: 0.1s\nblendOut: 0.7s\n\nleg3_0.5s: {x:0, y:20}\n\nleg3_1s: {x:0, dir:0, height:5}\nleg3_3s: {x:35, dir:9000}\n\n\nleg4_0.5s: {x:0, y:20}\n\nleg4_1s: {x:0, dir:0, height:5}\nleg4_3s: {x:-35, dir:9000}\n\n\n\n[movement]\nmovementType: OVER_CLIFF_WATER\nmoveSpeed: 0.5\nmoveAccelerationSpeed: 0.05\nmoveDecelerationSpeed: 0.05\n\ntargetHeight: 0\ntargetHeightDrift: 0\n\nreverseSpeedPercentage:1\n\nmaxTurnSpeed: 0.5\nturnAcceleration: 0.2\n\nmoveSlidingMode :false\nmoveIgnoringBody:false\nmoveSlidingDir:  45\n\n\nslowDeathFall: true\n\n[ai]\n#如果没有这行代码会没有建造纳米效果且AI也不会用这个单位作为建造者\nuseAsBuilder: true",
-    "language": "ALL",
-    "icon": "/icon.png",
-    "attachFile": [
-        "/resource/unit.png",
-        "/resource/unit_die.png"
-    ],
-    "action": [
-        {
-            "name": "名称",
-            "name_zh_TW": "名稱",
-            "name_en": "name",
-            "name_ja": "名前",
-            "key": "name",
-            "section": "core",
-            "type": "input",
-            "tag": "name-core"
-        },
-        {
-            "name": "血量",
-            "name_zh_TW": "血量",
-            "name_en": "maxHp",
-            "name_ja": "ライフバリュー",
-            "key": "maxHp",
-            "section": "core",
-            "type": "input",
-            "tag": "maxHp-core"
-        },
-        {
-            "name": "价格",
-            "name_zh_TW": "價格",
-            "name_ja": "価格",
-            "name_en": "price",
-            "key": "price",
-            "section": "core",
-            "type": "input",
-            "tag": "price-core"
-        },
-        {
-            "name": "死亡核爆范围",
-            "key": "nukeOnDeathRange",
-            "section": "core",
-            "type": "input",
-            "tag": "nukeOnDeathRange-core"
-        },
-        {
-            "name": "死亡核爆伤害",
-            "key": "nukeOnDeathDamage",
-            "section": "core",
-            "type": "input",
-            "tag": "nukeOnDeathDamage-core"
-        }
-    ]
+{
+    "name": "中级模板-实验蜘蛛",
+    "data": "#中级模板注释会更少，还请留意\n[core]\nname: experimentalSpiderTemplate\nclass: CustomUnitMetadata\n#price: 2\nprice: 70000\n\nmaxHp: 10000\nmass: 90000\n\nisPickableStartingUnit: true\nstartFallingWhenStartingUnit: true\n\n#单位标题\ndisplayText:示范实验蜘蛛\n\n#单位描述\ndisplayDescription:强大的实验蜘蛛，死亡会核爆，不错的攻击和高耐久度。请参考ini里面的注释和结合代码表使用。\n\n\ntechLevel: 1\nexperimental: true\n\nbuildSpeed: 0.0002\n#buildSpeed: 1\n\n#availableInDemo: true\n\nradius: 39\ndisplayRadius: 39\n\n\nfogOfWarSightRange:19\n\ntransportSlotsNeeded: 8\n\nisBio: false\nisBuilder: true\n\nsoftCollisionOnAll: 3\n\n#nanoFactorySpeed:2.5\n\ngeneration_credits: 18\ngeneration_delay: 40\n\nselfRegenRate:0.4\n\n#builtFrom_1_name: commandCenter\n#builtFrom_1_pos:  2\n\nbuiltFrom_1_name: experimentalLandFactory\nbuiltFrom_1_pos:  6.1\n\nenergyMax: 2\nenergyRegen: 0.0003\n\n\ncanRepairBuildings: true\ncanRepairUnits : true\n\ncanReclaimResources: true\n\nautoRepair: true\n\nnanoRange: 220\n\nnanoRepairSpeed: 0.4\nnanoBuildSpeed: 8\n\n#死亡核爆\nnukeOnDeath: true\n#核爆范围\nnukeOnDeathRange: 200\n#核爆伤害\nnukeOnDeathDamage: 4400\n#启用禁核后是否继续生效\nnukeOnDeathDisableWhenNoNuke: true\n\n#可建造这个也可以封装为一个节\n[canBuild_1]\nname: builder\npos:  1\n#强制为建筑建造，无论目标是不是建筑单位\nforceNano: true\n\n[canBuild_2]\nname: combatEngineer\npos:  1\nforceNano: true\n\n[canBuild_3]\nname: heavyTank\npos:  1\nforceNano: true\n\n[canBuild_4]\nname: heavyHoverTank\npos:  1\nforceNano: true\n\n[canBuild_5]\nname: artillery\npos:  1\nforceNano: true\n\n[canBuild_6]\nname: scout\npos:  1\nforceNano: true\n\n[canBuild_7]\nname: turret, turret_artillery, antiAirTurret\npos:  0.1\n\n[canBuild_8]\nname: extractor\npos:  0.3\n\n[canBuild_9]\nname: landFactory, mechFactory, airFactory\npos:  0.4\n\n[canBuild_10]\nname: laserDefence, repairBay\npos:  0.5\n\n[canBuild_11]\nname: bomber\npos:  1\nforceNano: true\n\n[canBuild_showReclaimAction]\nname: reclaim\npos:  -1\n\n#Luke的蜘蛛跳舞 官方烂活\n[action_dance]\naddEnergy: 0\ndisplayType: action\nprice:  0\n\n#多语言\ntext: Dance\n\nbuildSpeed: 5.5s\nwhenBuilding_cannotMove: true\nwhenBuilding_playAnimation:dance\n\n#Luke的蜘蛛攻击跳舞 官方烂活\n[action_attack_dance]\naddEnergy: 0\ndisplayType: action\nprice:  0\n\n#多语言\ntext: Attack\n\nbuildSpeed: 4.5s\nwhenBuilding_playAnimation:attack\n\n\n[graphics]\n#实验级\ndrawLayer: experimentals\n\ntotal_frames: 1\n\nimage:        CORE:/experimental_spider/body.png\nimage_wreak:  CORE:/experimental_spider/body_dead.png\nimage_turret: SHARED:nano_turret.png\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#teamColorsOnTurret: true\n\nimage_shadow: AUTO\nshadowOffsetX:3\nshadowOffsetY:3\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: true\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nturretSize: 30\nturretTurnSpeed: 2\nmaxAttackRange: 290\nshootDelay: 85\n\nturretMultiTargeting: true\n\n[turret_nanoTurret]\n\nx: 14\ny: 18\n\nidleDir:-50\nidleDirReversing: -110\n\nwarmup:30\n\nturnSpeed: 4\nsize: 8\n\nimage: SHARED:nano_turret.png\n\ncanShoot: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\n\nisMainNanoTurret: true\n\n\n[turret_laserDefence]\nx: 0\ny: 18\ncanShoot: false\ninvisible: true\nlaserDefenceEnergyUse: 0.05\nlimitingRange: 160\nsize:1\n\n\n[turret_smallLaser1]\nx: 16\ny: -23\n\nidleDir:10\nidleDirReversing: 170\n\nshoot_sound:plasma_fire\nshoot_sound_vol:0.05\nshoot_flame:small\nshoot_light:#FFccCCEE\n\nimage: SHARED:turret_small.png\nprojectile: laserShot\n\ndelay: 40\nwarmup: 0\n\nsize: 17\n\nturnSpeedAcceleration: 0.2\nturnSpeed: 5\n\nrecoilOffset: -1\nrecoilOutTime: 3\nrecoilReturnTime: 4\nlimitingRange: 200\n\n[turret_smallLaser2]\nx: -16\ny: -23\n\nidleDir:-10\nidleDirReversing: 190\n\ncopyFrom: smallLaser1\nlinkDelayWithTurret:smallLaser1\nwarmup:12\n\n[projectile_laserShot]\ndirectDamage: 80\nlife: 70\nspeed: 9\n\nframe: 11\n\n\n\n\n[turret_mainCannon]\nx: -0.5\ny: 20\n#projectile: cannonShot\nprojectile: plasma\nattachedTo: mainCannonBase\nslave: true\n\n\n#image: SHARED:experimental_tank_turret.png\n#image: SHARED:turret_artillery_large.png\nimage: CORE:/experimental_spider/experimental_tank_turret2.png\n\n\n#canAttackFlyingUnits: false\n#canAttackLandUnits:   true\n#canAttackUnderwaterUnits: false\n\n#delay: 190\ndelay: 110\n\nwarmup: 20\nidleDir:0\n\nshoot_sound:large_gun_fire2\nshoot_sound_vol:0.3\nshoot_flame:large,CUSTOM:lightSlowFade\nshoot_light:#EEEECCCC\n\n\n\n#warmupStartEffect:CUSTOM:lightSlowFadeBase\n\n\nsize:16\nturnSpeedAcceleration: 0.1\nturnSpeed: 0\nrecoilOffset: -5\nrecoilOutTime: 3\nrecoilReturnTime: 38\n\n\n\n#chargeEffectImage: SHARED:lighting_charge.png\n\n[turret_mainCannonBase]\nx: 0\ny: -8\n\n\n#image: SHARED:experimental_tank_turret.png\n#image: SHARED:turret_artillery_large.png\nimage: CORE:/experimental_spider/spider_turret_base.png\n\nimage_applyTeamColors: true\n\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\n\ncanShoot: false\n\n#delay: 190\ndelay: 110\n\nwarmup: 20\nidleDir:0\n\nshoot_sound:large_gun_fire2\nshoot_sound_vol:0.3\n#shoot_flame:large\nshoot_light:#EEEECCCC\n\nshoot_flame:CUSTOM:lightSlowFade\n\n#warmupStartEffect:CUSTOM:lightSlowFadeBase\n\n\nsize:40\nturnSpeedAcceleration: 0.1\nturnSpeed: 2\nrecoilOffset: -1\nrecoilOutTime: 3\nrecoilReturnTime: 38\n\n\n\n#chargeEffectImage: SHARED:lighting_charge.png\n\n\n\n\n\n[projectile_cannonShot]\n#main turret projectile\n#directDamage: 0 #no directDamage with targetGround\nlife: 150\nspeed: 5\nlargeHitEffect: true\nframe: 2\ntargetGround: true\nareaDamage: 160\nareaRadius: 45\n\n\n[projectile_plasma]\ndirectDamage: 190\nlife: 80\nspeed: 16\ntargetSpeed: 16\ntargetSpeedAcceleration: 0.7\n\ndrawType:2\nframe:4\ndrawSize: 1\n#trailEffect: CUSTOM:projectileTrail\ntrailEffectRate:2\n\n#trailEffectRate: true\n\n#lightColor:#ffffff\n\nexplodeEffect: smallExplosion, CUSTOM:hitLightFlash, CUSTOM:projectilePassThough\n\n\n\n#explodeEffectOnShield: CUSTOM:hitLightFlash\n\neffectOnCreate: CUSTOM:projectileLight\n\n\n\n[effect_warmup]\npriority:high\nimage: SHARED:light_50.png\nlife: 25\nfadeOut: true\nattachedToUnit: true\ncolor: #e89263\nscaleFrom: 0.1\nscaleTo: 0.1\nalpha: 0.8\ndrawUnderUnits:false\nySpeedRelative:3.9\n\n[effect_lightSlowFade]\nimage: SHARED:light_50.png\nlife: 40\nfadeOut: true\nattachedToUnit: true\ncolor: #e89263\nscaleFrom: 0.4\nscaleTo: 0.4\nalpha: 0.5\n#drawUnderUnits:true\n\n\n[effect_lightSlowFadeBase]\nimage: SHARED:light_50.png\nlife: 30\nfadeOut: true\nattachedToUnit: true\ncolor: #AAAAFF\nscaleFrom: 0.2\nscaleTo: 0.6\nalpha: 0.7\n#drawUnderUnits:true\n\nyOffsetRelative:-41\nySpeedRelative:0.3\n\n\n[effect_projectileTrail]\nimage: SHARED:light_50.png\nlife: 20\nfadeOut: true\nattachedToUnit: false\ncolor: #e89263\nfadeInTime:2\nscaleFrom: 0.4\nscaleTo: 0.4\nalpha: 0.6\ndrawUnderUnits:true\n#ySpeedRelative:-1\n\n\n[effect_projectileLight]\npriority:veryhigh\n\nimage: SHARED:light_50.png\nlife: 100\nfadeOut: true\nattachedToUnit: true\ncolor: #e89263\nfadeInTime:2\nscaleFrom: 0.8\nscaleTo: 0.8\nalpha: 0.6\ndrawUnderUnits:false\nliveAfterAttachedDies: false\n\n[effect_hitLightFlash]\npriority:high\n\nimage: SHARED:light_50.png\nlife: 14\nfadeOut: true\nattachedToUnit: false\ncolor: #e89263\n\nscaleFrom: 1.8\nscaleTo: 1.8\nalpha: 0.6\ndrawUnderUnits:false\n\n[effect_projectilePassThough]\n\npriority:high\nframeIndex: 4\nstripIndex: projectiles2\nlife: 20\nfadeOut: true\nattachedToUnit: false\ncolor: #FFFFFF\nscaleFrom: 1\nscaleTo: 0.5\nalpha: 1\ndrawUnderUnits:false\nySpeedRelative:2\natmospheric: true\n\n\n\n\n[leg_1]\nx: -40\ny: 0\nattach_x: -15\nattach_y: 0\nmoveSpeed: 2.6\n\nheightSpeed:0.6\nmoveWarmUp:4\n\nresetAngle:20\n\nholdDisMin: 12\nholdDisMax: 25\n\nimage_leg:  CORE:/experimental_spider/leg.png\nimage_foot: CORE:/experimental_spider/foot.png\nimage_foot_shadow: SHADOW:CORE:/experimental_spider/foot.png\n\n#drawUnderAllUnits:true\n\nfavourOppositeSideNeighbours: true\n\n\ndrawLegWhenZoomedOut: true\ndrawFootWhenZoomedOut: true\n\n[leg_2]\nx: 40\ny: 0\nattach_x: 15\nattach_y: 0\ncopyFrom: 1\n\n[leg_3]\nx: -35\ny: 40\nattach_x: -15\nattach_y: 25\ncopyFrom: 1\n\n[leg_4]\nx: 35\ny: 40\nattach_x: 15\nattach_y: 25\ncopyFrom: 1\n\n[leg_5]\nx: -35\ny: -40\nattach_x: -15\nattach_y: -25\ncopyFrom: 1\n\n[leg_6]\nx: 35\ny: -40\nattach_x: 15\nattach_y: -25\ncopyFrom: 1\n\n#让我们一起摇摆()\n[animation_dance]\n\nblendIn: 0.1s\nblendOut: 0.7s\n\nleg1_0.5s: {dir:90}\n\nleg2_0.5s: {dir:90}\nleg2_3s: {x:20}\nleg2_3.0s: {dir:0}\nleg2_3.5s: {dir:-45}\nleg2_4.0s: {dir:45}\nleg2_4.5s: {dir:0}\n\nleg3_0.5s: {x:-10, y:20}\n\nleg3_3s: {x:-10, dir:0}\nleg3_4s: {x:45, dir:0}\nleg3_5s: {x:0, dir:0}\n\nleg5_2.5s: {x:-20, y:18}\nleg6_3.5s: {x:20, y:18}\n#body_0s: {scale:1}\n#body_4s: {scale:1.8}\n\n[effect_lightFlash]\npriority:high\n\nimage: SHARED:light_50.png\nlife: 14\nfadeOut: true\nattachedToUnit: false\ncolor: #63e6e8\n\nscaleFrom: 1.8\nscaleTo: 1.8\nalpha: 0.6\ndrawUnderUnits:false\n\n#动画节\n[animation_attack]\n\nblendIn: 0.1s\nblendOut: 0.7s\n\nleg3_0.5s: {x:0, y:20}\n\nleg3_1s: {x:0, dir:0, height:5}\nleg3_3s: {x:35, dir:9000}\n\n\nleg4_0.5s: {x:0, y:20}\n\nleg4_1s: {x:0, dir:0, height:5}\nleg4_3s: {x:-35, dir:9000}\n\n\n\n[movement]\nmovementType: OVER_CLIFF_WATER\nmoveSpeed: 0.5\nmoveAccelerationSpeed: 0.05\nmoveDecelerationSpeed: 0.05\n\ntargetHeight: 0\ntargetHeightDrift: 0\n\nreverseSpeedPercentage:1\n\nmaxTurnSpeed: 0.5\nturnAcceleration: 0.2\n\nmoveSlidingMode :false\nmoveIgnoringBody:false\nmoveSlidingDir:  45\n\n\nslowDeathFall: true\n\n[ai]\n#如果没有这行代码会没有建造纳米效果且AI也不会用这个单位作为建造者\nuseAsBuilder: true",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "死亡核爆范围",
+            "key": "nukeOnDeathRange",
+            "section": "core",
+            "type": "input",
+            "tag": "nukeOnDeathRange-core"
+        },
+        {
+            "name": "死亡核爆伤害",
+            "key": "nukeOnDeathDamage",
+            "section": "core",
+            "type": "input",
+            "tag": "nukeOnDeathDamage-core"
+        }
+    ]
 }

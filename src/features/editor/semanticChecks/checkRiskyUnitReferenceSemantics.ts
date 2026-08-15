@@ -1,15 +1,16 @@
 /**
  * 危险单位引用（checkRiskyUnitReferenceSemantics）：
- * builtFrom_N_name / requiredUnit / convertTo 等引用其他单位的键，
+ * builtFrom_N_name / convertTo / spawnUnit 等引用其他单位的键，
  * 值必须在本项目（ctx.unitNames）或游戏内置特殊值（None/IGNORE/AUTO）中存在。
  * 引用不存在的单位 → 该单位永远无法被建造/升级，属于静默失效。
  * 仅在 ctx.unitNames 提供时生效（编辑器波浪线无项目数据时跳过，写后质检/全量检查会传入）。
+ * 注：引擎没有 requiredUnit 键（原版单位未用），不纳入引用检查。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { BUILTIN_UNITS, issue, lowerUnitNames, getIni, sectionEnName, toEnKey } from './helpers'
+import { BUILTIN_UNITS, issue, lowerUnitNames, getIni, parseUnitListValue, sectionEnName, toEnKey } from './helpers'
 
 /** 引用单位的键（小写；宏字段 builtFrom_N_name 单独匹配） */
-const UNIT_REF_KEYS = new Set(['requiredunit', 'convertto', 'spawnunit', 'spawnunits'])
+const UNIT_REF_KEYS = new Set(['convertto', 'spawnunit', 'spawnunits'])
 /** 游戏特殊值：不检查存在性 */
 const SPECIAL_VALUES = new Set(['none', 'ignore', 'auto', 'this', 'self'])
 
@@ -31,19 +32,20 @@ export const checkRiskyUnitReferenceSemantics: SemanticChecker = {
       const isBuiltFrom = /^builtfrom_\d+_name$/.test(lower)
       if (!isBuiltFrom && !UNIT_REF_KEYS.has(lower)) continue
       // action 节内的 convertTo 由 checkActionReferences 检查，这里跳过避免重复报
+      // （行动节判定与 checkActionReferences 对齐：引擎 ag.java:1903/1912 只认
+      // action_/hiddenAction_ 前缀，[action1]/[action回收] 不是行动节）
       if (lower === 'convertto') {
         const inAction = sections.some(
           (s) =>
             kv.line >= s.startLine &&
             kv.line < s.endLine &&
-            (sectionEnName(s, zhToEn).startsWith('action') || sectionEnName(s, zhToEn).startsWith('hiddenaction')),
+            (sectionEnName(s, zhToEn).startsWith('action_') || sectionEnName(s, zhToEn).startsWith('hiddenaction_')),
         )
         if (inAction) continue
       }
-      // 宏字段引用（builtFrom_1_name: landFactory, airFactory 逗号分隔）
-      for (const raw of kv.value.split(',')) {
-        const ref = raw.trim()
-        if (!ref) continue
+      // 值支持引擎单位列表语法（spawnUnits: 单位名*数量(参数=值,...)，
+      // ci.java:59/78 的 * 与括号参数段），剥语法后逐个匹配
+      for (const ref of parseUnitListValue(kv.value)) {
         const lref = ref.toLowerCase()
         if (SPECIAL_VALUES.has(lref) || lref.startsWith('custom:')) continue
         // 项目内单位或游戏内置单位（大小写不敏感）→ 放行

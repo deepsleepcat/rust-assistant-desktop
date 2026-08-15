@@ -1,55 +1,55 @@
-{
-    "name": "建筑模板-瞭望塔",
-    "name_en": "Building Template-Tower",
-    "name_ja": "けんちくテンプレーウォッチタワー",
-    "name_zh_TW": "建築模板-瞭望塔",
-    "data": "[core]\nname: outpostT1Template\nclass: CustomUnitMetadata\n\n#标签\ntags: watchtower\n\ndisplayText: Experimental Tank\ndisplayDescription: -Very heavily armored\\n-Armed with quad cannons\\n-Can attack ground\\n-Light air attack\n\ndisplayText_zh: 瞭望塔\ndisplayDescription_zh: -探查迷雾的示范瞭望塔模板\n\nprice: 1500\nmaxHp: 1500\nmass: 9000\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: -1,-1,1,1\n\n#used for placement, and placement of other buildings\nconstructionFootprint: -1,-1,1,1\n\ntechLevel: 1\nbuildSpeed: 0.0005\n\nradius: 20\nisBuilding: true\n\nfogOfWarSightRange: 34\n\n#15 = default\n#视野范围\nfogOfWarSightRangeWhileNotBuilt: 15\n\n\n[graphics]\nimage:        CORE:/outpost/outpost.png\n#image_wreak:  outpost_dead.png\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\n\n#动态逻辑值示范\nmaxAttackRange: ${core.fogOfWarSightRange * 20 - 40}\nshowRangeUIGuide:true\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmaxTurnSpeed: 0\n\n[ai]\nmaxGlobal: 0",
-    "language": "ALL",
-    "icon": "/icon.png",
-    "attachFile": [
-        "/resource/unit.png",
-        "/resource/unit_die.png"
-    ],
-    "action": [
-        {
-            "name": "名称",
-            "name_zh_TW": "名稱",
-            "name_en": "name",
-            "name_ja": "名前",
-            "key": "name",
-            "section": "core",
-            "type": "input",
-            "tag": "name-core"
-        },
-        {
-            "name": "血量",
-            "name_zh_TW": "血量",
-            "name_en": "maxHp",
-            "name_ja": "ライフバリュー",
-            "key": "maxHp",
-            "section": "core",
-            "type": "input",
-            "tag": "maxHp-core"
-        },
-        {
-            "name": "价格",
-            "name_zh_TW": "價格",
-            "name_ja": "価格",
-            "name_en": "price",
-            "key": "price",
-            "section": "core",
-            "type": "input",
-            "tag": "price-core"
-        },
-        {
-            "name": "开雾范围",
-            "name_zh_TW": "开雾范围",
-            "name_ja": "フォギング範囲",
-            "name_en": "fogOfWarSightRange",
-            "key": "fogOfWarSightRange",
-            "section": "core",
-            "type": "input",
-            "tag": "fogOfWarSightRange-core"
-        }
-    ]
+{
+    "name": "建筑模板-瞭望塔",
+    "name_en": "Building Template-Tower",
+    "name_ja": "けんちくテンプレーウォッチタワー",
+    "name_zh_TW": "建築模板-瞭望塔",
+    "data": "[core]\nname: outpostT1Template\nclass: CustomUnitMetadata\n\n#标签\ntags: watchtower\n\ndisplayText: Experimental Tank\ndisplayDescription: -Very heavily armored\\n-Armed with quad cannons\\n-Can attack ground\\n-Light air attack\n\nprice: 1500\nmaxHp: 1500\nmass: 9000\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: -1,-1,1,1\n\n#used for placement, and placement of other buildings\nconstructionFootprint: -1,-1,1,1\n\ntechLevel: 1\nbuildSpeed: 0.0005\n\nradius: 20\nisBuilding: true\n\nfogOfWarSightRange: 34\n\n#15 = default\n#视野范围\nfogOfWarSightRangeWhileNotBuilt: 15\n\n\n[graphics]\nimage:        CORE:/outpost/outpost.png\n#image_wreak:  outpost_dead.png\n\n[attack]\ncanAttack: false\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\n\n#动态逻辑值示范\nmaxAttackRange: ${core.fogOfWarSightRange * 20 - 40}\nshowRangeUIGuide:true\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmaxTurnSpeed: 0\n\n[ai]\nmaxGlobal: 0",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "开雾范围",
+            "name_zh_TW": "开雾范围",
+            "name_ja": "フォギング範囲",
+            "name_en": "fogOfWarSightRange",
+            "key": "fogOfWarSightRange",
+            "section": "core",
+            "type": "input",
+            "tag": "fogOfWarSightRange-core"
+        }
+    ]
 }

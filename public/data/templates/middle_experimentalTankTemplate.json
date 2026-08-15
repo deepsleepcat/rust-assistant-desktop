@@ -1,72 +1,72 @@
-{
-    "name": "中级模板-实验坦克",
-    "data": "#中级模板注释会更少，还请留意\n[core]\nname: experimentalTankTemplate\n\n#多语言示范\ndisplayText: Experimental Tank\ndisplayDescription: -Very heavily armored\\n-Armed with quad cannons\\n-Can attack ground\\n-Light air attack\n\ndisplayText_zh: 示范实验坦克\ndisplayDescription_zh: -非常重的装甲）--装备有四门大炮 （可攻击地面）--可以攻击空中，但能力较弱\n\nclass: CustomUnitMetadata\nprice: 14000\nmaxHp: 6000\nmass: 80000\n\nexperimental: true\n\ntechLevel: 2\nbuildSpeed: 0.0002\n#availableInDemo: true\n\nnumBitsOnDeath: 15\n\n#生成位置与地点\nbuiltFrom_1_name: experimentalLandFactory\nbuiltFrom_1_pos:  5.2\n\ntransportSlotsNeeded: 5\n\nradius: 37\ndisplayRadius: 38\n\nisBio: false\nsoftCollisionOnAll: 0\n\n\n\n\n[graphics]\ntotal_frames: 3\n\nimage:        CORE:/experimental_tank/experimental_tank.png\nimage_wreak:  CORE:/experimental_tank/experimental_tank_dead.png\nimage_turret: CORE:/experimental_tank/experimental_tank_turret.png\n\nimage_shadow: AUTO\nshadowOffsetX:3\nshadowOffsetY:3\n\n\nanimation_moving_start: 0\nanimation_moving_end: 2\nanimation_moving_speed: 3.5\n\nteamColorsOnTurret: true\n\nmovementEffect:        CUSTOM:dustL, CUSTOM:dustR\nmovementEffectReverse: CUSTOM:dustL, CUSTOM:dustR\nmovementEffectReverseFlipEffects: true\nmovementEffectRate: 8\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: true\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nturretSize: 17\nturretTurnSpeed: 4\n\n\nmaxAttackRange: 310\nshootDelay: 160\n\nturretMultiTargeting: true\n\n\n\n[turret_cannon1]\n#top left cannon\nx: 0\ny: 0\nattachedTo: base1\nslave: true\n\nprojectile: 1\n\nturnSpeed: 0\n\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nshoot_sound:large_gun_fire1\nshoot_sound_vol:0.18\nshoot_flame:large\nshoot_light:#FFff925c\n\nimage: CORE:/experimental_tank/experimental_tank_barrel.png\n\ncanShoot: true\n\nwarmup:0\n\nrecoilOffset: -6\nrecoilOutTime: 3\nrecoilReturnTime: 27\n\n\n[turret_cannon2]\n#top right cannon\nx: 0\ny: 0\nattachedTo: base2\ncopyFrom: cannon1\nlinkDelayWithTurret: cannon1\nwarmup:30\n\n[turret_cannon3]\n#bottom left cannon\nx: 0\ny: 0\nattachedTo: base3\ncopyFrom: cannon1\nlinkDelayWithTurret: cannon1\nwarmup:60\n\n[turret_cannon4]\n#bottom right cannon\nx: 0\ny: 0\nattachedTo: base4\ncopyFrom: cannon1\nlinkDelayWithTurret: cannon1\nwarmup:80\n\n\n[turret_base1]\n#top left base\nx: -14\ny: 20\ncanShoot: false\nturnSpeed: 2\nturnSpeedAcceleration: 0.1\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\nrecoilOffset: -0.75\nrecoilOutTime: 3\nrecoilReturnTime: 27\n\n[turret_base2]\n#top right base\nx: 14\ny: 20\ncopyFrom: base1\n\n[turret_base3]\n#bottom left base\nx: -14\ny: -14\ncopyFrom: base1\n\n[turret_base4]\n#bottom right base\nx: 14\ny: -14\ncopyFrom: base1\n\n[turret_antiair1]\n#antiair 1\nx: 0\ny: 0\n\ninvisible:true\n\nsize: 0\n\nprojectile: 2\n\ncanAttackFlyingUnits: true\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\n\nturnSpeed: 2000\nturnSpeedAcceleration: 1\n\nwarmup: 30\n\nshoot_sound: missile_fire\nshoot_sound_vol:0.3\nshoot_flame: NONE\nshoot_light:#FFEECCCC\n\ncanShoot: true\n\n[turret_antiair2]\n#antiair 2\nx: 0\ny: 0\n\ncopyFrom: antiair1\nlinkDelayWithTurret: antiair1\n\nwarmup: 15\n\n[projectile_1]\n#cannon shot\n#directDamage: 60\nareaDamage: 120\nareaRadius: 55\nlife: 190\nframe: 9\nspeed: 6\n\ndrawSize: 0.85\n\nlargeHitEffect: true\n\nlightColor: #ffff925c\nlightSize: 0.6\n\n#trailEffect: CUSTOM:projectileTrail\n#trailEffectRate:2\n\ntargetGround: true\n\ntargetGroundSpread: 20\ninitialUnguidedSpeedHeight: 1.2\ngravity:0.18\nlightCastOnGround: true\n\n\n[effect_projectileTrail]\n\nstripIndex: effects\nframeIndex: 0\n#image: SHARED:light_50.png\n\nlife: 20\nfadeOut: true\nattachedToUnit: false\ncolor: #ffff925c\nfadeInTime:5\nscaleFrom: 0.6\nscaleTo: 0.9\nalpha: 0.6\ndrawUnderUnits:false\n#ySpeedRelative:-1\natmospheric:true\n\ndirOffsetRandom:180\n\nxSpeedAbsoluteRandom: 0.2\nySpeedAbsoluteRandom: 0.2\n\nySpeedRelative:0.8\n\n\n[effect_dustL]\n\nlife: 30\nstripIndex: dust\nframeIndex: 0\nframeIndexRandom: 2\nscaleFrom: 1.5\nscaleTo: 1.9\nalpha: 0.6\natmospheric:true\n#dirOffsetRandom:180\nxSpeedAbsoluteRandom: 0.1\nySpeedAbsoluteRandom: 0.1\nySpeedRelative:-0.8\nhSpeed:0.1\nxOffsetRelative:20\nyOffsetRelative:-34\ndrawUnderUnits:true\nattachedToUnit: false\n\n[effect_dustR]\n\nlife: 30\nstripIndex: dust\nframeIndex: 0\nframeIndexRandom: 2\nscaleFrom: 1.5\nscaleTo: 1.9\nalpha: 0.6\natmospheric:true\n#dirOffsetRandom:180\nxSpeedAbsoluteRandom: 0.1\nySpeedAbsoluteRandom: 0.1\nySpeedRelative:-0.8\nhSpeed:0.1\nxOffsetRelative:-20\nyOffsetRelative:-34\ndrawUnderUnits:true\nattachedToUnit: false\n\n\n[projectile_2]\n#missile\ndirectDamage: 60\nlife: 190\nspeed: 2\ntargetSpeed: 6\n\ncolor: #fff7ff1d\n\ndrawSize: 1.9\n\ntrailEffect: true\nlargeHitEffect: true\n\nballistic: true\nballistic_delaymove_height:25\nballistic_height: 25\n\nlightColor: #f7ff1d\nlightSize: 0.5\n\n[movement]\nmovementType: LAND\nmoveSpeed: 0.3\nmoveAccelerationSpeed: 0.03\nmoveDecelerationSpeed: 0.03\n\nreverseSpeedPercentage:1\n\nmaxTurnSpeed: 0.7\nturnAcceleration: 0.04\n\nmoveSlidingMode :false\nmoveIgnoringBody:false",
-    "language": "ALL",
-    "icon": "/icon.png",
-    "attachFile": [
-        "/resource/unit.png",
-        "/resource/unit_die.png"
-    ],
-    "action": [
-        {
-            "name": "名称",
-            "name_zh_TW": "名稱",
-            "name_en": "name",
-            "name_ja": "名前",
-            "key": "name",
-            "section": "core",
-            "type": "input",
-            "tag": "name-core"
-        },
-        {
-            "name": "血量",
-            "name_zh_TW": "血量",
-            "name_en": "maxHp",
-            "name_ja": "ライフバリュー",
-            "key": "maxHp",
-            "section": "core",
-            "type": "input",
-            "tag": "maxHp-core"
-        },
-        {
-            "name": "价格",
-            "name_zh_TW": "價格",
-            "name_ja": "価格",
-            "name_en": "price",
-            "key": "price",
-            "section": "core",
-            "type": "input",
-            "tag": "price-core"
-        },
-        {
-            "name": "直接伤害",
-            "name_en":"directDamage",
-            "name_ja":"直接傷害",
-            "name_zh_TW":"直接傷害",
-            "key": "directDamage",
-            "section": "projectile_1",
-            "type": "input",
-            "tag": "projectile-core"
-        },
-        {
-            "name": "范围伤害",
-            "name_en":"areaDamage",
-            "name_ja":"範囲ダメージ",
-            "name_zh_TW":"範圍傷害",
-            "key": "areaDamage",
-            "section": "projectile_1",
-            "type": "input",
-            "tag": "projectile-core"
-        },
-        {
-            "name": "范围半径",
-            "name_en":"areaRadius",
-            "name_ja":"レンジ半径",
-            "name_zh_TW":"範圍半徑",
-            "key": "areaRadius",
-            "section": "projectile_1",
-            "type": "input",
-            "tag": "projectile-core"
-        }
-    ]
+{
+    "name": "中级模板-实验坦克",
+    "data": "#中级模板注释会更少，还请留意\n[core]\nname: experimentalTankTemplate\n\n#多语言示范\ndisplayText: Experimental Tank\ndisplayDescription: -Very heavily armored\\n-Armed with quad cannons\\n-Can attack ground\\n-Light air attack\n\nclass: CustomUnitMetadata\nprice: 14000\nmaxHp: 6000\nmass: 80000\n\nexperimental: true\n\ntechLevel: 2\nbuildSpeed: 0.0002\n#availableInDemo: true\n\nnumBitsOnDeath: 15\n\n#生成位置与地点\nbuiltFrom_1_name: experimentalLandFactory\nbuiltFrom_1_pos:  5.2\n\ntransportSlotsNeeded: 5\n\nradius: 37\ndisplayRadius: 38\n\nisBio: false\nsoftCollisionOnAll: 0\n\n\n\n\n[graphics]\ntotal_frames: 3\n\nimage:        CORE:/experimental_tank/experimental_tank.png\nimage_wreak:  CORE:/experimental_tank/experimental_tank_dead.png\nimage_turret: CORE:/experimental_tank/experimental_tank_turret.png\n\nimage_shadow: AUTO\nshadowOffsetX:3\nshadowOffsetY:3\n\n\nanimation_moving_start: 0\nanimation_moving_end: 2\nanimation_moving_speed: 3.5\n\nteamColorsOnTurret: true\n\nmovementEffect:        CUSTOM:dustL, CUSTOM:dustR\nmovementEffectReverse: CUSTOM:dustL, CUSTOM:dustR\nmovementEffectReverseFlipEffects: true\nmovementEffectRate: 8\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: true\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nturretSize: 17\nturretTurnSpeed: 4\n\n\nmaxAttackRange: 310\nshootDelay: 160\n\nturretMultiTargeting: true\n\n\n\n[turret_cannon1]\n#top left cannon\nx: 0\ny: 0\nattachedTo: base1\nslave: true\n\nprojectile: 1\n\nturnSpeed: 0\n\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nshoot_sound:large_gun_fire1\nshoot_sound_vol:0.18\nshoot_flame:large\nshoot_light:#FFff925c\n\nimage: CORE:/experimental_tank/experimental_tank_barrel.png\n\ncanShoot: true\n\nwarmup:0\n\nrecoilOffset: -6\nrecoilOutTime: 3\nrecoilReturnTime: 27\n\n\n[turret_cannon2]\n#top right cannon\nx: 0\ny: 0\nattachedTo: base2\ncopyFrom: cannon1\nlinkDelayWithTurret: cannon1\nwarmup:30\n\n[turret_cannon3]\n#bottom left cannon\nx: 0\ny: 0\nattachedTo: base3\ncopyFrom: cannon1\nlinkDelayWithTurret: cannon1\nwarmup:60\n\n[turret_cannon4]\n#bottom right cannon\nx: 0\ny: 0\nattachedTo: base4\ncopyFrom: cannon1\nlinkDelayWithTurret: cannon1\nwarmup:80\n\n\n[turret_base1]\n#top left base\nx: -14\ny: 20\ncanShoot: false\nturnSpeed: 2\nturnSpeedAcceleration: 0.1\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\nrecoilOffset: -0.75\nrecoilOutTime: 3\nrecoilReturnTime: 27\n\n[turret_base2]\n#top right base\nx: 14\ny: 20\ncopyFrom: base1\n\n[turret_base3]\n#bottom left base\nx: -14\ny: -14\ncopyFrom: base1\n\n[turret_base4]\n#bottom right base\nx: 14\ny: -14\ncopyFrom: base1\n\n[turret_antiair1]\n#antiair 1\nx: 0\ny: 0\n\ninvisible:true\n\nsize: 0\n\nprojectile: 2\n\ncanAttackFlyingUnits: true\ncanAttackLandUnits:   false\ncanAttackUnderwaterUnits: false\n\nturnSpeed: 2000\nturnSpeedAcceleration: 1\n\nwarmup: 30\n\nshoot_sound: missile_fire\nshoot_sound_vol:0.3\nshoot_flame: NONE\nshoot_light:#FFEECCCC\n\ncanShoot: true\n\n[turret_antiair2]\n#antiair 2\nx: 0\ny: 0\n\ncopyFrom: antiair1\nlinkDelayWithTurret: antiair1\n\nwarmup: 15\n\n[projectile_1]\n#cannon shot\n#directDamage: 60\nareaDamage: 120\nareaRadius: 55\nlife: 190\nframe: 9\nspeed: 6\n\ndrawSize: 0.85\n\nlargeHitEffect: true\n\nlightColor: #ffff925c\nlightSize: 0.6\n\n#trailEffect: CUSTOM:projectileTrail\n#trailEffectRate:2\n\ntargetGround: true\n\ntargetGroundSpread: 20\ninitialUnguidedSpeedHeight: 1.2\ngravity:0.18\nlightCastOnGround: true\n\n\n[effect_projectileTrail]\n\nstripIndex: effects\nframeIndex: 0\n#image: SHARED:light_50.png\n\nlife: 20\nfadeOut: true\nattachedToUnit: false\ncolor: #ffff925c\nfadeInTime:5\nscaleFrom: 0.6\nscaleTo: 0.9\nalpha: 0.6\ndrawUnderUnits:false\n#ySpeedRelative:-1\natmospheric:true\n\ndirOffsetRandom:180\n\nxSpeedAbsoluteRandom: 0.2\nySpeedAbsoluteRandom: 0.2\n\nySpeedRelative:0.8\n\n\n[effect_dustL]\n\nlife: 30\nstripIndex: dust\nframeIndex: 0\nframeIndexRandom: 2\nscaleFrom: 1.5\nscaleTo: 1.9\nalpha: 0.6\natmospheric:true\n#dirOffsetRandom:180\nxSpeedAbsoluteRandom: 0.1\nySpeedAbsoluteRandom: 0.1\nySpeedRelative:-0.8\nhSpeed:0.1\nxOffsetRelative:20\nyOffsetRelative:-34\ndrawUnderUnits:true\nattachedToUnit: false\n\n[effect_dustR]\n\nlife: 30\nstripIndex: dust\nframeIndex: 0\nframeIndexRandom: 2\nscaleFrom: 1.5\nscaleTo: 1.9\nalpha: 0.6\natmospheric:true\n#dirOffsetRandom:180\nxSpeedAbsoluteRandom: 0.1\nySpeedAbsoluteRandom: 0.1\nySpeedRelative:-0.8\nhSpeed:0.1\nxOffsetRelative:-20\nyOffsetRelative:-34\ndrawUnderUnits:true\nattachedToUnit: false\n\n\n[projectile_2]\n#missile\ndirectDamage: 60\nlife: 190\nspeed: 2\ntargetSpeed: 6\n\ncolor: #fff7ff1d\n\ndrawSize: 1.9\n\ntrailEffect: true\nlargeHitEffect: true\n\nballistic: true\nballistic_delaymove_height:25\nballistic_height: 25\n\nlightColor: #f7ff1d\nlightSize: 0.5\n\n[movement]\nmovementType: LAND\nmoveSpeed: 0.3\nmoveAccelerationSpeed: 0.03\nmoveDecelerationSpeed: 0.03\n\nreverseSpeedPercentage:1\n\nmaxTurnSpeed: 0.7\nturnAcceleration: 0.04\n\nmoveSlidingMode :false\nmoveIgnoringBody:false",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "直接伤害",
+            "name_en":"directDamage",
+            "name_ja":"直接傷害",
+            "name_zh_TW":"直接傷害",
+            "key": "directDamage",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        },
+        {
+            "name": "范围伤害",
+            "name_en":"areaDamage",
+            "name_ja":"範囲ダメージ",
+            "name_zh_TW":"範圍傷害",
+            "key": "areaDamage",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        },
+        {
+            "name": "范围半径",
+            "name_en":"areaRadius",
+            "name_ja":"レンジ半径",
+            "name_zh_TW":"範圍半徑",
+            "key": "areaRadius",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        }
+    ]
 }

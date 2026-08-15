@@ -41,6 +41,8 @@ interface EditorMirrorProps {
   semanticCheckers?: Record<string, boolean>
   /** 当前项目目标游戏版本名（版本兼容检查用；空 = 跟随最新） */
   targetVersionName?: string
+  /** 当前文件名（checkFile 区分 .template 模板文件用） */
+  fileName?: string
 }
 
 const editorTheme = EditorView.theme({
@@ -121,7 +123,7 @@ const editorTheme = EditorView.theme({
   },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName, fileName }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -168,7 +170,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         drawSelection(),
         history(),
         rustConfigLanguageSupport(),
-        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName })),
+        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
         rustHoverExtension,
         autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
         search({ top: true }),
@@ -205,14 +207,14 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时创建一次编辑器实例
   }, [])
 
-  // 语义 lint 配置变化（检查器开关/项目根/目标版本）→ 热替换槽位（不重建编辑器）
+  // 语义 lint 配置变化（检查器开关/项目根/目标版本/文件名）→ 热替换槽位（不重建编辑器）
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers, targetVersionName })),
+      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
     })
-  }, [rootPath, semanticCheckers, targetVersionName])
+  }, [rootPath, semanticCheckers, targetVersionName, fileName])
 
   // 外部 value 变化（切换标签、恢复文档）→ 同步进编辑器
   useEffect(() => {

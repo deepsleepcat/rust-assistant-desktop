@@ -7,7 +7,8 @@
 import type { SemanticChecker, SemanticIssue } from './types'
 import { isEnumValue, issue, keyValuesInSection, getIni, sectionEnName, toEnKey } from './helpers'
 
-/** 官方 1.15 绘制层枚举（value_type.json drawLayer.list） */
+/** 官方 1.15 绘制层枚举（value_type.json drawLayer.list；引擎 jar 的识别表与
+ * 社区 wiki 一致，均为 8 个值，无 water——water 是 movementType 的值不是绘制层） */
 export const DRAW_LAYERS = new Set(['wreaks', 'underwater', 'bottom', 'ground', 'ground2', 'experimentals', 'air', 'top'])
 
 export const checkDrawLayerEnum: SemanticChecker = {

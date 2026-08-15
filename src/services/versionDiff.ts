@@ -17,7 +17,7 @@
  * removeVersion ≥ 0 的字段）。
  */
 import type { CodeInfo } from './codeData'
-import { findCodeByCode, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber, versionNumberToName } from './codeData'
+import { findCodeByCode, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber, versionNumberToName } from './codeData'
 import { parseIni, toEnKey } from '../features/editor/semanticChecks/helpers'
 import { joinProjectPath } from '../utils/projectPath'
 
@@ -258,6 +258,7 @@ export async function buildUpgradeReport(
   const toNumber = requireVersionNumber(toVersion)
   const fromNumber = requireVersionNumber(fromVersion)
   const zhToEnDict = getZhToEnDict()
+  const keyZhToEnDict = getKeyZhToEnDict()
   const codes = options.codes ?? getAllCodes()
   const lookup = lookupCodes(codes)
 
@@ -272,7 +273,7 @@ export async function buildUpgradeReport(
     if (content.length > MAX_UPGRADE_FILE_CHARS) return
     const { keyValues } = parseIni(content)
     for (const kv of keyValues) {
-      const enKey = toEnKey(kv.key, (k) => zhToEnDict.get(k))
+      const enKey = toEnKey(kv.key, (k) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k))
       const code = lookup.get(enKey.toLowerCase())
       if (!code) continue
       const add = versionOf(code.addVersion)

@@ -32,7 +32,7 @@
  * - regex-match    值必须匹配正则 { pattern: string }（完整匹配）
  */
 import type { SemanticCheckContext, SemanticIssue } from './types'
-import { getIni, sectionEnName, toEnKey, toNumber } from './helpers'
+import { getIni, sectionEnName, sectionWordEn, toEnKey, toNumber } from './helpers'
 import { validateRuleSet, type CustomRule, type CustomRuleSet } from './ruleSchema'
 import { joinProjectPath } from '../../../utils/projectPath'
 
@@ -61,9 +61,11 @@ export function runCustomRules(content: string, rules: CustomRule[], ctx: Semant
     const ruleKey = `custom:${rule.id}`
     if (config && config[ruleKey] === false) continue
     const severity = rule.severity ?? 'warning'
-    // 节过滤：规则 section 支持中文，双向回译后比对（[核心] ↔ core）
+    // 节过滤：规则 section 支持中文，双向回译后比对（[核心] ↔ core）。
+    // 规则里的节名是「节位置」——用 sectionWordEn（节名表优先），不能用
+    // toEnKey 的键位置词典（炮塔→键 c_turret_t1 会与节名 turret 失配）
     const sectionFilter = rule.section?.toLowerCase()
-    const sectionFilterEn = rule.section ? toEnKey(rule.section, ctx?.zhToEn).toLowerCase() : undefined
+    const sectionFilterEn = rule.section ? sectionWordEn(rule.section, ctx?.zhToEn).toLowerCase() : undefined
     for (const section of ini.sections) {
       const secLower = sectionEnName(section, ctx?.zhToEn)
       if (sectionFilter && secLower !== sectionFilter && section.name.toLowerCase() !== sectionFilter && secLower !== sectionFilterEn) continue

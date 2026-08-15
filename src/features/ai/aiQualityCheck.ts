@@ -11,7 +11,7 @@
  */
 import type { AiLintItem } from '../../types/ai'
 import { lintIniText } from '../editor/rustLint'
-import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
 import { runSemanticChecks, type CustomRule } from '../editor/semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
 import { loadProjectRuleSets } from '../editor/semanticChecks/customRules'
@@ -93,6 +93,8 @@ export interface QualityCheckOptions {
   targetVersionName?: string
   /** M21：项目自定义规则（声明式；缺省自动从项目 rules/ 目录加载） */
   customRules?: CustomRule[]
+  /** 当前文件相对路径（checkFile 区分 .template 模板文件；缺省按单位文件处理） */
+  file?: string
 }
 
 /**
@@ -103,10 +105,12 @@ export async function qualityCheckContent(content: string, options: QualityCheck
   if (content.length > MAX_LINT_FILE_CHARS) return []
   await loadCodeData()
   const zhToEnDict = getZhToEnDict()
+  const keyZhToEnDict = getKeyZhToEnDict()
   const data = {
     findCode: (k: string) => findCodeByCode(k),
     findType: (t: string) => findValueType(t),
-    zhToEn: (k: string) => zhToEnDict.get(k),
+    // 键位置回译先查键名表（键译名不被节名覆盖，如「价格」→price）
+    zhToEn: (k: string) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
   }
   const diagnostics = lintIniText(content, data)
   // 基础 lint 不预折叠：语义条目合并后统一折叠一次（否则旧汇总条目被二次计数，剩余数失真）
@@ -117,7 +121,7 @@ export async function qualityCheckContent(content: string, options: QualityCheck
   const targetVersionNumber = options.targetVersionName ? versionNameToNumber(options.targetVersionName) : undefined
   const issues = runSemanticChecks(content, {
     ruleIds,
-    ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames: options.unitNames, targetVersionNumber },
+    ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames: options.unitNames, targetVersionNumber, file: options.file },
     customRules: options.customRules,
     customRuleConfig: options.semanticCheckers,
   })
@@ -168,7 +172,7 @@ export async function checkAiWrittenFile(
       const loaded = await loadProjectRuleSets(rootPath).catch(() => ({ sets: [], errors: [] }))
       customRules = loaded.sets.flatMap((s) => s.rules)
     }
-    return qualityCheckContent(content, { ...options, customRules })
+    return qualityCheckContent(content, { ...options, customRules, file: relPath })
   } catch {
     // 文件被删/读取失败等：跳过质检，不影响对话与撤销
     return null

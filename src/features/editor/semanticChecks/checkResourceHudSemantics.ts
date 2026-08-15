@@ -1,11 +1,13 @@
 /**
  * 资源/HUD 语义（checkResourceHudSemantics）：
- * 资源路径类键（image/image_wreak/image_turret/minimapIcon/icon 等）：
+ * 资源路径类键（image/image_wreak/image_turret/image_shadow/iconImage/beamImage 等）：
  * 1) 值以 / 或 \ 开头 → 警告（游戏按单位目录相对路径加载，前导斜杠会找不到文件）；
  * 2) 值含 ..（路径穿越）→ 错误（越出单位目录的引用在打包后会失效且不安全）；
  * 3) ctx.unitNames 提供时（写后质检/全量检查），引用项目内单位名（如
  *    image 引用另一单位）检查存在性——第一版不做跨文件资源存在性，
  *    只做路径形态校验（避免误报内置 SHARED: 资源）。
+ * 注：引擎没有 minimapIcon/icon 键——小地图图标由引擎自动找 icon.png 文件；
+ *    iconImage 是真实键（原版单位在用），检查范围里保留。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
 import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey } from './helpers'
@@ -13,7 +15,7 @@ import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey } from './hel
 /** 资源路径类键（小写） */
 const RESOURCE_KEYS = new Set([
   'image', 'image_wreak', 'image_turret', 'image_shadow', 'image_foot_shadow',
-  'image_end_shadow', 'minimapicon', 'icon', 'iconimage', 'beamimage', 'beamimageend', 'beamimagestart',
+  'image_end_shadow', 'iconimage', 'beamimage', 'beamimageend', 'beamimagestart',
 ])
 
 export const checkResourceHudSemantics: SemanticChecker = {

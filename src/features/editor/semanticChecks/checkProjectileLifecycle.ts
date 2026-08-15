@@ -9,7 +9,7 @@
  *    内置弹体名放行，找不到时给警告让用户确认，不武断报错）。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey, toNumber } from './helpers'
+import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey, toTimeNumber } from './helpers'
 
 /** 游戏内置弹体名（官方单位直接引用的常见内置弹体，白名单放行） */
 const BUILTIN_PROJECTILES = new Set([
@@ -72,9 +72,10 @@ export const checkProjectileLifecycle: SemanticChecker = {
           ),
         )
       } else {
-        const n = toNumber(life.value)
+        // life 是时间类型（引擎 time 读取：支持 s 后缀，如 life: 0.2s）
+        const n = toTimeNumber(life.value)
         if (n === null) {
-          issues.push(issue(life.line, `「life」的值「${life.value}」不是数字`, `改成数字（如 life: 60）`, 'checkProjectileLifecycle', 'error', life.value))
+          issues.push(issue(life.line, `「life」的值「${life.value}」不是数字`, `改成数字（如 life: 60）或带 s 后缀（如 life: 0.2s）`, 'checkProjectileLifecycle', 'error', life.value))
         } else if (n < 0) {
           issues.push(issue(life.line, `弹体 life 不能为负数，当前为 ${n}`, `改成 ≥ 0 的数值（0 表示即时生效）`, 'checkProjectileLifecycle', 'error', life.value))
         }
@@ -93,18 +94,19 @@ export const checkProjectileLifecycle: SemanticChecker = {
         if (!ref || ref === 'none') continue
         // 内置弹体（编号或白名单名）放行
         if (/^\d+$/.test(ref) || BUILTIN_PROJECTILES.has(ref)) continue
-        if (!definedProjectiles.has(ref)) {
-          issues.push(
-            issue(
-              kv.line,
-              `引用的弹体「${display}」未在本文件定义（无 [projectile_${display}] 节）`,
-              `添加 [projectile_${display}] 节定义；若为游戏内置或共享弹体可忽略此提示`,
-              'checkProjectileLifecycle',
-              'warning',
-              kv.value,
-            ),
-          )
-        }
+        // 本文件或项目内其他文件（ctx.projectProjectiles，全量检查时注入）
+        // 已定义 → 放行（弹体是全局资源，可在任意单位文件里定义）
+        if (definedProjectiles.has(ref) || ctx?.projectProjectiles?.has(ref)) continue
+        issues.push(
+          issue(
+            kv.line,
+            `引用的弹体「${display}」未在本文件定义（无 [projectile_${display}] 节）`,
+            `添加 [projectile_${display}] 节定义；若为游戏内置或共享弹体可忽略此提示`,
+            'checkProjectileLifecycle',
+            'warning',
+            kv.value,
+          ),
+        )
       }
     }
 

@@ -65,10 +65,10 @@ describe('getVersionDiff（真实数据）', () => {
     expect(diff.added.some((c) => c.code === 'updateUnitMemory')).toBe(false)
   })
 
-  it('1.12 → 1.15：新增 660 个字段（addVersion 2/3/4）', async () => {
+  it('1.12 → 1.15：新增 659 个字段（addVersion 2/3/4）', async () => {
     await import('../src/services/codeData').then((m) => m.loadCodeData())
     const diff = getVersionDiff('1.12', '1.15')
-    expect(diff.added.length).toBe(660)
+    expect(diff.added.length).toBe(659)
   })
 
   it('当前数据没有弃用字段（removeVersion 全部 -1）→ removed 为空', async () => {

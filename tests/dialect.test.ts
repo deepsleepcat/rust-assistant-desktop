@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { DATA_FILE_NAMES } from '../electron/knowledgePack'
-import { getEnToZhDict, getZhToEnDict, loadCodeData, reloadCodeData, searchVocabulary } from '../src/services/codeData'
+import { getEnToZhDict, getKeyZhToEnDict, getZhToEnDict, loadCodeData, reloadCodeData, searchVocabulary } from '../src/services/codeData'
 import { enToZh, makeDict, zhToEn } from '../src/services/translation'
 
 const DATA_DIR = path.resolve(__dirname, '../public/data')
@@ -157,5 +157,75 @@ describe('dialect 并入 codeData', () => {
     expect(dict.get('maxhp')).toBeTruthy()
     // 中文回译仍指向原英文键
     expect(getZhToEnDict().get(dict.get('maxhp')!)).toBe('maxhp')
+  })
+
+  it('「价格」回译得到 price：虚构节 prices 不覆盖键译名（键名回译表兜底）', async () => {
+    await loadCodeData()
+    // 内置数据已删除虚构节 prices（引擎无 [prices] 节），通用词典「价格」→ price
+    expect(getZhToEnDict().get('价格')).toBe('price')
+    expect(getZhToEnDict().get('价格')).not.toBe('prices')
+    // 键名回译表（键位置优先）：即使知识包旧数据带回 prices，键位置仍得到 price
+    expect(getKeyZhToEnDict().get('价格')).toBe('price')
+    // 真实节译名不受影响（核心 → core）
+    expect(getZhToEnDict().get('核心')).toBe('core')
+  })
+
+  it('中文键「价格」回译 price 命中代码表：checkKeyTypos 端到端不误报', async () => {
+    await loadCodeData()
+    const { runSemanticChecks } = await import('../src/features/editor/semanticChecks')
+    const { findCodeByCode, getAllCodes } = await import('../src/services/codeData')
+    const zhToEnDict = getZhToEnDict()
+    const keyZhToEnDict = getKeyZhToEnDict()
+    // 与 rustLintExtension 同款注入：键位置先查键名表，回落通用词典
+    const issues = runSemanticChecks('[core]\n价格: 5000\n', {
+      ruleIds: new Set(['checkKeyTypos']),
+      ctx: {
+        findCode: (k) => findCodeByCode(k),
+        findType: () => undefined,
+        zhToEn: (k) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
+        codes: getAllCodes().map((c) => c.code),
+      },
+    })
+    expect(issues).toEqual([])
+  })
+
+  it('词典已知译名的自定义键不做拼写建议（mod-info 中文键「作者」不误报）', async () => {
+    await loadCodeData()
+    const { runSemanticChecks } = await import('../src/features/editor/semanticChecks')
+    const { findCodeByCode, getAllCodes } = await import('../src/services/codeData')
+    const zhToEnDict = getZhToEnDict()
+    const keyZhToEnDict = getKeyZhToEnDict()
+    const issues = runSemanticChecks('[mod-info]\n作者: mao\n', {
+      ruleIds: new Set(['checkKeyTypos']),
+      ctx: {
+        findCode: (k) => findCodeByCode(k),
+        findType: () => undefined,
+        zhToEn: (k) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
+        codes: getAllCodes().map((c) => c.code),
+      },
+    })
+    // 回译 author 不在代码表，但「作者」是词典已知译名 → 不做英文拼写建议（曾误报「是否应为 auto」）
+    expect(issues).toEqual([])
+  })
+
+  it('中文节 [炮塔_1] 回译 turret_1：节名回译不被键译名污染（checkAttachmentPosition 正常报错）', async () => {
+    await loadCodeData()
+    const { runSemanticChecks } = await import('../src/features/editor/semanticChecks')
+    const { findCodeByCode, getAllCodes } = await import('../src/services/codeData')
+    const zhToEnDict = getZhToEnDict()
+    const keyZhToEnDict = getKeyZhToEnDict()
+    // 模拟真实注入：ctx.zhToEn 是键位置词典（键表优先）；sectionEnName 内部走节名表，
+    // [炮塔_1] 必须回译成 turret_1，checkAttachmentPosition 才能检查到 x 非数字
+    const issues = runSemanticChecks('[炮塔_1]\nx: abc\n', {
+      ruleIds: new Set(['checkAttachmentPosition']),
+      ctx: {
+        findCode: (k) => findCodeByCode(k),
+        findType: () => undefined,
+        zhToEn: (k) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
+        codes: getAllCodes().map((c) => c.code),
+        unitNames: new Set(),
+      },
+    })
+    expect(issues.some((i) => i.message.includes('不是数字'))).toBe(true)
   })
 })

@@ -85,7 +85,7 @@ export const UNIT_FORM_GROUPS: UnitFieldGroup[] = [
       { key: 'image_shadow', label: '阴影图片', type: 'resource', resourceExts: IMAGE_EXTS, description: '单位阴影（AUTO = 自动生成）' },
       { key: 'shadowOffsetX', label: '阴影偏移 X', type: 'number', defaultValue: '0', description: '阴影水平偏移（像素）' },
       { key: 'shadowOffsetY', label: '阴影偏移 Y', type: 'number', defaultValue: '0', description: '阴影垂直偏移（像素）' },
-      { key: 'drawLayer', label: '绘制层', type: 'enum', options: { ground: '地面', ground2: '地面 2', air: '空中', water: '水面', underwater: '水下', bottom: '底层', top: '顶层', experimentals: '实验层', wreaks: '残骸层' }, description: '单位所在绘制层（决定与地面单位的遮挡关系）' },
+      { key: 'drawLayer', label: '绘制层', type: 'enum', options: { ground: '地面', ground2: '地面 2', air: '空中', underwater: '水下', bottom: '底层', top: '顶层', experimentals: '实验层', wreaks: '残骸层' }, description: '单位所在绘制层（决定与地面单位的遮挡关系）' },
       { key: 'total_frames', label: '总帧数', type: 'number', defaultValue: '1', min: 1, description: '单位动画总帧数（多帧动画时使用）' },
     ],
   },

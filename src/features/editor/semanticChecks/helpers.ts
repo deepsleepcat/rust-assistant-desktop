@@ -10,6 +10,7 @@
  * 行号约定：对外一律 1 基（与 AI 质检清单一致）；内部索引 0 基。
  */
 import type { SemanticCheckContext, SemanticIssue } from './types'
+import { getSectionZhToEnDict } from '../../../services/codeData'
 
 /** 已解析的节：name 为节名（原始大小写），startLine/endLine 为 1 基行号（endLine 不含）；
  * kvs 为节内键值行（单趟构建，O(1) 取用） */
@@ -55,8 +56,24 @@ export function parseIni(content: string): ParsedIni {
   const sections: ParsedSection[] = []
   const keyValues: ParsedKeyValue[] = []
   let current: ParsedSection | null = null
+  // 引擎多行字符串（""" 语法，ae.java:879-901）：串内行是值的一部分，不参与
+  // 节/键值解析（否则描述文本里的「key: value」会被语义检查器误报）
+  let inString = false
   for (let i = 0; i < lines.length; i++) {
     const text = lines[i]
+    const trimmed = text.trim()
+    if (inString) {
+      // 串内：任何行（含 # 注释行——引擎串内照样扫描闭合符）出现 """ 即闭合
+      if (trimmed.includes('"""')) inString = false
+      continue
+    }
+    // 非注释行出现 """ 即进入多行字符串（引擎：注释行整行跳过，不触发）。
+    // 同一行开闭（key: """text"""）不算进入多行串——第二个 """ 即闭合符
+    if (!trimmed.startsWith('#') && trimmed.includes('"""')) {
+      const first = trimmed.indexOf('"""')
+      if (trimmed.indexOf('"""', first + 3) === -1) inString = true
+      continue
+    }
     const sec = SECTION_RE.exec(text)
     if (sec) {
       if (current) current.endLine = i + 1 // 前一节结束（不含本行）
@@ -100,11 +117,18 @@ export function toEnKey(key: string, zhToEn?: (s: string) => string | undefined)
   return key
 }
 
+/** 节名单词回译（[炮塔_1] 的段「炮塔」→ turret）：优先节名表（section.json 译名，
+ * 无条件收录），回落注入词典。节名位置必须得到节名——键译名可能被节名覆盖
+ * （「价格」曾被虚构节 prices 覆盖成 prices）也可能撞车（炮塔→节 turret vs 键
+ * c_turret_t1），不能与 toEnKey 的键位置共用同一词典。 */
+export function sectionWordEn(word: string, zhToEn?: (s: string) => string | undefined): string {
+  return getSectionZhToEnDict().get(word) ?? zhToEn?.(word) ?? word
+}
+
 /** 节名回译（[炮塔_1] → turret_1） */
 export function sectionEnName(section: ParsedSection, zhToEn?: (s: string) => string | undefined): string {
-  if (!zhToEn) return section.lower
   const parts = section.name.split('_')
-  const translated = parts.map((seg) => zhToEn(seg) ?? seg).join('_')
+  const translated = parts.map((seg) => sectionWordEn(seg, zhToEn)).join('_')
   return translated.toLowerCase()
 }
 
@@ -114,6 +138,61 @@ export function toNumber(value: string): number | null {
   if (!v) return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
+}
+
+/**
+ * 时间解析：支持引擎时间后缀「s」（如 0.2s、30s → 秒数，ae.java 的 time 读取
+ * 只认数字 + 可选 s 结尾）；纯数字原样返回；非法返回 null。
+ * 注意不能直接改 toNumber——maxHp 等纯数值字段引擎用 Float.parseFloat，
+ * 带 s 后缀会抛错，必须保持不认。
+ */
+export function toTimeNumber(value: string): number | null {
+  const v = value.trim()
+  if (!v) return null
+  const m = v.match(/^(-?\d+(?:\.\d+)?)s?$/)
+  if (!m) return null
+  const n = Number(m[1])
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * 解析「单位列表」类值（spawnUnits/convertTo 等），按引擎 ci.java 语法：
+ * 值 = 段(,段...)，每段 = 「单位名[*数量][(参数=值,...)]」。
+ * 括号参数段内的逗号不是分段符（先剥括号段再按逗号分，ci.java:78-81）；
+ * 数量 *N 在括号段之后剥（ci.java:55-60：先取括号段，主体再 split("\\*")）。
+ * 返回单位名列表（保留 CUSTOM: 前缀与原始大小写——CUSTOM: 是跨模组引用
+ * 标记，由调用方判定跳过存在性检查；这里不剥，否则调用方的
+ * startsWith('custom:') 分支会失效）。
+ */
+export function parseUnitListValue(value: string): string[] {
+  const out: string[] = []
+  // 括号感知分段：括号深度 > 0 时的逗号属于参数段，不算分隔
+  const segs: string[] = []
+  let depth = 0
+  let cur = ''
+  for (const ch of value) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth = Math.max(0, depth - 1)
+    if (ch === ',' && depth === 0) {
+      segs.push(cur)
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  segs.push(cur)
+  for (const raw of segs) {
+    let seg = raw.trim()
+    if (!seg) continue
+    // 括号参数段（ci.java:78-81：以 ) 结尾的 (...) 段）
+    const open = seg.indexOf('(')
+    if (open > 0 && seg.endsWith(')')) seg = seg.slice(0, open)
+    // 数量后缀 *N（ci.java:59 按 * 分割，[0] 是单位名）
+    if (/\*\d+$/.test(seg)) seg = seg.slice(0, seg.lastIndexOf('*'))
+    if (!seg.trim()) continue
+    out.push(seg.trim())
+  }
+  return out
 }
 
 /** 断言数字 > 0：非数字返回 null（由调用方决定提示），数字 ≤ 0 返回提示 */

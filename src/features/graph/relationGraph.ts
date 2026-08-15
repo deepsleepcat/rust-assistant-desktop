@@ -2,14 +2,15 @@
  * 模组关系图数据（M20，P2 任务 4）：单位 → 图片/音效/弹体/炮塔引用关系。
  *
  * - 每个单位文件（含 [core] 节）提取引用边：图片/音效按扩展名（与质量报告统计
- *   同一套扩展名），弹体单位引用按 builtFrom_N_name/requiredUnit/convertTo 等
- *   （与 checkRiskyUnitReferenceSemantics 同一套键）；
+ *   同一套扩展名），弹体单位引用按 builtFrom_N_name/convertTo/spawnUnit 等
+ *   （与 checkRiskyUnitReferenceSemantics 同一套键；引擎无 requiredUnit 键）；
  * - 缺失标记：图片/音效路径不在项目文件清单 → 悬空引用（红色）；
  *   ROOT:/CUSTOM:/SHARED: 前缀 = 跨模组引用（存在性无法在本项目验证，标橙不标红）；
  * - 与质量报告数据同源（scanResources），保证统计一致。
  */
-import { parseIni, sectionEnName, toEnKey } from '../editor/semanticChecks/helpers'
+import { parseIni, parseUnitListValue, sectionEnName, toEnKey } from '../editor/semanticChecks/helpers'
 import { BUILTIN_UNITS } from '../editor/semanticChecks/helpers'
+import { loadCodeData } from '../../services/codeData'
 import { joinProjectPath } from '../../utils/projectPath'
 
 export type RefKind = 'image' | 'audio' | 'unit' | 'turret'
@@ -60,8 +61,8 @@ export interface RelationGraphData {
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp'])
 const AUDIO_EXTS = new Set(['.ogg', '.wav', '.mp3', '.flac'])
-/** 引用单位的键（小写；与 checkRiskyUnitReferenceSemantics 一致） */
-const UNIT_REF_KEYS = new Set(['requiredunit', 'convertto', 'spawnunit', 'spawnunits'])
+/** 引用单位的键（小写；与 checkRiskyUnitReferenceSemantics 一致；引擎无 requiredUnit 键） */
+const UNIT_REF_KEYS = new Set(['convertto', 'spawnunit', 'spawnunits'])
 /** 游戏特殊值（单位引用不检查存在性） */
 const SPECIAL_UNIT_VALUES = new Set(['none', 'ignore', 'auto', 'this', 'self'])
 /** 跨模组前缀（值以这些前缀开头 = 引用其他模组/游戏内置资源） */
@@ -100,6 +101,9 @@ export async function buildRelationGraph(
   bridgeOverride?: { mod: { scanResources(root: string): Promise<{ files: string[]; unitNames: string[] }> }; project: { readFile(root: string, file: string): Promise<{ content: string }> } },
 ): Promise<RelationGraphData> {
   const bridge = bridgeOverride ?? (await import('../../services/bridge')).getBridge()
+  // sectionEnName 内部节名表依赖代码表数据（中文节名 [核心]→core 回译）：
+  // 编辑器挂载时通常已加载，关系图作为首个操作时补一次（幂等）
+  await loadCodeData()
   const scan = await bridge.mod.scanResources(rootPath)
   const files = scan.files ?? []
   const iniFiles = files.filter((f) => /\.(ini|template)$/i.test(f))
@@ -169,11 +173,13 @@ export async function buildRelationGraph(
           const kind = classifyPath(token)
           if (kind) addRef(kind, token, kv.line)
         }
-        // 单位引用：builtFrom_N_name + requiredUnit/convertTo/spawnUnit/spawnUnits
+        // 单位引用：builtFrom_N_name + convertTo/spawnUnit/spawnUnits（requiredUnit 引擎无此键）。
+        // 引擎单位列表语法（单位名*数量(参数=值,...)，ci.java:55-80）：与
+        // checkRiskyUnitReferenceSemantics 同一套解析，参数段/数量不误当引用名；
+        // CUSTOM: 前缀保留 → 跨模组引用标橙不标红
         const isBuiltFrom = /^builtfrom_\d+_name$/.test(lower)
         if (isBuiltFrom || UNIT_REF_KEYS.has(lower)) {
-          for (const raw of kv.value.split(',')) {
-            const ref = raw.trim()
+          for (const ref of parseUnitListValue(kv.value)) {
             if (ref) addRef('unit', ref, kv.line)
           }
         }

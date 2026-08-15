@@ -29,7 +29,7 @@ builtFrom_1_name: 坦克
 requiredUnit: 不存在的单位
 [graphics]
 image: images/rifle.png
-shadowImage: images/missing_shadow.png
+image_shadow: images/missing_shadow.png
 [attack]
 shoot_sound: 机枪
 [action]
@@ -39,7 +39,7 @@ x: 10
 y: 20
 image: images/rifle.png
 [resource_1]
-displayName: 弹药
+displayText: 弹药
 image: images/missing_ammo.png
 `
 
@@ -47,11 +47,11 @@ const ROOT_REF_CONTENT = `[core]
 name: 重装兵
 [graphics]
 image: ROOT:units/other_mod/icon.png
-deathImage: SHARED:explosions/fire.png;CUSTOM:mymod/extra.png
+image_wreak: SHARED:explosions/fire.png;CUSTOM:mymod/extra.png
 `
 
 const NON_UNIT_CONTENT = `[resource_1]
-displayName: 资源
+displayText: 资源
 image: images/missing_ammo.png
 `
 
@@ -71,11 +71,11 @@ describe('buildRelationGraph', () => {
     // 音效：shoot_sound 是码名（无扩展名）→ 不构成音效引用
     expect(unit.refs.some((r) => r.kind === 'audio')).toBe(false)
 
-    // 单位引用：builtFrom 坦克（存在）+ requiredUnit 不存在（悬空）
+    // 单位引用：builtFrom 坦克（存在）
     const tank = unit.refs.find((r) => r.kind === 'unit' && r.target === '坦克')
     expect(tank?.missing).toBe(false)
-    const ghost = unit.refs.find((r) => r.kind === 'unit' && r.target === '不存在的单位')
-    expect(ghost?.missing).toBe(true)
+    // requiredUnit 引擎无此键（幽灵键）→ 不再产出引用边
+    expect(unit.refs.some((r) => r.kind === 'unit' && r.target === '不存在的单位')).toBe(false)
     // action 节 convertTo: landFactory → 游戏内置单位（BUILTIN_UNITS）不标缺失
     const landFactory = unit.refs.find((r) => r.kind === 'unit' && r.target === 'landFactory')
     expect(landFactory?.missing).toBe(false)
@@ -86,8 +86,28 @@ describe('buildRelationGraph', () => {
     expect(turret!.lines[0]).toBe(13)
 
     // 悬空汇总
-    expect(g.missingRefs.map((m) => m.ref).sort()).toEqual(['images/missing_ammo.png', 'images/missing_shadow.png', '不存在的单位'])
+    expect(g.missingRefs.map((m) => m.ref).sort()).toEqual(['images/missing_ammo.png', 'images/missing_shadow.png'])
     expect(g.totalRefs).toBe(unit.refs.length)
+  })
+
+  it('requiredUnit 是幽灵键（引擎无此键）不再产出引用边；convertTo/spawnUnit 真实键仍产出', async () => {
+    const content = `[core]
+name: 幽灵测试
+requiredUnit: ghostUnitA
+convertTo: ghostUnitB
+spawnUnit: ghostUnitC
+`
+    const g = await buildRelationGraph('/fake/root', {}, fakeBridge({ 'units/ghost.ini': content }))
+    const unit = g.units[0]
+    const targets = unit.refs.filter((r) => r.kind === 'unit').map((r) => r.target)
+    // requiredUnit 不再产出引用边
+    expect(targets).not.toContain('ghostUnitA')
+    // convertTo/spawnUnit 真实键仍产出引用边（且悬空标红）
+    expect(targets).toContain('ghostUnitB')
+    expect(targets).toContain('ghostUnitC')
+    expect(g.missingRefs.some((m) => m.ref === 'ghostUnitA')).toBe(false)
+    expect(g.missingRefs.some((m) => m.ref === 'ghostUnitB')).toBe(true)
+    expect(g.missingRefs.some((m) => m.ref === 'ghostUnitC')).toBe(true)
   })
 
   it('跨模组引用（ROOT:/CUSTOM:/SHARED:）不标缺失，聚合计数', async () => {
@@ -124,8 +144,8 @@ describe('buildRelationGraph', () => {
 name: 测试
 [graphics]
 image: NONE
-deathImage: AUTO
-shadowImage: \${shadow}_1.png
+image_wreak: AUTO
+image_shadow: \${shadow}_1.png
 `
     const g = await buildRelationGraph('/fake/root', {}, fakeBridge({ 'units/t.ini': content }))
     expect(g.units).toEqual([])
@@ -141,5 +161,20 @@ shadowImage: \${shadow}_1.png
     )
     expect(seen.length).toBeGreaterThan(0)
     expect(seen[seen.length - 1]).toEqual([2, 2])
+  })
+
+  it('spawnUnits 参数/数量语法剥除：参数段不误当引用名，单位名正常检出', async () => {
+    const content = `[core]\nname: x\nspawnUnits: 开馈赠(spawnChance=0.2,maxSpawnLimit=1),坦克*2\n`
+    const g = await buildRelationGraph('/fake/root', {}, fakeBridge({ 'units/ghost.ini': content }))
+    const unit = g.units[0]
+    const targets = unit.refs.filter((r) => r.kind === 'unit').map((r) => r.target)
+    // 坦克 在项目内 → 存在；开馈赠 不在项目 → 悬空
+    expect(targets).toContain('坦克')
+    const tank = unit.refs.find((r) => r.kind === 'unit' && r.target === '坦克')
+    expect(tank?.missing).toBe(false)
+    expect(g.missingRefs.some((m) => m.ref === '开馈赠')).toBe(true)
+    // 参数段与 *数量 不残留成引用名（旧实现按裸逗号拆，maxSpawnLimit=1) 会误标红）
+    expect(targets.some((t) => t.includes('spawnChance'))).toBe(false)
+    expect(targets.some((t) => t.includes('*'))).toBe(false)
   })
 })

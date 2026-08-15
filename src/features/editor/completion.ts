@@ -19,6 +19,7 @@ import {
   findSectionsByQuery,
   findValueType,
   getDialectWords,
+  getKeyZhToEnDict,
   getZhToEnDict,
   parseValueList,
   searchLogicBooleans,
@@ -249,11 +250,12 @@ function withThumbnail(c: Completion, projectId: string | null): Completion {
 /** 值补全：key 查类型 → 类型 list → 候选（中文模式下键是中文，先回译成英文再查） */
 async function valueCompletions(key: string, query: string, data: CompletionDataSource): Promise<Completion[]> {
   // 中文显示层：key 可能是中文译名或分段翻译的宏字段（建造自_1_名称），
-  // 整串回译失败时按 _ 分段回译（与 lint 的容错一致）
+  // 整串回译失败时按 _ 分段回译（与 lint 的容错一致）。
+  // 键位置回译先查键名表（键译名不被节名覆盖，如「价格」→price）
   let enKey = key
   let info = data.findCodeByCode(key)
   if (!info) {
-    const back = getZhToEnDict().get(key) ?? zhToEnKeySegments(key)
+    const back = getKeyZhToEnDict().get(key) ?? getZhToEnDict().get(key) ?? zhToEnKeySegments(key)
     if (back && back !== key) {
       enKey = back
       info = data.findCodeByCode(back)

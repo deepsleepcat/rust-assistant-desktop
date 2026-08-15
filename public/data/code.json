@@ -785,7 +785,7 @@
       "code": "showShotDelayBar",
       "translate": "显示蓄力条",
       "description": "用于隐藏慢火炮塔的回调，是否显示蓄力条，就是火炮攻击后下面的蓝条条",
-      "type": "image",
+      "type": "boolean",
       "addVersion": 5,
       "removeVersion": -1,
       "section": "graphics",
@@ -1235,7 +1235,7 @@
       "code": "idleDir",
       "translate": "闲时角度",
       "description": "闲置时角度。",
-      "type": "int",
+      "type": "float",
       "addVersion": 1,
       "removeVersion": -1,
       "section": "turret,attachment",
@@ -1595,7 +1595,7 @@
       "code": "trailEffect",
       "translate": "尾焰",
       "description": "设置为真时为默认的尾焰。但也可以指向任何自定义效果，或使用内置效果。",
-      "type": "boolean",
+      "type": "effect",
       "addVersion": 1,
       "removeVersion": -1,
       "section": "projectile",
@@ -1715,7 +1715,7 @@
       "code": "drawType",
       "translate": "绘制类型",
       "description": "使用内置抛射体图像。 0:projectiles.png 1:projectiles_large.png 2:projectiles2.png",
-      "type": "int",
+      "type": "drawType",
       "addVersion": 1,
       "removeVersion": -1,
       "section": "projectile",
@@ -2195,7 +2195,7 @@
       "code": "borrowResourcesWhileAlive",
       "translate": "资源活着时借用",
       "description": "创建时获取这些资源，删除或销毁时将其返回。例如用于电力逻辑，负数供电和正数耗电。",
-      "type": "boolean",
+      "type": "resource",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "core",
@@ -2215,7 +2215,7 @@
       "code": "generation_active",
       "translate": "资源取得条件",
       "description": "获取资源条件。可用于受损时无法产出。",
-      "type": "resource",
+      "type": "logicBoolean",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "core",
@@ -2235,7 +2235,7 @@
       "code": "showActionsWithMixedSelectionIfOtherUnitsHaveTag",
       "translate": "混合所选单位所显示的行为",
       "description": "\"如果选择的单位都包含此处使用的标签，则合并“行为(action)”。比如你的步兵通过部署转化成另一个单位， 在混合时可以当作同一个单位处理，不再是谁都无法执行部署或解除操作。如红警的盟军大兵。\"",
-      "type": "boolean",
+      "type": "string",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "core",
@@ -4020,7 +4020,7 @@
       "code": "mutatorX_ifUnitWithTags",
       "translate": "修正需要标签",
       "description": "伤害修正所需标签，仅对携带标签单位有效。否则为原始伤害。注意,如果想对不同标签的敌人造成不同的修正效果,则只要把mutatorX_ifUnitWithTags中的X改成任意字母或数字,不过后面的mutatorX_directDamageMultiplier(修正直接伤害)也好,mutatorX_addResourcesDirectHit(修正直接伤害添加资源)也好,它们中的X都要改成对应的,比如:/r/nmutatorX_ifUnitWithTags:造成2倍伤害/r/nmutatorX_directDamageMultiplier:2/r/nmutator5_ifUnitWithTags:造成5倍伤害/r/nmutator5_directDamageMultiplier:5",
-      "type": "float",
+      "type": "string",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "projectile",
@@ -4030,7 +4030,7 @@
       "code": "mutatorX_ifUnitWithoutTags",
       "translate": "修正除此标签",
       "description": "伤害修正除此标签外有效。同修正需要标签",
-      "type": "float",
+      "type": "string",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "projectile",
@@ -4450,7 +4450,7 @@
       "code": "beamImageStart",
       "translate": "光束图像起始帧",
       "description": "帧启动波束动画效果",
-      "type": "int",
+      "type": "image",
       "addVersion": 3,
       "removeVersion": -1,
       "section": "projectile",
@@ -4460,7 +4460,7 @@
       "code": "beamImageEnd",
       "translate": "光束图像结束帧",
       "description": "帧启动波束动画效果",
-      "type": "int",
+      "type": "image",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "projectile",
@@ -5537,7 +5537,7 @@
       "code": "alpha",
       "translate": "透明度",
       "description": "介于0-1之间。可以设置为大于1以延迟淡出效果\n游戏不允许设置超过1的透明度，但你可通过动态逻辑超过。\n\n可用范围：效果，贴花",
-      "type": "float",
+      "type": "float,logicBoolean",
       "addVersion": 1,
       "removeVersion": -1,
       "section": "effect,comment,decal",
@@ -6557,7 +6557,7 @@
       "code": "convertResource_from",
       "translate": "转换资源来源",
       "description": "将此资源转换资源为别的资源。",
-      "type": "resource",
+      "type": "string",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "action ,hiddenAction",
@@ -6567,7 +6567,7 @@
       "code": "convertResource_to",
       "translate": "转换资源至",
       "description": "将资源转后为此资源，要提供的自定义资源的名称",
-      "type": "resource",
+      "type": "string",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "action ,hiddenAction",
@@ -6587,7 +6587,7 @@
       "code": "convertResource_maxAmount",
       "translate": "转换资源至多",
       "description": "“来源资源”和“转换后资源”之间的最大转化量",
-      "type": "int",
+      "type": "float",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "action ,hiddenAction",
@@ -6876,7 +6876,7 @@
       "code": "whenBuilding_rotateTo_rotateTurretX",
       "translate": "当建筑物旋转时旋转炮塔",
       "description": "当建筑物旋转时旋转炮塔。",
-      "type": "boolean",
+      "type": "string",
       "addVersion": 3,
       "removeVersion": -1,
       "section": "action ,hiddenAction",
@@ -8342,7 +8342,7 @@
       "code": "shootDamageMultiplier",
       "translate": "开火伤害乘数",
       "description": "默认为1。可以在setUnitStats动态改变",
-      "type": "int",
+      "type": "float",
       "addVersion": 1,
       "removeVersion": -1,
       "section": "Specific",
@@ -8402,7 +8402,7 @@
       "code": "hullDamageMultiplier",
       "translate": "护盾损伤乘数",
       "description": "可以用来制造只影响护盾的电磁脉冲武器。0忽略单位，只伤害护盾",
-      "type": "int",
+      "type": "float",
       "addVersion": 1,
       "removeVersion": -1,
       "section": "Specific",
@@ -8421,7 +8421,7 @@
       "code": "targetGround_includeTargetHeight",
       "translate": "目标为地面包括目标高度",
       "description": "区域影响AA武器",
-      "type": "int",
+      "type": "boolean",
       "addVersion": 1,
       "removeVersion": -1,
       "section": "Specific",
@@ -8471,7 +8471,7 @@
       "code": "sweepOffsetFromTargetRadius",
       "translate": "扫描偏移目标半径",
       "description": "以目标半径作为扫描偏移量乘数，用于制作类似于两栖护盾坦克的激光武器。对光束效果很有用。",
-      "type": "int",
+      "type": "float",
       "addVersion": 1,
       "removeVersion": -1,
       "section": "Specific",
@@ -9364,7 +9364,7 @@
       "demo": ""
     },
     {
-      "code": "magaTank",
+      "code": "megaTank",
       "translate": "超级坦克",
       "description": "游戏内部的极特殊单位。",
       "type": "noParameterLogicStatement",
@@ -9404,7 +9404,7 @@
       "demo": ""
     },
     {
-      "code": "heavyInterceptorz",
+      "code": "heavyInterceptor",
       "translate": "重型拦截机",
       "description": "内置单位，代替heavyInterceptor",
       "type": "internalUnits",
@@ -10667,7 +10667,7 @@
       "code": "convertTo_keepCurrentFields",
       "translate": "转换单位保留setUnitStats的更改状态",
       "description": "布尔值,填写布尔或者逻辑",
-      "type": "boolean",
+      "type": "string",
       "addVersion": 4,
       "removeVersion": -1,
       "section": "Specific",
@@ -10897,7 +10897,7 @@
       "code": "blocksPlacement",
       "translate": "禁止放置",
       "description": "禁止放置。默认为true。",
-      "type": "int",
+      "type": "boolean",
       "addVersion": 4,
       "removeVersion": -1,
       "section": "placementRule",
@@ -10937,7 +10937,7 @@
       "code": "order",
       "translate": "贴花排序",
       "description": "默认为0并且按照ini里的顺序，优先级排序。",
-      "type": "int",
+      "type": "float",
       "addVersion": 4,
       "removeVersion": -1,
       "section": "decal",
@@ -11194,16 +11194,6 @@
       "demo": "中文：\n[贴花_图层]\n指定脚为中心位置:test\n\nEnglish:\n[decal_图层]\nbasePositionFromLegEnd:test"
     },
     {
-      "code": "basePositionFromTurretEnd",
-      "translate": "指定炮塔为中心位置",
-      "description": "(贴花)Decal的中心位置(填自身的turret节名字，例如[turret_Main]，那么就填写Main(参考Demo))/或者填写临时标记:(self.x+10,self.y+10)",
-      "type": "turret,marker",
-      "addVersion": 4,
-      "removeVersion": -1,
-      "section": "decal",
-      "demo": "中文：\n[贴花_图层]\n指定炮塔为中心位置:Main\n\nEnglish:\n[decal_图层]\nbasePositionFromTurretEnd:Main"
-    },
-    {
       "code": "drawLineTo",
       "translate": "绘制线条",
       "description": "绘制线条到(受到颜色和宽度影像) (填单位参考)/或者填写临时标记:(self.x+10,self.y+10)",
@@ -11282,20 +11272,6 @@
       "removeVersion": -1,
       "section": "animation_NAME",
       "demo": "direction_strideY:1"
-    },
-    {
-      "code": "text_{LANG}",
-      "translate": "文本{LANG}",
-      "type": "string",
-      "section": "action",
-      "demo": "示例：\ntext_es: Fuego %{self.resource.ammo}"
-    },
-    {
-      "code": "description_{LANG}",
-      "translate": "描述{LANG}",
-      "type": "string",
-      "section": "action",
-      "demo": "示例：\ndescription_es: Disparos en el área objetivo"
     },
     {
       "code": "id",
@@ -11417,13 +11393,6 @@
       "demo": "示例：\ntakeResources_searchOnly: true"
     },
     {
-      "code": "showMessageToPlayer_{LANG}",
-      "translate": "向玩家显示消息{LANG}",
-      "type": "string",
-      "section": "action",
-      "demo": "示例：\nshowMessageToPlayer_fil: May nakatagong kalaban na malapit sa mga depensa mo"
-    },
-    {
       "code": "arm#_[time]",
       "translate": "手臂关键帧",
       "type": "",
@@ -11466,60 +11435,11 @@
       "demo": "示例：\nunloadInCurrentPosition"
     },
     {
-      "code": "isLockedMessage_es",
-      "translate": "锁定消息(西班牙语)",
-      "type": "string",
-      "section": "canBuild",
-      "demo": "示例：\nisLockedMessage_es: -Necesita 2 Cuarteles"
-    },
-    {
       "code": "borrowResourcesWhileBuilt",
       "translate": "建造时借用资源",
       "type": "price",
       "section": "core",
       "demo": "示例：\nborrowResourcesWhileBuilt: supplyCap = -10"
-    },
-    {
-      "code": "displayText_es",
-      "translate": "显示文本(西班牙语)",
-      "type": "string",
-      "section": "core",
-      "demo": "示例：\ndisplayText_es: Tanque Personalizado"
-    },
-    {
-      "code": "displayDescription_es",
-      "translate": "显示描述(西班牙语)",
-      "type": "string",
-      "section": "core",
-      "demo": "示例：\ndisplayDescription_es: -Movimiento rápido\\n-Daño ligero"
-    },
-    {
-      "code": "displayText_de",
-      "translate": "显示文本（德语）",
-      "type": "string",
-      "section": "core",
-      "demo": "示例：\ndisplayText_de: Benutzerdefinierter Panzer"
-    },
-    {
-      "code": "displayText_fr",
-      "translate": "显示文本（法语）",
-      "type": "string",
-      "section": "core",
-      "demo": "示例：\ndisplayText_fr: Char personnalisé"
-    },
-    {
-      "code": "displayDescription_de",
-      "translate": "显示描述（德语）",
-      "type": "string",
-      "section": "core",
-      "demo": "示例：\ndisplayDescription_de: -Schnelle Bewegung\\n-Geringer Schaden"
-    },
-    {
-      "code": "displayDescription_fr",
-      "translate": "显示描述（法语）",
-      "type": "string",
-      "section": "core",
-      "demo": "示例：\ndisplayDescription_fr: -Mouvement rapide\\n-Dégâts légers"
     },
     {
       "code": "allowCaptureWhenNeutralByAI",
@@ -11585,25 +11505,11 @@
       "demo": "示例：\nbuiltFrom_1_isLockedMessage: -Needs more population"
     },
     {
-      "code": "builtFrom_{NUM}_isLockedMessage_es",
-      "translate": "建造自_{NUM}_锁定提示（西班牙语）",
-      "type": "string",
-      "section": "core",
-      "demo": "示例：\nbuiltFrom_1_isLockedMessage_es: -Necesita más población"
-    },
-    {
       "code": "builtFrom_{NUM}_tooltip",
       "translate": "建造自_{NUM}_提示",
       "type": "LocaleString",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_tooltip: Builds advanced tanks"
-    },
-    {
-      "code": "builtFrom_{NUM}_tooltip_es",
-      "translate": "建造自_{NUM}_提示（西班牙语）",
-      "type": "string",
-      "section": "core",
-      "demo": "示例：\nbuiltFrom_1_tooltip_es: Construye tanques avanzados"
     },
     {
       "code": "builtFrom_{NUM}_icon",
@@ -11952,7 +11858,7 @@
       "code": "animation_idle_speed",
       "translate": "animation_idle_speed",
       "description": "（官方游戏数据，待补充翻译）",
-      "type": "int",
+      "type": "float",
       "section": "animation"
     },
     {

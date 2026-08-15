@@ -10,9 +10,23 @@ import type { SemanticChecker, SemanticIssue } from './types'
 import { issue, getIni, toEnKey } from './helpers'
 
 /** 宏字段段（action_1_convertTo / builtFrom_1_name / resourceAmount_2 等）与
- * 动画时间键（body_0s / arm1_0s / leg3_1s）：跳过拼写检查 */
+ * 动画时间键（body_0s / arm1_0s / leg3_1s）与 mutator 变体（引擎 ae.java:190
+ * 按前缀收集全部 mutator* 键，X/Y/Z/XQ 等轴变体无限，代码表补不全）：跳过拼写检查 */
 function looksLikeMacroField(key: string): boolean {
-  return /_\d+_/.test(key) || /^[a-zA-Z]+_\d+$/.test(key) || /_\d*\.?\d+s$/.test(key)
+  return /_\d+_/.test(key) || /^[a-zA-Z]+_\d+$/.test(key) || /_\d*\.?\d+s$/.test(key) || key.startsWith('mutator')
+}
+
+/** 引擎指令/语言后缀键的检查策略：
+ * - @ 开头：引擎指令（@define/@global/@memory/@copyFromSection 等），
+ *   由引擎按前缀收集，不参与代码表 → 完全跳过；
+ * - _en/_zh/_en_us 结尾：官方多语言后缀键（displayText_en 等）→ 剥后缀后按
+ *   基础名检查（displayText_en 基础名在代码表 → 合法；displayTex_en 基础名
+ *   拼写错误 → 照常报疑似拼写）。返回 null 表示跳过。 */
+function engineDirectiveBase(key: string): string | null {
+  if (key.startsWith('@')) return null
+  const m = /^(.*)_[a-z]{2}(?:_[a-z]{2})?$/i.exec(key)
+  if (m && m[1]) return m[1]
+  return key
 }
 
 /** Levenshtein 距离（≤ 2 视为相似；超过 2 提前返回 3 避免无谓计算） */
@@ -63,13 +77,23 @@ export const checkKeyTypos: SemanticChecker = {
     const allKeys = ctx.codes
     const seen = new Set<string>()
     for (const kv of keyValues) {
-      const enKey = toEnKey(kv.key, ctx.zhToEn)
+      const enKey = toEnKey(kv.key, ctx.keyZhToEn ?? ctx.zhToEn)
       if (seen.has(enKey)) continue
       seen.add(enKey)
       if (ctx.findCode(enKey)) continue // 代码表命中（含中文回译命中）
+      // 键原文是词典已知译名（如 mod-info 的自定义中文键「作者」「地图」）→
+      // 用户写的是合法中文词，不做英文拼写建议（回译词不在代码表时 findSimilarKey
+      // 会撞出 auto/mass 等无关候选）
+      if (ctx.zhToEn?.(kv.key)) continue
       if (looksLikeMacroField(enKey)) continue
-      const similar = findSimilarKey(enKey, allKeys)
-      if (similar) {
+      const base = engineDirectiveBase(enKey)
+      if (base === null) continue // @ 引擎指令
+      // 语言后缀键（displayText_en）：基础名在代码表 = 合法；否则基础名照常查拼写
+      const checkKey = base !== enKey ? base : enKey
+      if (checkKey !== enKey && ctx.findCode(checkKey)) continue
+      const similar = findSimilarKey(checkKey, allKeys)
+      // 含 # 的候选是占位符（canbuild_#_name 等），不是可写的键名，不做建议
+      if (similar && !similar.includes('#')) {
         issues.push(
           issue(
             kv.line,

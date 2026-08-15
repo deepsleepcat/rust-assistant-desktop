@@ -4,16 +4,20 @@
  *    指向的单位必须存在（同 checkRiskyUnitReferenceSemantics 依赖 ctx.unitNames）；
  * 2) [core] 节如果出现 action_N_xxx 宏字段（内联 action 定义），检查其
  *    convertTo 引用同样存在。
- * 3) 纯文件内检查：action 节名不允许为空/非法字符。
+ * 3) 节名规则与引擎对齐（ae.java/ag.java：节名 = \s*\[([^]]*)\]\s*，无字符集
+ *    限制；action_/hiddenAction_ 前缀节即行动，startsWith 判断、后缀任意——
+ *    中文/数字开头/小数点/空格全合法，社区模组有 [hiddenAction_获取资金1.5]、
+ *    [action_0.1] 等先例）。「[action]」缺下划线前缀不是行动节（引擎按未知节
+ *    处理），报疑似拼写警告。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
-import { BUILTIN_UNITS, issue, lowerUnitNames, getIni, sectionEnName, toEnKey } from './helpers'
+import { BUILTIN_UNITS, issue, lowerUnitNames, getIni, parseUnitListValue, sectionEnName, toEnKey } from './helpers'
 
 const SPECIAL_VALUES = new Set(['none', 'ignore', 'auto', 'this', 'self'])
 
-/** 节名是否 action 类（action_ / hiddenAction_ 前缀，官方 hiddenAction_autoSwitchBack 等） */
+/** 节名是否行动节（引擎 ag.java:1903/1912：前缀 action_ / hiddenAction_ 精确 startsWith） */
 function isActionSection(lower: string): boolean {
-  return lower.startsWith('action') || lower.startsWith('hiddenaction')
+  return lower.startsWith('action_') || lower.startsWith('hiddenaction_')
 }
 
 export const checkActionReferences: SemanticChecker = {
@@ -27,24 +31,23 @@ export const checkActionReferences: SemanticChecker = {
     const zhToEn = ctx?.zhToEn
     const unitNames = ctx?.unitNames
 
-    // 1) action 节名合法性（[action_xxx] / [hiddenAction_xxx]：节名不能为空）
+    // 1) 疑似行动节名（[action] / [hiddenAction]，缺 _ 前缀）：
+    //    引擎里这不是行动节（startsWith "action_" 不匹配），节内键会全部成为
+    //    未使用键（引擎报错）——提示用户补 _ 前缀。空节（无键）不打扰。
     for (const sec of sections) {
       const lower = sectionEnName(sec, zhToEn)
-      if (!isActionSection(lower)) continue
-      const name = lower.replace(/^(?:action|hiddenaction)/, '')
-      // 空名/非法字符报错（官方 [action_upgradeT2]、[action_1] 均合法）
-      if (!name || !/^[a-z_][a-z0-9_]*$/i.test(name)) {
-        issues.push(
-          issue(
-            sec.startLine,
-            `action 节名「[${sec.name}]」不合法`,
-            `用字母/数字/下划线命名（如 [action_upgradeT2]）`,
-            'checkActionReferences',
-            'error',
-            `[${sec.name}]`,
-          ),
-        )
-      }
+      if (lower !== 'action' && lower !== 'hiddenaction') continue
+      if (sec.kvs.length === 0) continue
+      issues.push(
+        issue(
+          sec.startLine,
+          `「[${sec.name}]」疑似行动节但缺少 _ 前缀（引擎不会把它当行动）`,
+          `改名加下划线（如 [action_xxx]、[hiddenAction_xxx]），否则节内键不被引擎读取`,
+          'checkActionReferences',
+          'warning',
+          `[${sec.name}]`,
+        ),
+      )
     }
 
     // 2) convertTo 引用存在性（action 节内 + core 宏字段 action_N_convertTo）
@@ -57,8 +60,8 @@ export const checkActionReferences: SemanticChecker = {
         const isPlainConvert =
           lower === 'convertto' && sections.some((s) => kv.line >= s.startLine && kv.line < s.endLine && isActionSection(sectionEnName(s, zhToEn)))
         if (!isActionMacro && !isPlainConvert) continue
-        for (const raw of kv.value.split(',')) {
-          const ref = raw.trim()
+        // 值支持引擎单位列表语法（单位名*数量 / 单位名(参数)），剥参数后匹配
+        for (const ref of parseUnitListValue(kv.value)) {
           const lref = ref.toLowerCase()
           if (!ref || SPECIAL_VALUES.has(lref) || lref.startsWith('custom:')) continue
           if (!known.has(lref) && !BUILTIN_UNITS.has(lref)) {

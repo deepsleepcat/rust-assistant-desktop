@@ -150,12 +150,6 @@
       "isVisible": true
     },
     {
-      "code": "reloadArmy",
-      "translate": "刷兵",
-      "needName": true,
-      "isVisible": false
-    },
-    {
       "code": "decal",
       "translate": "贴花",
       "needName": true,
@@ -176,11 +170,6 @@
       "code": "spawnProjectiles",
       "translate": "生成抛射体",
       "needName": true
-    },
-    {
-      "code": "prices",
-      "translate": "价格",
-      "needName": false
     },
     {
       "code": "mod-info",

@@ -87,12 +87,14 @@ export async function scanResources(projectRoot: string): Promise<{ files: strin
         files.push(rel)
         if (/\.(ini|template)$/i.test(entry.name)) {
           const content = await readTextLimited(abs)
-          // L12：节名大小写不敏感（[CORE] 也能识别），与 scanUnits 的 parseIniSections 一致
-          const m = /\[core\]\s*\n([\s\S]*?)(?:\n\[|$)/i.exec(content)
-          const nameMatch = m?.[1].match(/^\s*name\s*:\s*(.+?)\s*$/im)
-          if (nameMatch) {
-            // 去掉行内注释（骨架模板 name 后带「# 单位名…」说明），与 scanUnits 解析保持一致
-            const raw = nameMatch[1].replace(/\s*#.*$/, '').trim()
+          // 单位判定与解析统一走 parseIniSections（节名小写）：
+          // [core]/[CORE]/[核心] 都识别（L12 + 中文显示层），行尾注释容忍
+          const sections = parseIniSections(content)
+          const core = sections.find((s) => s.name === 'core' || s.name === '核心')
+          if (core) {
+            const nameEntry = core.keys.find((k) => k.key.toLowerCase() === 'name')
+            // 去掉行内注释（骨架模板 name 后带「# 单位名…」说明）
+            const raw = nameEntry?.value.replace(/\s*#.*$/, '').trim()
             if (raw) unitNames.add(raw)
           }
         }
@@ -128,11 +130,12 @@ export async function scanUnits(projectRoot: string): Promise<UnitEntry[]> {
       } else if (entry.isFile() && /\.(ini|template)$/i.test(entry.name)) {
         const content = await readTextLimited(abs)
         const sections = parseIniSections(content)
-        const core = sections.find((s) => s.name === 'core')
+        const core = sections.find((s) => s.name === 'core' || s.name === '核心')
         if (!core) continue
-        const km = keyMap(core)
-        const name = km.get('name') ?? ''
+        // 键名大小写不敏感（引擎同）：与 scanResources/checkMod 的 name 提取一致
+        const name = core.keys.find((k) => k.key.toLowerCase() === 'name')?.value ?? ''
         if (!name.trim()) continue
+        const km = keyMap(core)
         const graphics = sections.find((s) => s.name === 'graphics')
         const stat = await fs.stat(abs).catch(() => ({ mtimeMs: 0 }))
         units.push({
@@ -1423,11 +1426,12 @@ export async function checkMod(projectRoot: string): Promise<ModCheckResult> {
   for (const rel of iniFiles) {
     const content = await readTextLimited(path.join(root, rel))
     const sections = parseIniSections(content)
-    const isUnit = sections.some((s) => s.name === 'core' || /^\[?core\]?$/.test(s.name))
+    // 单位判定：节名小写后 [core]/[核心] 都算（与 scanResources/scanUnits 一致）
+    const isUnit = sections.some((s) => s.name === 'core' || s.name === '核心')
     if (!isUnit) continue
 
     unitCount++
-    const nameValue = sections.find((s) => s.name === 'core')?.keys.find((k) => k.key === 'name')?.value
+    const nameValue = sections.find((s) => s.name === 'core' || s.name === '核心')?.keys.find((k) => k.key.toLowerCase() === 'name')?.value
     if (!nameValue) {
       issues.push({ file: rel, level: 'error', message: `缺少 [core] name:（单位名必填）` })
       continue

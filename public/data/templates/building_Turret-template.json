@@ -1,45 +1,45 @@
-{
-    "name": "建筑模板-机枪塔",
-    "name_en": "Building Template-Gun Tower",
-    "name_ja": "けんちくテンプレーマシンガンタワー",
-    "name_zh_TW": "建築模板-機槍塔",
-    "data": "\n[core]\nname: turretTemplate\n\nclass: CustomUnitMetadata\nprice:5\nmaxHp:500\nmass: 9000\n\n#多语言\ndisplayText: turretT1\ndisplayDescription: -Machine gun tower demonstration template, please refer to ini.\n\ndisplayText_zh: 机枪塔T1模板\ndisplayDescription_zh: -机枪塔示范模板，请参考ini\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: 0,0,1,1\n#used for placement, and placement of other buildings\nconstructionFootprint:0,0,1,1\n\nbuildingToFootprintOffsetX:20\nbuildingToFootprintOffsetY:20\n\ntechLevel: 1\n\nradius: 16\nbuildingSelectionOffset: -8\n\nisBuilding: true\nisBio: false\n\n#升级例子，这里全部引用了原版二级。所以你如果不修改，它会升级这些。\n[action_upgrade_gun]\nconvertTo: c_turret_t2_gun\nprice:  1000\ntext: i:gui.actions.upgradeToGunT2\ndescription: -Increases HP, attack damage, and range\ndescriptionAddUnitStats: ${section.convertTo}\n\ndisplayType: Upgrade\nbuildSpeed: 0.001\n\niconExtraImage: SHARED:icon_upgrade_top.png\niconExtraColor: #AAFFFFFF\n\n[action_upgrade_artillery]\nconvertTo: c_turret_t1_artillery\nprice:  1600\ntext: i:gui.actions.upgradeToArtillery\ndescription: -Large increase in range\ndescriptionAddUnitStats: ${section.convertTo}\n\ndisplayType: Upgrade\nbuildSpeed: 0.0004\n\niconExtraImage: SHARED:icon_upgrade_top.png\niconExtraColor: #AAFFFFFF\n\n[action_upgrade_flame]\nconvertTo: c_turret_t2_flame\nprice:  700\ntext: i:gui.actions.upgradeToFlamethrower\ndescription: -Short range area affect\\n-Adds self-repair\ndescriptionAddUnitStats: ${section.convertTo}\n\ndisplayType: Upgrade\nbuildSpeed: 8.3s\n\niconExtraImage: SHARED:icon_upgrade_top.png\niconExtraColor: #AAFFFFFF\n\n[action_upgrade_lightning]\nconvertTo: c_turret_t1_lightning\nprice:  2200\ntext: i:gui.actions.upgradeToLightning\ndescription: i:units.turret_lightning.description\ndescriptionAddUnitStats: ${section.convertTo}\n\ndisplayType: Upgrade\nbuildSpeed: 29.0s\n\niconExtraImage: SHARED:icon_upgrade_top.png\niconExtraColor: #AAFFFFFF\n\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/turrets/turret_base.png\nimage_wreak:  CORE:/turrets/turret_base_dead.png\nimage_turret: CORE:/turrets/turret_top.png\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nturretSize: 22\nturretTurnSpeed: 6\n\n\nmaxAttackRange: 165\nshootDelay: 30\n\n\n\n[turret_1]\n\nx: 0\ny: 6\n\n\nshoot_sound:firing3\nshoot_sound_vol:0.3\nshoot_flame:small\nshoot_light:#FFEECCCC\n\n\n\n\n#idleSpin: 0.8\n\nidleSweepAngle:20\nidleSweepDelay:210\nidleSweepSpeed:0.2\n\n\nrecoilOffset: -0.5\nrecoilOutTime: 6\nrecoilReturnTime: 12\n\n\n[projectile_1]\ndirectDamage: 41\nlife: 240\nspeed: 6\n#ballistic: true\n#ballistic_delaymove_height:0\n#ballistic_height: 4\nframe: 1\n#areaDamage: 40\n#areaRadius: 35\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmaxTurnSpeed: 0",
-    "language": "ALL",
-    "icon": "/icon.png",
-    "attachFile": [
-        "/resource/unit.png",
-        "/resource/unit_die.png"
-    ],
-    "action": [
-        {
-            "name": "名称",
-            "name_zh_TW": "名稱",
-            "name_en": "name",
-            "name_ja": "名前",
-            "key": "name",
-            "section": "core",
-            "type": "input",
-            "tag": "name-core"
-        },
-        {
-            "name": "血量",
-            "name_zh_TW": "血量",
-            "name_en": "maxHp",
-            "name_ja": "ライフバリュー",
-            "key": "maxHp",
-            "section": "core",
-            "type": "input",
-            "tag": "maxHp-core"
-        },
-        {
-            "name": "价格",
-            "name_zh_TW": "價格",
-            "name_ja": "価格",
-            "name_en": "price",
-            "key": "price",
-            "section": "core",
-            "type": "input",
-            "tag": "price-core"
-        }
-    ]
+{
+    "name": "建筑模板-机枪塔",
+    "name_en": "Building Template-Gun Tower",
+    "name_ja": "けんちくテンプレーマシンガンタワー",
+    "name_zh_TW": "建築模板-機槍塔",
+    "data": "\n[core]\nname: turretTemplate\n\nclass: CustomUnitMetadata\nprice:5\nmaxHp:500\nmass: 9000\n\n#多语言\ndisplayText: turretT1\ndisplayDescription: -Machine gun tower demonstration template, please refer to ini.\n\n#footprint used for collisions with units (left, up, right, down)\nfootprint: 0,0,1,1\n#used for placement, and placement of other buildings\nconstructionFootprint:0,0,1,1\n\nbuildingToFootprintOffsetX:20\nbuildingToFootprintOffsetY:20\n\ntechLevel: 1\n\nradius: 16\nbuildingSelectionOffset: -8\n\nisBuilding: true\nisBio: false\n\n#升级例子，这里全部引用了原版二级。所以你如果不修改，它会升级这些。\n[action_upgrade_gun]\nconvertTo: c_turret_t2_gun\nprice:  1000\ntext: i:gui.actions.upgradeToGunT2\ndescription: -Increases HP, attack damage, and range\ndescriptionAddUnitStats: ${section.convertTo}\n\ndisplayType: Upgrade\nbuildSpeed: 0.001\n\niconExtraImage: SHARED:icon_upgrade_top.png\niconExtraColor: #AAFFFFFF\n\n[action_upgrade_artillery]\nconvertTo: c_turret_t1_artillery\nprice:  1600\ntext: i:gui.actions.upgradeToArtillery\ndescription: -Large increase in range\ndescriptionAddUnitStats: ${section.convertTo}\n\ndisplayType: Upgrade\nbuildSpeed: 0.0004\n\niconExtraImage: SHARED:icon_upgrade_top.png\niconExtraColor: #AAFFFFFF\n\n[action_upgrade_flame]\nconvertTo: c_turret_t2_flame\nprice:  700\ntext: i:gui.actions.upgradeToFlamethrower\ndescription: -Short range area affect\\n-Adds self-repair\ndescriptionAddUnitStats: ${section.convertTo}\n\ndisplayType: Upgrade\nbuildSpeed: 8.3s\n\niconExtraImage: SHARED:icon_upgrade_top.png\niconExtraColor: #AAFFFFFF\n\n[action_upgrade_lightning]\nconvertTo: c_turret_t1_lightning\nprice:  2200\ntext: i:gui.actions.upgradeToLightning\ndescription: i:units.turret_lightning.description\ndescriptionAddUnitStats: ${section.convertTo}\n\ndisplayType: Upgrade\nbuildSpeed: 29.0s\n\niconExtraImage: SHARED:icon_upgrade_top.png\niconExtraColor: #AAFFFFFF\n\n\n[graphics]\ntotal_frames: 1\n\nimage:        CORE:/turrets/turret_base.png\nimage_wreak:  CORE:/turrets/turret_base_dead.png\nimage_turret: CORE:/turrets/turret_top.png\n\n#scaleImagesTo: 20\n#scaleTurretImagesTo: 9\n\n#AUTO\nimage_shadow: NONE\nshadowOffsetX:1\nshadowOffsetY:1\n\n\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: false\ncanAttackLandUnits:   true\ncanAttackUnderwaterUnits: false\n\nturretSize: 22\nturretTurnSpeed: 6\n\n\nmaxAttackRange: 165\nshootDelay: 30\n\n\n\n[turret_1]\n\nx: 0\ny: 6\n\n\nshoot_sound:firing3\nshoot_sound_vol:0.3\nshoot_flame:small\nshoot_light:#FFEECCCC\n\n\n\n\n#idleSpin: 0.8\n\nidleSweepAngle:20\nidleSweepDelay:210\nidleSweepSpeed:0.2\n\n\nrecoilOffset: -0.5\nrecoilOutTime: 6\nrecoilReturnTime: 12\n\n\n[projectile_1]\ndirectDamage: 41\nlife: 240\nspeed: 6\n#ballistic: true\n#ballistic_delaymove_height:0\n#ballistic_height: 4\nframe: 1\n#areaDamage: 40\n#areaRadius: 35\n\n[movement]\nmovementType: NONE\nmoveSpeed: 0\nmaxTurnSpeed: 0",
+    "language": "ALL",
+    "icon": "/icon.png",
+    "attachFile": [
+        "/resource/unit.png",
+        "/resource/unit_die.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_zh_TW": "名稱",
+            "name_en": "name",
+            "name_ja": "名前",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW": "血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_zh_TW": "價格",
+            "name_ja": "価格",
+            "name_en": "price",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        }
+    ]
 }

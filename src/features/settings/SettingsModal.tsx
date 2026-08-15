@@ -41,7 +41,7 @@ export function SettingsModal() {
   const downloadUpdate = useWorkspaceStore((s) => s.downloadUpdate)
   const installUpdate = useWorkspaceStore((s) => s.installUpdate)
   const version = useWorkspaceStore((s) => s.version)
-  const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'avatar' | 'game' | 'about'>('appearance')
+  const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'avatar' | 'game' | 'coming' | 'about'>('appearance')
   const [aiCheck, setAiCheck] = useState<string | null>(null)
   const [aiChecking, setAiChecking] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
@@ -253,6 +253,7 @@ export function SettingsModal() {
           <SettingNavItem active={tab === 'ai'} onClick={() => switchTab('ai')} icon={<AppIcon name="sparkle" size={14} />} label="AI" />
           <SettingNavItem active={tab === 'avatar'} onClick={() => switchTab('avatar')} icon={<AppIcon name="avatar" size={14} />} label="头像" />
           <SettingNavItem active={tab === 'game'} onClick={() => switchTab('game')} icon={<AppIcon name="tower" size={14} />} label="游戏" />
+          <SettingNavItem active={tab === 'coming'} onClick={() => switchTab('coming')} icon={<AppIcon name="clock" size={14} />} label="计划中" />
           <SettingNavItem active={tab === 'about'} onClick={() => switchTab('about')} icon={<AppIcon name="info" size={14} />} label="关于" />
         </nav>
 
@@ -793,6 +794,33 @@ export function SettingsModal() {
           )}
 
           {tab === 'game' && <GameSettingsTab />}
+
+          {tab === 'coming' && (
+            <div className="setting-section">
+              <div className="setting-title">计划中（即将上线）</div>
+              <div className="desc" style={{ marginBottom: 12 }}>
+                以下功能正在规划与开发中，上线后入口将在这里开放：
+              </div>
+              {[
+                { icon: 'share' as const, name: '手机版 · 随身编辑', desc: '手机端本地模组编辑器，模板/检查/AI 随身带' },
+                { icon: 'cloud' as const, name: '云书包 · 多端同步', desc: '同一账号下手机与电脑接力同一份模组' },
+                { icon: 'sparkle' as const, name: '社区 AI', desc: '免配置的多模型 AI 服务，无需自己填 Key' },
+                { icon: 'lock' as const, name: '模组加密', desc: '服务器端加密保护，防解包与盗用' },
+                { icon: 'box' as const, name: '模板市场', desc: '社区模板浏览与一键下载' },
+              ].map((f) => (
+                <div key={f.name} className="setting-row">
+                  <span className="label">
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <AppIcon name={f.icon} size={13} />
+                      {f.name}
+                    </span>
+                    <div className="desc">{f.desc}</div>
+                  </span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>规划中</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {tab === 'about' && (
             <div className="setting-section">

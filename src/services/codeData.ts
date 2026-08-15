@@ -86,6 +86,16 @@ let officialUnits: OfficialUnitInfo[] = []
 let gameVersions: GameVersionInfo[] = []
 const enToZhDict = new Map<string, string>()
 const zhToEnDict = new Map<string, string>()
+/** 键名回译表（code.json 译名 → 键名）：键位置回译优先查。
+ * 键译名可能被节名/旧词条译名撞车覆盖（曾出现虚构节 prices 把「价格」→price
+ * 覆盖成 prices，导致中文键「价格」被 checkKeyTypos 误报「不在代码表中」；
+ * 知识包旧数据同样可能带坏数据）。键位置回译（lint/补全/质检/版本差异）
+ * 需要得到代码表里存在的键，先查本表保证命中；查不到再回落通用词典。 */
+const keyZhToEnDict = new Map<string, string>()
+/** 节名回译表（section.json 译名 → 节名）：节名位置回译（sectionEnName）优先查。
+ * 节名译名与代码表键译名可能撞车（炮塔→节 turret vs 键 c_turret_t1）——
+ * 节位置必须得到节名，与键位置的 keyZhToEnDict 分开，互不覆盖。 */
+const sectionZhToEnDict = new Map<string, string>()
 
 /** 已初始化的数据（未加载前为空） */
 export function dataReady(): boolean {
@@ -176,6 +186,8 @@ export function loadCodeData(): Promise<void> {
         // 字段，翻译却认得它」的不一致
         enToZhDict.clear()
         zhToEnDict.clear()
+        keyZhToEnDict.clear()
+        sectionZhToEnDict.clear()
         // 翻译词典构建顺序：先并入补充词条（translations.json），
         // 再并入主数据（code.json / section.json）——主数据优先，
         // 防止补充词条里的垃圾值覆盖正确翻译。
@@ -191,13 +203,18 @@ export function loadCodeData(): Promise<void> {
           if (c.code && c.translate) {
             enToZhDict.set(c.code.toLowerCase(), c.translate)
             zhToEnDict.set(c.translate, c.code.toLowerCase())
+            keyZhToEnDict.set(c.translate, c.code.toLowerCase())
           }
         }
-        // 节名（[core]→[核心] 等）必须进词典，否则中文模式下节头不翻译
+        // 节名（[core]→[核心] 等）必须进词典，否则中文模式下节头不翻译。
+        // 节名译名无条件覆盖（节头回译需要节名优先：炮塔→turret 而非代码表键
+        // c_turret_t1）；键位置回译先查 keyZhToEnDict（键名表，见上），查不到才
+        // 回落通用词典（此时得到节名/旧词条译名，如「核心」当键用→core）。
         for (const s of sections) {
           if (s.code && s.translate) {
             enToZhDict.set(s.code.toLowerCase(), s.translate)
             zhToEnDict.set(s.translate, s.code.toLowerCase())
+            sectionZhToEnDict.set(s.translate, s.code.toLowerCase())
           }
         }
         vocabulary = vocab
@@ -249,6 +266,16 @@ export function getEnToZhDict(): Map<string, string> {
 /** 获取中文→英文词典快照 */
 export function getZhToEnDict(): Map<string, string> {
   return zhToEnDict
+}
+
+/** 获取键名回译表快照（键位置回译优先查：见 keyZhToEnDict 注释） */
+export function getKeyZhToEnDict(): Map<string, string> {
+  return keyZhToEnDict
+}
+
+/** 获取节名回译表快照（节名位置回译优先查：见 sectionZhToEnDict 注释） */
+export function getSectionZhToEnDict(): Map<string, string> {
+  return sectionZhToEnDict
 }
 
 /** 中文键分段回译（建造自_1_名称 → builtFrom_1_name）：

@@ -31,8 +31,18 @@ export interface SemanticCheckContext {
   findType?: (type: string) => ValueTypeInfo | undefined
   /** 中文显示层回译（中文键/值 → 英文） */
   zhToEn?: (key: string) => string | undefined
+  /** 键名位置回译（键名译名表优先，回落 zhToEn）：键名与节名译名可能撞车
+   * （炮塔→键 c_turret_t1 vs 节 turret），键位置（checkKeyTypos 等）查代码表
+   * 需要键名；节名位置一律走 sectionEnName（内部节名表），不受本字段影响。
+   * 预留字段：当前生产注入走 key-first 的 zhToEn（rustLintExtension 等），
+   * checkKeyTypos 用 `keyZhToEn ?? zhToEn` 惰性回落，未来可显式接线 */
+  keyZhToEn?: (key: string) => string | undefined
   /** 项目内单位名集合（危险引用/action 引用检查用；缺省跳过引用类检查） */
   unitNames?: ReadonlySet<string>
+  /** 项目内全部 [projectile_*] 弹体节名集合（跨文件弹体引用检查用；缺省只查本文件） */
+  projectProjectiles?: ReadonlySet<string>
+  /** 当前文件路径/文件名（checkFile 区分 .template 模板文件用；缺省按单位文件处理） */
+  file?: string
   /** 代码表全部英文键（键名拼写检查的候选池；缺省跳过拼写检查） */
   codes?: readonly string[]
   /** 当前项目目标游戏版本号（版本兼容检查用；缺省 = 最新版本） */

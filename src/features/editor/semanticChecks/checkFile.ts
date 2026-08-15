@@ -5,6 +5,8 @@
  * 官方单位为小驼峰，含空格会导致引用失效）。
  * 非单位文件（mod-info.txt、地图等）没有 [core] 时不报——只有文件里出现
  * 任意已知单位节（core/graphics/movement）时才要求 core 完整。
+ * .template 是模板源文件（引擎只加载 .ini；.template 仅在 copyFrom 引用时
+ * 生效，ag.java:3760 目录扫描只认 endsWith(".ini")），不要求 [core]/name。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
 import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey } from './helpers'
@@ -19,6 +21,8 @@ export const checkFile: SemanticChecker = {
   defaultOn: true,
   check(content, ctx) {
     const issues: SemanticIssue[] = []
+    // .template 模板源文件不要求 [core]/name（引擎不加载 .template 为单位）
+    if (ctx?.file && /\.template$/i.test(ctx.file)) return issues
     const { sections } = getIni(ctx, content)
     const zhToEn = ctx?.zhToEn
     if (sections.length === 0) return issues // 空文件/纯注释：不打扰

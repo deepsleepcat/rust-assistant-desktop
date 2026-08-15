@@ -34,10 +34,10 @@
     {
       "name": "布尔值",
       "type": "boolean",
-      "rule": "true|false",
+      "rule": "true|false|1|0",
       "external": ":",
       "offset": "",
-      "list": "true,false",
+      "list": "true,false,1,0",
       "tag": "",
       "describe": "布尔值又叫逻辑值，只能设置为“真”或“假”。"
     },
@@ -94,7 +94,7 @@
     {
       "name": "资源",
       "type": "resource",
-      "rule": ".+=-?\\d+|-?\\d+",
+      "rule": ".+[=:]-?\\d+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?",
       "external": ":",
       "offset": "",
       "list": "",
@@ -104,7 +104,7 @@
     {
       "name": "浮点值",
       "type": "float",
-      "rule": "^\\$\\{[^.]+\\.?[^.]+\\}|^-?\\d+\\.?\\d*",
+      "rule": "^\\$\\{[^.]+\\.?[^.]+}|^-?\\d+\\.?\\d*s?",
       "external": ":",
       "offset": "",
       "list": "",
@@ -244,10 +244,10 @@
     {
       "name": "效果",
       "type": "effect",
-      "rule": "[nN][oO][nN][eE]|[cC][uU][sS][tT][oO][mM]:.+",
+      "rule": "",
       "external": ":",
       "offset": "",
-      "list": "@section(effect)",
+      "list": "",
       "tag": "@section(effect)",
       "describe": "引用效果，可以是NONE(无)。"
     },
@@ -687,17 +687,17 @@
       "offset": "",
       "list": "created,completeAndActive,destroyed,killedAnyUnit,queuedUnitFinished,queueItemAdded(withActionTag=\"#\"),queueItemCancelled(withActionTag=\"#\"),teleported,touchTargetSuccess,newWaypointGivenByPlayer,teamChanged,transportingNewUnit,transportUnloadedOrRemovedUnit,tookDamage(withTag=\"#\"),newMessage(withTag=\"#\"),enteredTransport,leftTransport,attachmentRemoved",
       "tag": "",
-      "describe": "created、completeAndActive、destroyed、killedAnyUnit、queuedUnitFinished、queueItemAdded(withActionTag=\"#\")、queueItemCancelled(withActionTag=\"#\")、teleported"
+      "describe": "created,completeAndActive,destroyed,killedAnyUnit,queuedUnitFinished,queueItemAdded(withActionTag=\"#\"),queueItemCancelled(withActionTag=\"#\"),teleported,touchTargetSuccess,newWaypointGivenByPlayer,teamChanged,transportingNewUnit,transportUnloadedOrRemovedUnit,tookDamage(withTag=\"#\"),newMessage(withTag=\"#\"),enteredTransport,leftTransport,attachmentRemoved"
     },
     {
       "name": "bool",
       "type": "bool",
-      "rule": "",
+      "rule": "true|false|1|0",
       "external": "",
       "offset": "",
-      "list": "true,false",
+      "list": "true,false,1,0",
       "tag": "",
-      "describe": "true、false"
+      "describe": "true、false、1、0（引擎 Boolean 读取器对 true/false/1/0 大小写不敏感）"
     },
     {
       "name": "convertTo_keepCurrentFields",
@@ -732,12 +732,12 @@
     {
       "name": "drawType",
       "type": "drawType",
-      "rule": "",
+      "rule": "-?\\d+|normal|displacement",
       "external": "",
       "offset": "",
-      "list": "normal,displacement",
+      "list": "0,1,normal,displacement",
       "tag": "",
-      "describe": "normal、displacement"
+      "describe": "normal、displacement、0、1（0:projectiles.png 1:projectiles_large.png）"
     },
     {
       "name": "fireTurretXAtGround_onlyOverPassableTileOf",
@@ -745,9 +745,9 @@
       "rule": "",
       "external": "",
       "offset": "",
-      "list": "NONE,BUILDING,LAND,HOVER,AIR,OVER_CLIFF,OVER_WATER_CLIFF",
+      "list": "NONE,BUILDING,LAND,HOVER,AIR,OVER_CLIFF,OVER_CLIFF_WATER",
       "tag": "",
-      "describe": "NONE、BUILDING、LAND、HOVER、AIR、OVER_CLIFF、OVER_WATER_CLIFF"
+      "describe": "NONE、BUILDING、LAND、HOVER、AIR、OVER_CLIFF、OVER_CLIFF_WATER"
     },
     {
       "name": "layer",
@@ -835,9 +835,9 @@
       "rule": "",
       "external": "",
       "offset": "",
-      "list": "NONE,BUILDING,LAND,HOVER,AIR,OVER_CLIFF,OVER_WATER_CLIFF",
+      "list": "NONE,BUILDING,LAND,HOVER,AIR,OVER_CLIFF,OVER_CLIFF_WATER",
       "tag": "",
-      "describe": "NONE、BUILDING、LAND、HOVER、AIR、OVER_CLIFF、OVER_WATER_CLIFF"
+      "describe": "NONE、BUILDING、LAND、HOVER、AIR、OVER_CLIFF、OVER_CLIFF_WATER"
     },
     {
       "name": "whenBuilding_temporarilyConvertTo_keepFields",

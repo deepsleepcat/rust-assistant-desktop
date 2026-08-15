@@ -208,3 +208,152 @@ describe('M13 多值类型 OR 语义（float,logicBoolean）', () => {
     expect(validateValue('selfBuildRate', 'abc', multiData)).not.toBeNull()
   })
 })
+
+describe('M28 真实模组对齐（引擎源码实证）', () => {
+  /** 枚举类类型（value_type.json 形态：rule 空 + list 逗号分隔字符串） */
+  const enumData = {
+    findCode: (k: string) => {
+      const map: Record<string, { type: string }> = {
+        autoTriggerOnEvent: { type: 'autoTriggerOnEvent' },
+        drawType: { type: 'drawType' },
+        trailEffect: { type: 'effect' },
+        spawnUnits: { type: 'spawnUnits' },
+        imageScale: { type: 'float' },
+        alpha: { type: 'float,logicBoolean' },
+        invisible: { type: 'boolean' },
+        addResources: { type: 'resource' },
+      }
+      return map[k]
+    },
+    findType: (t: string) => {
+      const types: Record<string, ValueTypeInfo> = {
+        ...TYPE_RULES,
+        autoTriggerOnEvent: {
+          name: '自动触发事件', type: 'autoTriggerOnEvent', rule: '',
+          list: 'created,completeAndActive,destroyed,killedAnyUnit,queuedUnitFinished,queueItemAdded(withActionTag="#"),queueItemCancelled(withActionTag="#"),teleported,touchTargetSuccess,newWaypointGivenByPlayer,teamChanged,transportingNewUnit,transportUnloadedOrRemovedUnit,tookDamage(withTag="#"),newMessage(withTag="#"),enteredTransport,leftTransport,attachmentRemoved',
+        },
+        drawType: { name: '绘制类型', type: 'drawType', rule: '-?\\d+|normal|displacement', list: '0,1,normal,displacement' },
+        effect: { name: '效果', type: 'effect', rule: '', list: '' },
+        spawnUnits: {
+          name: '动作产生单位', type: 'spawnUnits', rule: '',
+          list: 'neutralTeam,setToTeamOfLastAttacker,spawnChance,maxSpawnLimit,gridAlign,skipIfOverlapping,offsetX,offsetY,offsetRandomX,offsetRandomY,offsetRandomDir,addResources,spawnSource,techLevel,alwayStartDirAtZero,transportedUnitsToTransfer,copyWaypointsFrom,falling,offsetHeight,offsetDir,offsetRandomXY,aggressiveTeam,alwaysStartDirAtZero',
+        },
+        resource: { name: '资源', type: 'resource', rule: '.+[=:]-?\\d+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?' },
+      }
+      return types[t]
+    },
+  }
+
+  it('枚举类类型用 list 校验（引擎 ae.java 枚举 equalsIgnoreCase 匹配；列表条目自身可带参数示例）', () => {
+    expect(validateValue('autoTriggerOnEvent', 'created', enumData)).toBeNull()
+    expect(validateValue('autoTriggerOnEvent', 'tookDamage', enumData)).toBeNull() // 真实模组
+    expect(validateValue('autoTriggerOnEvent', 'newMessage(withTag="工程虫")', enumData)).toBeNull() // 带参数
+    expect(validateValue('autoTriggerOnEvent', 'QUEUEITEMADDED', enumData)).toBeNull() // 大小写不敏感
+    expect(validateValue('autoTriggerOnEvent', 'notAnEvent', enumData)).not.toBeNull()
+  })
+
+  it('drawType 双形态：数字（ca.java Short 读取）与枚举（br.java 字符串）', () => {
+    expect(validateValue('drawType', '0', enumData)).toBeNull()
+    expect(validateValue('drawType', 'displacement', enumData)).toBeNull()
+    expect(validateValue('drawType', 'bogus', enumData)).not.toBeNull()
+  })
+
+  it('effect 类型无约束放行（值 = 任意效果节名）', () => {
+    expect(validateValue('trailEffect', '波', enumData)).toBeNull() // 真实模组
+    expect(validateValue('trailEffect', 'CUSTOM:光', enumData)).toBeNull()
+    expect(validateValue('trailEffect', 'wj', enumData)).toBeNull()
+  })
+
+  it('spawnUnits 结构校验：单位名(参数) / *数量 / 嵌套函数调用参数', () => {
+    expect(validateValue('spawnUnits', '开馈赠(spawnChance=0.2,maxSpawnLimit=1)', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', '色幕(addResources=setFlag:1,offsetX=4200,alwayStartDirAtZero=true)', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', '原生-兵卵*1(spawnChance=0.1,maxSpawnLimit=1,offsetX=-30)', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', '中立视野副本(spawnSource=createMarker(x=self.x(), y=self.y(), teamId=thisActionTarget.teamId()))', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', 'sy(spawnChance=0.51,offsetRandomX=200,offsetRandomY=200,offsetRandomDir=360)', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', '色幕', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', '单位(未知参数=1)', enumData)).not.toBeNull()
+    expect(validateValue('spawnUnits', '单位(offsetX)', enumData)).not.toBeNull()
+  })
+
+  it('float 时间后缀与算术表达式（引擎 time 读取：数字 + 可选 s）', () => {
+    expect(validateValue('imageScale', '0.5', enumData)).toBeNull()
+    expect(validateValue('imageScale', '1/2', enumData)).toBeNull() // 算术表达式（星球文件）
+    expect(validateValue('imageScale', '1/5-0.01', enumData)).toBeNull()
+    expect(validateValue('alpha', 'memory.time', enumData)).toBeNull() // 逻辑变量引用
+    expect(validateValue('imageScale', 'abc', enumData)).not.toBeNull()
+  })
+
+  it('boolean 接受引擎 0/1（ae.java:622-635 equalsIgnoreCase）', () => {
+    const boolData = {
+      ...enumData,
+      findType: (t: string) => (t === 'boolean' ? { name: '布尔', type: 'boolean', rule: 'true|false|1|0' } : enumData.findType(t)),
+    }
+    expect(validateValue('invisible', '0', boolData)).toBeNull()
+    expect(validateValue('invisible', '1', boolData)).toBeNull()
+    expect(validateValue('invisible', 'true', boolData)).toBeNull()
+  })
+
+  it('resource 值分隔符 = 与 : 都合法（真实模组 addResources:hp:-1000 / energy=0.505）', () => {
+    expect(validateValue('addResources', 'hp=-1000', enumData)).toBeNull()
+    expect(validateValue('addResources', 'hp:-1000', enumData)).toBeNull()
+    expect(validateValue('addResources', 'energy=0.505', enumData)).toBeNull()
+    expect(validateValue('addResources', '加速时间=1', enumData)).toBeNull() // 中文资源名
+  })
+
+  it('三引号多行字符串起始行放行（引擎 """ 语法）', () => {
+    expect(validateValue('addResources', '"""', enumData)).toBeNull()
+  })
+})
+
+describe('M28 审查修正回归（引擎语义实证）', () => {
+  const boolData = {
+    findCode: (k: string) => ({ unloadInCurrentPosition: { type: 'bool' }, autoTriggerOnEvent: { type: 'autoTriggerOnEvent' }, addResources: { type: 'resource' } } as Record<string, { type: string }>)[k],
+    findType: (t: string) => {
+      const types: Record<string, ValueTypeInfo> = {
+        bool: { name: '布尔', type: 'bool', rule: 'true|false|1|0', list: 'true,false,1,0' },
+        autoTriggerOnEvent: {
+          name: '自动触发事件', type: 'autoTriggerOnEvent', rule: '',
+          list: 'created,completeAndActive,destroyed,killedAnyUnit,queuedUnitFinished,queueItemAdded(withActionTag="#"),queueItemCancelled(withActionTag="#"),teleported,touchTargetSuccess,newWaypointGivenByPlayer,teamChanged,transportingNewUnit,transportUnloadedOrRemovedUnit,tookDamage(withTag="#"),newMessage(withTag="#"),enteredTransport,leftTransport,attachmentRemoved',
+        },
+        resource: { name: '资源', type: 'resource', rule: '.+[=:]-?\\d+(?:\\.\\d+)?|-?\\d+(?:\\.\\d+)?' },
+      }
+      return types[t]
+    },
+  }
+
+  it('bool 类型接受引擎 0/1（ae.java Boolean 读取器 true/false/1/0 大小写不敏感）', () => {
+    expect(validateValue('unloadInCurrentPosition', '0', boolData)).toBeNull()
+    expect(validateValue('unloadInCurrentPosition', '1', boolData)).toBeNull()
+    expect(validateValue('unloadInCurrentPosition', 'True', boolData)).toBeNull()
+    expect(validateValue('unloadInCurrentPosition', 'abc', boolData)).not.toBeNull()
+  })
+
+  it('autoTriggerOnEvent 支持逗号多事件（ag.java:2513 括号感知分段）', () => {
+    expect(validateValue('autoTriggerOnEvent', 'created,completeAndActive', boolData)).toBeNull()
+    expect(validateValue('autoTriggerOnEvent', 'newMessage(withTag="a,b"),teamChanged', boolData)).toBeNull()
+    expect(validateValue('autoTriggerOnEvent', 'created,bogus', boolData)).not.toBeNull()
+  })
+
+  it('resource 竖线分隔（引擎 d.b.a 按 , 或 | 分段）', () => {
+    expect(validateValue('addResources', '500|100', boolData)).toBeNull()
+    expect(validateValue('addResources', '矿=500|100', boolData)).toBeNull()
+  })
+
+  it('lintIniText：三引号多行字符串内行不参与键值校验（描述文本含 key: value 不误报）', () => {
+    const content = `[core]\nname: x\ntext: """\nmaxHp: abc\n就是这样\n"""\n`
+    expect(lintIniText(content, data)).toEqual([])
+    // 串外同样的行仍报错（状态正确退出）
+    const after = `[core]\nname: x\ntext: """\nmaxHp: abc\n"""\nmaxHp: abc\n`
+    const diags = lintIniText(after, data)
+    expect(diags.length).toBe(1)
+    expect(diags[0].severity).toBe('error')
+  })
+
+  it('lintIniText：三引号同行开闭（key: """x"""）不吞后续行', () => {
+    const content = `[core]\nname: x\nmaxHp: 100\ntext: """单行"""\nmaxHp: abc\n`
+    const diags = lintIniText(content, data)
+    // 只有串外的 maxHp 报错；text 行不进入多行串状态（否则后续 maxHp 被吞、无诊断）
+    expect(diags.length).toBe(1)
+    expect(diags[0].message).toContain('maxHp')
+  })
+})

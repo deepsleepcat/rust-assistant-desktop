@@ -316,13 +316,14 @@ export interface PreflightResult {
   issues: PreflightIssue[]
 }
 
-/** ini 里引用资源文件的键（小写；值可能是逗号分隔或 CUSTOM: 前缀） */
+/** ini 里引用资源文件的键（小写；值可能是逗号分隔或 CUSTOM: 前缀。
+ * 引擎无 minimapIcon/icon 键（小地图图标由引擎自动找 icon.png 文件），不列入） */
 const RESOURCE_REF_KEYS = new Set([
   'image', 'image_wreak', 'image_turret', 'image_shadow', 'image_foot_shadow', 'image_end_shadow',
-  'beamimage', 'beamimageend', 'beamimagestart', 'minimapicon', 'icon',
+  'beamimage', 'beamimageend', 'beamimagestart',
 ])
-/** 非文件引用的值（放行） */
-const RESOURCE_SKIP_VALUES = new Set(['none', 'auto', 'shared'])
+/** 非文件引用的值（放行；引擎 image_shadow 支持 NONE/AUTO/AUTO_ANIMATED） */
+const RESOURCE_SKIP_VALUES = new Set(['none', 'auto', 'auto_animated', 'shared'])
 
 /**
  * 运行前检查清单（主进程文件级）：
@@ -382,10 +383,10 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
         if (!ref) continue
         const lower = ref.toLowerCase()
         if (RESOURCE_SKIP_VALUES.has(lower)) continue
-        // SHARED: 前缀 = 游戏共享资源（不检查存在性）；CUSTOM:/ROOT: = 项目内引用（剥前缀）
+        // SHARED: 前缀 = 游戏共享资源（不检查存在性）；CUSTOM:/ROOT:/SHADOW: = 项目内引用（剥前缀）
         if (lower.startsWith('shared:')) continue
         const rootBased = /^ROOT:/i.test(ref)
-        ref = ref.replace(/^CUSTOM:/i, '').replace(/^ROOT:/i, '')
+        ref = ref.replace(/^CUSTOM:/i, '').replace(/^ROOT:/i, '').replace(/^SHADOW:/i, '')
         if (!ref) continue
         // 多帧引用（a.png;b.png）逐帧检查；帧语法（frame_1.png:延迟）剥冒号后缀
         for (let frame of ref.split(';')) {

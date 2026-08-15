@@ -383,6 +383,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
               rootPath={project?.rootPath}
               semanticCheckers={semanticCheckers}
               targetVersionName={targetVersionName}
+              fileName={tab.path}
             />
           ) : (
             <MapViewer path={tab.path} rootPath={project.rootPath} />
