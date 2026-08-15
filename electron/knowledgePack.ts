@@ -159,7 +159,14 @@ export interface KnowledgePackApi {
 
 /** 带超时 + 流式字节上限的拉取（防失联源永久挂起、恶意源撑爆内存） */
 async function fetchLimited(url: string, maxBytes: number, timeoutMs: number): Promise<Buffer> {
-  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+  let res: Response
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+  } catch (err) {
+    // AbortSignal.timeout 中止抛 DOMException（英文）；转成可读提示（保留原因为排查留痕）
+    if (err instanceof Error && err.name === 'TimeoutError') throw new Error('连接超时，已中止（检查网络或数据源地址）', { cause: err })
+    throw err
+  }
   if (!res.ok) throw new Error(`下载失败：HTTP ${res.status}`)
   if (!res.body) {
     // 无流式体（极端情况）：退化为全量读取后校验
@@ -251,15 +258,20 @@ export function createKnowledgePack(packDir: string, builtinDir: string): Knowle
     }
   }
 
-  /** 清理：保留最新 2 个版本目录 + 删除 manifest 损坏的孤儿目录 */
+  /** 清理：保留最新 2 个版本目录 + 删除 manifest 损坏的孤儿目录 + 崩溃残留的 .pending 半成品 */
   async function cleanupOldDirs(): Promise<void> {
     try {
       const entries = await fs.readdir(packDir, { withFileTypes: true })
       const valid: Array<{ dir: string; version: string }> = []
       const orphans: string[] = []
       for (const e of entries) {
-        if (!e.isDirectory() || !e.name.startsWith('v')) continue
+        if (!e.isDirectory()) continue
         const full = path.join(packDir, e.name)
+        if (!e.name.startsWith('v')) {
+          // .pending-* 等非版本目录 = 上次更新中途崩溃的残留，直接清理
+          if (e.name.startsWith('.pending')) orphans.push(full)
+          continue
+        }
         const m = await readManifest(full)
         if (m) valid.push({ dir: full, version: m.version })
         else orphans.push(full) // 无有效清单 = 不可用数据（可能半成品），删除
@@ -311,7 +323,12 @@ export function createKnowledgePack(packDir: string, builtinDir: string): Knowle
     const err = validateSourceUrl(sourceUrl)
     if (err) throw new Error(err)
     const buf = await fetchLimited(`${sourceUrl}/manifest.json`, MAX_MANIFEST_BYTES, MANIFEST_TIMEOUT_MS)
-    const manifest = JSON.parse(buf.toString('utf8')) as { version?: unknown; files?: unknown }
+    let manifest: { version?: unknown; files?: unknown }
+    try {
+      manifest = JSON.parse(buf.toString('utf8')) as { version?: unknown; files?: unknown }
+    } catch {
+      throw new Error('清单不是合法 JSON（数据源地址可能不对，或该地址不是知识包仓库）')
+    }
     if (typeof manifest.version !== 'string' || !manifest.version) throw new Error('清单缺少 version')
     if (!Array.isArray(manifest.files)) throw new Error('清单缺少 files 列表')
     const files: KnowledgeManifestFile[] = []
