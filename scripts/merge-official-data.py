@@ -17,13 +17,21 @@ CODE_JSON = ROOT / "public" / "data" / "code.json"
 TRANS_JSON = ROOT / "public" / "data" / "translations.json"
 
 
+def _under_root(p: Path) -> Path:
+    """解析并校验路径必须在项目根内（防误写项目外文件）"""
+    rp = p.resolve()
+    if not str(rp).startswith(str(ROOT.resolve())):
+        raise SystemExit(f"路径越出项目根目录: {p}")
+    return rp
+
+
 def main():
     sections_dir = OFFICIAL / "data" / "sections"
     zh_dir = OFFICIAL / "translation" / "zh-cn"
 
-    with open(CODE_JSON, encoding="utf-8") as fh:
+    with open(_under_root(CODE_JSON), encoding="utf-8") as fh:
         codes = json.load(fh)
-    with open(TRANS_JSON, encoding="utf-8") as fh:
+    with open(_under_root(TRANS_JSON), encoding="utf-8") as fh:
         trans = json.load(fh)
 
     existing_codes = {c.get("code") for c in codes.get("data", [])}
@@ -64,8 +72,8 @@ def main():
         deduped.append(p)
 
     trans["words"].extend(deduped)
-    with open(TRANS_JSON, "w", encoding="utf-8") as fh:
-        json.dump(trans, fh, ensure_ascii=False, indent=1)
+    # 写回数据：路径先经 _under_root 边界校验（必须在项目根内）
+    _under_root(TRANS_JSON).write_text(json.dumps(trans, ensure_ascii=False, indent=1), encoding="utf-8")
 
     print(f"追加缺失翻译 {len(deduped)} 条（跳过无中文 {skipped} 条）")
     print(f"translations.json 现共 {len(trans['words'])} 条")

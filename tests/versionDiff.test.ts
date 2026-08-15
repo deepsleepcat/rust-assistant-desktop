@@ -20,7 +20,9 @@ function stubFetchFromDisk() {
     'fetch',
     vi.fn(async (url: string) => {
       const rel = String(url).replace(/^\.?\//, '')
-      const file = path.join(DATA_DIR, rel.replace(/^data\//, ''))
+      // 测试夹具：resolve 后做根目录边界校验（防 ../ 越出数据目录）
+      const file = path.resolve(DATA_DIR, rel.replace(/^data\//, ''))
+      if (file !== DATA_DIR && !file.startsWith(DATA_DIR + path.sep)) throw new Error('测试夹具：路径越出数据目录')
       const content = fs.readFileSync(file, 'utf8')
       return { ok: true, status: 200, json: async () => JSON.parse(content) } as unknown as Response
     }),

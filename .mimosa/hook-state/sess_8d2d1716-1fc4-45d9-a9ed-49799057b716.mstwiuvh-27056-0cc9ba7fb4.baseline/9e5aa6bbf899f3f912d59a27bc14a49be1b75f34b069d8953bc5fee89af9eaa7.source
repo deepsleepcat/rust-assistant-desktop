@@ -1,0 +1,6 @@
+"use strict";
+/**
+ * 领域模型：项目、文件、对话、设置的数据结构。
+ * 这些类型是「整个应用的地基」，界面、存储、未来的 AI 接入都围绕它们展开。
+ */
+Object.defineProperty(exports, "__esModule", { value: true });

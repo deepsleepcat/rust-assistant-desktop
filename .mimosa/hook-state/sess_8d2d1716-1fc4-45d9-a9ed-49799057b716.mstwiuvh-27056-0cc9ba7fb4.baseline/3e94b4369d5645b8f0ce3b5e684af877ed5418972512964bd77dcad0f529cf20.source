@@ -1,0 +1,109 @@
+import React from 'react'
+import { AbsoluteFill, Audio, Img, Sequence, interpolate, staticFile, useCurrentFrame } from 'remotion'
+
+type Props = { bgm?: boolean }
+
+const C = {
+  ink: '#111318',
+  muted: '#64707d',
+  border: '#dfe3e8',
+  panel: '#ffffff',
+  app: '#f4f6f8',
+  blue: '#1a73e8',
+  green: '#188038',
+  graphite: '#11151a',
+  graphite2: '#202932',
+}
+
+const shots = {
+  task: { from: 0, duration: 120 },
+  project: { from: 120, duration: 180 },
+  editor: { from: 300, duration: 210 },
+  ai: { from: 510, duration: 180 },
+  tools: { from: 690, duration: 180 },
+  ship: { from: 870, duration: 180 },
+  finale: { from: 1050, duration: 210 },
+}
+
+const ease = (f: number, start: number, end: number) => interpolate(f, [start, end], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+const appear = (f: number, start: number, length = 24) => interpolate(f, [start, start + length], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+
+function Caption({ children, dark = false }: { children: React.ReactNode; dark?: boolean }) {
+  return <div style={{ position: 'absolute', left: 112, bottom: 88, color: dark ? '#fff' : C.ink, fontFamily: 'Segoe UI, Microsoft YaHei UI, sans-serif', fontSize: 54, fontWeight: 650, letterSpacing: -1.5 }}>{children}</div>
+}
+
+function SmallLabel({ children, dark = false }: { children: React.ReactNode; dark?: boolean }) {
+  return <div style={{ color: dark ? '#aeb8c3' : C.muted, fontFamily: 'Cascadia Code, JetBrains Mono, monospace', fontSize: 18, letterSpacing: 2 }}>{children}</div>
+}
+
+function ProductLogo({ dark = false }: { dark?: boolean }) {
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 14, color: dark ? '#fff' : C.ink, fontFamily: 'Segoe UI, Microsoft YaHei UI, sans-serif', fontWeight: 650, fontSize: 26 }}><div style={{ width: 38, height: 38, border: `2px solid ${dark ? '#fff' : C.ink}`, borderRadius: 11, display: 'grid', placeItems: 'center', fontSize: 20 }}>R</div>铁锈助手</div>
+}
+
+function Shell({ children, zoom = 1 }: { children: React.ReactNode; zoom?: number }) {
+  return <div style={{ width: 1480, height: 780, transform: `scale(${zoom})`, transformOrigin: 'center', background: C.app, borderRadius: 14, overflow: 'hidden', boxShadow: '0 28px 90px rgba(0,0,0,.25)', border: `1px solid ${C.border}`, fontFamily: 'Segoe UI, Microsoft YaHei UI, sans-serif', color: C.ink }}>{children}</div>
+}
+
+function ShellTop() {
+  return <div style={{ height: 54, background: C.panel, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', padding: '0 20px', justifyContent: 'space-between' }}><ProductLogo /><div style={{ width: 280, height: 30, border: `1px solid ${C.border}`, borderRadius: 7, color: C.muted, display: 'flex', alignItems: 'center', padding: '0 12px', fontSize: 13 }}>搜索命令、打开项目… <span style={{ marginLeft: 'auto', border: `1px solid ${C.border}`, borderRadius: 4, padding: '2px 5px' }}>Ctrl K</span></div><div style={{ width: 28, height: 28, borderRadius: '50%', background: '#202932', color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12 }}>猫</div></div>
+}
+
+function ProjectPanel() {
+  return <div style={{ width: 285, borderRight: `1px solid ${C.border}`, background: '#fbfcfd', padding: 18 }}><div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 650, marginBottom: 18 }}>项目 <span style={{ color: C.muted }}>＋</span></div><div style={{ border: `1px solid #b9d4f7`, background: '#edf5ff', borderRadius: 8, padding: 12, marginBottom: 16 }}><div style={{ color: C.blue, fontWeight: 650 }}>ember-frontier</div><div style={{ color: C.muted, fontSize: 12, marginTop: 5 }}>模组项目 · 已打开</div></div><div style={{ color: C.muted, fontSize: 13, marginBottom: 12 }}>文件</div>{['📁 assets', '📁 units', '▾  mod-info.ini', '▾  rifle_unit.ini', '▸  flame_turret.ini'].map((x, i) => <div key={x} style={{ padding: '9px 8px', color: i === 3 ? C.blue : C.ink, fontFamily: i > 1 ? 'Cascadia Code, monospace' : 'inherit', fontSize: 14, borderRadius: 5, background: i === 3 ? '#e9f2ff' : 'transparent' }}>{x}</div>)}<div style={{ marginTop: 28, borderTop: `1px solid ${C.border}`, paddingTop: 18, color: C.muted, fontSize: 13 }}>模组工具</div><div style={{ padding: '9px 8px', color: C.ink }}>⌘ 代码表</div><div style={{ padding: '9px 8px', color: C.ink }}>◈ 单位库</div><div style={{ padding: '9px 8px', color: C.ink }}>⚙ 检查与打包</div></div>
+}
+
+function Editor({ mode = 'code' }: { mode?: 'code' | 'ai' }) {
+  const lines = ['[unit_rifle]', 'name: Ember Rifleman', 'price: 180', 'maxHp: 260', 'attackRange: 155', 'shootDelay: 32', 'canMove: true', 'reloadTime: 1.2', 'projectile: ember_round', '}', '', '# balance notes', '# ready for inspection'];
+  return <div style={{ flex: 1, background: C.panel }}><div style={{ height: 45, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 20, padding: '0 18px', fontSize: 13 }}><span style={{ color: C.blue, borderBottom: `2px solid ${C.blue}`, height: 45, display: 'flex', alignItems: 'center' }}>rifle_unit.ini</span><span style={{ color: C.muted }}>mod-info.ini</span><span style={{ color: C.muted }}>＋</span></div><div style={{ padding: '22px 28px', display: 'flex', gap: 18, fontFamily: 'Cascadia Code, JetBrains Mono, monospace', fontSize: 17, lineHeight: 1.75 }}><div style={{ color: '#aeb6c0', textAlign: 'right', userSelect: 'none' }}>{lines.map((_, i) => <div key={i}>{String(i + 1).padStart(2, '0')}</div>)}</div><div style={{ position: 'relative' }}>{lines.map((line, i) => <div key={i} style={{ background: i === 5 ? '#fff4d6' : 'transparent', color: line.startsWith('#') ? '#84909b' : line.includes(':') ? '#1b5e9e' : C.ink, padding: '0 8px' }}>{line || ' '}{i === 5 && <span style={{ display: 'inline-block', width: 2, height: 19, background: C.blue, marginLeft: 2, verticalAlign: '-3px' }} />}</div>)}<div style={{ position: 'absolute', left: 142, top: 170, width: 230, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 7, boxShadow: '0 10px 24px rgba(20,30,40,.14)', padding: 8, fontFamily: 'Segoe UI, sans-serif', fontSize: 12 }}><div style={{ color: C.blue, padding: '5px 7px', background: '#edf5ff', borderRadius: 4 }}>shootDelay: 32</div><div style={{ color: C.muted, padding: '5px 7px' }}>shootSound</div><div style={{ color: C.muted, padding: '5px 7px' }}>shoot_flame</div></div></div></div><div style={{ position: 'absolute', left: 420, bottom: 20, fontSize: 12, color: C.muted }}>Rust 配置 · 行 6，列 18 · 已格式化 · 已保存</div></div>
+}
+
+function Conversation() {
+  return <div style={{ width: 330, borderLeft: `1px solid ${C.border}`, background: '#fbfcfd', padding: 18 }}><div style={{ fontWeight: 650, marginBottom: 18 }}>AI 对话 <span style={{ float: 'right', color: C.muted }}>＋</span></div><div style={{ background: '#202932', color: '#fff', padding: 12, borderRadius: '12px 12px 3px 12px', marginBottom: 16, fontSize: 13, lineHeight: 1.5 }}>怎么让这支单位更适合前线推进？</div><div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: '3px 12px 12px 12px', padding: 12, fontSize: 13, lineHeight: 1.6 }}><div style={{ color: C.blue, fontWeight: 650, marginBottom: 8 }}>开发助手 · 分析中</div>我会先检查射程、生命值和装填时间，再给出一组可回滚的调整建议。<div style={{ marginTop: 10, borderLeft: `2px solid ${C.blue}`, paddingLeft: 10, color: C.muted }}>工具结果 · rifle_unit.ini<br/><span style={{ color: C.green }}>✓ 已生成修改建议</span></div></div><div style={{ position: 'absolute', bottom: 20, right: 22, fontSize: 10, color: C.muted }}>需配置 DeepSeek API Key</div></div>
+}
+
+function Workspace({ focus = 'all' }: { focus?: 'all' | 'editor' | 'ai' }) {
+  return <Shell zoom={0.94}><ShellTop /><div style={{ display: 'flex', height: 690, position: 'relative' }}><ProjectPanel /><Editor /><Conversation /></div><div style={{ height: 36, background: C.panel, borderTop: `1px solid ${C.border}`, padding: '0 20px', display: 'flex', alignItems: 'center', color: C.muted, fontSize: 12 }}>ember-frontier  ·  已打开　　Rust 配置　　行 6，列 18　　　　　　　　　　　　　Windows 桌面端</div></Shell>
+}
+
+function TaskCard({ f }: { f: number }) {
+  const p = ease(f, 8, 52)
+  return <AbsoluteFill style={{ background: C.graphite, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ position: 'absolute', inset: 70, border: '1px solid #35414c', borderRadius: 22 }} /><div style={{ width: 720, padding: 54, borderRadius: 18, background: 'linear-gradient(135deg,#27323b,#161d23)', border: '1px solid #53616e', boxShadow: '0 35px 100px rgba(0,0,0,.45)', transform: `translateY(${(1 - p) * 120}px) rotateX(${(1 - p) * 10}deg)`, opacity: p }}><SmallLabel dark>MOD WORKBENCH / 01</SmallLabel><div style={{ marginTop: 32, fontSize: 70, fontWeight: 650, letterSpacing: -3, lineHeight: 1.05 }}>把想法，<br />做成可玩的模组</div><div style={{ marginTop: 32, color: '#aeb8c3', fontSize: 20 }}>从一行配置，到一场战斗。</div><div style={{ marginTop: 44, height: 3, width: 100, background: C.blue, transform: `scaleX(${p})`, transformOrigin: 'left' }} /></div><div style={{ position: 'absolute', left: 112, top: 88 }}><ProductLogo dark /></div></AbsoluteFill>
+}
+
+function ProjectShot({ f }: { f: number }) { const p = ease(f, 10, 50); return <AbsoluteFill style={{ background: '#e8edf2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ opacity: p, transform: `translateY(${(1 - p) * 90}px)` }}><Workspace /></div><Caption>从项目结构开始</Caption><div style={{ position: 'absolute', top: 96, right: 112 }}><SmallLabel>01 / WORKSPACE</SmallLabel></div></AbsoluteFill> }
+function EditorShot({ f }: { f: number }) { const p = ease(f, 10, 50); return <AbsoluteFill style={{ background: '#dfe5eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ opacity: p, transform: `translateX(${(1 - p) * 100}px) scale(${0.95 + p * 0.05})` }}><Workspace /></div><div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg,rgba(223,229,235,.75),transparent 40%)', pointerEvents: 'none' }} /><Caption>写得快，也看得懂</Caption><div style={{ position: 'absolute', top: 96, right: 112 }}><SmallLabel>02 / EDITOR</SmallLabel></div></AbsoluteFill> }
+function AiShot({ f }: { f: number }) { const p = ease(f, 8, 48); return <AbsoluteFill style={{ background: '#e4e9ee', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ opacity: p, transform: `scale(${0.96 + p * 0.04})` }}><Workspace /></div><div style={{ position: 'absolute', right: 285, top: 190, width: 270, padding: 18, borderRadius: 12, background: '#202932', color: '#fff', boxShadow: '0 14px 40px rgba(0,0,0,.25)', opacity: appear(f, 55, 18), fontFamily: 'Segoe UI, sans-serif' }}><SmallLabel dark>ASSISTANT / TOOL CALL</SmallLabel><div style={{ marginTop: 12, fontSize: 16 }}>检查单位参数<br /><span style={{ color: '#8bd5a6' }}>✓ 可回滚建议已生成</span></div></div><Caption>让开发助手参与每一步</Caption><div style={{ position: 'absolute', top: 96, right: 112 }}><SmallLabel>03 / AI ASSIST</SmallLabel></div></AbsoluteFill> }
+function ToolsShot({ f }: { f: number }) { const p = ease(f, 10, 50); return <AbsoluteFill style={{ background: '#e8edf2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ opacity: p, transform: `translateX(${(1 - p) * -100}px)` }}><Workspace /></div><div style={{ position: 'absolute', right: 128, top: 170, width: 360, height: 500, background: '#fff', borderRadius: 14, border: `1px solid ${C.border}`, boxShadow: '0 24px 60px rgba(0,0,0,.18)', padding: 26, opacity: appear(f, 42, 22) }}><SmallLabel>TOOL DRAWER</SmallLabel><div style={{ fontSize: 26, fontWeight: 650, marginTop: 20 }}>模组工具</div>{['代码表 / 搜索参数', '单位库 / 浏览字段', '炮塔编辑器 / 可视化调整', '检查 / 优化 / 打包'].map((x, i) => <div key={x} style={{ marginTop: 18, padding: 13, borderRadius: 8, background: i === 2 ? '#edf5ff' : '#f6f7f8', color: i === 2 ? C.blue : C.ink, fontSize: 15 }}>{x}</div>)}</div><Caption>数据、单位、炮塔，一处完成</Caption><div style={{ position: 'absolute', top: 96, right: 112 }}><SmallLabel>04 / TOOLKIT</SmallLabel></div></AbsoluteFill> }
+function ShipShot({ f }: { f: number }) { const p = ease(f, 8, 48); return <AbsoluteFill style={{ background: C.graphite, color: '#fff', padding: 112, fontFamily: 'Segoe UI, sans-serif' }}><SmallLabel dark>BUILD PIPELINE / 05</SmallLabel><div style={{ marginTop: 50, fontSize: 62, fontWeight: 650, letterSpacing: -2 }}>检查完成，<br />直接打包。</div><div style={{ display: 'flex', gap: 18, marginTop: 70, alignItems: 'center' }}>{['读取模组', '检查配置', '优化建议', '生成 .rwmod'].map((x, i) => <React.Fragment key={x}><div style={{ width: 220, height: 110, border: `1px solid ${i <= Math.floor(p * 4) ? '#6aa9ed' : '#3b4854'}`, background: i <= Math.floor(p * 4) ? '#1e3b5a' : '#1a2128', borderRadius: 12, display: 'grid', placeItems: 'center', fontSize: 18, color: i <= Math.floor(p * 4) ? '#fff' : '#7b8792' }}>{i < Math.floor(p * 4) ? '✓ ' : ''}{x}</div>{i < 3 && <div style={{ width: 45, height: 1, background: '#53616e' }} />}</React.Fragment>)}</div><div style={{ marginTop: 46, color: '#8bd5a6', fontFamily: 'Cascadia Code, monospace', fontSize: 18, opacity: p }}>✓ ember-frontier.rwmod 已准备就绪</div><Caption dark>准备好，进入战场</Caption></AbsoluteFill> }
+function Finale({ f }: { f: number }) { const p = ease(f, 15, 70); return <AbsoluteFill style={{ background: C.graphite, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Segoe UI, sans-serif' }}><div style={{ position: 'absolute', inset: 70, border: '1px solid #35414c', borderRadius: 22 }} /><div style={{ opacity: p, transform: `translateY(${(1 - p) * 60}px)`, textAlign: 'center' }}><ProductLogo dark /><div style={{ marginTop: 46, fontSize: 76, fontWeight: 650, letterSpacing: -3 }}>铁锈战争 · 模组开发工作台</div><div style={{ marginTop: 24, color: '#aeb8c3', fontSize: 24 }}>从想法，到可运行的模组。</div><div style={{ marginTop: 52, color: C.blue, fontFamily: 'Cascadia Code, monospace', fontSize: 18 }}>WINDOWS DESKTOP  ·  AI ASSISTED  ·  RW MOD WORKFLOW</div></div><div style={{ position: 'absolute', bottom: 88, color: '#7f8b96', fontSize: 16 }}>AI 功能需自行配置 DeepSeek API Key</div></AbsoluteFill> }
+
+const SFX = [
+  { from: shots.task.from + 24, src: 'swoosh-quick.mp3', volume: 0.35 },
+  { from: shots.project.from + 18, src: 'whoosh-big.mp3', volume: 0.28 },
+  { from: shots.editor.from + 22, src: 'keyboard.mp3', volume: 0.16, durationInFrames: 100 },
+  { from: shots.ai.from + 50, src: 'swoosh-quick.mp3', volume: 0.28 },
+  { from: shots.tools.from + 42, src: 'whoosh-big.mp3', volume: 0.26 },
+  { from: shots.ship.from + 80, src: 'riser-cine.mp3', volume: 0.22, durationInFrames: 95 },
+  { from: shots.finale.from + 62, src: 'impact-deep-whoosh.mp3', volume: 0.42, durationInFrames: 95 },
+  { from: shots.finale.from + 100, src: 'sparkle.mp3', volume: 0.18, durationInFrames: 75 },
+]
+
+export function Promo({ bgm = true }: Props) {
+  return (
+    <AbsoluteFill style={{ background: C.graphite }}>
+      {bgm && <Audio src={staticFile('audio/bgm-tech-house.mp3')} volume={0.24} />}
+      {SFX.map((s) => (
+        <Sequence key={`${s.src}-${s.from}`} from={s.from} durationInFrames={s.durationInFrames}>
+          <Audio src={staticFile(`audio/${s.src}`)} volume={s.volume} />
+        </Sequence>
+      ))}
+      <Sequence from={shots.task.from} durationInFrames={shots.task.duration}><TaskCard f={useCurrentFrame()} /></Sequence>
+      <Sequence from={shots.project.from} durationInFrames={shots.project.duration}><ProjectShot f={useCurrentFrame()} /></Sequence>
+      <Sequence from={shots.editor.from} durationInFrames={shots.editor.duration}><EditorShot f={useCurrentFrame()} /></Sequence>
+      <Sequence from={shots.ai.from} durationInFrames={shots.ai.duration}><AiShot f={useCurrentFrame()} /></Sequence>
+      <Sequence from={shots.tools.from} durationInFrames={shots.tools.duration}><ToolsShot f={useCurrentFrame()} /></Sequence>
+      <Sequence from={shots.ship.from} durationInFrames={shots.ship.duration}><ShipShot f={useCurrentFrame()} /></Sequence>
+      <Sequence from={shots.finale.from} durationInFrames={shots.finale.duration}><Finale f={useCurrentFrame()} /></Sequence>
+    </AbsoluteFill>
+  )
+}

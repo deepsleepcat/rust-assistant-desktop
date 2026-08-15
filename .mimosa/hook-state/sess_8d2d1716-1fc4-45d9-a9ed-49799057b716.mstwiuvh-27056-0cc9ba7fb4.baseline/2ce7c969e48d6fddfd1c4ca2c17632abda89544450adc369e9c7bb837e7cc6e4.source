@@ -1,0 +1,15 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.COMMUNITY_PROTOCOL_DRAFT = void 0;
+/** 社区后端协议草案：将来服务器实现 OpenAI 兼容 /v1/chat/completions 即可接入 */
+exports.COMMUNITY_PROTOCOL_DRAFT = {
+    /**
+     * 社区后端推荐协议：OpenAI 兼容流式接口。
+     * 服务器只需实现 POST {endpoint}/v1/chat/completions（stream: true），
+     * 即可复用与 DeepSeek 相同的适配层，前端与 Pi 引擎零改动。
+     */
+    transport: 'https + sse',
+    path: '/v1/chat/completions',
+    auth: 'Authorization: Bearer <token>',
+    streaming: true,
+};

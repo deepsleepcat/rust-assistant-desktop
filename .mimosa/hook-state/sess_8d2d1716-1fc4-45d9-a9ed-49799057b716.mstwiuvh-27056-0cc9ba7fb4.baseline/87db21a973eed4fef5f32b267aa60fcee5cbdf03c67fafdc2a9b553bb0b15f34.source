@@ -1,0 +1,60 @@
+name: 发布 Release 安装包
+
+# 供应链缓解：安装包一律由 CI 构建（不受本地环境/账号污染），
+# 代码签名（Authenticode）尚未配置——发布说明中需提示首次安装的 SmartScreen 警告。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: # 手动触发（调试用）
+
+jobs:
+  build-win:
+    runs-on: windows-latest
+    permissions:
+      contents: write # 上传 release 资产
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 校验 tag 与版本一致
+        # tag 版本必须匹配 package.json version，否则 electron-updater 会下载同版本包覆盖；
+        # workflow_dispatch 手动触发时 GITHUB_REF_NAME 是分支名，跳过该校验
+        # 注意：windows runner 默认 shell 是 PowerShell，本步骤是 bash 语法，必须显式指定 shell
+        if: ${{ github.ref_type == 'tag' }}
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag 版本 v${TAG_VERSION} 与 package.json 版本 ${PKG_VERSION} 不一致"
+            exit 1
+          fi
+
+      - name: 测试（单元测试全绿才出包）
+        run: npx vitest run
+
+      - name: 类型检查 + lint
+        run: |
+          npx tsc -p tsconfig.node.json --noEmit
+          npx tsc -p tsconfig.app.json --noEmit
+          npm run lint
+
+      - name: 构建并发布（electron-builder --publish always）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run pack:release
+
+      - name: 上传构建产物（调试用，tag 发布时上面已自动上传）
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-installers
+          path: release/*.exe
+          if-no-files-found: ignore

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "pretooluse-e111a4a05720ec634010b54c5942c718",
+  "runId": null,
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "PreToolUse"
+  },
+  "revision": null,
+  "diffHash": null,
+  "rulesVersion": null,
+  "sessionHash": "ce4362c185ea5c977d99dc9f69271967210fc48eff443e495a74d2a441a64dde",
+  "reportRef": null,
+  "events": [
+    {
+      "eventId": "hook-8416412f4f0552877dcc561c6ae27dae",
+      "findingId": "mimosa-09f679dfc70d09074df69261",
+      "type": "finding_blocked",
+      "at": "2026-08-15T06:04:35.902Z",
+      "identity": {
+        "projectRelativeFile": "scripts/merge-xlsx-data.py",
+        "ruleId": "security",
+        "codeEvidenceHash": "d099954efd9a8b3db3b8e98e27ef5622cc816f746263d157f8b8ee246d19b981",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 95,
+      "endLine": 95,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "d099954efd9a8b3db3b8e98e27ef5622cc816f746263d157f8b8ee246d19b981"
+      },
+      "sequence": 0
+    }
+  ],
+  "observedFindingIds": [],
+  "verifiedFiles": [],
+  "recordedAt": "2026-08-15T06:04:36.664Z"
+}

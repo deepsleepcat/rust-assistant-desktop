@@ -223,6 +223,26 @@ export function createWriteFileTool(): AgentTool {
   }
 }
 
+/** 读取 public/data 下的数据文件：
+ * 生产（dist-electron/electron）用 __dirname 定位；测试环境（vitest 无真实 __dirname）
+ * 回退到进程工作目录定位。仅「文件不存在」（ENOENT）才尝试下一候选——
+ * 权限/损坏等真实错误直接抛出，避免诊断失真。 */
+async function readPublicDataFile(name: string): Promise<Buffer> {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'public', 'data', name),
+    path.join(process.cwd(), 'public', 'data', name),
+  ]
+  for (const p of candidates) {
+    try {
+      return await fs.readFile(p)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err
+      // 该候选不存在：尝试下一个
+    }
+  }
+  throw new Error(`数据文件不存在：${name}`)
+}
+
 /** 代码表查询：直接读 public/data/code.json（主进程 Node 环境用 fs，不用 fetch） */
 interface CodeTableEntry {
   code: string
@@ -235,9 +255,8 @@ let codeTableCache: CodeTableEntry[] | null = null
 
 async function loadCodeTable(): Promise<CodeTableEntry[]> {
   if (codeTableCache) return codeTableCache
-  const dataPath = path.join(__dirname, '..', '..', 'public', 'data', 'code.json')
-  const raw = await fs.readFile(dataPath, 'utf8')
-  const parsed = JSON.parse(raw) as { data?: CodeTableEntry[] }
+  const raw = await readPublicDataFile('code.json')
+  const parsed = JSON.parse(raw.toString('utf8')) as { data?: CodeTableEntry[] }
   codeTableCache = parsed.data ?? []
   return codeTableCache
 }

@@ -46,7 +46,7 @@ npm run pack       # 打包便携版 exe → release/（electron-builder）
 ## 质量检查
 
 ```bash
-npm run check      # 类型检查 + ESLint + 451 个单元测试，一键全跑
+npm run check      # 类型检查 + ESLint + 531 个单元测试，一键全跑
 ```
 
 ## 技术栈

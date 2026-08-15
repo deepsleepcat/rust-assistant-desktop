@@ -1,4 +1,4 @@
-"""
+r"""
 增量补全数据脚本：把用户提供的 xlsx 代码表（1.15 超强版）中
 现有 public/data 缺失的词条追加进去，不覆盖已有数据。
 
@@ -19,6 +19,14 @@ import openpyxl
 ROOT = Path(__file__).resolve().parent.parent
 CODE_JSON = ROOT / "public" / "data" / "code.json"
 TRANS_JSON = ROOT / "public" / "data" / "translations.json"
+
+
+def _under_root(p: Path) -> Path:
+    """解析并校验路径必须在项目根内（防误写项目外文件）"""
+    rp = p.resolve()
+    if not str(rp).startswith(str(ROOT.resolve())):
+        raise SystemExit(f"路径越出项目根目录: {p}")
+    return rp
 
 
 def extract_rows(xlsx_path: str):
@@ -51,9 +59,9 @@ def extract_rows(xlsx_path: str):
 
 def main():
     xlsx = sys.argv[1] if len(sys.argv) > 1 else r"W:\mao\tx\代码表1.15超强版(兼容)0830.xlsx"
-    with open(CODE_JSON, encoding="utf-8") as fh:
+    with open(_under_root(CODE_JSON), encoding="utf-8") as fh:
         codes = json.load(fh)
-    with open(TRANS_JSON, encoding="utf-8") as fh:
+    with open(_under_root(TRANS_JSON), encoding="utf-8") as fh:
         trans = json.load(fh)
 
     existing_codes = {c.get("code") for c in codes.get("data", [])}
@@ -90,10 +98,9 @@ def main():
     codes["data"].extend(new_codes)
     trans["words"].extend(new_trans)
 
-    with open(CODE_JSON, "w", encoding="utf-8") as fh:
-        json.dump(codes, fh, ensure_ascii=False, indent=1)
-    with open(TRANS_JSON, "w", encoding="utf-8") as fh:
-        json.dump(trans, fh, ensure_ascii=False, indent=1)
+    # 写回数据：路径先经 _under_root 边界校验（必须在项目根内）
+    _under_root(CODE_JSON).write_text(json.dumps(codes, ensure_ascii=False, indent=1), encoding="utf-8")
+    _under_root(TRANS_JSON).write_text(json.dumps(trans, ensure_ascii=False, indent=1), encoding="utf-8")
 
     print(f"追加字段 {len(new_codes)} 条（现有 {len(existing_codes)} → {len(codes['data'])}）")
     print(f"追加翻译对 {len(new_trans)} 条（现有 {len(existing_trans)} → {len(trans['words'])}）")

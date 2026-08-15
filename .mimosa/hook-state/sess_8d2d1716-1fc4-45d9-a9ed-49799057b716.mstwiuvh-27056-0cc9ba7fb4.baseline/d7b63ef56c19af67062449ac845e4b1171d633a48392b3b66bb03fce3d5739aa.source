@@ -1,0 +1,19 @@
+import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion';
+
+/** 亮场白闪：盖住硬切两侧，蓝调核心（产品白色工作台的光）。 */
+export const FlashCut: React.FC<{ duration?: number }> = ({ duration = 10 }) => {
+  const frame = useCurrentFrame();
+  const o = interpolate(frame, [0, duration * 0.4, duration], [0, 0.9, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  return (
+    <AbsoluteFill
+      style={{
+        pointerEvents: 'none',
+        opacity: o,
+        background: 'radial-gradient(ellipse at 50% 45%, rgba(255,255,255,0.99), rgba(230,238,255,0.6) 55%, transparent 80%)',
+      }}
+    />
+  );
+};

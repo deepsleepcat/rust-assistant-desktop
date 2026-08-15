@@ -1,0 +1,217 @@
+/**
+ * 游戏数据提取管线测试：ini/properties 解析、值类型推断、通配键过滤、合并逻辑。
+ * 对应 scripts/gameExtract/*.mjs（纯函数，与提取脚本共用同一套代码）。
+ */
+import { describe, expect, it } from 'vitest'
+import { parseUnitIni, collectSections } from '../scripts/gameExtract/parseIni.mjs'
+import { parseProperties, unitLocaleText } from '../scripts/gameExtract/parseProperties.mjs'
+import { inferType } from '../scripts/gameExtract/inferType.mjs'
+import {
+  normalizeSection,
+  mergeSections,
+  buildWildcardPatterns,
+  mergeCodes,
+  buildUnits,
+} from '../scripts/gameExtract/merge.mjs'
+
+describe('parseUnitIni', () => {
+  it('解析 [节] + key: value，值里可含冒号', () => {
+    const rows = parseUnitIni('[core]\nname: aaBeamGunship\n\ntext: i:units.aa.afterBurn.name\n')
+    expect(rows).toEqual([
+      { section: 'core', key: 'name', value: 'aaBeamGunship' },
+      { section: 'core', key: 'text', value: 'i:units.aa.afterBurn.name' },
+    ])
+  })
+
+  it('跳过注释行与空行，支持 CRLF', () => {
+    const rows = parseUnitIni('# 注释\r\n\r\n[core]\r\n#softCollisionOnAll: 3\r\nmaxHp: 2500\r\n')
+    expect(rows).toEqual([{ section: 'core', key: 'maxHp', value: '2500' }])
+  })
+
+  it('@ 指令键可解析（@copyFromSection）；@define 宏定义行含空格不匹配', () => {
+    const rows = parseUnitIni('[turret_1]\n@copyFromSection: [turret_base]\n@copyFrom_skipThisSection: true\n@define 宏名: 1\n')
+    expect(rows).toEqual([
+      { section: 'turret_1', key: '@copyFromSection', value: '[turret_base]' },
+      { section: 'turret_1', key: '@copyFrom_skipThisSection', value: 'true' },
+    ])
+  })
+
+  it('builtFrom_1_pos 带多个前导空格的值正常 trim', () => {
+    const rows = parseUnitIni('[core]\nbuiltFrom_1_pos:  6\n')
+    expect(rows[0].value).toBe('6')
+  })
+})
+
+describe('collectSections', () => {
+  it('收集节名并去重、保持顺序', () => {
+    expect(collectSections('[turret_1]\n[a]\n[turret_1]\n[core]')).toEqual(['turret_1', 'a', 'core'])
+  })
+})
+
+describe('parseProperties', () => {
+  it('解析 key=value 与 key = value，跳过注释与空行', () => {
+    const map = parseProperties('# 注释\n\nunits.extractor.name =资源抽取器\nmenus.front.exit=退出\n')
+    expect(map.get('units.extractor.name')).toBe('资源抽取器')
+    expect(map.get('menus.front.exit')).toBe('退出')
+    expect(map.size).toBe(2)
+  })
+
+  it('unitLocaleText 取 units.{key}.{field}', () => {
+    const map = new Map([['units.extractor.name', '资源抽取器']])
+    expect(unitLocaleText(map, 'extractor', 'name')).toBe('资源抽取器')
+    expect(unitLocaleText(map, 'extractor', 'description')).toBeUndefined()
+  })
+})
+
+describe('inferType', () => {
+  it('bool / int / float / 时长', () => {
+    expect(inferType(['true', 'false'])).toEqual({ type: 'bool' })
+    expect(inferType(['1', '-2', '35'])).toEqual({ type: 'int' })
+    expect(inferType(['1', '2.5'])).toEqual({ type: 'float' })
+    expect(inferType(['35s', '0.5s'])).toEqual({ type: 'string' })
+  })
+
+  it('枚举：按小写去重但保留首次大小写', () => {
+    expect(inferType(['launchAmmo', 'launch', 'launchammo'])).toEqual({
+      type: 'enum',
+      list: ['launch', 'launchAmmo'],
+    })
+  })
+
+  it('单值不生成枚举、自由文本不生成枚举', () => {
+    expect(inferType(['laserTank'])).toEqual({ type: 'string' })
+    expect(inferType(['你好世界', 'another thing'])).toEqual({ type: 'string' })
+  })
+
+  it('纯数字/时长混合样值不生成枚举（0.03s,0.5,4）；含字母的真混合枚举保留（6,IGNORE）', () => {
+    expect(inferType(['0.03s', '0.1s', '0.5', '4'])).toEqual({ type: 'string' })
+    expect(inferType(['0.4s', '0.7s', '0.8s', '60'])).toEqual({ type: 'string' })
+    expect(inferType(['6', 'IGNORE'])).toEqual({ type: 'enum', list: ['6', 'IGNORE'] })
+    expect(inferType(['0', '1', '2', 'displacement'])).toEqual({ type: 'enum', list: ['0', '1', '2', 'displacement'] })
+  })
+
+  it('空样本为 string', () => {
+    expect(inferType([])).toEqual({ type: 'string' })
+  })
+})
+
+describe('normalizeSection / mergeSections', () => {
+  it('编号节与命名实例节收敛到主节', () => {
+    expect(normalizeSection('turret_1')).toBe('turret')
+    expect(normalizeSection('turret_wing1')).toBe('turret')
+    expect(normalizeSection('comment_effect_projectileTrail')).toBe('comment')
+    expect(normalizeSection('hiddenAction_autoSwitchBack')).toBe('hiddenAction')
+    expect(normalizeSection('core')).toBe('core')
+  })
+
+  it('known 集合存在时优先精确命中（global_resource 不被拆开）', () => {
+    const known = new Set(['core', 'global_resource', 'turret', 'hiddenAction'])
+    expect(normalizeSection('global_resource', known)).toBe('global_resource')
+    expect(normalizeSection('turret_wing1', known)).toBe('turret')
+    expect(normalizeSection('hiddenAction_x', known)).toBe('hiddenAction')
+  })
+
+  it('mergeSections 只追加现有节之外的新节', () => {
+    const existing = [
+      { code: 'core', translate: '核心' },
+      { code: 'turret', translate: '炮塔' },
+      { code: 'hiddenAction', translate: '隐藏动作' },
+    ]
+    const added = mergeSections(['core', 'turret_1', 'turret_wing1', 'hiddenAction_x'], existing)
+    expect(added).toHaveLength(0)
+    // 游戏里完全没有的节才会新增
+    const added2 = mergeSections(['core', 'brandNew_x'], existing)
+    expect(added2.map((s) => s.code)).toEqual(['brandNew_x'])
+  })
+})
+
+describe('buildWildcardPatterns', () => {
+  it('把通配键转成实例键正则', () => {
+    const patterns = buildWildcardPatterns([
+      { code: 'action_#_convertTo' },
+      { code: 'builtFrom_{NUM}_name' },
+      { code: 'arm#_[time]' },
+      { code: 'body_[time]' },
+      { code: 'defineUnitMemory: unit[] squad' }, // 描述性条目应被跳过
+    ])
+    expect(patterns).toHaveLength(4)
+    expect(patterns[0].test('action_1_convertTo')).toBe(true)
+    expect(patterns[0].test('action_12_convertTo')).toBe(true)
+    expect(patterns[1].test('builtFrom_2_name')).toBe(true)
+    expect(patterns[2].test('arm1_0.5s')).toBe(true)
+    expect(patterns[2].test('arm1_.5s')).toBe(true)
+    expect(patterns[2].test('arm1_0')).toBe(true) // 0 秒帧不带 s
+    expect(patterns[3].test('body_0')).toBe(true)
+    expect(patterns[3].test('body_1')).toBe(true)
+    expect(patterns[3].test('body_2s')).toBe(true)
+    expect(patterns[3].test('body_x')).toBe(false)
+  })
+})
+
+describe('mergeCodes', () => {
+  const existingCodes = [
+    { code: 'maxHp', translate: '生命值' },
+    { code: 'action_#_convertTo', translate: '转化目标' },
+    { code: 'arm#_[time]', translate: '手臂关键帧' },
+  ]
+  const zhDict = new Map([['maxhp', '生命值'], ['displaylocalekey', '显示语言键']])
+
+  it('现有键与通配实例键跳过，真新键追加', () => {
+    const gameKeys = new Map([
+      ['maxhp', { key: 'maxHp', section: 'core', samples: ['1'] }],
+      ['action_2_convertTo', { key: 'action_2_convertTo', section: 'core', samples: ['none'] }],
+      ['displaylocaleKey', { key: 'displayLocaleKey', section: 'core', samples: ['aaBeamGunship'] }],
+    ])
+    const { addedCodes, skipped } = mergeCodes(gameKeys, existingCodes, zhDict, [])
+    expect(skipped).toBe(1)
+    expect(addedCodes).toHaveLength(1)
+    expect(addedCodes[0]).toMatchObject({ code: 'displayLocaleKey', translate: '显示语言键', section: 'core' })
+  })
+
+  it('内联 action 键归 action 节（前缀校正）；新键无翻译用原名兜底', () => {
+    const gameKeys = new Map([
+      ['action_1_buildSpeed', { key: 'action_1_buildSpeed', section: 'core', samples: ['0'] }],
+    ])
+    const { addedCodes } = mergeCodes(gameKeys, existingCodes, zhDict, [])
+    expect(addedCodes[0]).toMatchObject({
+      code: 'action_1_buildSpeed',
+      translate: 'action_1_buildSpeed',
+      description: '（官方游戏数据，待补充翻译）',
+      section: 'action',
+    })
+  })
+
+  it('收敛枚举生成 value_type 条目', () => {
+    const gameKeys = new Map([
+      ['aiuse', { key: 'aiUse', section: 'movement', samples: ['launch', 'launchAmmo'] }],
+    ])
+    const { addedCodes, addedValueTypes } = mergeCodes(gameKeys, existingCodes, zhDict, [])
+    expect(addedCodes[0].type).toBe('AiUse')
+    expect(addedValueTypes[0]).toMatchObject({ type: 'AiUse', list: 'launch,launchAmmo' })
+  })
+})
+
+describe('buildUnits', () => {
+  const props = new Map([
+    ['units.extractor.name', '资源抽取器'],
+    ['units.extractor.description', '生成资金'],
+  ])
+  const candidates = [
+    { name: 'extractorT2', displayKey: 'extractor', icon: 'extractor/extractorT2.png' },
+    { name: 'extractor', displayKey: 'extractor', icon: 'extractor/extractor.png' },
+    { name: 'extractor', displayKey: 'extractor', icon: 'extractor/extractor.png' }, // 重复
+  ]
+
+  it('精确 name 翻译优先、共享 locale 回退、按 name 去重排序', () => {
+    const units = buildUnits(candidates, props)
+    expect(units).toHaveLength(2)
+    expect(units[0]).toEqual({
+      name: 'extractor',
+      displayKey: 'extractor',
+      zhName: '资源抽取器',
+      zhDesc: '生成资金',
+      icon: 'extractor/extractor.png',
+    })
+    expect(units[1]).toMatchObject({ name: 'extractorT2', displayKey: 'extractor', zhName: '资源抽取器' })
+  })
+})

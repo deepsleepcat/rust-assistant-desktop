@@ -78,9 +78,11 @@ export function isValidCommit(hash: string): boolean {
   return /^[0-9a-f]{7,40}$/i.test(hash)
 }
 
-/** 相对路径校验（防越界/选项注入） */
+/** 相对路径校验（防越界/选项注入/绝对路径拼接） */
 export function isValidRelPath(rel: string): boolean {
   if (!rel || rel.includes('..') || rel.startsWith('-') || rel.includes('\\')) return false
+  // win32 上 path.join(root, 'C:/x') 会丢弃 root 拼出盘符绝对路径——显式拒绝
+  if (path.isAbsolute(rel)) return false
   return true
 }
 
@@ -179,8 +181,11 @@ export async function conflictFiles(root: string): Promise<string[]> {
   for (const f of files) {
     if (out.length >= 10) break
     if (!isValidRelPath(f.path)) continue
-    // 相对仓库根的路径必须拼上 root（主进程 CWD 不是项目根，相对路径读不到文件）
-    const abs = path.join(root, f.path)
+    // 相对仓库根的路径必须拼上 root（主进程 CWD 不是项目根，相对路径读不到文件）。
+    // resolve + 显式边界校验（isValidRelPath 之外的双保险，静态检查可见）
+    const abs = path.resolve(root, f.path)
+    const base = path.resolve(root)
+    if (abs !== base && !abs.startsWith(base + path.sep)) continue
     try {
       const st = await fs.stat(abs)
       if (!st.isFile() || st.size > 1024 * 1024) continue

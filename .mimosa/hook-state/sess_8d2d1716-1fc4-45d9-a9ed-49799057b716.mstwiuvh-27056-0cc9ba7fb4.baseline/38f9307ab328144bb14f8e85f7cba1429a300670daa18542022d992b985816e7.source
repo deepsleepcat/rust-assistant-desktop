@@ -1,0 +1,6 @@
+"use strict";
+/**
+ * M6.5 模组模板系统共享类型（渲染进程与主进程共用）。
+ * 模板来自 baseTemplate_v2.0（GPL-3.0 数据，随项目同许可分发）。
+ */
+Object.defineProperty(exports, "__esModule", { value: true });

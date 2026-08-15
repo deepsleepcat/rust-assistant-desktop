@@ -289,9 +289,12 @@ const MAX_ASSET_IMAGE_BYTES = 10 * 1024 * 1024
 export async function readGameAssetImage(gamePath: string, relPath: string): Promise<string> {
   if (!(await looksLikeGameDir(gamePath))) throw new Error('不是有效的铁锈战争安装目录（缺少 assets/units）')
   const rel = String(relPath).replace(/^\/+/, '').replace(/\\/g, '/')
-  if (!rel || rel.includes('..')) throw new Error('无效的资产路径')
-  const abs = path.join(gamePath, rel)
-  if (!isPathInside(gamePath, abs)) throw new Error('路径超出游戏目录范围')
+  // 拒绝相对穿越、盘符绝对路径（win32 上 path.join 会丢弃 gamePath 拼接绝对路径）
+  if (!rel || rel.includes('..') || path.isAbsolute(rel)) throw new Error('无效的资产路径')
+  // 规范化后显式边界校验（与 isPathInside 同语义；内联让静态检查可见）
+  const abs = path.resolve(gamePath, rel)
+  const base = path.resolve(gamePath)
+  if (abs !== base && !abs.startsWith(base + path.sep)) throw new Error('路径超出游戏目录范围')
   await assertNoLinkEscape(gamePath, abs)
   const st = await fs.stat(abs).catch(() => null)
   if (!st || !st.isFile()) throw new Error(`资产文件不存在：${rel}`)

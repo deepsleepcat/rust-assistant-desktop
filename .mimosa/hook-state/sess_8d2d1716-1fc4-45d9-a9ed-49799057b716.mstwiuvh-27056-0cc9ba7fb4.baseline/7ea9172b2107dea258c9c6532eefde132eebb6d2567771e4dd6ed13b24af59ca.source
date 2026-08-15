@@ -1,0 +1,70 @@
+import { AbsoluteFill, Audio, Sequence, staticFile } from 'remotion';
+import { SceneBrand } from './SceneBrand';
+import { SceneHero } from './SceneHero';
+import { SceneTree } from './SceneTree';
+import { SceneTyping } from './SceneTyping';
+import { SceneAi } from './SceneAi';
+import { ScenePalette } from './ScenePalette';
+import { SceneModtools } from './SceneModtools';
+import { SceneOutro } from './SceneOutro';
+import { Caption } from './Caption';
+import { FlashCut } from './FlashCut';
+
+// ~40s @ 30fps — 第二版：打开工作台 → 写代码 → AI 协助 → 执行 → 发布。
+export const RUST_SHOTS = {
+  brand: { from: 0, duration: 60 },
+  hero: { from: 60, duration: 150 },
+  tree: { from: 210, duration: 140 },
+  typing: { from: 350, duration: 180 },
+  ai: { from: 530, duration: 220 },
+  palette: { from: 750, duration: 120 },
+  mod: { from: 870, duration: 210 },
+  outro: { from: 1080, duration: 120 },
+} as const;
+
+export const AIFL_TOTAL = 1200;
+
+const CAPTIONS = [
+  { from: 72, duration: 96, text: '一个单位，几行代码' },
+  { from: 224, duration: 92, text: '项目、编辑器、AI，集中在一个工作台' },
+  { from: 370, duration: 130, text: '语法高亮 · 自动补全 · 多标签编辑' },
+  { from: 560, duration: 150, text: 'AI 理解需求，协助读取与修改文件' },
+  { from: 778, duration: 78, text: 'Ctrl+K · 快速执行模组命令' },
+  { from: 900, duration: 150, text: '新建模组 → 打包 .rwmod → 单位检查通过' },
+];
+
+const SFX: { from: number; src: string; volume: number; dur?: number }[] = [
+  { from: 18, src: 'transition-soft.mp3', volume: 0.32 },
+  { from: 78, src: 'whoosh-big.mp3', volume: 0.48 },
+  { from: 116, src: 'sparkle.mp3', volume: 0.28 },
+  { from: 214, src: 'transition-snap.mp3', volume: 0.38 },
+  { from: 366, src: 'keyboard.mp3', volume: 0.32, dur: 120 },
+  { from: 536, src: 'transition-soft.mp3', volume: 0.34 },
+  { from: 650, src: 'click-camera.mp3', volume: 0.42 },
+  { from: 754, src: 'whoosh-fast.mp3', volume: 0.38 },
+  { from: 874, src: 'riser-cine.mp3', volume: 0.42 },
+  { from: 958, src: 'impact-cine.mp3', volume: 0.52 },
+  { from: 1128, src: 'sparkle.mp3', volume: 0.3 },
+];
+
+export const AiflMain: React.FC<{ bgm?: boolean }> = ({ bgm = true }) => {
+  const bgmVol = (f: number) => Math.min(1, f / 30) * Math.min(1, (AIFL_TOTAL - f) / 30) * 0.32;
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#ffffff' }}>
+      {bgm ? <Sequence from={0} durationInFrames={AIFL_TOTAL}><Audio src={staticFile('audio/bgm-tech-house.mp3')} volume={bgmVol} /></Sequence> : null}
+      {SFX.map((s, i) => <Sequence key={`sfx-${i}`} from={s.from} durationInFrames={s.dur ?? 80}><Audio src={staticFile(`audio/${s.src}`)} volume={s.volume} /></Sequence>)}
+
+      <Sequence from={RUST_SHOTS.brand.from} durationInFrames={RUST_SHOTS.brand.duration}><SceneBrand duration={RUST_SHOTS.brand.duration} /></Sequence>
+      <Sequence from={RUST_SHOTS.hero.from} durationInFrames={RUST_SHOTS.hero.duration}><SceneHero /></Sequence>
+      <Sequence from={RUST_SHOTS.tree.from} durationInFrames={RUST_SHOTS.tree.duration}><SceneTree /></Sequence>
+      <Sequence from={RUST_SHOTS.typing.from} durationInFrames={RUST_SHOTS.typing.duration}><SceneTyping /></Sequence>
+      <Sequence from={RUST_SHOTS.ai.from} durationInFrames={RUST_SHOTS.ai.duration}><SceneAi /></Sequence>
+      <Sequence from={RUST_SHOTS.palette.from} durationInFrames={RUST_SHOTS.palette.duration}><ScenePalette /></Sequence>
+      <Sequence from={RUST_SHOTS.mod.from} durationInFrames={RUST_SHOTS.mod.duration}><SceneModtools /></Sequence>
+      <Sequence from={RUST_SHOTS.outro.from} durationInFrames={RUST_SHOTS.outro.duration}><SceneOutro /></Sequence>
+
+      {CAPTIONS.map((c) => <Sequence key={c.from} from={c.from} durationInFrames={c.duration}><Caption text={c.text} duration={c.duration} /></Sequence>)}
+      {[RUST_SHOTS.tree.from, RUST_SHOTS.typing.from, RUST_SHOTS.ai.from, RUST_SHOTS.palette.from, RUST_SHOTS.mod.from].map((cut) => <Sequence key={cut} from={cut - 3} durationInFrames={6}><FlashCut duration={6} /></Sequence>)}
+    </AbsoluteFill>
+  );
+};

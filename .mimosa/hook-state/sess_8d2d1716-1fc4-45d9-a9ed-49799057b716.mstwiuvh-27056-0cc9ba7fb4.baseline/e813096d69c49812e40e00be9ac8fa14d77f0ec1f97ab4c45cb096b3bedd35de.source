@@ -1,0 +1,4 @@
+# 安装 Electron 二进制失败时，可取消注释并使用国内镜像：
+# electron_mirror=https://npmmirror.com/mirrors/electron/
+fund=false
+audit=false

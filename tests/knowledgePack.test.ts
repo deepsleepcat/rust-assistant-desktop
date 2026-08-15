@@ -41,7 +41,13 @@ function startServer(): Promise<string> {
   return new Promise((resolve) => {
     server = http.createServer((req, res) => {
       const rel = (req.url ?? '/').replace(/^\/+/, '')
-      const file = path.join(sourceDir, rel)
+      // 测试服务器只服务 sourceDir 内文件：resolve 后做根目录边界校验（防 ../ 越出）
+      const file = path.resolve(sourceDir, rel)
+      if (file !== sourceDir && !file.startsWith(sourceDir + path.sep)) {
+        res.writeHead(404)
+        res.end('not found')
+        return
+      }
       try {
         const buf = fs.readFileSync(file)
         res.writeHead(200, { 'content-type': 'application/json' })
