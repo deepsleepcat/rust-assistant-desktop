@@ -127,6 +127,8 @@ export interface BridgeApi {
     openDir(rootPath: string): Promise<{ ok: boolean; message?: string }>
     /** M12：运行前检查清单（mod-info 完整性 + 引用文件存在 + 单位完整性） */
     preflight(rootPath: string): Promise<{ ok: boolean; issues: Array<{ severity: 'error' | 'warning'; message: string; file?: string }> }>
+    /** M22：读游戏资产图片为 data URL（单位预览的官方贴图；路径限制在游戏目录内） */
+    readAssetImage(gamePath: string, relPath: string): Promise<string>
   }
   ai: {
     /** 健康检查：验证 Key/连接 */

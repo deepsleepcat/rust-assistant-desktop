@@ -274,6 +274,9 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       launch: async () => ({ ok: false, message: '模拟环境：未安装游戏' }),
       openDir: async () => ({ ok: false, message: '模拟环境：无法打开目录' }),
       preflight: async () => ({ ok: true, issues: [] }),
+      readAssetImage: async () => {
+        throw new Error('模拟环境：无游戏资产')
+      },
     },
     mod: {
       create: async () => ({ files: ['mod-info.txt', 'units/'] }),

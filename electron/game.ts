@@ -263,6 +263,43 @@ export async function openDir(dir: string): Promise<{ ok: boolean; message?: str
   return err ? { ok: false, message: err } : { ok: true }
 }
 
+/** 图片 MIME（按扩展名；未知返回 application/octet-stream） */
+function mimeOf(file: string): string {
+  const ext = file.slice(file.lastIndexOf('.')).toLowerCase()
+  return (
+    {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.bmp': 'image/bmp',
+    }[ext] ?? 'application/octet-stream'
+  )
+}
+
+/** 单位预览资产上限（10MB：单张贴图足够，防大图拖垮渲染） */
+const MAX_ASSET_IMAGE_BYTES = 10 * 1024 * 1024
+
+/**
+ * 读游戏资产图片为 data URL（M22 单位预览：CORE:/ROOT: 官方贴图预览）。
+ * 安全：gamePath 必须通过 looksLikeGameDir 校验；路径解析后必须仍在游戏目录内
+ * （词法 + 链接逃逸双重校验）；图片大小上限。
+ */
+export async function readGameAssetImage(gamePath: string, relPath: string): Promise<string> {
+  if (!(await looksLikeGameDir(gamePath))) throw new Error('不是有效的铁锈战争安装目录（缺少 assets/units）')
+  const rel = String(relPath).replace(/^\/+/, '').replace(/\\/g, '/')
+  if (!rel || rel.includes('..')) throw new Error('无效的资产路径')
+  const abs = path.join(gamePath, rel)
+  if (!isPathInside(gamePath, abs)) throw new Error('路径超出游戏目录范围')
+  await assertNoLinkEscape(gamePath, abs)
+  const st = await fs.stat(abs).catch(() => null)
+  if (!st || !st.isFile()) throw new Error(`资产文件不存在：${rel}`)
+  if (st.size > MAX_ASSET_IMAGE_BYTES) throw new Error('资产文件过大，已拒绝读取')
+  const buf = await fs.readFile(abs)
+  return `data:${mimeOf(rel)};base64,${buf.toString('base64')}`
+}
+
 /** 运行前检查单条结果 */
 export interface PreflightIssue {
   severity: 'error' | 'warning'

@@ -15,6 +15,7 @@ import { LogoR } from '../../components/LogoR'
 import { ConfirmBox, PromptModal } from '../../components/Modal'
 import { EditorMirror } from './EditorMirror'
 import { isUnitFile, UnitFormPanel } from './unitForm/UnitFormPanel'
+import { UnitPreviewModal } from './unitPreview/UnitPreviewModal'
 import { isMapFile, MapViewer } from '../map/MapViewer'
 import { ImageViewer } from './ImageViewer'
 import { AudioViewer } from './AudioViewer'
@@ -28,6 +29,8 @@ export function EditorArea() {
   const setActiveTabId = useWorkspaceStore((s) => s.setActiveTabId)
   // 炮塔编辑器弹窗（M12：可视化调整 [turret_N] 坐标），状态在 store（编辑器按钮跨组件调用）
   const turretEditorOpen = useWorkspaceStore((s) => s.turretEditorOpen)
+  // M22：单位合成预览弹窗（本地状态——只服务于当前标签）
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   return (
     <section className="editor-panel panel" style={{ flex: 1, minWidth: 0 }}>
@@ -58,9 +61,27 @@ export function EditorArea() {
       ) : (
         // key=tabId：每个标签独立挂载编辑器实例，撤销/重做历史互不串扰
         // （共享单实例时，跨标签 Ctrl+Z 会撤销「标签切换替换」而把 A 的内容写进 B，损坏数据）
-        <EditorPane key={activeTabId ?? tabs[0].id} tabId={activeTabId ?? tabs[0].id} />
+        <EditorPane key={activeTabId ?? tabs[0].id} tabId={activeTabId ?? tabs[0].id} onOpenPreview={() => setPreviewOpen(true)} />
       )}
+      {previewOpen && <PreviewModalForActiveTab onClose={() => setPreviewOpen(false)} />}
     </section>
+  )
+}
+
+/** M22：为当前活动标签渲染单位合成预览弹窗（读取最新内容与项目/游戏路径） */
+function PreviewModalForActiveTab({ onClose }: { onClose: () => void }) {
+  const state = useWorkspaceStore.getState()
+  const tab = state.openTabs.find((t) => t.id === state.activeTabId) ?? state.openTabs[0]
+  const project = state.projects.find((p) => p.id === state.activeProjectId)
+  if (!tab || !project) return null
+  return (
+    <UnitPreviewModal
+      file={tab.path}
+      content={tab.content}
+      rootPath={project.rootPath}
+      gamePath={state.settings.gamePath || undefined}
+      onClose={onClose}
+    />
   )
 }
 
@@ -189,7 +210,7 @@ function WelcomeView() {
   )
 }
 
-function EditorPane({ tabId }: { tabId: string }) {
+function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: () => void }) {
   const tab = useWorkspaceStore((s) => s.openTabs.find((t) => t.id === tabId))
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
@@ -302,6 +323,12 @@ function EditorPane({ tabId }: { tabId: string }) {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="edit" size={12} />{formMode ? '代码模式' : '表单模式'}</span>
           </button>
         )}
+        {isUnitFile(tab.content) && (
+          // M22：单位合成预览（帧切片/炮塔叠加/阴影，纯本地 Canvas 渲染）
+          <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={onOpenPreview} title="按 [graphics] 配方合成单位预览图（帧切换/炮塔叠加）">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="image" size={12} />预览</span>
+          </button>
+        )}
         <button className={outlineOpen ? 'btn primary' : 'btn'} style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => setOutlineOpen((open) => !open)}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><AppIcon name="expand" size={12} />大纲 ({sections.length})</span>
         </button>
@@ -361,7 +388,7 @@ function EditorPane({ tabId }: { tabId: string }) {
             <MapViewer path={tab.path} rootPath={project.rootPath} />
           )
         ) : formMode && isUnitFile(tab.content) && project ? (
-          <UnitFormPanel tab={tab} rootPath={project.rootPath} />
+          <UnitFormPanel tab={tab} rootPath={project.rootPath} onOpenPreview={onOpenPreview} />
         ) : (
         <EditorMirror
           value={tab.content}

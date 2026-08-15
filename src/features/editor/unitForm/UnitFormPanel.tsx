@@ -11,12 +11,15 @@ import type { EditorTab } from '../../../types/domain'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import { getBridge } from '../../../services/bridge'
 import { getEnToZhDict, getZhToEnDict } from '../../../services/codeData'
+import { AppIcon } from '../../../components/AppIcon'
 import { findUnitGroup, UNIT_FORM_GROUPS, type UnitFieldDef } from './unitFormFields'
 import { applyUnitFormValue, fillDefaults, parseUnitForm, validateFormValue, type UnitFormState } from './unitFormSync'
 
 interface UnitFormPanelProps {
   tab: EditorTab
   rootPath: string
+  /** M22：打开单位合成预览（由编辑器区域提供） */
+  onOpenPreview?: () => void
 }
 
 /** 相对路径计算（渲染层无 node:path：手工按 / 分段处理 . 和 ..） */
@@ -35,7 +38,7 @@ export function isUnitFile(content: string): boolean {
   return /^\s*\[(?:core|核心)\]\s*(?:#.*)?$/im.test(content)
 }
 
-export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
+export function UnitFormPanel({ tab, rootPath, onOpenPreview }: UnitFormPanelProps) {
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
   // 表单值（每次内容变化重新解析；本地编辑态缓存带内容快照——
   // 内容外部变更（格式化/重新加载）后旧草稿自动失效，不覆盖新内容）
@@ -109,6 +112,11 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
       <div className="unit-form-head">
         <span>单位表单 · {tab.name}</span>
         <span className="unit-form-hint">修改即时同步到代码；切回代码模式可继续手写</span>
+        {onOpenPreview && (
+          <button className="btn" style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={onOpenPreview} title="按 [graphics] 配方合成单位预览图">
+            <AppIcon name="image" size={12} /> 预览
+          </button>
+        )}
       </div>
       {missingRequired.length > 0 && (
         <div className="unit-form-missing">

@@ -14,7 +14,7 @@ import { getHistory, initAiHistory } from './aiHistory'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import { applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, globalOp, importModBuffer, listTemplates, packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources, scanUnits, writeModInfo } from './modTools'
-import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck } from './game'
+import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck, readGameAssetImage } from './game'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import { createKnowledgePack } from './knowledgePack'
 import type { AiChatParams, AiSettings } from '../src/types/ai'
@@ -813,6 +813,12 @@ function registerIpc(): void {
     const normalized = normalizePath(rootPath)
     if (!allowedRoots.has(normalized)) return { ok: false, issues: [{ severity: 'error' as const, message: '项目目录未登记，无法检查' }] }
     return preflightCheck(normalized)
+  })
+
+  // M22 单位预览：读游戏资产图片（CORE:/ROOT: 官方贴图；gamePath 需通过游戏目录校验）
+  ipcMain.handle('game:readAssetImage', async (_event, gamePath: unknown, relPath: unknown) => {
+    if (typeof gamePath !== 'string' || typeof relPath !== 'string') throw new Error('参数错误')
+    return readGameAssetImage(gamePath, relPath)
   })
 
   // M6.5 音频预览：与图片同一套安全校验（限项目内 + 白名单 + 大小上限）
