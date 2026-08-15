@@ -12,8 +12,9 @@
 import type { AiLintItem } from '../../types/ai'
 import { lintIniText } from '../editor/rustLint'
 import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
-import { runSemanticChecks } from '../editor/semanticChecks'
+import { runSemanticChecks, type CustomRule } from '../editor/semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
+import { loadProjectRuleSets } from '../editor/semanticChecks/customRules'
 
 /** 清单上限：超出后折叠为汇总条目（防大文件产生数万条诊断拖垮渲染） */
 const MAX_LINT_ITEMS = 200
@@ -102,6 +103,8 @@ export interface QualityCheckOptions {
   unitNames?: ReadonlySet<string>
   /** 当前项目目标游戏版本名（空 = 跟随最新） */
   targetVersionName?: string
+  /** M21：项目自定义规则（声明式；缺省自动从项目 rules/ 目录加载） */
+  customRules?: CustomRule[]
 }
 
 /**
@@ -127,6 +130,8 @@ export async function qualityCheckContent(content: string, options: QualityCheck
   const issues = runSemanticChecks(content, {
     ruleIds,
     ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames: options.unitNames, targetVersionNumber },
+    customRules: options.customRules,
+    customRuleConfig: options.semanticCheckers,
   })
   const semanticItems: AiLintItem[] = issues.map((it) => ({
     line: it.line,
@@ -169,7 +174,13 @@ export async function checkAiWrittenFile(
     const { getBridge } = await import('../../services/bridge')
     // relPath 是 AI 的相对写法：必须拼成项目内绝对路径再走 fs 通道（见 joinProjectPath）
     const { content } = await getBridge().project.readFile(rootPath, joinProjectPath(rootPath, relPath))
-    return qualityCheckContent(content, options)
+    // M21：AI 写后质检同样应用项目自定义规则（读取失败不影响质检）
+    let customRules = options.customRules
+    if (!customRules) {
+      const loaded = await loadProjectRuleSets(rootPath).catch(() => ({ sets: [], errors: [] }))
+      customRules = loaded.sets.flatMap((s) => s.rules)
+    }
+    return qualityCheckContent(content, { ...options, customRules })
   } catch {
     // 文件被删/读取失败等：跳过质检，不影响对话与撤销
     return null

@@ -12,8 +12,11 @@
 import type { SemanticCheckContext, SemanticIssue, SemanticCheckOptions } from './types'
 import { ALL_SEMANTIC_CHECKERS, enabledRuleIds } from './registry'
 import { parseIni } from './helpers'
+import { runCustomRules } from './customRules'
 
 export type { SemanticChecker, SemanticCheckContext, SemanticIssue, SemanticCheckOptions } from './types'
+export type { CustomRule, CustomRuleSet, ProjectRuleSet, ProjectRuleLoadResult, CustomCheckType } from './customRules'
+export { validateRuleSet, runCustomRules, runCustomRulesOnText, loadProjectRuleSets } from './customRules'
 
 /** 运行启用的语义检查器（ruleIds 缺省 = 全部启用；异常检查器隔离）。
  * dont_load: true 的文件（官方模板/槽位文件标记不加载）跳过全部检查。
@@ -34,6 +37,15 @@ export function runSemanticChecks(content: string, options: SemanticCheckOptions
     } catch (err) {
       // 检查器内部异常不中断整体检查（数据边界防御：畸形内容不应让所有检查失效）
       console.warn(`[semanticChecks] 检查器 ${checker.id} 执行失败，已跳过`, err)
+    }
+  }
+  // M19/M21：项目自定义规则（声明式；单个规则异常同样隔离，不中断其它规则。
+  // 自定义规则默认开启，设置里显式关闭后跳过）
+  if (options.customRules && options.customRules.length > 0) {
+    try {
+      issues.push(...runCustomRules(content, options.customRules, ctx, options.customRuleConfig))
+    } catch (err) {
+      console.warn('[semanticChecks] 自定义规则执行失败，已跳过', err)
     }
   }
   return issues

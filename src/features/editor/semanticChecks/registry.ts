@@ -49,7 +49,9 @@ export function defaultSemanticCheckerConfig(): Record<string, boolean> {
   return out
 }
 
-/** 清洗用户配置：只保留已知规则 id 的布尔值（未知 id/非布尔忽略） */
+/** 清洗用户配置：只保留已知规则 id 的布尔值（未知 id/非布尔忽略）。
+ * custom: 前缀是项目自定义规则（M19/M21 动态加载，不在此清单内）：
+ * 保留用户配置里的 custom: 布尔值，避免清洗时丢开关 */
 export function sanitizeCheckerConfig(input: unknown): Record<string, boolean> {
   const base = defaultSemanticCheckerConfig()
   if (!input || typeof input !== 'object') return base
@@ -57,14 +59,20 @@ export function sanitizeCheckerConfig(input: unknown): Record<string, boolean> {
   for (const c of ALL_SEMANTIC_CHECKERS) {
     if (typeof raw[c.id] === 'boolean') base[c.id] = raw[c.id] as boolean
   }
+  for (const [key, value] of Object.entries(raw)) {
+    if (key.startsWith('custom:') && typeof value === 'boolean') base[key] = value
+  }
   return base
 }
 
-/** 按配置取启用的规则 id 集合 */
+/** 按配置取启用的规则 id 集合（含 custom: 前缀的项目自定义规则） */
 export function enabledRuleIds(config: Record<string, boolean>): Set<string> {
   const ids = new Set<string>()
   for (const c of ALL_SEMANTIC_CHECKERS) {
     if (config[c.id] !== false) ids.add(c.id) // 未显式关闭即开启（兼容旧配置）
+  }
+  for (const [key, value] of Object.entries(config)) {
+    if (key.startsWith('custom:') && value !== false) ids.add(key)
   }
   return ids
 }

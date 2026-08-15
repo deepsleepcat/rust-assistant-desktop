@@ -12,6 +12,7 @@ import { Modal } from '../../components/Modal'
 import { AvatarCropModal } from './AvatarCropModal'
 import { GameSettingsTab } from './GameSettingsTab'
 import { ALL_SEMANTIC_CHECKERS } from '../editor/semanticChecks/registry'
+import { loadProjectRuleSets, type ProjectRuleSet } from '../editor/semanticChecks/customRules'
 import { getDataVersionInfo, getGameVersions, loadCodeData, reloadCodeData, type DataVersionInfo } from '../../services/codeData'
 
 const GRADIENT_PRESETS = [
@@ -47,6 +48,29 @@ export function SettingsModal() {
   const [kpCheck, setKpCheck] = useState<{ hasUpdate: boolean; latestVersion: string; changedFiles: string[]; error?: string } | null>(null)
   const [kpBusy, setKpBusy] = useState(false)
   const [newMirror, setNewMirror] = useState('')
+  // M21：项目自定义规则（rules/*.json；编辑器页签展示，可单独开关）
+  const activeProject = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
+  const [projectRules, setProjectRules] = useState<{ sets: ProjectRuleSet[]; errors: Array<{ file: string; errors: string[] }> } | null>(null)
+
+  // M21：进入「编辑器」页签时加载项目自定义规则（无项目/无 rules 目录时为空）。
+  // 切走页签时由 switchTab 清空缓存结果，避免显示陈旧数据
+  useEffect(() => {
+    if (tab !== 'editor') return
+    let alive = true
+    if (!activeProject) return
+    void loadProjectRuleSets(activeProject.rootPath)
+      .then((r) => alive && setProjectRules(r))
+      .catch(() => alive && setProjectRules({ sets: [], errors: [] }))
+    return () => {
+      alive = false
+    }
+  }, [tab, activeProject])
+
+  /** 页签切换（M21：离开编辑器页签时清空自定义规则缓存结果） */
+  const switchTab = (t: typeof tab) => {
+    setTab(t)
+    if (t !== 'editor') setProjectRules(null)
+  }
 
   // M11：目标游戏版本下拉数据（异步加载版本表；失败时只显示「跟随最新」）
   useEffect(() => {
@@ -186,14 +210,14 @@ export function SettingsModal() {
       <div style={{ display: 'flex', gap: 20, minHeight: 380 }}>
         {/* 左侧导航 */}
         <nav style={{ width: 130, flexShrink: 0 }}>
-          <SettingNavItem active={tab === 'appearance'} onClick={() => setTab('appearance')} icon={<AppIcon name="palette" size={14} />} label="外观" />
-          <SettingNavItem active={tab === 'background'} onClick={() => setTab('background')} icon={<AppIcon name="image" size={14} />} label="背景" />
-          <SettingNavItem active={tab === 'editor'} onClick={() => setTab('editor')} icon={<AppIcon name="text" size={14} />} label="编辑器" />
-          <SettingNavItem active={tab === 'layout'} onClick={() => setTab('layout')} icon={<AppIcon name="layout" size={14} />} label="布局" />
-          <SettingNavItem active={tab === 'ai'} onClick={() => setTab('ai')} icon={<AppIcon name="sparkle" size={14} />} label="AI" />
-          <SettingNavItem active={tab === 'avatar'} onClick={() => setTab('avatar')} icon={<AppIcon name="avatar" size={14} />} label="头像" />
-          <SettingNavItem active={tab === 'game'} onClick={() => setTab('game')} icon={<AppIcon name="tower" size={14} />} label="游戏" />
-          <SettingNavItem active={tab === 'about'} onClick={() => setTab('about')} icon={<AppIcon name="info" size={14} />} label="关于" />
+          <SettingNavItem active={tab === 'appearance'} onClick={() => switchTab('appearance')} icon={<AppIcon name="palette" size={14} />} label="外观" />
+          <SettingNavItem active={tab === 'background'} onClick={() => switchTab('background')} icon={<AppIcon name="image" size={14} />} label="背景" />
+          <SettingNavItem active={tab === 'editor'} onClick={() => switchTab('editor')} icon={<AppIcon name="text" size={14} />} label="编辑器" />
+          <SettingNavItem active={tab === 'layout'} onClick={() => switchTab('layout')} icon={<AppIcon name="layout" size={14} />} label="布局" />
+          <SettingNavItem active={tab === 'ai'} onClick={() => switchTab('ai')} icon={<AppIcon name="sparkle" size={14} />} label="AI" />
+          <SettingNavItem active={tab === 'avatar'} onClick={() => switchTab('avatar')} icon={<AppIcon name="avatar" size={14} />} label="头像" />
+          <SettingNavItem active={tab === 'game'} onClick={() => switchTab('game')} icon={<AppIcon name="tower" size={14} />} label="游戏" />
+          <SettingNavItem active={tab === 'about'} onClick={() => switchTab('about')} icon={<AppIcon name="info" size={14} />} label="关于" />
         </nav>
 
         {/* 内容 */}
@@ -483,6 +507,56 @@ export function SettingsModal() {
                   )
                 })}
               </div>
+              <div className="setting-divider" />
+              <div className="setting-title">项目自定义规则（M19/M21）</div>
+              <div className="desc" style={{ marginBottom: 8 }}>
+                把 JSON 规则文件放进项目 <code>rules/</code> 目录即可被加载（AI 生成的用例可一键保存到这里）。
+                规则是声明式的（数值区间/必需键/枚举/正则），<b>不执行任何脚本</b>——恶意规则最多产生误报，无法读写文件。
+              </div>
+              {!activeProject ? (
+                <div className="desc">打开项目后显示该项目 rules/ 目录下的自定义规则。</div>
+              ) : projectRules === null ? (
+                <div className="desc">加载中…</div>
+              ) : projectRules.sets.length === 0 && projectRules.errors.length === 0 ? (
+                <div className="desc">该项目没有自定义规则（可让 AI 生成检查用例后保存）。</div>
+              ) : (
+                <>
+                  {projectRules.sets.map((s) => (
+                    <div key={s.file}>
+                      <div className="checker-list">
+                        {s.rules.map((r) => {
+                          const key = `custom:${r.id}`
+                          const on = settings.semanticCheckers[key] !== false
+                          return (
+                            <label key={r.id} className="checker-item">
+                              <input
+                                type="checkbox"
+                                checked={on}
+                                onChange={(e) =>
+                                  updateSettings({ semanticCheckers: { ...settings.semanticCheckers, [key]: e.target.checked } })
+                                }
+                              />
+                              <span className="checker-name">{r.title}</span>
+                              <span className="checker-desc">
+                                {r.description ?? r.check.type}
+                                {r.section ? ` · 节 [${r.section}]` : ''}
+                                {r.key ? ` · ${r.key}` : ''}
+                                {' · '}
+                                <code style={{ fontSize: 10.5 }}>{s.file}</code>
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  {projectRules.errors.map((e) => (
+                    <div key={e.file} className="setting-error">
+                      {e.file} 校验失败：{e.errors.join('；')}
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
 

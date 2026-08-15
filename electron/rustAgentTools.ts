@@ -271,6 +271,83 @@ export function createCodeTableTool(): AgentTool {
   }
 }
 
+/** 检查用例生成（M19，P2 任务 3）：AI 生成声明式检查规则（JSON），
+ * 界面可「试运行」验证后保存为项目规则（rules/*.json）。
+ * 安全边界：只接受声明式 schema（validateRuleSet 校验），不执行任何脚本。 */
+export function createGenerateCheckCasesTool(): AgentTool {
+  return {
+    name: 'generateCheckCases',
+    label: '生成检查用例',
+    description:
+      '生成针对单位文件的声明式检查用例（JSON 数组）。规则元素：{id, title, description?, section?, key, severity?(error/warning/info), check:{type, min?, max?, values?, pattern?}}。' +
+      'check.type 只能是 numeric-range / required-key / forbidden-value / regex-match / enum-value。' +
+      '先 readFile 查看目标单位，用例必须贴合实际字段与数值；规则只做键值校验，不能表达任意逻辑。',
+    parameters: Type.Object({
+      targetPath: Type.Optional(pathSchema),
+      rules: Type.Array(
+        Type.Object({
+          id: Type.String(),
+          title: Type.String(),
+          description: Type.Optional(Type.String()),
+          section: Type.Optional(Type.String()),
+          key: Type.Optional(Type.String()),
+          severity: Type.Optional(Type.String()),
+          check: Type.Any(),
+        }),
+      ),
+      note: Type.Optional(Type.String({ description: '用例说明（写给用户看的简短说明）' })),
+    }),
+    async execute(_id, params) {
+      const p = params as { targetPath?: string; rules: unknown[]; note?: string }
+      const { validateRuleSet } = await import('../src/features/editor/semanticChecks/ruleSchema.js')
+      const v = validateRuleSet({ formatVersion: 1, name: 'AI 生成规则', rules: p.rules })
+      if (!v.ok) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `检查用例格式有误，请修正后重试：\n${v.errors.join('\n')}\n（用例只能使用声明式检查：numeric-range/required-key/forbidden-value/regex-match/enum-value）`,
+            },
+          ],
+          details: { ok: false, errors: v.errors },
+        }
+      }
+      const lines = v.set.rules.map(
+        (r) => `- ${r.title}（${r.id}）：${r.description ?? describeCheck(r.check)}${r.section ? `，节 [${r.section}]` : ''}${r.key ? `，键 ${r.key}` : ''}${r.severity ? `，级别 ${r.severity}` : ''}`,
+      )
+      const targetLine = p.targetPath ? `目标文件：${p.targetPath}\n` : ''
+      const noteLine = p.note ? `说明：${p.note}\n` : ''
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `已生成 ${v.set.rules.length} 条检查用例：\n${lines.join('\n')}\n\n${targetLine}${noteLine}点击卡片上的「试运行」验证用例，验证通过后可「保存为项目规则」（写入项目 rules/ 目录，编辑器/质检/报告即时生效）。`,
+          },
+        ],
+        details: { ok: true, rules: v.set.rules, targetPath: p.targetPath ?? null, note: p.note ?? null },
+      }
+    },
+  }
+}
+
+/** 检查类型的人类可读描述（工具结果展示用） */
+function describeCheck(check: { type: string; min?: number; max?: number; values?: string[]; pattern?: string }): string {
+  switch (check.type) {
+    case 'numeric-range':
+      return `数值 ${check.min !== undefined ? `≥ ${check.min}` : ''}${check.min !== undefined && check.max !== undefined ? ' 且 ' : ''}${check.max !== undefined ? `≤ ${check.max}` : ''}`
+    case 'required-key':
+      return '节内必须存在该键'
+    case 'forbidden-value':
+      return `禁用值：${(check.values ?? []).join('、')}`
+    case 'enum-value':
+      return `允许值：${(check.values ?? []).join('、')}`
+    case 'regex-match':
+      return `匹配 ${check.pattern}`
+    default:
+      return check.type
+  }
+}
+
 export function createRustAgentTools(): AgentTool[] {
   return [
     createListProjectTool(),
@@ -279,6 +356,7 @@ export function createRustAgentTools(): AgentTool[] {
     createCodeTableTool(),
     createOutlineTool(),
     createWriteFileTool(),
+    createGenerateCheckCasesTool(),
   ]
 }
 

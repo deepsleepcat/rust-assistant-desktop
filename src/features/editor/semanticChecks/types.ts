@@ -56,4 +56,8 @@ export interface SemanticCheckOptions {
   /** 要运行的规则 id 集合；缺省 = 全部启用中的规则（由调用方过滤后传入） */
   ruleIds?: ReadonlySet<string>
   ctx?: SemanticCheckContext
+  /** M19/M21：项目自定义规则（声明式；默认执行） */
+  customRules?: import('./customRules').CustomRule[]
+  /** M19/M21：设置配置（custom: 前缀键显式 false 时对应规则跳过；缺省 = 全部执行） */
+  customRuleConfig?: Record<string, boolean>
 }

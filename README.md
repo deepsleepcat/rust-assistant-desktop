@@ -53,3 +53,40 @@ Electron · React 19 · TypeScript · Vite · Zustand · CodeMirror 6 · Pi Agen
 - 安装包由 GitHub Actions 在打 `v*` tag 时自动构建并发布，不从本地环境出包（供应链缓解）。
 - 首次安装可能出现 Windows 安全提示，点「更多信息 → 仍要运行」即可正常使用；更新包均带完整性校验。
 
+
+## 自定义检查规则（声明式插件，M19/M21）
+
+高级用户可在项目根目录放 `rules/*.json` 规则文件，语义检查（编辑器波浪线、AI 写后质检、质量报告）自动加载生效；AI 生成的检查用例可一键「试运行 / 保存为项目规则」写入 `rules/ai-rules.json`。设置 → 编辑器 里可单独开关每条规则。
+
+**安全边界**：规则文件**只支持声明式描述，不提供任何脚本执行环境**——规则只能做「键值匹配 + 数值/枚举/正则/必需键」校验，无法执行任意代码，恶意规则最多产生误报，不能读写文件或执行命令。
+
+规则文件格式（`formatVersion: 1`）：
+
+```json
+{
+  "formatVersion": 1,
+  "name": "我的规则集",
+  "rules": [
+    {
+      "id": "maxHp-range",
+      "title": "血量范围",
+      "description": "maxHp 必须在 1~10000",
+      "section": "core",
+      "key": "maxHp",
+      "severity": "warning",
+      "check": { "type": "numeric-range", "min": 1, "max": 10000 }
+    }
+  ]
+}
+```
+
+- `id`：1-64 位字母/数字/下划线/连字符，集内唯一；`title` 必填；`section`/`key` 省略 = 任意节/任意键（支持中文键名与中文节名）
+- `severity`：`error` / `warning` / `info`，默认 `warning`
+- `check.type` 一览：
+  - `numeric-range`：数值区间 `{ min?, max? }`（至少一侧；非数字值跳过）
+  - `required-key`：节内必须存在该键（需 `section` + `key`）
+  - `forbidden-value`：值不得等于 `values` 任一（大小写不敏感）
+  - `enum-value`：值必须是 `values` 之一（大小写不敏感）
+  - `regex-match`：值必须完整匹配 `pattern`
+
+格式错误（非法 id / 重复 / 越界区间 / 非法正则可编译等）会在设置页给出中文错误提示，坏文件只影响自身、不影响其它规则文件。

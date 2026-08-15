@@ -10,6 +10,8 @@ import { IconArchive } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { Modal, PromptModal } from '../../components/Modal'
 import { joinProjectPath } from '../ai/aiQualityCheck'
+import { validateRuleSet, runCustomRulesOnText, type CustomRuleSet } from '../editor/semanticChecks'
+import { invalidateProjectRulesCache } from '../editor/rustLint'
 import type { ToolEvent } from '../../types/domain'
 import type { AiHistoryMeta } from '../../types/ai'
 
@@ -317,12 +319,15 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
 }
 
 /** 工具卡片：writeFile 成功后提供「撤销此修改 / 修改历史」入口（任务 2），
- * 质检发现问题时下方展示可操作清单（任务 3）。 */
+ * 质检发现问题时下方展示可操作清单（任务 3）；
+ * generateCheckCases（M19）提供「试运行 / 保存为项目规则」。 */
 function ToolCard({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
   const aiRestoreFileVersion = useWorkspaceStore((s) => s.aiRestoreFileVersion)
+  const notify = useWorkspaceStore((s) => s.notify)
   const [historyOpen, setHistoryOpen] = useState(false)
   const done = tool.type === 'tool_end'
   const isWrite = done && tool.name === 'writeFile'
+  const isCases = done && tool.name === 'generateCheckCases'
   return (
     <>
       <div className={`tool-card${done && !tool.ok ? ' tool-card-error' : ''}`}>
@@ -369,8 +374,127 @@ function ToolCard({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
         )}
       </div>
       {isWrite && tool.ok && tool.lint && tool.lint.length > 0 && <LintBox tool={tool} rootPath={rootPath} />}
+      {isCases && tool.ok && <CheckCasesBox tool={tool} rootPath={rootPath} notify={notify} />}
       {historyOpen && tool.path && <HistoryModal rootPath={rootPath} relPath={tool.path} onClose={() => setHistoryOpen(false)} />}
     </>
+  )
+}
+
+/** AI 生成的检查用例（M19）：试运行验证 + 保存为项目规则（写入 rules/ 目录）。
+ * 规则来自工具参数（AI 生成，主进程已用同一 schema 校验）。 */
+function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: string; notify: (m: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [runState, setRunState] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [runResult, setRunResult] = useState<Array<{ rule: string; hits: Array<{ line: number; message: string }> }> | null>(null)
+  const [saved, setSaved] = useState(false)
+
+  // 从工具参数还原规则集（AI 生成 + 主进程校验通过；渲染层再校验一次防御）
+  const set = useMemo<CustomRuleSet | null>(() => {
+    const raw = tool.args?.rules
+    if (!Array.isArray(raw)) return null
+    const v = validateRuleSet({ formatVersion: 1, name: 'AI 生成规则', rules: raw })
+    return v.ok ? v.set : null
+  }, [tool.args?.rules])
+  const targetPath = typeof tool.args?.targetPath === 'string' ? tool.args.targetPath : null
+  const totalHits = runResult?.reduce((sum, r) => sum + r.hits.length, 0) ?? 0
+
+  /** 试运行：把用例跑在目标单位文件上，展示命中结果 */
+  const trialRun = async () => {
+    if (!set || !targetPath) return
+    setRunState('running')
+    setRunResult(null)
+    try {
+      const { getBridge } = await import('../../services/bridge')
+      const { content } = await getBridge().project.readFile(rootPath, joinProjectPath(rootPath, targetPath))
+      const issues = runCustomRulesOnText(content, set)
+      // 按规则分组展示
+      const byRule = new Map<string, Array<{ line: number; message: string }>>()
+      for (const it of issues) {
+        const key = it.ruleId
+        if (!byRule.has(key)) byRule.set(key, [])
+        byRule.get(key)!.push({ line: it.line, message: it.message })
+      }
+      setRunResult([...byRule.entries()].map(([rule, hits]) => ({ rule: rule.replace(/^custom:/, ''), hits })))
+      setRunState('done')
+    } catch (err) {
+      setRunState('error')
+      setRunResult(null)
+      notify(`试运行失败：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  /** 保存为项目规则：写入 rules/ai-rules.json（用户点击触发，非 AI 直接写盘） */
+  const saveRules = async () => {
+    if (!set) return
+    try {
+      const { getBridge } = await import('../../services/bridge')
+      const payload = JSON.stringify({ ...set, name: `AI 生成规则（${new Date().toLocaleDateString()}）` }, null, 2)
+      await getBridge().project.writeFile(rootPath, 'rules/ai-rules.json', payload, { hasBom: false })
+      invalidateProjectRulesCache(rootPath)
+      setSaved(true)
+      notify(`已保存 ${set.rules.length} 条规则到 rules/ai-rules.json，编辑器/质检/报告即时生效`)
+    } catch (err) {
+      notify(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  if (!set) return null // 参数缺失/校验失败：交给 AI 文本说明（工具返回里已有错误）
+  return (
+    <div className={`lint-box${runResult && totalHits > 0 ? ' has-error' : ''}`}>
+      <button className="lint-toggle" onClick={() => setOpen(!open)} title="展开/收起检查用例">
+        <span className="lint-toggle-mark">{open ? '▾' : '▸'}</span>
+        <span className="lint-toggle-title">
+          <AppIcon name="tools" size={11} />
+          检查用例 {set.rules.length} 条
+          {targetPath && <code className="tool-path">{targetPath}</code>}
+        </span>
+        {!saved && (
+          <span className="tool-card-actions">
+            <button
+              className="btn"
+              style={{ padding: '1px 8px', fontSize: 11 }}
+              disabled={runState === 'running'}
+              title={targetPath ? '把用例跑在目标单位文件上查看命中' : 'AI 未指定目标文件，无法试运行'}
+              onClick={() => void trialRun()}
+            >
+              <AppIcon name="search" size={11} /> {runState === 'running' ? '运行中…' : '试运行'}
+            </button>
+            <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} onClick={() => void saveRules()}>
+              <AppIcon name="check" size={11} /> 保存为项目规则
+            </button>
+          </span>
+        )}
+        {saved && <span className="lint-suggestion">已保存 ✓</span>}
+      </button>
+      {open && (
+        <div className="lint-list" style={{ padding: '4px 8px' }}>
+          {!targetPath && <div className="lint-evidence">AI 未指定目标文件：试运行需要目标单位文件（提示 AI 使用 generateCheckCases 时带上 targetPath）</div>}
+          {runState === 'done' && runResult && (
+            totalHits === 0 ? (
+              <div className="lint-suggestion">试运行通过：目标文件没有命中任何规则 ✓</div>
+            ) : (
+              runResult.map((r) => (
+                <div key={r.rule} className="lint-item lint-warning">
+                  <div className="lint-msg">
+                    <span className="lint-rule" title="规则 id">{r.rule}</span>
+                    命中 {r.hits.length} 处
+                  </div>
+                  {r.hits.slice(0, 10).map((h, i) => (
+                    <div key={i} className="lint-evidence">
+                      第 {h.line} 行：{h.message}
+                    </div>
+                  ))}
+                  {r.hits.length > 10 && <div className="lint-evidence">…还有 {r.hits.length - 10} 处</div>}
+                </div>
+              ))
+            )
+          )}
+          {runState === 'error' && <div className="lint-evidence">试运行失败，见上方提示</div>}
+          {runState === 'idle' && <div className="lint-evidence">点击「试运行」把用例跑在目标单位文件上；验证通过后可保存为项目规则。</div>}
+          <div className="lint-evidence">安全说明：规则是声明式的（数值/枚举/正则/必需键），不执行任何脚本。</div>
+        </div>
+      )}
+    </div>
   )
 }
 

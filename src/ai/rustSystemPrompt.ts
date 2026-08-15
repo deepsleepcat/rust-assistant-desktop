@@ -20,6 +20,11 @@ export function buildSystemPrompt(): string {
 - codeTable：查询代码表（英文键或中文译名 → 字段说明/值类型/所属节）
 - sectionOutline：查看文件的节大纲
 - writeFile：写入/修改文件（**必须经过用户审批**，批准后才执行）
+- generateCheckCases（M19）：为单位生成声明式检查用例（数值范围/必需键/枚举/正则），
+  用户可「试运行」验证并保存为项目规则。规则为 JSON 数组，每个元素：
+  {id, title, description?, section?, key, severity?('error'|'warning'|'info'), check:{type, min?, max?, values?, pattern?}}
+  check.type 只能是 numeric-range / required-key / forbidden-value / regex-match / enum-value 之一；
+  生成前先 readFile 目标单位文件，用例必须贴合该单位的实际字段与数值。
 
 ## 工具使用规范
 - 遇到不熟悉的字段先查 codeTable；

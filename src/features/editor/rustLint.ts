@@ -13,8 +13,9 @@ import type { EditorView } from '@codemirror/view'
 import type { ValueTypeInfo } from '../../services/codeData'
 import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber, zhToEnKeySegments } from '../../services/codeData'
 import { classifyLine } from './rustLanguage'
-import { runSemanticChecks, semanticIssuesToDiagnostics } from './semanticChecks'
+import { runSemanticChecks, semanticIssuesToDiagnostics, type CustomRule } from './semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from './semanticChecks/registry'
+import { loadProjectRuleSets } from './semanticChecks/customRules'
 
 /** 规则描述「整行/键」而非「值」的类型：值校验时跳过，避免误报 */
 const LINE_LEVEL_TYPES = new Set(['key', 'section', 'value', 'notes', 'define', 'prefixKey', 'code'])
@@ -175,6 +176,25 @@ async function cachedUnitNames(rootPath?: string): Promise<ReadonlySet<string> |
   return unitNamesCache?.root === rootPath ? unitNamesCache.names : undefined
 }
 
+/** 项目自定义规则缓存（M19/M21）：rules/*.json 是 IPC 读取，编辑高频 lint 不能每次都打。
+ * 缓存 30s；保存规则文件后调用 invalidateProjectRulesCache 立即失效 */
+let projectRulesCache: { root: string; rules: CustomRule[]; at: number } | null = null
+
+export function invalidateProjectRulesCache(rootPath?: string): void {
+  if (!rootPath || projectRulesCache?.root === rootPath) projectRulesCache = null
+}
+
+async function cachedProjectRules(rootPath?: string): Promise<CustomRule[] | undefined> {
+  if (!rootPath) return undefined
+  if (projectRulesCache && projectRulesCache.root === rootPath && Date.now() - projectRulesCache.at < 30_000) {
+    return projectRulesCache.rules
+  }
+  const loaded = await loadProjectRuleSets(rootPath).catch(() => ({ sets: [], errors: [] }))
+  const rules = loaded.sets.flatMap((s) => s.rules)
+  projectRulesCache = { root: rootPath, rules, at: Date.now() }
+  return rules
+}
+
 export interface RustLintOptions {
   /** 项目根（提供时语义引用检查可拿到单位名列表） */
   rootPath?: string
@@ -207,11 +227,15 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
       if (content.length <= MAX_SEMANTIC_LINT_CHARS) {
         const ruleIds = enabledRuleIds(opts.semanticCheckers ?? defaultSemanticCheckerConfig())
         const unitNames = await cachedUnitNames(opts.rootPath)
+        // M19/M21：项目自定义规则（rules/*.json，声明式；缓存 30s）
+        const customRules = await cachedProjectRules(opts.rootPath)
         // M11：目标版本名 → 版本号（空 = 最新版本，由检查器兜底）
         const targetVersionNumber = opts.targetVersionName ? versionNameToNumber(opts.targetVersionName) : undefined
         const issues = runSemanticChecks(content, {
           ruleIds,
           ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames, targetVersionNumber },
+          customRules,
+          customRuleConfig: opts.semanticCheckers,
         })
         return [...diagnostics, ...semanticIssuesToDiagnostics(content, issues)]
       }

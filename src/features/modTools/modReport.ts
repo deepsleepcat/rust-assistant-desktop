@@ -9,6 +9,7 @@
 import type { AiLintItem } from '../../types/ai'
 import { runSemanticChecks, type SemanticIssue } from '../editor/semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
+import { loadProjectRuleSets } from '../editor/semanticChecks/customRules'
 import { findCodeByCode, findValueType, getAllCodes, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
 
 /** 报告中的单条问题（file 为相对项目根的 posix 路径，脱敏） */
@@ -85,7 +86,7 @@ function toReportIssue(file: string, it: SemanticIssue): ModReportIssue {
 export async function generateModReport(
   rootPath: string,
   options: ModReportOptions,
-  bridgeOverride?: { mod: { scanResources(root: string): Promise<{ files: string[]; unitNames: string[] }> }; project: { readFile(root: string, file: string): Promise<{ content: string }> } },
+  bridgeOverride?: { mod: { scanResources(root: string): Promise<{ files: string[]; unitNames: string[] }> }; project: { readFile(root: string, file: string): Promise<{ content: string }>; readDir?(root: string, dir: string, showHidden?: boolean): Promise<Array<{ name: string; isDirectory: boolean }>> } },
 ): Promise<ModReport> {
   const bridge = bridgeOverride ?? (await import('../../services/bridge')).getBridge()
   const scan = await bridge.mod.scanResources(rootPath)
@@ -101,6 +102,10 @@ export async function generateModReport(
   }
   const ruleIds = enabledRuleIds(options.semanticCheckers ?? defaultSemanticCheckerConfig())
   const targetVersionNumber = options.targetVersionName ? versionNameToNumber(options.targetVersionName) : undefined
+  // M21：项目自定义规则（rules/*.json；测试注入的桥没有 readDir 时跳过）
+  const customRules = bridge.project.readDir
+    ? (await loadProjectRuleSets(rootPath, bridge as never)).sets.flatMap((s) => s.rules)
+    : []
 
   const issues: ModReportIssue[] = []
   const checkerCount = new Map<string, { errors: number; warnings: number }>()
@@ -143,6 +148,8 @@ export async function generateModReport(
     const semantic = runSemanticChecks(content, {
       ruleIds,
       ctx: { ...data, codes, unitNames, targetVersionNumber },
+      customRules,
+      customRuleConfig: options.semanticCheckers,
     })
     for (const it of semantic) issuesAll.push(toReportIssue(file, it))
 
