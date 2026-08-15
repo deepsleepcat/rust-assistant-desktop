@@ -136,24 +136,21 @@ export async function logHistory(root: string, limit = 40): Promise<GitCommitEnt
     })
 }
 
+/** 合法状态字符（porcelain v1 首位/次位：M/A/D/R/C/U/?/空格） */
+const STATUS_CHARS = new Set(['M', 'A', 'D', 'R', 'C', 'U', '?', ' '])
+
 /** 工作区改动清单（porcelain v1 -z：NUL 分隔，含空格文件名不带引号，可直接用）。
- * 重命名条目输出两段（old 段状态 R、new 段状态为空格）——合并为一条指向新路径 */
+ * -z 的重命名格式为 "R  new\0old\0"：第二段是裸旧路径（无状态列）——
+ * 新路径已在第一条记录里，续段直接丢弃 */
 export async function statusFiles(root: string): Promise<GitStatusEntry[]> {
   const out = await runGit(root, ['status', '--porcelain=v1', '-z']).catch(() => '')
   const parts = out.split('\u0000').filter((p) => p.length > 0)
   const entries: GitStatusEntry[] = []
-  for (let i = 0; i < parts.length; i++) {
-    const raw = parts[i]
+  for (const raw of parts) {
+    // 合法记录 = 2 个状态字符 + 1 空格 + 路径；其余（重命名/复制的续段）跳过
     const status = raw.slice(0, 2)
-    // 记录格式 "XY PATH"：2 字符状态 + 1 空格分隔 + 路径
-    const path = raw.slice(3)
-    if (status.trim() === '') {
-      // 重命名的第二段：目标路径——合并到前一条
-      const prev = entries[entries.length - 1]
-      if (prev && prev.status.startsWith('R')) prev.path = path
-      continue
-    }
-    entries.push({ status: status.trim() || '?', path })
+    if (![...status].every((c) => STATUS_CHARS.has(c)) || raw[2] !== ' ') continue
+    entries.push({ status: status.trim() || '?', path: raw.slice(3) })
   }
   return entries
 }
