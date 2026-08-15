@@ -1,6 +1,15 @@
 /**
- * 设置面板：外观（主题/彩虹）、背景（纯色/渐变/图片 + 透明度/模糊）、
- * 编辑器（字体/字号）、布局（左右栏宽度）、关于。
+ * 设置面板（Tab 内联渲染，未拆子组件；结构标注便于定位）：
+ * - SettingsModal（主）——左导航 + 右内容区，tab 状态驱动
+ * - 外观（appearance）  主题/彩虹/鼠标特效
+ * - 背景（background）  纯色/渐变/图片 + 透明度/模糊
+ * - 编辑器（editor）    字体/字号/语义检查器开关/自定义规则
+ * - 布局（layout）      左右栏宽度
+ * - AI（ai）           提供者/Key/模型/用量统计
+ * - 头像（avatar）      本地图片裁切（AvatarCropModal）
+ * - 游戏（game）        游戏目录/版本兼容（GameSettingsTab，独立文件）
+ * - 关于（about）       版本/数据源/更新
+ * - SettingNavItem（文件尾部）左侧导航项
  */
 import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'

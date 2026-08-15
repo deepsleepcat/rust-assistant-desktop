@@ -1072,12 +1072,6 @@ export function formatIniText(text: string): string {
   return out.join('\n')
 }
 
-/** 打包模组：整目录递归写入 zip（排除垃圾文件） */
-export async function packMod(projectRoot: string, options?: PackOptions): Promise<{ size: number; files: number }> {
-  const { buffer, files } = await packModBufferWithCount(projectRoot, options)
-  return { size: buffer.byteLength, files }
-}
-
 /** 打包并返回 zip 二进制（供 IPC 保存用） */
 export async function packModBuffer(projectRoot: string, options?: PackOptions): Promise<Buffer> {
   const { buffer } = await packModBufferWithCount(projectRoot, options)

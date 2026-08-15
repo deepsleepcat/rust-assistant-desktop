@@ -26,15 +26,3 @@ export function updateTreeNode(root: TreeNode, targetPath: string, updater: (nod
   })
   return changed ? { ...root, children } : root
 }
-
-/** 展开/收起一个文件夹 */
-export function toggleNode(root: TreeNode, targetPath: string): TreeNode {
-  return updateTreeNode(root, targetPath, (node) => ({ ...node, expanded: !node.expanded }))
-}
-
-/** 统计当前树中有多少个目录（用于空状态判断） */
-export function countDirectories(node: TreeNode): number {
-  let count = node.isDirectory ? 1 : 0
-  for (const child of node.children ?? []) count += countDirectories(child)
-  return count
-}

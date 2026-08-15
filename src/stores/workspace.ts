@@ -219,10 +219,6 @@ export function createWorkspaceStore(bridge: BridgeApi) {
 /** 应用默认使用的全局仓库（真实桥） */
 export const useWorkspaceStore = createWorkspaceStore(getBridge())
 
-/** 便捷选择器 */
-export const useActiveProject = () =>
-  useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
-
 export const useSortedConversations = (projectId: string | null) =>
   useWorkspaceStore(
     useShallow((s) => {
@@ -230,9 +226,3 @@ export const useSortedConversations = (projectId: string | null) =>
       return sortConversations(list)
     }),
   )
-
-export const useActiveTab = () =>
-  useWorkspaceStore((s) => s.openTabs.find((t) => t.id === s.activeTabId) ?? null)
-
-export const useActiveConversation = () =>
-  useWorkspaceStore((s) => s.conversations.find((c) => c.id === s.activeConversationId) ?? null)

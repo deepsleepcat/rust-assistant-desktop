@@ -44,7 +44,7 @@ export interface VocabularyItem {
   explanation: string
 }
 
-/** 逻辑布尔函数（VSCode 插件 logicboolean.json：139 条 self.xxx() 方法/关键字） */
+/** 逻辑布尔函数（VSCode 插件 logicboolean.json：138 条 self.xxx() 方法/关键字） */
 export interface LogicBooleanInfo {
   name: string
   type: string
@@ -260,15 +260,6 @@ export function zhToEnKeySegments(key: string): string {
     .join('_')
 }
 
-/** 当前行所属节（向上扫描最近的 [xxx]） */
-export function getSectionOfLine(lines: string[], lineIndex: number): string {
-  for (let i = lineIndex; i >= 0; i--) {
-    const m = /^\s*\[(.+?)\]\s*$/.exec(lines[i])
-    if (m) return m[1]
-  }
-  return ''
-}
-
 /** 按节查询代码（节为 all 时全局适用；英文 code 或中文 translate 匹配）。
  * 中文显示层传入的中文节名（如「核心」）先经词典回译成英文（core）再匹配。 */
 export function findCodesBySection(section: string, query: string, limit = 40): CodeInfo[] {
@@ -344,11 +335,6 @@ export async function saveCustomValueTypes(list: ValueTypeInfo[]): Promise<void>
 /** 全部官方单位（scripts/extract-game-data.mjs 从游戏提取，按 name 排序） */
 export function getAllOfficialUnits(): OfficialUnitInfo[] {
   return [...officialUnits]
-}
-
-/** 按中文节名查节（翻译用） */
-export function findSectionByTranslate(translate: string): SectionInfo | undefined {
-  return sections.find((s) => s.translate === translate || s.code === translate)
 }
 
 /** 全部游戏版本（按 versionNumber 升序），供版本兼容设置/悬停展示 */
@@ -488,10 +474,4 @@ export function codeInfoToCompletion(c: CodeInfo, commitSuffix = ''): Completion
     type: 'property',
     apply: c.code + commitSuffix,
   }
-}
-
-/** 按值类型补全（自动追加 external 符号，如 name: ） */
-export function valueTypeCompletion(c: CodeInfo): Completion {
-  const vt = findValueType(c.type)
-  return codeInfoToCompletion(c, vt?.external ?? '')
 }

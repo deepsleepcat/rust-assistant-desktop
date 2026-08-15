@@ -314,7 +314,7 @@ async function valueCompletions(key: string, query: string, data: CompletionData
     }
   }
 
-  // 逻辑布尔表达式：值里输入 self. 前缀 → 补全 139 条 self 方法（如 self.hp()）
+  // 逻辑布尔表达式：值里输入 self. 前缀 → 补全 138 条 self 方法（如 self.hp()）
   if (/^self\./.test(query)) {
     const names = searchLogicBooleans(query.slice(5), 30)
     for (const n of names) {

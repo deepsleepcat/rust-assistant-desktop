@@ -1,8 +1,13 @@
 /**
- * M5 模组工具弹窗：
- * - 创建模组自述文件：表单 → 生成 mod-info.txt（已存在不覆盖）
- * - 新建单位：表单 → 生成最小可玩单位骨架
- * - 检查模组：显示单位检查结果（name 缺失 / [core] 缺失 / 重名）
+ * M5 模组工具弹窗（容器组件：按 modDialog 状态分发到子弹窗）：
+ * - ModToolModals（主）——根据 modDialog 状态渲染对应子弹窗
+ * - CreateModModal  创建模组自述文件：表单 → 生成 mod-info.txt（已存在不覆盖）
+ * - CreateUnitModal 新建单位：表单 → 生成最小可玩单位骨架
+ * - CheckModal      检查模组：显示单位检查结果（name 缺失 / [core] 缺失 / 重名）
+ * - OptimizeModal   目录优化：删冗余/重写空行注释（互斥域批量改写）
+ * - GlobalOpModal   全局批量改写：按规则替换/前缀/后缀
+ * - PackModal       打包模组：.rwmod 生成（清理选项）
+ * - ReportModal     模组报告：完整性/统计导出
  */
 import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'

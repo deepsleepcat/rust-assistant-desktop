@@ -9,7 +9,6 @@
  */
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
-import type { CompletionContext } from '@codemirror/autocomplete'
 
 /** 逐行分类：纯函数，供测试 */
 export type RustKeyKind = 'animation' | 'graphic' | 'property'
@@ -105,14 +104,6 @@ export function findSectionOfLine(lines: string[], lineIndex: number): string {
     if (m) return m[1]
   }
   return ''
-}
-
-/** 补全上下文：光标所在行 + 当前节 */
-export function completionContext(context: CompletionContext): { line: string; section: string } {
-  const lineInfo = context.state.doc.lineAt(context.pos)
-  const lines = context.state.doc.toString().split('\n')
-  const lineIndex = lineInfo.number - 1
-  return { line: lineInfo.text, section: findSectionOfLine(lines, lineIndex) }
 }
 
 /** 收集当前文件所有 ${变量名}（对齐手机版 RustAnalyzer.localVariableNameList：
