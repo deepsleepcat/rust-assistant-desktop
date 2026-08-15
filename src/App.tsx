@@ -18,6 +18,7 @@ import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
 import { CodeTableModal } from './features/editor/CodeTableModal'
 import { VersionDiffModal } from './features/editor/VersionDiffModal'
+import { RelationGraphModal } from './features/graph/RelationGraphModal'
 import { UnitLibraryModal } from './features/editor/UnitLibraryModal'
 import { ValueTypeModal } from './features/settings/ValueTypeModal'
 import { CursorEffect } from './components/CursorEffect'
@@ -28,6 +29,7 @@ export function App() {
   const settingsOpen = useWorkspaceStore((s) => s.settingsOpen)
   const codeTableOpen = useWorkspaceStore((s) => s.codeTableOpen)
   const versionDiffOpen = useWorkspaceStore((s) => s.versionDiffOpen)
+  const relationGraphOpen = useWorkspaceStore((s) => s.relationGraphOpen)
   const unitLibraryOpen = useWorkspaceStore((s) => s.unitLibraryOpen)
   const valueTypeOpen = useWorkspaceStore((s) => s.valueTypeOpen)
   const toast = useWorkspaceStore((s) => s.toast)
@@ -178,6 +180,7 @@ export function App() {
       <ModToolModals />
       {codeTableOpen && <CodeTableModal onClose={() => useWorkspaceStore.getState().setCodeTableOpen(false)} />}
       {versionDiffOpen && <VersionDiffModal onClose={() => useWorkspaceStore.getState().setVersionDiffOpen(false)} />}
+      {relationGraphOpen && <RelationGraphModal onClose={() => useWorkspaceStore.getState().setRelationGraphOpen(false)} />}
       {unitLibraryOpen && <UnitLibraryModal onClose={() => useWorkspaceStore.getState().setUnitLibraryOpen(false)} />}
       {valueTypeOpen && (
         <ValueTypeModal

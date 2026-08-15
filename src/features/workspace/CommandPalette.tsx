@@ -63,6 +63,7 @@ export function CommandPalette() {
       { id: 'mod-optimize', title: '模组：优化（清理垃圾）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); setModDialog('optimize') } },
       { id: 'code-table', title: '浏览代码表', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setCodeTableOpen(true) } },
       { id: 'version-diff', title: '版本差异对比（字段新增/弃用/迁移）', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setVersionDiffOpen(true) } },
+      { id: 'relation-graph', title: '模组关系图（单位/资源/炮塔/弹体引用）', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setRelationGraphOpen(true) } },
       { id: 'value-type', title: '值类型管理（自定义补全规则）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setValueTypeOpen(true) } },
     ],
     [importModProject, createConversation, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen],

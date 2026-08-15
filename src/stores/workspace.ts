@@ -63,6 +63,8 @@ interface WorkspaceStoreState {
   codeTableOpen: boolean
   /** M17：版本差异对比弹窗（P2 任务 1） */
   versionDiffOpen: boolean
+  /** M20：关系图弹窗（P2 任务 4） */
+  relationGraphOpen: boolean
   /** M7：单位库弹窗 */
   unitLibraryOpen: boolean
   /** M8：值类型管理弹窗 */
@@ -162,6 +164,7 @@ interface WorkspaceStoreActions {
   setCommandOpen(open: boolean): void
   setCodeTableOpen(open: boolean): void
   setVersionDiffOpen(open: boolean): void
+  setRelationGraphOpen(open: boolean): void
   setUnitLibraryOpen(open: boolean): void
   /** M8：值类型管理弹窗 */
   setValueTypeOpen(open: boolean): void
@@ -348,6 +351,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       commandOpen: false,
       codeTableOpen: false,
       versionDiffOpen: false,
+      relationGraphOpen: false,
       unitLibraryOpen: false,
       valueTypeOpen: false,
       turretEditorOpen: false,
@@ -1114,6 +1118,9 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       },
       setVersionDiffOpen(open: boolean) {
         set({ versionDiffOpen: open })
+      },
+      setRelationGraphOpen(open: boolean) {
+        set({ relationGraphOpen: open })
       },
       setUnitLibraryOpen(open: boolean) {
         set({ unitLibraryOpen: open })

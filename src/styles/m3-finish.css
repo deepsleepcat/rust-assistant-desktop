@@ -394,3 +394,25 @@
 .vdiff-report-kind { flex-shrink: 0; padding: 0 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
 .vdiff-report-item.must .vdiff-report-kind { background: rgba(197,34,31,.14); color: var(--danger); }
 .vdiff-report-item.new .vdiff-report-kind { background: rgba(24,128,56,.14); color: #188038; }
+
+/* ── M20 模组关系图弹窗 ─────────────────────────────── */
+.relgraph-card { width: min(960px, 97vw); height: min(680px, 92vh); }
+.relgraph-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--divider); }
+.relgraph-tabs button { padding: 6px 12px; border: 0; background: transparent; color: var(--text-2); font: 13px var(--font-ui); cursor: pointer; border-bottom: 2px solid transparent; }
+.relgraph-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.relgraph-grid { display: grid; grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 10px; min-height: 0; flex: 1; }
+.relgraph-units { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.relgraph-unit-list { border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding: 4px; flex: 1; min-height: 0; }
+.relgraph-unit { display: flex; flex-direction: column; gap: 1px; padding: 5px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; text-align: left; font: 12px var(--font-ui); }
+.relgraph-unit:hover { background: var(--surface-hover); }
+.relgraph-unit.active { background: var(--bg-active); }
+.relgraph-unit-name { font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.relgraph-unit-file { font-size: 10.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.relgraph-unit-count { font-size: 10.5px; color: var(--text-2); }
+.relgraph-canvas { border: 1px solid var(--divider); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; min-height: 0; overflow: auto; }
+.relgraph-canvas-inner { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; }
+.relgraph-node:hover circle { stroke-width: 3; }
+.relgraph-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-2); }
+.relgraph-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.relgraph-legend-item i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.relgraph-list { display: flex; flex-direction: column; gap: 3px; overflow-y: auto; min-height: 0; flex: 1; }
