@@ -1,0 +1,421 @@
+{
+ "name": "dialect",
+ "generatedFrom": "Rusted Warfare 逻辑语法词典（mtsx-v7.3.5，仅事实层 token）",
+ "note": "铁锈战争单位逻辑语法（predicates/debugFunctions/logicCallParameters/memoryKeywords）中本地数据缺失的 token。word 为官方 token（事实层）；zh 为可安全进翻译词典的译名（通用单字母/数学函数等只进词库，避免污染显示层）；explanation 为本项目自行编写的说明。",
+ "words": [
+  {
+   "word": "ammoIncludingQueued",
+   "zh": "弹药含队列",
+   "explanation": "逻辑谓词：弹药量（含生产队列中）"
+  },
+  {
+   "word": "breadUnitMemory",
+   "zh": "读取单位记忆",
+   "explanation": "逻辑谓词：读取单位记忆值"
+  },
+  {
+   "word": "builtAmount",
+   "zh": "建造量",
+   "explanation": "逻辑谓词：已建造量"
+  },
+  {
+   "word": "completed",
+   "explanation": "逻辑谓词：建造是否完成"
+  },
+  {
+   "word": "customTimer",
+   "zh": "自定义计时器",
+   "explanation": "逻辑谓词：自定义计时器值"
+  },
+  {
+   "word": "dir",
+   "explanation": "逻辑谓词/调用参数：朝向/方向"
+  },
+  {
+   "word": "energyIncludingQueued",
+   "zh": "能量含队列",
+   "explanation": "逻辑谓词：能量值（含生产队列中）"
+  },
+  {
+   "word": "flying",
+   "explanation": "逻辑谓词：是否飞行中"
+  },
+  {
+   "word": "globalTeamTags",
+   "zh": "全局队伍标签",
+   "explanation": "逻辑谓词：全局队伍标签"
+  },
+  {
+   "word": "gound",
+   "explanation": "逻辑谓词：地面判定（官方拼写 gound，非 ground）"
+  },
+  {
+   "word": "ground",
+   "explanation": "逻辑谓词：是否在地面"
+  },
+  {
+   "word": "hasActiveWaypoint",
+   "zh": "有待执行路径点",
+   "explanation": "逻辑谓词：是否有活动路径点"
+  },
+  {
+   "word": "hasGlobalTeamTags",
+   "zh": "有全局队伍标签",
+   "explanation": "逻辑谓词：是否有全局队伍标签"
+  },
+  {
+   "word": "hasParent",
+   "zh": "有父单位",
+   "explanation": "逻辑谓词：是否有父单位"
+  },
+  {
+   "word": "hasResources",
+   "zh": "有资源",
+   "explanation": "逻辑谓词：是否拥有资源"
+  },
+  {
+   "word": "hasTags",
+   "zh": "有标签",
+   "explanation": "逻辑谓词：是否带标签"
+  },
+  {
+   "word": "hasTakenDamage",
+   "zh": "受过伤害",
+   "explanation": "逻辑谓词：是否已受到过伤害"
+  },
+  {
+   "word": "hasUnitInTeam",
+   "zh": "队伍内有单位",
+   "explanation": "逻辑谓词：队伍内是否有单位"
+  },
+  {
+   "word": "index",
+   "explanation": "逻辑谓词/调用参数：索引序号"
+  },
+  {
+   "word": "inWater",
+   "explanation": "逻辑谓词：是否在水中"
+  },
+  {
+   "word": "isAmmoEmpty",
+   "zh": "弹药为空",
+   "explanation": "逻辑谓词：弹药是否耗尽"
+  },
+  {
+   "word": "isAtGroundHeight",
+   "zh": "在地面高度",
+   "explanation": "逻辑谓词：是否处于地面高度"
+  },
+  {
+   "word": "isAttacking",
+   "zh": "攻击中",
+   "explanation": "逻辑谓词：是否正在攻击"
+  },
+  {
+   "word": "isAtTopSpeed",
+   "zh": "全速移动中",
+   "explanation": "逻辑谓词：是否处于最高速度"
+  },
+  {
+   "word": "isControlledByAI",
+   "zh": "由人工智能控制",
+   "explanation": "逻辑谓词：是否由 AI 控制"
+  },
+  {
+   "word": "isEnergyEmpty",
+   "zh": "能量为空",
+   "explanation": "逻辑谓词：能量是否耗尽"
+  },
+  {
+   "word": "isEnergyFull",
+   "zh": "能量已满",
+   "explanation": "逻辑谓词：能量是否满"
+  },
+  {
+   "word": "isEnergyRecharging",
+   "zh": "能量回复中",
+   "explanation": "逻辑谓词：能量是否在回复"
+  },
+  {
+   "word": "isFlying",
+   "zh": "飞行中",
+   "explanation": "逻辑谓词：是否处于飞行状态"
+  },
+  {
+   "word": "isInMap",
+   "zh": "在地图内",
+   "explanation": "逻辑谓词：是否在地图范围内"
+  },
+  {
+   "word": "isInWater",
+   "zh": "在水中",
+   "explanation": "逻辑谓词：是否在水中"
+  },
+  {
+   "word": "isMoving",
+   "explanation": "逻辑谓词：是否正在移动"
+  },
+  {
+   "word": "isOnNeutralTeam",
+   "zh": "属于中立队伍",
+   "explanation": "逻辑谓词：是否属于中立队伍"
+  },
+  {
+   "word": "isOverCliff",
+   "zh": "悬崖上方",
+   "explanation": "逻辑谓词：是否在悬崖上方"
+  },
+  {
+   "word": "isOverClift",
+   "explanation": "逻辑谓词：是否在悬崖上方（官方拼写 isOverClift，非 Cliff）"
+  },
+  {
+   "word": "isOverLiquid",
+   "zh": "液体上方",
+   "explanation": "逻辑谓词：是否在液体（岩浆等）上方"
+  },
+  {
+   "word": "isOverOpenLand",
+   "zh": "开阔地上方",
+   "explanation": "逻辑谓词：是否在开阔地上方"
+  },
+  {
+   "word": "isOverPassableTile",
+   "zh": "可通行格上方",
+   "explanation": "逻辑谓词：是否在可通行地形上方"
+  },
+  {
+   "word": "isOverwater",
+   "zh": "水面上方",
+   "explanation": "逻辑谓词：是否在水面上方"
+  },
+  {
+   "word": "isReversing",
+   "zh": "倒车中",
+   "explanation": "逻辑谓词：是否正在倒车"
+  },
+  {
+   "word": "isTransportUnloading",
+   "zh": "运输卸载中",
+   "explanation": "逻辑谓词：运输载具是否正在卸载"
+  },
+  {
+   "word": "isUnderwater",
+   "zh": "潜水中",
+   "explanation": "逻辑谓词：是否在水下"
+  },
+  {
+   "word": "kills",
+   "explanation": "逻辑谓词：击杀数量"
+  },
+  {
+   "word": "lastConverted",
+   "zh": "上次转换",
+   "explanation": "逻辑谓词：上次转换（转化）事件"
+  },
+  {
+   "word": "mapHeight",
+   "zh": "地图高度",
+   "explanation": "逻辑谓词/调用参数：地图高度（格数）"
+  },
+  {
+   "word": "mapWidth",
+   "zh": "地图宽度",
+   "explanation": "逻辑谓词/调用参数：地图宽度（格数）"
+  },
+  {
+   "word": "maxEnergy",
+   "zh": "最大能量",
+   "explanation": "逻辑谓词：最大能量值"
+  },
+  {
+   "word": "maxMoveSpeed",
+   "zh": "最大移动速度",
+   "explanation": "逻辑谓词：最大移动速度"
+  },
+  {
+   "word": "maxspeed",
+   "explanation": "逻辑谓词：最大速度（官方拼写 maxspeed）"
+  },
+  {
+   "word": "noUnitInTeam",
+   "zh": "队伍内无单位",
+   "explanation": "逻辑谓词：队伍内是否没有单位"
+  },
+  {
+   "word": "nukesEnabled",
+   "zh": "核弹可用",
+   "explanation": "逻辑谓词/调用参数：核弹是否可用"
+  },
+  {
+   "word": "numberOfAttachedUnits",
+   "zh": "挂载单位数",
+   "explanation": "逻辑谓词：挂载的单位数量"
+  },
+  {
+   "word": "numberOfConnections",
+   "zh": "连接数",
+   "explanation": "逻辑谓词：连接数量"
+  },
+  {
+   "word": "numberOfQueuedWaypoints",
+   "zh": "队列路径点数",
+   "explanation": "逻辑谓词：队列中的路径点数量"
+  },
+  {
+   "word": "numberOfUnitsInAllTeams",
+   "zh": "所有队伍单位数",
+   "explanation": "逻辑谓词：所有队伍的单位总数"
+  },
+  {
+   "word": "numberOfUnitsInAllyNotOwnTeam",
+   "zh": "友方非己方单位数",
+   "explanation": "逻辑谓词：友方队伍（非己方）单位数"
+  },
+  {
+   "word": "numberOfUnitsInAllyTeam",
+   "zh": "友方队伍单位数",
+   "explanation": "逻辑谓词：友方队伍的单位数"
+  },
+  {
+   "word": "overWater",
+   "explanation": "逻辑谓词：是否在水面上方"
+  },
+  {
+   "word": "playerName",
+   "zh": "玩家名",
+   "explanation": "逻辑谓词：玩家名称"
+  },
+  {
+   "word": "priceCredits",
+   "zh": "价格点数",
+   "explanation": "逻辑谓词：价格（点数）"
+  },
+  {
+   "word": "queueSize",
+   "zh": "队列大小",
+   "explanation": "逻辑谓词：生产队列大小"
+  },
+  {
+   "word": "teamDefeatedTech",
+   "zh": "队伍科技失败",
+   "explanation": "逻辑谓词：队伍科技是否被摧毁"
+  },
+  {
+   "word": "teamId",
+   "explanation": "逻辑谓词：队伍 ID"
+  },
+  {
+   "word": "teamName",
+   "zh": "队伍名",
+   "explanation": "逻辑谓词：队伍名称"
+  },
+  {
+   "word": "teamVictory",
+   "zh": "队伍胜利",
+   "explanation": "逻辑谓词：队伍是否胜利"
+  },
+  {
+   "word": "teamWipedOut",
+   "zh": "队伍被全灭",
+   "explanation": "逻辑谓词：队伍是否被全灭"
+  },
+  {
+   "word": "timeAlive",
+   "zh": "存活时间",
+   "explanation": "逻辑谓词：单位存活时间"
+  },
+  {
+   "word": "transportingCount",
+   "zh": "运输数量",
+   "explanation": "逻辑谓词：运输载具装载数量"
+  },
+  {
+   "word": "transportingUnitWithTags",
+   "zh": "运输带标签单位",
+   "explanation": "逻辑谓词：是否运输着带指定标签的单位"
+  },
+  {
+   "word": "underwater",
+   "explanation": "逻辑谓词/调用参数：水下判定"
+  },
+  {
+   "word": "z",
+   "explanation": "逻辑谓词：Z 坐标（通用单字母，不进翻译词典）"
+  },
+  {
+   "word": "cos",
+   "explanation": "逻辑函数：余弦（数学函数，不进翻译词典）"
+  },
+  {
+   "word": "debugPassthrough",
+   "zh": "调试透传",
+   "explanation": "逻辑函数：调试透传"
+  },
+  {
+   "word": "direction",
+   "explanation": "逻辑函数：方向"
+  },
+  {
+   "word": "directionBetween",
+   "zh": "两点方向",
+   "explanation": "逻辑函数：两点之间的方向"
+  },
+  {
+   "word": "distanceBetween",
+   "zh": "两点距离",
+   "explanation": "逻辑函数：两点之间的距离"
+  },
+  {
+   "word": "distanceBetweenSquared",
+   "zh": "两点距离平方",
+   "explanation": "逻辑函数：两点之间的距离平方"
+  },
+  {
+   "word": "lowercase",
+   "explanation": "逻辑函数：转为小写"
+  },
+  {
+   "word": "rnd",
+   "explanation": "逻辑函数：随机数（数学函数，不进翻译词典）"
+  },
+  {
+   "word": "sin",
+   "explanation": "逻辑函数：正弦（数学函数，不进翻译词典）"
+  },
+  {
+   "word": "uppercase",
+   "explanation": "逻辑函数：转为大写"
+  },
+  {
+   "word": "aggressiveteam",
+   "explanation": "逻辑调用参数：敌对队伍（官方拼写 aggressiveteam）"
+  },
+  {
+   "word": "allteams",
+   "explanation": "逻辑调用参数：所有队伍"
+  },
+  {
+   "word": "includes",
+   "explanation": "逻辑调用参数：包含判定"
+  },
+  {
+   "word": "relation",
+   "explanation": "逻辑调用参数：队伍关系"
+  },
+  {
+   "word": "teamid",
+   "zh": "队伍编号",
+   "explanation": "逻辑调用参数：队伍 ID（官方拼写 teamid）"
+  },
+  {
+   "word": "withActionTag",
+   "zh": "带动作标签",
+   "explanation": "逻辑调用参数：带指定动作标签"
+  },
+  {
+   "word": "eventdata",
+   "explanation": "逻辑记忆关键字：事件数据"
+  }
+ ]
+}

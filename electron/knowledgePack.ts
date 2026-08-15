@@ -41,6 +41,8 @@ export const DATA_FILE_NAMES: readonly string[] = [
   'logicboolean.json',
   'units.json',
   'game_version.json',
+  // M26-2：逻辑语法 token 词库（独立文件：并入 vocabulary.json 会被知识包更新整文件覆盖）
+  'dialect.json',
   'migrate.json',
 ]
 

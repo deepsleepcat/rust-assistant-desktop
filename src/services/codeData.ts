@@ -147,7 +147,7 @@ export function loadCodeData(): Promise<void> {
   if (!loaded) {
     loaded = (async () => {
       try {
-        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw] = await Promise.all([
+        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw, dialectRaw] = await Promise.all([
           fetchJson<RawDataset>('code.json'),
           fetchJson<RawDataset>('section.json'),
           fetchJson<RawDataset>('value_type.json'),
@@ -156,6 +156,7 @@ export function loadCodeData(): Promise<void> {
           fetchJson<RawDataset>('logicboolean.json').catch(() => ({ data: [] })),
           fetchJson<RawDataset>('units.json').catch(() => ({ data: [] })),
           fetchJson<RawDataset>('game_version.json').catch(() => ({ data: [] })),
+          fetchJson<RawDataset>('dialect.json').catch(() => ({ words: [] }) as RawDataset),
         ])
 
         codes = (codeRaw.data ?? []) as CodeInfo[]
@@ -198,6 +199,21 @@ export function loadCodeData(): Promise<void> {
           }
         }
         vocabulary = vocab
+        // M26-2：dialect 逻辑语法 token（独立数据文件，防知识包更新整文件覆盖）并入词库；
+        // 带 zh 的条目同时进翻译词典——enToZh 与 zhToEn 双侧 has 守卫：
+        // 不覆盖既有翻译（曾发现 zhToEn 单侧覆盖把 withTag→「有标签」改写成 hasTags、
+        // self.timeAlive→「存活时间」改写成 timeAlive，破坏补全/lint 回译）。
+        // 通用单字母/数学函数/高碰撞普通词（z/cos/ground/kills…）只有说明没有 zh，
+        // 不进词典防污染显示层
+        const dialectWords = (dialectRaw.words ?? dialectRaw.data ?? []) as Array<{ word?: string; zh?: string; explanation?: string }>
+        for (const d of dialectWords) {
+          if (!d.word) continue
+          vocabulary = [...vocabulary, { word: d.word, explanation: d.explanation ?? d.word }]
+          if (d.zh && !enToZhDict.has(d.word.toLowerCase()) && !zhToEnDict.has(d.zh)) {
+            enToZhDict.set(d.word.toLowerCase(), d.zh)
+            zhToEnDict.set(d.zh, d.word.toLowerCase())
+          }
+        }
         logicBooleans = (logicRaw.data ?? []) as LogicBooleanInfo[]
         officialUnits = (unitsRaw.data ?? []) as OfficialUnitInfo[]
         gameVersions = ((versionRaw.data ?? []) as GameVersionInfo[]).sort((a, b) => a.versionNumber - b.versionNumber)
