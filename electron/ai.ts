@@ -106,7 +106,9 @@ export async function checkDeepSeek(config: DeepSeekConfig): Promise<AiCheckResu
 /** Agent 模式：带铁锈战争工具与写文件审批的完整对话循环。
  * cancelled：流级取消标志（abort 只置当前流的标志，新流不复位旧流）。
  * 置位后 emit 全部静默——旧流事件不会泄漏到渲染层新流的监听器；
- * 联动 AbortController 硬停止在途模型请求（停止计费）。 */
+ * 联动 AbortController 硬停止在途模型请求（停止计费）。
+ * feedback（M26-3 自纠闭环）：AI 写过文件后，等待渲染层回传的写后质检反馈
+ * （最多一次修正对话；空串/超时 = 不修正，防死循环）。 */
 export async function streamAgent(
   webContents: WebContents,
   channel: string,
@@ -115,6 +117,7 @@ export async function streamAgent(
   projectRoot: string,
   approvalResolver: (id: string, resolve: (response: AiApprovalResponse) => void) => void,
   cancelled: { current: boolean; abort?: () => void },
+  feedback?: { wait: (timeoutMs: number) => Promise<string | null> },
 ): Promise<void> {
   const emit = (event: AiStreamEvent) => {
     // 流已取消（abort 后）：事件一律不再发出，防止陈旧流污染新流对话/审批
@@ -125,6 +128,8 @@ export async function streamAgent(
   // tool_execution_end 按完成顺序到达——必须用 toolCallId 关联，不能用共享变量
   //（否则多个 writeFile 的撤销/质检会指向错误文件）。流结束时清空（含 abort 残留）
   const writePaths = new Map<string, string>()
+  // M26-3：本次流是否执行过写文件（决定是否等待质检反馈窗口）
+  let writeHappened = false
   try {
     const { Agent } = await import('@earendil-works/pi-agent-core')
     const { models, model } = await createDeepSeekModel(config)
@@ -144,7 +149,10 @@ export async function streamAgent(
       if (context.toolCall.name !== 'writeFile') return undefined
       const args = (context.args ?? {}) as { path?: string; content?: string }
       const id = context.toolCall.id ?? randomUUID()
-      if (args.path) writePaths.set(id, args.path)
+      if (args.path) {
+        writePaths.set(id, args.path)
+        writeHappened = true
+      }
       // 预览 2000 字符 + 完整长度：让用户批准前能看到足够内容和规模
       //（400 字符预览时恶意尾部内容可能被跳过，用户批准的实际写盘内容远超所见）
       const full = String(args.content ?? '')
@@ -277,6 +285,15 @@ export async function streamAgent(
 
     emit({ type: 'start' })
     await agent.prompt(params.messages[params.messages.length - 1]?.content ?? '')
+    // M26-3 自纠闭环：写文件后等待渲染层质检反馈（渲染层 lint 完成后立即回传，
+    // 通常 <1s；10s 兜底覆盖慢质检/渲染层崩溃场景）。有问题的反馈追加一次「修正」对话，
+    // 无反馈/空串/已取消则不修正（最多 1 次，防死循环）
+    if (writeHappened && feedback && !cancelled.current && !agentError) {
+      const feedbackText = await feedback.wait(10_000)
+      if (feedbackText && feedbackText.trim() && !cancelled.current) {
+        await agent.prompt(feedbackText)
+      }
+    }
     if (agentError) {
       emit({ type: 'error', message: toFriendlyError(agentError) })
     } else {

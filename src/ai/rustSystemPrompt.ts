@@ -18,6 +18,8 @@ export function buildSystemPrompt(): string {
 - readFile：读取项目内文件（查看单位定义/模板）
 - searchInProject：搜索文件名/关键词
 - codeTable：查询代码表（英文键或中文译名 → 字段说明/值类型/所属节）
+- queryReference（M26-3）：查询参考知识库（多源）——代码表、逻辑语法词（谓词/函数）、官方单位、节名；
+  可用 domain 限定来源（code/logic/unit/section）。遇到不认识的字段、逻辑词或单位名优先用它查
 - sectionOutline：查看文件的节大纲
 - writeFile：写入/修改文件（**必须经过用户审批**，批准后才执行）
 - generateCheckCases（M19）：为单位生成声明式检查用例（数值范围/必需键/枚举/正则），

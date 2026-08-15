@@ -11,7 +11,7 @@ import type { AiStreamEvent } from '../../types/ai'
 import type { WorkspaceStore } from '../types'
 import { getBridge } from '../../services/bridge'
 import { invalidateResourceCache } from '../../features/editor/completion'
-import { checkAiWrittenFile } from '../../features/ai/aiQualityCheck'
+import { checkAiWrittenFile, lintItemsToFeedback } from '../../features/ai/aiQualityCheck'
 import { parseStoredUsage } from '../../features/ai/usageStats'
 import { RUST_ASSISTANT_SYSTEM_PROMPT } from '../../ai/rustSystemPrompt'
 
@@ -208,12 +208,20 @@ export function createAiSlice(deps: AiSliceDeps) {
               // 任务 3 + M10：AI 写文件成功后自动质检（异步，不阻塞流；结果挂到该工具卡片上）。
               // 与撤销/历史完全独立——质检发现问题不影响撤销能力；
               // 语义检查器按设置开关过滤，引用完整性检查使用项目单位名（扫描后传入）
-              if (event.name === 'writeFile' && event.ok && event.path) {
-                const relPath = event.path
-                void (async () => {
-                  // 流进行中项目可能已切换/关闭：重新取当前项目，避免陈旧 rootPath
+              if (event.name === 'writeFile') {
+                if (!event.ok || !event.path) {
+                  // 被拒/执行失败：不会质检 → 立即释放主进程的反馈等待窗口（空串 = 不修正）
+                  void deps.bridge.ai.feedbackLint('').catch(() => undefined)
+                } else {
+                  const relPath = event.path
+                  void (async () => {
+                  // 流进行中项目可能已切换/关闭：重新取当前项目，避免陈旧 rootPath；
+                  // 提前退出也要释放主进程的反馈等待（空串 = 不修正），避免干等 10s 兜底
                   const current = get().projects.find((p) => p.id === project.id)
-                  if (!current) return
+                  if (!current) {
+                    void deps.bridge.ai.feedbackLint('').catch(() => undefined)
+                    return
+                  }
                   const semanticCheckers = get().settings.semanticCheckers
                   const targetVersionName = get().settings.targetGameVersion
                   // 质检必须用最新单位名（AI 刚写的单位要在引用检查中立即可见）。
@@ -237,8 +245,14 @@ export function createAiSlice(deps: AiSliceDeps) {
                           : c,
                       ),
                     })
+                    // M26-3 自纠闭环：把质检问题回传给主进程 → AI 自动修正（主进程最多追加 1 次修正对话）
+                    void deps.bridge.ai.feedbackLint(lintItemsToFeedback(items)).catch(() => undefined)
+                  } else {
+                    // 质检完成但无问题，或无法检查（非 ini/读取失败）：都立即释放主进程等待窗口
+                    void deps.bridge.ai.feedbackLint('').catch(() => undefined)
                   }
-                })()
+                  })()
+                }
               }
               armGuard()
             }

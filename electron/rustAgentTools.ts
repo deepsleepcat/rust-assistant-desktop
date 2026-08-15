@@ -290,6 +290,125 @@ export function createCodeTableTool(): AgentTool {
   }
 }
 
+/** ── M26-3 参考知识检索（query_reference）：代码表/逻辑词库/单位库/节 多源查询 ── */
+
+interface VocabEntry {
+  word: string
+  explanation: string
+}
+interface UnitEntry {
+  name: string
+  zhName?: string
+  zhDesc?: string
+}
+interface SectionEntry {
+  code: string
+  translate: string
+}
+interface ReferenceData {
+  code: CodeTableEntry[]
+  vocab: VocabEntry[]
+  units: UnitEntry[]
+  sections: SectionEntry[]
+}
+let referenceCache: ReferenceData | null = null
+
+/** 全量加载参考数据（每文件缓存；任一文件失败降级为空数组，不阻塞其它源）。
+ * 代码表加载失败时不写缓存（下次调用重试），避免整进程生命周期内代码表源永久失效 */
+async function loadReferenceData(): Promise<ReferenceData> {
+  if (referenceCache) return referenceCache
+  const [codeRaw, vocabRaw, dialectRaw, unitsRaw, sectionRaw] = await Promise.all([
+    loadCodeTable().catch(() => null),
+    readPublicDataFile('vocabulary.json')
+      .then((b) => (JSON.parse(b.toString('utf8')).words ?? []) as VocabEntry[])
+      .catch(() => []),
+    readPublicDataFile('dialect.json')
+      .then((b) => (JSON.parse(b.toString('utf8')).words ?? []) as VocabEntry[])
+      .catch(() => []),
+    readPublicDataFile('units.json')
+      .then((b) => (JSON.parse(b.toString('utf8')).data ?? []) as UnitEntry[])
+      .catch(() => []),
+    readPublicDataFile('section.json')
+      .then((b) => (JSON.parse(b.toString('utf8')).data ?? []) as SectionEntry[])
+      .catch(() => []),
+  ])
+  if (codeRaw) {
+    referenceCache = { code: codeRaw, vocab: [...vocabRaw, ...dialectRaw], units: unitsRaw, sections: sectionRaw }
+    return referenceCache
+  }
+  // 代码表失败：本次返回其余源（不缓存，下次调用重试）
+  return { code: [], vocab: [...vocabRaw, ...dialectRaw], units: unitsRaw, sections: sectionRaw }
+}
+
+/** 查询参考知识（M26-3）：多源检索，返回带来源标注的条目。
+ * domain 限定来源：code=代码表 / logic=逻辑词库 / unit=单位库 / section=节 / all=全部。 */
+export function createQueryReferenceTool(): AgentTool {
+  return {
+    name: 'queryReference',
+    label: '查询参考知识',
+    description:
+      '查询铁锈战争参考知识库（多源）：代码表字段（英文键或中文译名 → 说明/值类型/所属节）、逻辑语法词（谓词/函数，如 isFlying、breadUnitMemory）、官方单位、节名。' +
+      'domain 可选 code / logic / unit / section（缺省 all）。比 codeTable 覆盖更广，遇到不认识的字段、逻辑词或单位名先用它查。',
+    parameters: Type.Object({
+      query: Type.String({ description: '关键词（英文或中文），如 maxHp、飞行、坦克、core' }),
+      domain: Type.Optional(Type.String({ description: '限定来源：code / logic / unit / section（缺省 all）' })),
+    }),
+    async execute(_id, params) {
+      const p = params as { query: string; domain?: string }
+      const q = String(p.query).trim().toLowerCase()
+      if (!q) return { content: [{ type: 'text', text: '请输入查询关键词' }], details: {} }
+      const domain = p.domain ?? 'all'
+      const data = await loadReferenceData()
+      // all 模式每源独立上限（防代码表独占 12 条挤掉其它源）；单域模式 12 条
+      const perSourceCap = domain === 'all' ? 4 : 12
+      const totalCap = domain === 'all' ? 16 : 12
+      const lines: string[] = []
+      const push = (text: string): void => { if (lines.length < totalCap) lines.push(text) }
+
+      if (domain === 'all' || domain === 'code') {
+        let count = 0
+        for (const e of data.code) {
+          if (e.code.toLowerCase().includes(q) || e.translate.includes(p.query.trim())) {
+            push(`[代码表] ${e.code}（${e.translate}）\n  类型: ${e.type} | 节: ${e.section}\n  ${e.description ?? ''}`)
+            if (++count >= perSourceCap) break
+          }
+        }
+      }
+      if (domain === 'all' || domain === 'logic') {
+        let count = 0
+        for (const v of data.vocab) {
+          if (v.word.toLowerCase().includes(q) || (v.explanation ?? '').includes(p.query.trim())) {
+            push(`[逻辑词库] ${v.word}\n  ${v.explanation}`)
+            if (++count >= perSourceCap) break
+          }
+        }
+      }
+      if (domain === 'all' || domain === 'unit') {
+        let count = 0
+        for (const u of data.units) {
+          if (u.name.toLowerCase().includes(q) || (u.zhName ?? '').includes(p.query.trim())) {
+            push(`[单位] ${u.name}${u.zhName ? `（${u.zhName}）` : ''}\n  ${u.zhDesc ?? ''}`)
+            if (++count >= perSourceCap) break
+          }
+        }
+      }
+      if (domain === 'all' || domain === 'section') {
+        let count = 0
+        for (const s of data.sections) {
+          if (s.code.toLowerCase().includes(q) || s.translate.includes(p.query.trim())) {
+            push(`[节] ${s.code}（${s.translate}）`)
+            if (++count >= perSourceCap) break
+          }
+        }
+      }
+      return {
+        content: [{ type: 'text', text: lines.length ? lines.join('\n\n') : `参考知识中未找到「${p.query}」` }],
+        details: { count: lines.length, domain },
+      }
+    },
+  }
+}
+
 /** 检查用例生成（M19，P2 任务 3）：AI 生成声明式检查规则（JSON），
  * 界面可「试运行」验证后保存为项目规则（rules/*.json）。
  * 安全边界：只接受声明式 schema（validateRuleSet 校验），不执行任何脚本。 */
@@ -373,6 +492,7 @@ export function createRustAgentTools(): AgentTool[] {
     createReadFileTool(),
     createSearchTool(),
     createCodeTableTool(),
+    createQueryReferenceTool(),
     createOutlineTool(),
     createWriteFileTool(),
     createGenerateCheckCasesTool(),

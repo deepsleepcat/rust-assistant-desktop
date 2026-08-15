@@ -3,7 +3,7 @@
  * 建议映射、条目上限折叠。
  */
 import { describe, expect, it } from 'vitest'
-import { joinProjectPath, lineNumberAt, lineStarts, qualityCheckContent, suggestionFor, toLintItems } from '../src/features/ai/aiQualityCheck'
+import { joinProjectPath, lineNumberAt, lineStarts, lintItemsToFeedback, qualityCheckContent, suggestionFor, toLintItems } from '../src/features/ai/aiQualityCheck'
 
 describe('joinProjectPath', () => {
   it('把 AI 相对路径拼成项目内绝对路径（统一正斜杠，兼容多种写法）', () => {
@@ -126,5 +126,31 @@ describe('合并截断（第二轮审查回归）', () => {
     const fold = items.find((i) => i.line === 0 && i.message.startsWith('…其余'))
     // 300 基础 - 200 上限 = 100 条折叠（非「1 条」）
     expect(fold?.message).toContain('其余 100 条问题未列出')
+  })
+})
+
+describe('lintItemsToFeedback（M26-3 自纠反馈格式化）', () => {
+  it('生成含行号/问题/建议/写回指令的修正消息', () => {
+    const msg = lintItemsToFeedback([
+      { line: 3, message: '血量超出推荐范围', severity: 'warning', suggestion: '调低 maxHp' },
+      { line: 8, message: '缺少 name', severity: 'error', suggestion: '' },
+    ])
+    expect(msg).toContain('自动质检反馈')
+    expect(msg).toContain('第3行：血量超出推荐范围（建议：调低 maxHp）')
+    expect(msg).toContain('第8行：缺少 name')
+    expect(msg).toContain('writeFile')
+  })
+
+  it('超过 30 条时截断并标注剩余数量', () => {
+    const items = Array.from({ length: 40 }, (_, i) => ({ line: i + 1, message: `问题${i}`, severity: 'warning' as const, suggestion: '' }))
+    const msg = lintItemsToFeedback(items)
+    expect(msg).toContain('其余 10 条未列出')
+    expect(msg.match(/第\d+行/g)?.length).toBe(30)
+  })
+
+  it('空清单：只有头尾指令（不报错）', () => {
+    const msg = lintItemsToFeedback([])
+    expect(msg).toContain('自动质检反馈')
+    expect(msg).toContain('writeFile')
   })
 })

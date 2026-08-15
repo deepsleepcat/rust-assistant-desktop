@@ -13,6 +13,7 @@ import {
   createGenerateCheckCasesTool,
   createListProjectTool,
   createOutlineTool,
+  createQueryReferenceTool,
   createReadFileTool,
   createRustAgentTools,
   createSearchTool,
@@ -48,10 +49,10 @@ async function expectRejected(p: Promise<unknown>): Promise<void> {
 }
 
 describe('rustAgentTools 工具集', () => {
-  it('工具清单完整：7 个工具全部暴露', () => {
+  it('工具清单完整：8 个工具全部暴露', () => {
     const tools = createRustAgentTools()
     expect(tools.map((t) => t.name)).toEqual([
-      'listProject', 'readFile', 'searchInProject', 'codeTable', 'sectionOutline', 'writeFile', 'generateCheckCases',
+      'listProject', 'readFile', 'searchInProject', 'codeTable', 'queryReference', 'sectionOutline', 'writeFile', 'generateCheckCases',
     ])
   })
 
@@ -223,6 +224,60 @@ describe('rustAgentTools 工具集', () => {
     it('无结果提示', async () => {
       const out = textOf(await createCodeTableTool().execute('id', { query: 'zzz不存在的字段zzz' }))
       expect(out).toContain('代码表中未找到')
+    })
+  })
+
+  describe('queryReference（M26-3 多源知识检索）', () => {
+    it('代码表源：英文键命中（读真实 public/data/code.json）', async () => {
+      const out = textOf(await createQueryReferenceTool().execute('id', { query: 'maxHp' }))
+      expect(out).toContain('[代码表] maxHp')
+      expect(out).toContain('类型:')
+    })
+
+    it('逻辑词库源：dialect 词条命中（isFlying，说明含中文）', async () => {
+      const out = textOf(await createQueryReferenceTool().execute('id', { query: 'isFlying' }))
+      expect(out).toContain('[逻辑词库] isFlying')
+      expect(out).toContain('飞行')
+      // 中文查询走说明匹配（domain 隔离避免代码表命中挤占上限）
+      const zh = textOf(await createQueryReferenceTool().execute('id', { query: '飞行状态', domain: 'logic' }))
+      expect(zh).toContain('[逻辑词库] isFlying')
+    })
+
+    it('单位库源：中文名命中官方单位', async () => {
+      const out = textOf(await createQueryReferenceTool().execute('id', { query: '轰炸机' }))
+      expect(out).toContain('[单位] bomber')
+      expect(out).toContain('轰炸机')
+    })
+
+    it('节源：core 命中核心节（domain 隔离）', async () => {
+      const out = textOf(await createQueryReferenceTool().execute('id', { query: 'core', domain: 'section' }))
+      expect(out).toContain('[节] core（核心）')
+    })
+
+    it('domain 限定：unit 域不返回代码表/词库条目', async () => {
+      const out = textOf(await createQueryReferenceTool().execute('id', { query: 'maxHp', domain: 'unit' }))
+      expect(out).toContain('未找到')
+    })
+
+    it('all 模式多源共存：每源独立上限，代码表不独占（查询 core 同时命中代码表与节）', async () => {
+      const out = textOf(await createQueryReferenceTool().execute('id', { query: 'core' }))
+      expect(out).toContain('[代码表]')
+      expect(out).toContain('[节] core（核心）')
+      // all 模式总上限 16 条
+      expect(out.match(/^\[/gm)?.length ?? 0).toBeLessThanOrEqual(16)
+    })
+
+    it('单域模式超 12 条截断（domain=code）', async () => {
+      const out = textOf(await createQueryReferenceTool().execute('id', { query: 'a', domain: 'code' }))
+      expect(out).not.toContain('未找到')
+      expect(out.match(/^\[代码表\]/gm)?.length ?? 0).toBeLessThanOrEqual(12)
+    })
+
+    it('空查询与无结果提示', async () => {
+      const empty = textOf(await createQueryReferenceTool().execute('id', { query: '  ' }))
+      expect(empty).toContain('请输入查询关键词')
+      const none = textOf(await createQueryReferenceTool().execute('id', { query: 'zzz不存在的词zzz' }))
+      expect(none).toContain('未找到')
     })
   })
 

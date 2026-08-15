@@ -13,6 +13,7 @@ import { createKnowledgePack } from '../electron/knowledgePack'
 import { initAiHistory, getHistory } from '../electron/aiHistory'
 import { normalizePath } from '../electron/paths'
 import {
+  createFeedbackChannel,
   createIpcContext,
   registerAiIpc,
   registerAppIpc,
@@ -135,10 +136,10 @@ describe('IPC 通道完整性', () => {
       'app:info', 'app:flush-done', 'app:checkUpdate', 'app:downloadUpdate', 'app:installUpdate',
       'avatar:chooseLocal', 'avatar:saveCropped', 'avatar:uploadCommunity',
       // ai
-      'ai:check', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream',
+      'ai:check', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(69)
+    expect(channels.size).toBe(70)
   })
 })
 
@@ -369,6 +370,23 @@ describe('AI 通道', () => {
     expect(ctx.ai.cancel).toBeNull()
   })
 
+  it('ai:feedback：只投递给当前活动流；参数校验；abort 唤醒等待', async () => {
+    const channels = setupAi()
+    // 无活动流 → false
+    expect(await invoke<boolean>(channels, 'ai:feedback', '质检反馈')).toBe(false)
+    // 参数校验：非字符串 / 超 8KB 拒绝
+    await expect(invoke(channels, 'ai:feedback', 42)).rejects.toThrow('参数错误')
+    await expect(invoke(channels, 'ai:feedback', 'x'.repeat(8 * 1024 + 1))).rejects.toThrow('参数错误')
+    // 有活动流 → 投递成功
+    let received: string | null = null
+    ctx.ai.feedbackReceiver = (msg) => {
+      received = msg
+      return true
+    }
+    expect(await invoke<boolean>(channels, 'ai:feedback', '第3行：血量超限')).toBe(true)
+    expect(received).toBe('第3行：血量超限')
+  })
+
   it('ai:history:list/restore：登记根内相对路径可列出/恢复，越界拒绝', async () => {
     const channels = setupAi()
     ctx.roots.add(normalizePath(tmp))
@@ -491,6 +509,55 @@ describe('mod / game / app 通道', () => {
     const { channels, ipc } = createFakeIpc()
     registerKnowledgeIpc(ctx, ipc)
     await expect(invoke(channels, 'knowledge:readDataFile', 42)).rejects.toThrow('参数错误')
+  })
+})
+
+describe('createFeedbackChannel（M26-3 自纠闭环时序）', () => {
+  it('反馈先到入队 → wait 取回；多条拼接为一次修正输入', async () => {
+    const ch = createFeedbackChannel()
+    expect(ch.receiver('第一条')).toBe(true)
+    expect(ch.receiver('第二条')).toBe(true)
+    const got = await ch.wait(1000)
+    expect(got).toBe('第一条\n\n第二条')
+    // 队列已清空：再次 wait 走挂起路径（超时返回 null）
+    const timeout = await ch.wait(50)
+    expect(timeout).toBeNull()
+  })
+
+  it('wait 挂起时反馈到达 → 立即唤醒并返回消息', async () => {
+    const ch = createFeedbackChannel()
+    const pending = ch.wait(5000)
+    expect(ch.receiver('第3行：血量超限')).toBe(true)
+    expect(await pending).toBe('第3行：血量超限')
+  })
+
+  it('wait 超时返回 null（渲染层无响应不阻塞流）', async () => {
+    vi.useFakeTimers()
+    try {
+      const ch = createFeedbackChannel()
+      const pending = ch.wait(5000)
+      await vi.advanceTimersByTimeAsync(5001)
+      expect(await pending).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('队列上限 16 条：溢出丢弃（防恶意渲染层塞爆内存）', () => {
+    const ch = createFeedbackChannel()
+    for (let i = 0; i < 20; i++) ch.receiver(`m${i}`)
+    const got = ch.wait(1000)
+    return got.then((v) => {
+      const count = v!.split('\n\n').length
+      expect(count).toBe(16)
+    })
+  })
+
+  it('abort 唤醒：空串到达 → wait 返回空串（不修正）', async () => {
+    const ch = createFeedbackChannel()
+    const pending = ch.wait(5000)
+    expect(ch.receiver('')).toBe(true)
+    expect(await pending).toBe('')
   })
 })
 

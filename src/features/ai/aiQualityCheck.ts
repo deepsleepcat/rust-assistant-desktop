@@ -174,3 +174,24 @@ export async function checkAiWrittenFile(
     return null
   }
 }
+
+/** M26-3 自纠闭环：质检清单 → 回传给 AI 的精简修正指令（纯函数，供测试）。
+ * 只取前 30 条并按总长度预算截断（主进程 ai:feedback 有 8KB 硬上限，超限会抛参数错误
+ * 导致修正静默丢失——预算留余量，极端长消息/建议也不超限）。 */
+export function lintItemsToFeedback(items: AiLintItem[]): string {
+  const MAX_BYTES = 7 * 1024
+  const head = '（自动质检反馈）你刚才写入的文件存在以下问题，请直接修复后重新写入：\n'
+  const tail = '\n修复完成后用 writeFile 重新写入完整文件。'
+  const lines: string[] = []
+  let bytes = Buffer.byteLength(head, 'utf8') + Buffer.byteLength(tail, 'utf8')
+  for (const it of items) {
+    if (lines.length >= 30) break
+    const line = `- 第${it.line}行：${it.message}${it.suggestion ? `（建议：${it.suggestion}）` : ''}`
+    bytes += Buffer.byteLength(line, 'utf8') + 1
+    if (bytes > MAX_BYTES) break
+    lines.push(line)
+  }
+  const skipped = items.length - lines.length
+  const skippedNote = skipped > 0 ? `\n（其余 ${skipped} 条未列出，请先修复列出的问题）` : ''
+  return `${head}${lines.join('\n')}${skippedNote}${tail}`
+}

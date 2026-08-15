@@ -335,6 +335,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       streamAbort: async () => ({ aborted: true }),
       historyList: async () => [],
       historyRestore: async () => ({ ok: true }),
+      feedbackLint: async () => true,
       stream: async (_params, _settings, _projectRoot) => {
         // 浏览器预览模式：模拟流式回复，便于界面联调
         const reply = '这是浏览器预览模式的模拟回复。\n\n配置真实的 DeepSeek API Key 后，这里会显示真实的 AI 回复。\n\n你可以：\n1. 在设置 → AI 中填写 API Key\n2. 然后问任何铁锈战争模组问题'

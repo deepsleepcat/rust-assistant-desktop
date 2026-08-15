@@ -60,6 +60,8 @@ export interface IpcContext {
     pendingApproval: { id: string; resolve: (r: AiApprovalResponse) => void } | null
     streamActive: boolean
     cancel: { current: boolean; abort?: () => void } | null
+    /** M26-3 自纠闭环：当前流的质检反馈接收器（ai:feedback → 当前流；无流时返回 false） */
+    feedbackReceiver: ((message: string) => boolean) | null
   }
   /** Electron 对话框（测试注入假实现） */
   dialog: Pick<Dialog, 'showOpenDialog' | 'showSaveDialog' | 'showMessageBox'>
@@ -98,7 +100,7 @@ export function createIpcContext(deps: {
     musicSources: new Set<string>(),
     importedDirs: new Set<string>(),
     lifecycle: { quitting: false, flushResolve: null, flushConfirmTimer: null, closeFlushTimer: null },
-    ai: { pendingApproval: null, streamActive: false, cancel: null },
+    ai: { pendingApproval: null, streamActive: false, cancel: null, feedbackReceiver: null },
   }
 }
 
@@ -266,6 +268,50 @@ function requireHistoryRelPath(ctx: IpcContext, rootPath: unknown, relPath: unkn
   }
   requireInsideRoot(ctx, rootPath, path.join(rootPath, rel))
   return { root: rootPath, rel }
+}
+
+/** M26-3 自纠闭环：质检反馈通道（队列 + 单等待槽）。
+ * - receiver：渲染层 ai:feedback 投递；等待中直接唤醒，否则入队（上限 16 条防恶意塞爆）；
+ * - wait：优先取队列（多条拼接为一次修正输入），否则挂起等待（超时/被唤醒返回 null/消息）；
+ * - 被唤醒后晚到的消息入队即弃（本地队列，流结束丢弃，不跨流）。 */
+export function createFeedbackChannel(): {
+  receiver: (msg: string) => boolean
+  wait: (timeoutMs: number) => Promise<string | null>
+} {
+  const queue: string[] = []
+  let waiter: ((msg: string | null) => void) | null = null
+  return {
+    receiver: (msg) => {
+      if (waiter) {
+        const w = waiter
+        waiter = null
+        w(msg)
+        return true
+      }
+      if (queue.length < 16) {
+        queue.push(msg)
+        return true
+      }
+      return false // 队列满：丢弃（尽力而为，渲染层忽略返回值）
+    },
+    wait: (timeoutMs) => {
+      if (queue.length > 0) return Promise.resolve(queue.splice(0).join('\n\n'))
+      if (waiter) {
+        waiter(null)
+        waiter = null
+      }
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          waiter = null
+          resolve(null)
+        }, timeoutMs)
+        waiter = (msg) => {
+          clearTimeout(timer)
+          resolve(msg)
+        }
+      })
+    },
+  }
 }
 
 /** 本地状态存储：store:get / store:set（保留键与大小上限由主进程强制执行） */
@@ -1037,12 +1083,24 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     ctx.ai.cancel.current = true
     ctx.ai.cancel.abort?.() // 硬停止：中断在途模型请求（停止计费）
     ctx.ai.cancel = null
+    // 唤醒质检反馈等待（空串 = 不修正）+ 清掉接收器（防残留窗口吞掉新流前的消息）
+    ctx.ai.feedbackReceiver?.('')
+    ctx.ai.feedbackReceiver = null
     if (ctx.ai.pendingApproval) {
       ctx.ai.pendingApproval.resolve({ id: ctx.ai.pendingApproval.id, approved: false })
       ctx.ai.pendingApproval = null
     }
     ctx.ai.streamActive = false
     return { aborted: true }
+  })
+
+  // M26-3 自纠闭环：渲染层写后质检结果回传（空串 = 无问题）。
+  // 只投递给「当前活动流」的等待窗口；无流/已结束返回 false（渲染层忽略）。
+  // 消息上限 8KB：防恶意渲染层塞大文本进模型上下文（有费用）
+  ipc('ai:feedback', (_event, message: unknown) => {
+    if (typeof message !== 'string' || message.length > 8 * 1024) throw new Error('参数错误')
+    if (!ctx.ai.feedbackReceiver) return false
+    return ctx.ai.feedbackReceiver(message)
   })
 
   // AI 修改历史（任务 2）：快照在 writeFile 工具内记录（rustAgentTools），
@@ -1087,6 +1145,9 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     // 每次流独立的取消标志：abort 只影响本流，新流不受旧流状态影响
     const cancelled: { current: boolean; abort?: () => void } = { current: false }
     ctx.ai.cancel = cancelled
+    // M26-3 自纠闭环：本流的质检反馈等待窗口（渲染层 ai:feedback 投递到这里）
+    const feedbackChannel = createFeedbackChannel()
+    ctx.ai.feedbackReceiver = feedbackChannel.receiver
     // 主进程总时长兜底（15 分钟）：渲染层看门狗是 5 分钟无事件；若渲染层崩溃/关闭，
     // 旧流会永远占着 AI 锁——此处强制置取消 + 释放锁（工具全拒、事件静默，无副作用）
     const hardKill = setTimeout(() => {
@@ -1094,6 +1155,9 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       cancelled.current = true
       cancelled.abort?.() // 硬停止在途模型请求
       ctx.ai.cancel = null
+      // 唤醒质检反馈等待（空串 = 不修正），避免 finally 被等待卡住、AI 锁迟迟不释放
+      ctx.ai.feedbackReceiver?.('')
+      ctx.ai.feedbackReceiver = null
       if (ctx.ai.pendingApproval) {
         ctx.ai.pendingApproval.resolve({ id: ctx.ai.pendingApproval.id, approved: false })
         ctx.ai.pendingApproval = null
@@ -1134,6 +1198,7 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
             ctx.ai.pendingApproval = { id, resolve }
           },
           cancelled,
+          feedbackChannel,
         )
       } else {
         // 流已取消则不发送（与 emit 静默一致，防旧流 error 命中新流监听器）
@@ -1148,6 +1213,7 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
         ctx.ai.cancel = null
         ctx.ai.streamActive = false
         ctx.ai.pendingApproval = null
+        ctx.ai.feedbackReceiver = null
       }
     }
   })

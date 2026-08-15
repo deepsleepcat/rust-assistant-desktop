@@ -8,14 +8,23 @@ import { createWorkspaceStore } from '../src/stores/workspace'
 import { createMockBridge } from '../src/services/mockBridge'
 import type { AiStreamEvent } from '../src/types/ai'
 
-// M26 审查修复（M1）：写后质检链路真实可测——mock checkAiWrittenFile 返回固定问题，
-// 断言其挂到对应 writeFile 工具卡片上（真实实现依赖主进程文件，测试环境读不到）
-vi.mock('../src/features/ai/aiQualityCheck', () => ({
+// M26 审查修复（M1）+ M26-3：写后质检链路真实可测——mock checkAiWrittenFile 返回固定问题，
+// 断言其挂到对应 writeFile 工具卡片上、并触发自纠反馈（真实实现依赖主进程文件，测试环境读不到）
+const qualityMock = vi.hoisted(() => ({
   checkAiWrittenFile: vi.fn(async (_root: string, relPath: string) =>
     /\.(ini|template)$/i.test(relPath)
       ? [{ line: 3, message: '血量超出推荐范围', severity: 'warning' as const, suggestion: '调低 maxHp' }]
       : null,
   ),
+}))
+
+vi.mock('../src/features/ai/aiQualityCheck', () => ({
+  checkAiWrittenFile: qualityMock.checkAiWrittenFile,
+  // 与真实实现同格式（真实函数在 aiQualityCheck.test.ts 单独测试）
+  lintItemsToFeedback: (items: Array<{ line: number; message: string; suggestion?: string }>) =>
+    '（自动质检反馈）你刚才写入的文件存在以下问题，请直接修复后重新写入：\n' +
+    items.map((it) => `- 第${it.line}行：${it.message}${it.suggestion ? `（建议：${it.suggestion}）` : ''}`).join('\n') +
+    '\n修复完成后用 writeFile 重新写入完整文件。',
 }))
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -42,6 +51,7 @@ describe('AI 消息流（sendAiMessage）', () => {
   let emit: (e: AiStreamEvent) => void
 
   beforeEach(async () => {
+    qualityMock.checkAiWrittenFile.mockClear()
     setupLocalStorage()
     bridge = createMockBridge()
     store = createWorkspaceStore(bridge)
@@ -62,12 +72,14 @@ describe('AI 消息流（sendAiMessage）', () => {
     vi.useRealTimers()
   })
 
-  it('全链路：流式回复 → 工具调用 → 审批 → 写后质检 → 完成', async () => {
+  it('全链路：流式回复 → 工具调用 → 审批 → 写后质检 → 自纠反馈 → 完成', async () => {
     let approvedPayload: { id: string; approved: boolean } | null = null
+    const feedbackLint = vi.fn(async (_msg: string) => true)
     bridge.ai.approve = async (r) => {
       approvedPayload = r
       return true
     }
+    bridge.ai.feedbackLint = feedbackLint
     bridge.ai.stream = async () => {
       emit({ type: 'delta', text: '好的，我来创建。' })
       await sleep(5)
@@ -115,9 +127,34 @@ describe('AI 消息流（sendAiMessage）', () => {
     expect(ends[0].lint).toEqual([
       { line: 3, message: '血量超出推荐范围', severity: 'warning', suggestion: '调低 maxHp' },
     ])
+    // M26-3 自纠闭环：质检问题已回传给主进程（格式化后的修正指令，含行号与 writeFile 提示）
+    expect(feedbackLint).toHaveBeenCalledTimes(1)
+    const feedback = String(feedbackLint.mock.calls[0][0])
+    expect(feedback).toContain('第3行')
+    expect(feedback).toContain('血量超出推荐范围')
+    expect(feedback).toContain('writeFile')
     // 流结束：锁释放、审批清空
     expect(store.getState().aiStreamingConversationId).toBeNull()
     expect(store.getState().pendingApproval).toBeNull()
+  })
+
+  it('质检无问题时回传空串（立即释放主进程等待窗口，不触发修正）', async () => {
+    const feedbackLint = vi.fn(async (_msg: string) => true)
+    bridge.ai.feedbackLint = feedbackLint
+    qualityMock.checkAiWrittenFile.mockResolvedValueOnce([])
+    bridge.ai.stream = async () => {
+      emit({ type: 'tool_start', name: 'writeFile', args: { path: 'units/ok.ini', content: '[core]' } })
+      await sleep(5)
+      emit({ type: 'tool_end', name: 'writeFile', ok: true, summary: '已修改 units/ok.ini', path: 'units/ok.ini', snapshotId: 's1', snapshotSkipped: false })
+      await sleep(5)
+      emit({ type: 'done', fullText: '完成' })
+      return 'ai:stream'
+    }
+    await store.getState().sendAiMessage(convId, '写个文件')
+    await sleep(80)
+    expect(feedbackLint).toHaveBeenCalledWith('')
+    const ends = (store.getState().conversations.find((c) => c.id === convId)!.toolEvents ?? []).filter((t) => t.type === 'tool_end')
+    expect(ends[0].lint).toBeUndefined() // 无问题：不挂 lint 卡片
   })
 
   it('审批被拒绝：响应传 false，弹窗关闭', async () => {
@@ -185,6 +222,23 @@ describe('AI 消息流（sendAiMessage）', () => {
     const conv = store.getState().conversations.find((c) => c.id === convId)!
     expect(conv.messages.filter((m) => m.role === 'user').length).toBe(1)
     expect(store.getState().toast).toContain('AI 正在回复中')
+  })
+
+  it('写文件被拒/失败（tool_end ok=false）：立即回传空串释放主进程等待', async () => {
+    const feedbackLint = vi.fn(async (_msg: string) => true)
+    bridge.ai.feedbackLint = feedbackLint
+    bridge.ai.stream = async () => {
+      emit({ type: 'tool_start', name: 'writeFile', args: { path: 'units/x.ini', content: '[core]' } })
+      await sleep(5)
+      emit({ type: 'tool_end', name: 'writeFile', ok: false, summary: '用户拒绝了此修改', path: 'units/x.ini' })
+      await sleep(5)
+      emit({ type: 'done', fullText: '好的，不写' })
+      return 'ai:stream'
+    }
+    await store.getState().sendAiMessage(convId, '写个文件')
+    await sleep(30)
+    expect(feedbackLint).toHaveBeenCalledWith('')
+    expect(qualityMock.checkAiWrittenFile).not.toHaveBeenCalled() // 被拒不质检
   })
 
   it('5 分钟看门狗：流无任何事件时释放通道并通知主进程中止', async () => {

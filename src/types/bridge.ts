@@ -159,6 +159,8 @@ export interface BridgeApi {
     historyList(rootPath: string, relPath: string): Promise<AiHistoryMeta[]>
     /** 恢复到指定历史版本（写回磁盘；快照为「新建」时删除文件并返回 deleted） */
     historyRestore(rootPath: string, relPath: string, snapshotId: string): Promise<{ ok: boolean; message?: string; deleted?: boolean }>
+    /** M26-3 自纠闭环：把写后质检结果回传给主进程（空串 = 无问题，立即释放等待；返回是否被当前流接收） */
+    feedbackLint(message: string): Promise<boolean>
     onAiEvent(callback: (event: AiStreamEvent) => void): () => void
   }
 }
