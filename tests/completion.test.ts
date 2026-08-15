@@ -28,6 +28,7 @@ const fakeData: CompletionDataSource = {
       health: { code: 'health', translate: '生命值', description: '', type: 'int' },
       image: { code: 'image', translate: '图像', description: '', type: 'baseImage' },
       logic: { code: 'logic', translate: '逻辑', description: '', type: 'logicBoolean' },
+      floatLogic: { code: 'floatLogic', translate: '浮动逻辑', description: '', type: 'float,logicBoolean' },
       builtFrom_1_name: { code: 'builtFrom_1_name', translate: '建造自_1_名称', description: '', type: 'unit' },
     }
     return map[code]
@@ -39,6 +40,7 @@ const fakeData: CompletionDataSource = {
       int: { external: ':' },
       baseImage: { list: 'NONE,AUTO,@file(png),@file(jpg)' },
       logicBoolean: { list: 'true,false,if,@type(noParameterLogicStatement)' },
+      'float,logicBoolean': { external: ':', list: '@type(noParameterLogicStatement)' },
       unit: { external: ':', list: '@type(internalUnits),@customType(unitName)' },
     }
     return map[type]
@@ -54,6 +56,15 @@ const fakeData: CompletionDataSource = {
       exts.some((e) => f.endsWith(`.${e}`)),
     ),
   listUnitNames: async () => ['重型坦克', '步枪兵', '侦察车'],
+  findDialectWords: (q, limit = 30) =>
+    [
+      { word: 'isFlying', explanation: '逻辑谓词：是否在飞行' },
+      { word: 'isAirUnit', explanation: '逻辑谓词：是否为飞行单位' },
+      { word: 'breadUnitMemory', explanation: '逻辑谓词：读取单位记忆值' },
+      { word: 'completed', explanation: '逻辑谓词：建造是否完成' },
+    ]
+      .filter((v) => !q || v.word.toLowerCase().includes(q) || v.explanation.includes(q))
+      .slice(0, limit),
 }
 
 describe('补全候选计算（注入假数据源）', () => {
@@ -125,6 +136,69 @@ describe('补全候选计算（注入假数据源）', () => {
     const apps = result.map((r) => r.apply)
     expect(apps).toContain('重型坦克')
     expect(apps).not.toContain('步枪兵')
+  })
+
+  it('M27-2 dialect 词：逻辑值上下文按前缀命中（is → isFlying/isAirUnit）', async () => {
+    const result = await computeRustCompletions('logic: is', 'logicBoolean', 'is', 'logic: is', 0, ['[logicBoolean]', 'logic: is'], fakeData)
+    const apps = result.map((r) => r.apply)
+    expect(apps).toContain('isFlying')
+    expect(apps).toContain('isAirUnit')
+    // 前缀不匹配的词不出现
+    expect(apps).not.toContain('breadUnitMemory')
+    // 候选带说明（detail 为 explanation）
+    const flying = result.find((r) => r.apply === 'isFlying')
+    expect(flying?.detail).toContain('飞行')
+  })
+
+  it('M27-2 dialect 词：中文说明匹配（输入「飞行」）', async () => {
+    const result = await computeRustCompletions('logic: 飞行', 'logicBoolean', '飞行', 'logic: 飞行', 0, ['[logicBoolean]', 'logic: 飞行'], fakeData)
+    const apps = result.map((r) => r.apply)
+    expect(apps).toContain('isFlying')
+    expect(apps).toContain('isAirUnit')
+    expect(apps).not.toContain('completed')
+  })
+
+  it('M27-2 dialect 词：非逻辑类型（string）值位置不出现', async () => {
+    const result = await computeRustCompletions('name: is', 'core', 'is', 'name: is', 0, ['[core]', 'name: is'], fakeData)
+    expect(result.map((r) => r.apply)).not.toContain('isFlying')
+  })
+
+  it('M27-2 dialect 词：多值类型（float,logicBoolean）键同样命中', async () => {
+    const result = await computeRustCompletions('floatLogic: is', 'core', 'is', 'floatLogic: is', 0, ['[core]', 'floatLogic: is'], fakeData)
+    expect(result.map((r) => r.apply)).toContain('isFlying')
+    expect(result.map((r) => r.apply)).toContain('isAirUnit')
+  })
+
+  it('M27-2 dialect 词：空查询（刚输冒号）有候选且不报错（调用方压 limit 为 10）', async () => {
+    // 捕获 limit 实参：守卫「空查询时压数量」分支（fake 数据只有 4 条，数量断言测不出）
+    const limits: number[] = []
+    const countingData: CompletionDataSource = {
+      ...fakeData,
+      findDialectWords: (q, limit = 30) => {
+        limits.push(limit)
+        return fakeData.findDialectWords!(q, limit)
+      },
+    }
+    const result = await computeRustCompletions('logic: ', 'logicBoolean', '', 'logic: ', 0, ['[logicBoolean]', 'logic: '], countingData)
+    expect(limits).toContain(10)
+    const dialectApps = result.map((r) => String(r.apply)).filter((a) => ['isFlying', 'isAirUnit', 'breadUnitMemory', 'completed'].includes(a))
+    expect(dialectApps.length).toBeGreaterThan(0)
+  })
+
+  it('M27-2 dialect 词：数据源未提供时优雅降级（不报错、无 dialect 候选）', async () => {
+    // 构造不含 findDialectWords 的数据源（模拟旧接口/未加载 dialect 数据）
+    const withoutDialect: CompletionDataSource = {
+      findSectionsByQuery: fakeData.findSectionsByQuery,
+      findCodesBySection: fakeData.findCodesBySection,
+      findCodeByCode: fakeData.findCodeByCode,
+      findValueType: fakeData.findValueType,
+      findCodesByQuery: fakeData.findCodesByQuery,
+      findCodesByType: fakeData.findCodesByType,
+    }
+    const result = await computeRustCompletions('logic: is', 'logicBoolean', 'is', 'logic: is', 0, ['[logicBoolean]', 'logic: is'], withoutDialect)
+    // 不抛错；self 语句等既有候选仍在
+    expect(result.map((r) => r.apply)).not.toContain('isFlying')
+    expect(result.some((r) => String(r.label).startsWith('self.isFlying'))).toBe(true)
   })
 
   it('键补全：无冒号行返回当前节键，中文可匹配', async () => {

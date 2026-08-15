@@ -79,6 +79,8 @@ let codes: CodeInfo[] = []
 let sections: SectionInfo[] = []
 let valueTypes: ValueTypeInfo[] = []
 let vocabulary: VocabularyItem[] = []
+/** M27-2：dialect 逻辑语法 token 独立列表（编辑器逻辑值补全用；重载时重建） */
+let dialectWords: VocabularyItem[] = []
 let logicBooleans: LogicBooleanInfo[] = []
 let officialUnits: OfficialUnitInfo[] = []
 let gameVersions: GameVersionInfo[] = []
@@ -205,10 +207,21 @@ export function loadCodeData(): Promise<void> {
         // self.timeAlive→「存活时间」改写成 timeAlive，破坏补全/lint 回译）。
         // 通用单字母/数学函数/高碰撞普通词（z/cos/ground/kills…）只有说明没有 zh，
         // 不进词典防污染显示层
-        const dialectWords = (dialectRaw.words ?? dialectRaw.data ?? []) as Array<{ word?: string; zh?: string; explanation?: string }>
-        for (const d of dialectWords) {
+        const dialectWordsRaw = (dialectRaw.words ?? dialectRaw.data ?? []) as Array<{ word?: string; zh?: string; explanation?: string }>
+        // 重载（知识包更新/回滚）时重建独立列表，避免旧数据残留。
+        // 大小写去重（teamId/teamid 同词）：保留带 zh 的条目（翻译不丢）
+        const seenDialect = new Map<string, { word: string; zh?: string; explanation?: string }>()
+        for (const d of dialectWordsRaw) {
           if (!d.word) continue
-          vocabulary = [...vocabulary, { word: d.word, explanation: d.explanation ?? d.word }]
+          const key = d.word.toLowerCase()
+          const prev = seenDialect.get(key)
+          if (!prev || (!prev.zh && d.zh)) seenDialect.set(key, { word: d.word, zh: d.zh, explanation: d.explanation })
+        }
+        dialectWords = []
+        for (const d of seenDialect.values()) {
+          const item = { word: d.word, explanation: d.explanation ?? d.word }
+          vocabulary = [...vocabulary, item]
+          dialectWords = [...dialectWords, item]
           if (d.zh && !enToZhDict.has(d.word.toLowerCase()) && !zhToEnDict.has(d.zh)) {
             enToZhDict.set(d.word.toLowerCase(), d.zh)
             zhToEnDict.set(d.zh, d.word.toLowerCase())
@@ -454,6 +467,17 @@ export function searchVocabulary(query: string, limit = 20): VocabularyItem[] { 
   }
   scored.sort((a, b) => b.score - a.score)
   return scored.slice(0, limit).map((s) => s.item)
+}
+
+/** M27-2：dialect 逻辑语法 token（谓词/调试函数/记忆关键词等）。
+ * 编辑器逻辑值补全专用——与 searchVocabulary 不同：无词条时返回空（降级），
+ * 不做全词库兜底（逻辑值位置不该出现普通词库词）。 */
+export function getDialectWords(query = '', limit = 30): VocabularyItem[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return dialectWords.slice(0, limit)
+  return dialectWords
+    .filter((v) => v.word.toLowerCase().includes(q) || v.explanation.toLowerCase().includes(q))
+    .slice(0, limit)
 }
 
 /** 生成补全候选的通用描述 */

@@ -18,6 +18,7 @@ import {
   findCodesByType,
   findSectionsByQuery,
   findValueType,
+  getDialectWords,
   getZhToEnDict,
   parseValueList,
   searchLogicBooleans,
@@ -38,6 +39,8 @@ export interface CompletionDataSource {
   listResourceFiles?: (exts: string[]) => Promise<string[]> | string[]
   /** 项目内单位名列表（[core] name: 值），供单位引用字段联想 */
   listUnitNames?: () => Promise<string[]> | string[]
+  /** M27-2：dialect 逻辑语法 token（谓词/调试函数等），逻辑值上下文补全 */
+  findDialectWords?: (query: string, limit?: number) => Array<{ word: string; explanation: string }>
 }
 
 /** 项目资源扫描结果（@file 文件列表 + 单位名列表） */
@@ -54,6 +57,7 @@ export const realDataSource: CompletionDataSource = {
   findValueType: (t) => findValueType(t),
   findCodesByQuery: (q, l) => findCodesByQuery(q, l),
   findCodesByType: (t, q, l) => findCodesByType(t, q, l),
+  findDialectWords: (q, l) => getDialectWords(q, l),
 }
 
 /**
@@ -324,6 +328,18 @@ async function valueCompletions(key: string, query: string, data: CompletionData
     }
   }
 
+  // M27-2：逻辑值上下文（logicBoolean / 各逻辑语句类型）→ 补全 dialect 逻辑语法
+  // token（谓词/调试函数/记忆关键词，如 isFlying、breadUnitMemory）——
+  // 输入前缀即可命中，不用记完整拼写；无 dialect 数据时静默降级（可选方法）。
+  // 多值类型（'float,logicBoolean'）按逗号分段判断（与 findValueType 语义一致）；
+  // 空查询（刚输冒号）时压低数量，避免候选爆炸挤掉既有 list/@type 候选
+  const isLogicType = info ? info.type.split(',').some((t) => LOGIC_VALUE_TYPES.has(t.trim())) : false
+  if (isLogicType && data.findDialectWords) {
+    for (const v of data.findDialectWords(q, q ? 30 : 10)) {
+      result.push({ label: v.word, detail: v.explanation, type: 'value', apply: v.word })
+    }
+  }
+
   // 单位名联想：builtFrom_1_name / canBuild_1_name 等引用字段（键不在代码表也能联想）
   if (data.listUnitNames && /_(name|tooltip)$/.test(enKey)) {
     const names = (await data.listUnitNames()) ?? []
@@ -334,6 +350,17 @@ async function valueCompletions(key: string, query: string, data: CompletionData
 
   return result
 }
+
+/** M27-2：逻辑值类型集合——dialect 语法 token 在这些键的值位置补全
+ *（logicConstants/noPromptLogicConstant 是常量场景（true/false/数字），不补谓词） */
+const LOGIC_VALUE_TYPES = new Set([
+  'logicBoolean',
+  'logicQuantityStatement',
+  'logicTimeStatement',
+  'logicalConditionStatement',
+  'simpleLogicalConditionStatement',
+  'noParameterLogicStatement',
+])
 
 /** 键补全：当前节内优先 */
 function keyCompletions(section: string, query: string, data: CompletionDataSource): Completion[] {
