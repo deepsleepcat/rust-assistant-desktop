@@ -5,7 +5,9 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getBridge } from '../../services/bridge'
-import { canPreviewSafely, checkTmx, decodedTileCount, inflateBytes, parseTmx, type TmxCheckIssue, type TmxMap } from './tmx'
+import { useWorkspaceStore } from '../../stores/workspace'
+import { AppIcon } from '../../components/AppIcon'
+import { normalizeTmx, canPreviewSafely, checkTmx, decodedTileCount, inflateBytes, parseTmx, type TmxCheckIssue, type TmxMap } from './tmx'
 
 interface MapViewerProps {
   path: string
@@ -57,6 +59,7 @@ export function MapViewer({ path, rootPath }: MapViewerProps) {
   const [issues, setIssues] = useState<TmxCheckIssue[]>([])
   const [error, setError] = useState<string | null>(null)
   const [gids, setGids] = useState<number[]>([])
+  const [raw, setRaw] = useState<string>('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -71,6 +74,7 @@ export function MapViewer({ path, rootPath }: MapViewerProps) {
           return
         }
         setMap(parsed)
+        setRaw(content)
         // 项目文件列表（图块集引用检查）
         const scan = await getBridge().mod.scanResources(rootPath).catch(() => null)
         if (!alive) return
@@ -117,6 +121,18 @@ export function MapViewer({ path, rootPath }: MapViewerProps) {
   }, [map, gids])
 
   const safe = map ? canPreviewSafely(map) : false
+
+  /** M24：规范化导出——重新序列化为整洁 TMX（图层/对象/图块集/数据不丢） */
+  const exportNormalized = async (): Promise<void> => {
+    if (!raw) return
+    const normalized = normalizeTmx(raw)
+    if (!normalized) {
+      useWorkspaceStore.getState().notify('导出失败：不是合法的 TMX 地图')
+      return
+    }
+    const name = path.split('/').pop() ?? 'map.tmx'
+    await getBridge().project.saveText('导出规范化 TMX', name, normalized)
+  }
   const layerSummary = useMemo(() => {
     if (!map) return ''
     const tiles = map.layers.filter((l) => l.kind === 'tile').length
@@ -139,6 +155,16 @@ export function MapViewer({ path, rootPath }: MapViewerProps) {
         <span className="map-viewer-meta">
           {map.width}×{map.height} · 瓦片 {map.tileWidth}×{map.tileHeight} · {map.orientation}
         </span>
+        <span className="grow" />
+        {/* M24：规范化导出（双向桥接）——重新序列化为整洁 TMX（Tiled 可打开），数据不丢 */}
+        <button
+          className="btn"
+          style={{ padding: '2px 10px', fontSize: 11.5 }}
+          onClick={() => void exportNormalized()}
+          title="重新序列化为整洁 TMX（图层/对象/图块集/数据完整保留，Tiled 可打开编辑）"
+        >
+          <AppIcon name="download" size={12} /> 规范化导出
+        </button>
       </div>
       <div className="map-viewer-body">
         <div className="map-viewer-section">

@@ -2,7 +2,7 @@
  * TMX 地图轻量闭环（M15，任务 5）测试：解析/检查/解码。
  */
 import { describe, expect, it } from 'vitest'
-import { canPreviewSafely, checkTmx, decodedTileCount, parseSimpleXml, parseTmx } from '../src/features/map/tmx'
+import { canPreviewSafely, checkTmx, decodedTileCount, normalizeTmx, parseSimpleXml, parseTmx, serializeSimpleXml } from '../src/features/map/tmx'
 
 const CSV_MAP = `<?xml version="1.0"?>
 <map version="1.2" orientation="orthogonal" width="10" height="8" tilewidth="32" tileheight="32">
@@ -169,5 +169,85 @@ describe('M15 审查修复回归', () => {
     const root = parseSimpleXml('<map name="a>b"><layer/></map>')!
     expect(root.attrs['name']).toBe('a>b')
     expect(root.children.length).toBe(1)
+  })
+})
+
+// ── M24 双向桥接：规范化导出（round-trip 不丢数据）────────────────
+describe('normalizeTmx / serializeSimpleXml（M24 双向桥接）', () => {
+  const MAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<!-- 地图注释（会被规范化丢弃，不影响数据） -->
+<map version="1.9" orientation="orthogonal" width="32" height="24" tilewidth="32" tileheight="32">
+  <tileset firstgid="1" name="ground" source="ground.tsx"/>
+  <layer id="1" name="Ground" width="32" height="24">
+    <data encoding="csv">
+1,2,3,4,
+5,6,7,8
+</data>
+  </layer>
+  <objectgroup id="2" name="Triggers">
+    <object id="1" x="64" y="128" width="32" height="32">
+      <properties>
+        <property name="type" value="spawn"/>
+      </properties>
+    </object>
+  </objectgroup>
+</map>
+`
+
+  it('规范化导出后 round-trip：图层/对象/图块集/数据完整一致', () => {
+    const normalized = normalizeTmx(MAP_XML)
+    expect(normalized).not.toBeNull()
+    const before = parseTmx(MAP_XML)!
+    const after = parseTmx(normalized!)!
+    // 元数据
+    expect(after.width).toBe(before.width)
+    expect(after.height).toBe(before.height)
+    expect(after.orientation).toBe(before.orientation)
+    // 图块集（含外部引用 source）
+    expect(after.tilesets).toEqual(before.tilesets)
+    expect(after.tilesets[0].source).toBe('ground.tsx')
+    // 图层与对象
+    expect(after.layers.length).toBe(before.layers.length)
+    expect(after.layers.map((l) => l.name)).toEqual(before.layers.map((l) => l.name))
+    expect(after.layers.map((l) => l.kind)).toEqual(before.layers.map((l) => l.kind))
+    // 瓦片层数据（CSV 文本原样保留——含行内换行与缩进）
+    expect(after.layers[0].data).toBe(before.layers[0].data)
+    expect(after.layers[1].objectCount).toBe(1)
+    // 对象属性（properties → property）保留
+    expect(normalized!).toContain('value="spawn"')
+  })
+
+  it('gzip base64 数据区原样保留（无 XML 特殊字符，转义不影响）', () => {
+    const b64 = 'eJx7xMDAwMjAwPQcAAj/AfE='
+    const xml = `<map version="1.9" orientation="orthogonal" width="8" height="8" tilewidth="32" tileheight="32">
+  <tileset firstgid="1" name="ground" source="ground.tsx"/>
+  <layer id="1" name="Ground" width="8" height="8">
+    <data encoding="base64" compression="gzip">${b64}</data>
+  </layer>
+</map>
+`
+    const normalized = normalizeTmx(xml)!
+    expect(normalized).toContain(b64)
+    const after = parseTmx(normalized)!
+    expect(after.layers[0].data).toBe(b64)
+    expect(after.layers[0].encoding).toBe('base64')
+    expect(after.layers[0].compression).toBe('gzip')
+  })
+
+  it('非法 XML/非 map 根返回 null（不抛错）', () => {
+    expect(normalizeTmx('')).toBeNull()
+    expect(normalizeTmx('<html></html>')).toBeNull()
+    expect(normalizeTmx('<map><broken>')).toBeNull()
+  })
+
+  it('serializeSimpleXml：属性实体解码 + 转义后 round-trip 值一致', () => {
+    const node = parseSimpleXml('<map name="a&quot;b &amp; c" width="8"/>')!
+    // 解析器解码实体：属性值是真实字符
+    expect(node.attrs['name']).toBe('a"b & c')
+    const out = serializeSimpleXml(node)
+    expect(out).toBe('<map name="a&quot;b &amp; c" width="8"/>')
+    // 再解析回来属性值与解码后一致（导出 → 导入不丢不增）
+    const again = parseSimpleXml(out)!
+    expect(again.attrs).toEqual(node.attrs)
   })
 })

@@ -15,6 +15,18 @@ export interface SimpleXmlNode {
   text: string
 }
 
+/** XML 实体解码（&amp; &lt; &gt; &quot; &apos; + 数字实体；单趟替换防二次解码）。
+ * M24 双向桥接需要：属性/文本里含实体的地图导出后必须原样往返，不解码会双转义。 */
+const ENTITY_RE = /&(?:#(\d+)|#x([0-9a-fA-F]+)|(amp|lt|gt|quot|apos));/g
+function decodeEntities(s: string): string {
+  if (!s.includes('&')) return s
+  return s.replace(ENTITY_RE, (m, dec: string | undefined, hex: string | undefined, named: string | undefined) => {
+    if (named) return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[named] as string
+    const code = dec !== undefined ? Number(dec) : parseInt(hex as string, 16)
+    return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : m
+  })
+}
+
 /** 轻量 XML 解析（TMX 子集）：元素/属性/文本/注释/自闭合。
  * 不做完整 XML 规范（无 CDATA/实体展开——TMX 数据区是纯文本，够用）。 */
 export function parseSimpleXml(xml: string): SimpleXmlNode | null {
@@ -61,7 +73,7 @@ export function parseSimpleXml(xml: string): SimpleXmlNode | null {
       if (xml[pos] === '>' || xml.startsWith('/>', pos)) break
       const nameMatch = /^([a-zA-Z_][a-zA-Z0-9_.-]*)\s*=\s*"([^"]*)"/.exec(xml.slice(pos))
       if (!nameMatch) return null
-      attrs[nameMatch[1]] = nameMatch[2]
+      attrs[nameMatch[1]] = decodeEntities(nameMatch[2])
       pos += nameMatch[0].length
     }
     if (xml.startsWith('/>', pos)) {
@@ -75,7 +87,7 @@ export function parseSimpleXml(xml: string): SimpleXmlNode | null {
     for (;;) {
       const lt = xml.indexOf('<', pos)
       if (lt < 0) return null
-      if (lt > pos) node.text += xml.slice(pos, lt)
+      if (lt > pos) node.text += decodeEntities(xml.slice(pos, lt))
       pos = lt
       if (xml.startsWith('</', pos)) {
         const end = xml.indexOf('>', pos)
@@ -196,6 +208,31 @@ export function parseTmx(xml: string): TmxMap | null {
     tilesets,
     raw: xml,
   }
+}
+
+/** XML 文本/属性转义（base64/CSV 数据不受影响） */
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+/** 把解析树重新序列化为整洁 XML（M24 双向桥接：规范化导出，Tiled 可打开）。
+ * 保留全部元素/属性/文本（含 CDATA 并入的 data 文本）；丢弃注释与 XML 声明。 */
+export function serializeSimpleXml(node: SimpleXmlNode): string {
+  const attrStr = Object.entries(node.attrs)
+    .map(([k, v]) => ` ${k}="${escapeXml(v)}"`)
+    .join('')
+  if (node.children.length === 0 && !node.text) return `<${node.tag}${attrStr}/>`
+  const inner = node.children.map((c) => serializeSimpleXml(c)).join('') + (node.text ? escapeXml(node.text) : '')
+  return `<${node.tag}${attrStr}>${inner}</${node.tag}>`
+}
+
+/** 规范化 TMX：解析 → 重新序列化（补齐 XML 声明；图层/对象/图块集/数据完整保留）。
+ * 返回 null 表示不是合法地图 XML。round-trip 保证：parseTmx(normalizeTmx(x)) 与
+ * parseTmx(x) 的图层/对象/图块集一致（双向桥接「导出不丢数据」的测试依据）。 */
+export function normalizeTmx(xml: string): string | null {
+  const root = parseSimpleXml(xml)
+  if (!root || root.tag.toLowerCase() !== 'map') return null
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${serializeSimpleXml(root)}`
 }
 
 /** 检查地图（文件级；tileset source 存在性需要项目文件列表——由调用方传入）。
