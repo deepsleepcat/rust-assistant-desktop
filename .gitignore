@@ -64,3 +64,6 @@ tests/gameExtract.test.ts
 
 # code-review-graph 图谱数据库（构建产物，不入库）
 .code-review-graph/
+
+# Mimosa 安全钩子本地状态（不入库）
+.mimosa/
