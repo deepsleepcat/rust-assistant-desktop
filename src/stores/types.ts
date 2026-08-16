@@ -41,6 +41,8 @@ export interface WorkspaceStoreState {
   editorPos: EditorPosition
   settingsOpen: boolean
   commandOpen: boolean
+  /** M29：紧凑窗口下打开的抽屉（'left' | 'right'；null = 关闭） */
+  drawerSide: 'left' | 'right' | null
   /** M7：代码表浏览弹窗 */
   codeTableOpen: boolean
   /** M17：版本差异对比弹窗（P2 任务 1） */
@@ -148,6 +150,8 @@ export interface WorkspaceStoreActions {
   aiRestoreFileVersion(relPath: string, snapshotId: string): Promise<void>
   setSettingsOpen(open: boolean): void
   setCommandOpen(open: boolean): void
+  /** M29：紧凑窗口抽屉开关 */
+  setDrawerSide(side: 'left' | 'right' | null): void
   setCodeTableOpen(open: boolean): void
   setVersionDiffOpen(open: boolean): void
   setRelationGraphOpen(open: boolean): void

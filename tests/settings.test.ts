@@ -10,8 +10,8 @@ describe('设置清洗', () => {
 
   it('数字被限制在合法范围', () => {
     const s = sanitizeSettings({ leftWidth: 5, rightWidth: 9999, fontSize: 99, background: { opacity: 150, blur: -5 } })
-    expect(s.leftWidth).toBe(220)
-    expect(s.rightWidth).toBe(640)
+    expect(s.leftWidth).toBe(180)
+    expect(s.rightWidth).toBe(760)
     expect(s.fontSize).toBe(20)
     expect(s.background.opacity).toBe(100)
     expect(s.background.blur).toBe(0)
@@ -62,5 +62,54 @@ describe('设置清洗', () => {
     expect(clamp(0, 1, 10)).toBe(1)
     expect(clamp(42, 1, 10)).toBe(10)
     expect(clamp(7, 1, 10)).toBe(7)
+  })
+
+  it('M29 布局字段：比例夹紧、布尔校验、损坏数据回退', () => {
+    expect(DEFAULT_SETTINGS.layout).toEqual({
+      leftARatio: 0.3,
+      leftACollapsed: false,
+      rightARatio: 0.38,
+      rightACollapsed: false,
+      leftCollapsed: false,
+      rightCollapsed: false,
+      outlineHeight: 180,
+      outlineCollapsed: true,
+    })
+    const s = sanitizeSettings({
+      layout: {
+        leftARatio: 9,
+        leftACollapsed: 'yes',
+        rightARatio: 0,
+        rightACollapsed: true,
+        leftCollapsed: true,
+        rightCollapsed: false,
+        outlineHeight: 5,
+        outlineCollapsed: 1,
+      },
+    })
+    expect(s.layout.leftARatio).toBe(0.8)
+    expect(s.layout.leftACollapsed).toBe(false)
+    expect(s.layout.rightARatio).toBe(0.15)
+    expect(s.layout.rightACollapsed).toBe(true)
+    expect(s.layout.leftCollapsed).toBe(true)
+    expect(s.layout.rightCollapsed).toBe(false)
+    expect(s.layout.outlineHeight).toBe(80)
+    expect(s.layout.outlineCollapsed).toBe(true)
+  })
+
+  it('M29 布局字段：合法值被保留', () => {
+    const s = sanitizeSettings({
+      layout: { leftARatio: 0.4, rightARatio: 0.5, outlineHeight: 240, outlineCollapsed: true },
+    })
+    expect(s.layout.leftARatio).toBe(0.4)
+    expect(s.layout.rightARatio).toBe(0.5)
+    expect(s.layout.outlineHeight).toBe(240)
+    expect(s.layout.outlineCollapsed).toBe(true)
+  })
+
+  it('M29 布局字段：layout 为非对象（字符串/数组）时回退默认', () => {
+    expect(sanitizeSettings({ layout: 'oops' }).layout).toEqual(DEFAULT_SETTINGS.layout)
+    expect(sanitizeSettings({ layout: [1, 2] }).layout).toEqual(DEFAULT_SETTINGS.layout)
+    expect(sanitizeSettings({ layout: 42 }).layout).toEqual(DEFAULT_SETTINGS.layout)
   })
 })

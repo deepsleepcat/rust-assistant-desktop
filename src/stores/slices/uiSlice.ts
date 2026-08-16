@@ -18,6 +18,9 @@ export function createUiSlice() {
     setCommandOpen(open: boolean) {
       set({ commandOpen: open })
     },
+    setDrawerSide(side: 'left' | 'right' | null) {
+      set({ drawerSide: side })
+    },
     setCodeTableOpen(open: boolean) {
       set({ codeTableOpen: open })
     },

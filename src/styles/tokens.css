@@ -8,10 +8,29 @@
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius: 8px;
+  --radius-md: 10px;
   --radius-lg: 12px;
   --shadow-sm: 0 1px 2px rgba(60, 64, 67, .12);
   --shadow-md: 0 4px 12px rgba(60, 64, 67, .16);
   --shadow-lg: 0 12px 32px rgba(60, 64, 67, .2);
+
+  /* M29：控件高度 / 间距刻度（新代码优先使用，旧样式逐步迁移） */
+  --ctrl-h: 32px;
+  --ctrl-h-sm: 26px;
+  --pathbar-h: 40px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+
+  /* M29：分隔条（视觉宽度 / 命中区 / 悬停与拖动颜色） */
+  --splitter-w: 1px;
+  --splitter-hit: 8px;
+  --splitter-hover: var(--accent);
+
+  /* M29：键盘焦点环（浅深主题统一，全局 :focus-visible 使用） */
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 2.5px var(--accent);
 
   --titlebar-h: 44px;
   --statusbar-h: 24px;
@@ -37,11 +56,21 @@ html[data-theme="light"] {
   --accent: #111111;
   --accent-hover: #000000;
   --accent-soft: rgba(0, 0, 0, .07);
-  --success: #555555;
-  --warning: #555555;
-  --danger: #111111;
+  /* M29：语义状态色（浅色主题下可辨识；只用于状态表达，不改变黑白主视觉） */
+  --success: #188038;
+  --warning: #9a6700;
+  --danger: #c5221f;
+  --info: #1565c0;
+  --success-bg: rgba(24, 128, 56, .1);
+  --warning-bg: rgba(154, 103, 0, .1);
+  --danger-bg: rgba(197, 34, 31, .09);
+  --info-bg: rgba(21, 101, 192, .1);
+  /* 兼容旧代码：--warn 与 --warning 同值 */
+  --warn: var(--warning);
   --scrollbar: rgba(60, 64, 67, .25);
   --overlay: rgba(32, 33, 36, .38);
+  /* M29：单色功能图标滤镜（浅色=黑，深色=白；彩色资源图标不使用 AppIcon 统一滤镜） */
+  --icon-filter: brightness(0);
 
   /* 代码高亮配色（黑白专业风，浅色版） */
   --cm-comment: #888888;
@@ -83,11 +112,20 @@ html[data-theme="dark"] {
   --accent: #8ab4f8;
   --accent-hover: #aecbfa;
   --accent-soft: #394b63;
+  /* M29：语义状态色（深色主题沿用 Google 暗色语义色） */
   --success: #81c995;
   --warning: #fdd663;
   --danger: #f28b82;
+  --info: #8ab4f8;
+  --success-bg: rgba(129, 201, 149, .12);
+  --warning-bg: rgba(253, 214, 99, .12);
+  --danger-bg: rgba(242, 139, 130, .12);
+  --info-bg: rgba(138, 180, 248, .12);
+  --warn: var(--warning);
   --scrollbar: rgba(255, 255, 255, .25);
   --overlay: rgba(0, 0, 0, .52);
+  /* M29：单色功能图标滤镜（深色=白） */
+  --icon-filter: brightness(0) invert(1);
 
   /* 代码高亮配色（黑白专业风，深色版） */
   --cm-comment: #9aa0a6;

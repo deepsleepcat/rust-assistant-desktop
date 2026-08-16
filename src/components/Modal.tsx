@@ -2,10 +2,11 @@
  * 通用弹窗与确认框。
  */
 import type { ReactNode } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { IconClose } from './icons'
 import { pushEscapeHandler, useEscapeHandler } from '../utils/modalStack'
+import { useFocusTrap } from '../utils/focusTrap'
 import type { DiffLine } from '../types/diff'
 
 interface ModalProps {
@@ -19,11 +20,15 @@ interface ModalProps {
 export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
   // Escape 走全局弹窗栈（多弹窗叠放时只关最上层）
   useEscapeHandler(onClose)
+  const titleId = useId()
+  const cardRef = useRef<HTMLDivElement>(null)
+  // M29：打开时焦点移入弹窗（优先 [autofocus]）、Tab 循环、关闭后恢复原焦点
+  useFocusTrap(cardRef, true)
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal-card${wide ? ' settings' : ''}`} role="dialog" aria-modal="true">
-        <div className="modal-header">
+      <div ref={cardRef} className={`modal-card${wide ? ' settings' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div className="modal-header" id={titleId}>
           {title}
           <span className="grow" />
           <button className="icon-btn" onClick={onClose} aria-label="关闭">
@@ -217,11 +222,14 @@ export function ConfirmBox({
 }) {
   // Escape 走全局弹窗栈（确认框与其它弹窗叠放时只关最上层）
   useEscapeHandler(onCancel)
+  const titleId = useId()
+  const cardRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(cardRef, true)
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className={`modal-card confirm-card${danger ? ' danger' : ''}`} role="alertdialog" aria-modal="true">
-        <div className="modal-header">{title}</div>
+      <div ref={cardRef} className={`modal-card confirm-card${danger ? ' danger' : ''}`} role="alertdialog" aria-modal="true" aria-labelledby={titleId}>
+        <div className="modal-header" id={titleId}>{title}</div>
         <div className="modal-body">
           <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{message}</p>
         </div>
@@ -267,9 +275,12 @@ export function PromptModal({ title, initialValue = '', placeholder, confirmText
   const [value, setValue] = useState(initialValue)
   const [suffix, setSuffix] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const titleId = useId()
+  const cardRef = useRef<HTMLDivElement>(null)
 
   // Escape 走全局弹窗栈（输入弹窗与其它弹窗叠放时只关最上层，不误丢输入内容）
   useEscapeHandler(onClose)
+  useFocusTrap(cardRef, true)
 
   /** 应用预设后缀：替换已存在的后缀；名字为空时仅记录选择（提交时自动补） */
   const applySuffix = (s: string) => {
@@ -295,14 +306,14 @@ export function PromptModal({ title, initialValue = '', placeholder, confirmText
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-card" role="dialog" aria-modal="true" style={{ width: 'min(400px, 100%)' }}>
+      <div ref={cardRef} className="modal-card" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ width: 'min(400px, 100%)' }}>
         <form
           onSubmit={(e) => {
             e.preventDefault()
             submit()
           }}
         >
-          <div className="modal-header">{title}</div>
+          <div className="modal-header" id={titleId}>{title}</div>
           <div className="modal-body">
             <input
               name="value"

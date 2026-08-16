@@ -131,6 +131,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       editorPos: { line: 1, col: 1 },
       settingsOpen: false,
       commandOpen: false,
+      drawerSide: null,
       codeTableOpen: false,
       versionDiffOpen: false,
       relationGraphOpen: false,

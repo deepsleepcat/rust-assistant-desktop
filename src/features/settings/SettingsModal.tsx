@@ -13,7 +13,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { CURSOR_EFFECT_COLORS, DEFAULT_SETTINGS, FONT_OPTIONS } from '../../utils/settings'
+import { CURSOR_EFFECT_COLORS, DEFAULT_LAYOUT, DEFAULT_SETTINGS, FONT_OPTIONS } from '../../utils/settings'
 import { getBridge } from '../../services/bridge'
 import { AppIcon } from '../../components/AppIcon'
 import { LogoR } from '../../components/LogoR'
@@ -194,7 +194,10 @@ export function SettingsModal() {
     try {
       const r = await getBridge().knowledge!.rollback()
       if (r.ok) {
+        // 与 updateKp 一致：清缓存后立即重载数据（回滚后词典/补全不能留空到下次触发）
         reloadCodeData()
+        setDataVersion(null)
+        void loadCodeData().then(() => setDataVersion(getDataVersionInfo()))
         await refreshKpInfo()
         notify(`已回滚到知识包版本 ${r.version ?? '内置包'}，数据已重新加载`)
       } else {
@@ -607,8 +610,8 @@ export function SettingsModal() {
                 </span>
                 <input
                   type="range"
-                  min={220}
-                  max={420}
+                  min={180}
+                  max={520}
                   value={settings.leftWidth}
                   onChange={(e) => updateSettings({ leftWidth: Number(e.target.value) })}
                 />
@@ -620,20 +623,184 @@ export function SettingsModal() {
                 </span>
                 <input
                   type="range"
-                  min={260}
-                  max={640}
+                  min={240}
+                  max={760}
                   value={settings.rightWidth}
                   onChange={(e) => updateSettings({ rightWidth: Number(e.target.value) })}
                 />
                 <span style={{ width: 40, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{settings.rightWidth}px</span>
               </div>
+
+              <div className="setting-divider" />
+              <div className="setting-title">内部比例</div>
+              <div className="setting-row">
+                <span className="label">
+                  左栏项目列表高度
+                  <div className="desc">项目列表占左栏的高度比例，其余为文件树</div>
+                </span>
+                <input
+                  type="range"
+                  min={15}
+                  max={80}
+                  value={Math.round(settings.layout.leftARatio * 100)}
+                  onChange={(e) => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, leftARatio: Number(e.target.value) / 100 } })
+                  }}
+                />
+                <span style={{ width: 34, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{Math.round(settings.layout.leftARatio * 100)}%</span>
+                <button
+                  className="btn"
+                  style={{ padding: '1px 8px', fontSize: 11, height: 22 }}
+                  onClick={() => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, leftARatio: DEFAULT_LAYOUT.leftARatio } })
+                  }}
+                >
+                  恢复默认
+                </button>
+              </div>
+              <div className="setting-row">
+                <span className="label">
+                  右栏对话列表高度
+                  <div className="desc">对话列表占右栏的高度比例，其余为消息区</div>
+                </span>
+                <input
+                  type="range"
+                  min={15}
+                  max={80}
+                  value={Math.round(settings.layout.rightARatio * 100)}
+                  onChange={(e) => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, rightARatio: Number(e.target.value) / 100 } })
+                  }}
+                />
+                <span style={{ width: 34, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{Math.round(settings.layout.rightARatio * 100)}%</span>
+                <button
+                  className="btn"
+                  style={{ padding: '1px 8px', fontSize: 11, height: 22 }}
+                  onClick={() => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, rightARatio: DEFAULT_LAYOUT.rightARatio } })
+                  }}
+                >
+                  恢复默认
+                </button>
+              </div>
+
+              <div className="setting-divider" />
+              <div className="setting-title">折叠状态</div>
+              <div className="desc" style={{ marginBottom: 8 }}>
+                折叠后可拖分隔条或从命令面板重新打开
+              </div>
+              <div className="setting-row">
+                <span className="label">项目区整体折叠</span>
+                <button
+                  className={`switch${settings.layout.leftCollapsed ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={settings.layout.leftCollapsed}
+                  onClick={() => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, leftCollapsed: !s.settings.layout.leftCollapsed } })
+                  }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+              <div className="setting-row">
+                <span className="label">AI 对话区整体折叠</span>
+                <button
+                  className={`switch${settings.layout.rightCollapsed ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={settings.layout.rightCollapsed}
+                  onClick={() => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, rightCollapsed: !s.settings.layout.rightCollapsed } })
+                  }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+              <div className="setting-row">
+                <span className="label">左栏项目列表折叠</span>
+                <button
+                  className={`switch${settings.layout.leftACollapsed ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={settings.layout.leftACollapsed}
+                  onClick={() => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, leftACollapsed: !s.settings.layout.leftACollapsed } })
+                  }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+              <div className="setting-row">
+                <span className="label">右栏对话列表折叠</span>
+                <button
+                  className={`switch${settings.layout.rightACollapsed ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={settings.layout.rightACollapsed}
+                  onClick={() => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, rightACollapsed: !s.settings.layout.rightACollapsed } })
+                  }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+
+              <div className="setting-divider" />
+              <div className="setting-title">大纲</div>
+              <div className="setting-row">
+                <span className="label">
+                  编辑器大纲面板高度
+                  <div className="desc">大纲面板在编辑器内的固定高度</div>
+                </span>
+                <input
+                  type="range"
+                  min={80}
+                  max={560}
+                  value={settings.layout.outlineHeight}
+                  onChange={(e) => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, outlineHeight: Number(e.target.value) } })
+                  }}
+                />
+                <span style={{ width: 40, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{settings.layout.outlineHeight}px</span>
+              </div>
+              <div className="setting-row">
+                <span className="label">
+                  大纲默认展开
+                  <div className="desc">关闭后大纲默认折叠，可在编辑器内重新展开</div>
+                </span>
+                <button
+                  className={`switch${!settings.layout.outlineCollapsed ? ' on' : ''}`}
+                  role="switch"
+                  aria-checked={!settings.layout.outlineCollapsed}
+                  onClick={() => {
+                    const s = useWorkspaceStore.getState()
+                    updateSettings({ layout: { ...s.settings.layout, outlineCollapsed: !s.settings.layout.outlineCollapsed } })
+                  }}
+                >
+                  <span className="knob" />
+                </button>
+              </div>
+
+              <div className="setting-divider" />
               <div className="setting-row">
                 <span className="label">
                   恢复默认布局
                 </span>
                 <button
                   className="btn"
-                  onClick={() => updateSettings({ leftWidth: DEFAULT_SETTINGS.leftWidth, rightWidth: DEFAULT_SETTINGS.rightWidth })}
+                  onClick={() =>
+                    updateSettings({
+                      layout: { ...DEFAULT_LAYOUT },
+                      leftWidth: DEFAULT_SETTINGS.leftWidth,
+                      rightWidth: DEFAULT_SETTINGS.rightWidth,
+                    })
+                  }
                 >
                   恢复默认
                 </button>

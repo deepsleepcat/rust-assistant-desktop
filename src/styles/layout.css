@@ -1,0 +1,138 @@
+/**
+ * M29 布局层：可拖动分隔条、折叠、紧凑抽屉与工作区网格。
+ * 尺寸通过 CSS 变量注入（--wb-left / --wb-right / --wb-...），
+ * 拖动期间只改变量，拖动结束才由 React 持久化。
+ */
+
+/* ── 分隔条（SplitHandle） ──────────────────────────── */
+.splitter {
+  position: relative;
+  flex: none;
+  background: transparent;
+  z-index: 3;
+}
+.splitter::after {
+  content: "";
+  position: absolute;
+  background: var(--divider);
+  transition: background .15s ease;
+}
+.splitter:hover::after, .splitter.dragging::after { background: var(--splitter-hover); }
+.splitter[data-orientation="vertical"] {
+  width: var(--splitter-hit);
+  cursor: col-resize;
+  touch-action: none; /* 触屏拖动不与滚动抢手势 */
+}
+.splitter[data-orientation="vertical"]::after { left: 50%; top: 0; bottom: 0; width: var(--splitter-w); transform: translateX(-50%); }
+.splitter[data-orientation="horizontal"] {
+  height: var(--splitter-hit);
+  cursor: row-resize;
+  touch-action: none;
+}
+.splitter[data-orientation="horizontal"]::after { top: 50%; left: 0; right: 0; height: var(--splitter-w); transform: translateY(-50%); }
+.splitter:focus-visible { box-shadow: none; outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-xs); }
+
+/* ── 面板折叠按钮（标题栏复用 icon-btn 尺寸） ─────────── */
+.panel-collapse { width: 24px; height: 24px; flex: none; }
+
+/* ── 工作区三栏（列宽由 --wb-left/--wb-right 注入；折叠=归零变量） ────── */
+.workbench { display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.workbench[data-mode="full"], .workbench[data-mode="medium"] {
+  grid-template-columns: var(--wb-left, 280px) var(--splitter-hit, 8px) minmax(0, 1fr) var(--splitter-hit, 8px) var(--wb-right, 430px);
+}
+.workbench[data-mode="compact"] { grid-template-columns: minmax(0, 1fr); }
+.workbench[data-left="collapsed"] { --wb-left: 0px; }
+.workbench[data-right="collapsed"] { --wb-right: 0px; }
+/* 折叠：内容不可见、不可聚焦（visibility 而非 display，保持网格槽位） */
+.workbench[data-left="collapsed"] > .wb-left { visibility: hidden; pointer-events: none; }
+.workbench[data-right="collapsed"] > .wb-right { visibility: hidden; pointer-events: none; }
+
+.wb-left, .wb-right {
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--surface-1);
+}
+.wb-left { border-right: 1px solid var(--divider); }
+.wb-right { border-left: 1px solid var(--divider); }
+.wb-editor { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.wb-editor > * { flex: 1; min-width: 0; min-height: 0; }
+
+/* 紧凑模式浮动开关（抽屉打开时隐藏同侧开关，避免叠压） */
+.wb-chip {
+  z-index: 6;
+  pointer-events: auto; /* 无抽屉时 overlay 透传点击，chip 自身仍可点 */
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-0);
+  color: var(--text-secondary);
+  font: 12px var(--font-ui);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.wb-chip:hover { background: var(--surface-hover); color: var(--text-primary); border-color: var(--accent); }
+
+/* ── 紧凑模式抽屉（覆盖层，随布局模式切换） ───────────── */
+.wb-drawer-overlay { position: fixed; inset: var(--titlebar-h) 0 var(--statusbar-h) 0; z-index: 90; display: none; }
+.workbench[data-mode="compact"] ~ .wb-drawer-overlay { display: block; }
+.wb-drawer-backdrop { position: absolute; inset: 0; background: var(--overlay); }
+.wb-drawer {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: min(340px, 86vw);
+  background: var(--surface-1);
+  border-right: 1px solid var(--divider);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  animation: ra-slide-in .18s ease-out;
+}
+.wb-drawer[data-side="right"] { right: 0; border-right: 0; border-left: 1px solid var(--divider); }
+@keyframes ra-slide-in { from { transform: translateX(-16px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.wb-drawer[data-side="right"] { animation-name: ra-slide-in-right; }
+@keyframes ra-slide-in-right { from { transform: translateX(16px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* ── 左/右栏内部上下分栏（--row-a = 上部面板高度 px；折叠=归零） ── */
+.wb-left-inner, .wb-right-inner {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: var(--row-a, 30%) var(--splitter-hit, 8px) minmax(0, 1fr);
+}
+.wb-left-inner[data-a="collapsed"], .wb-right-inner[data-a="collapsed"] { --row-a: 0px; }
+.wb-left-inner[data-a="collapsed"] > :first-child, .wb-right-inner[data-a="collapsed"] > :first-child {
+  visibility: hidden; pointer-events: none;
+}
+
+/* ── 编辑器顶栏：上下文行 + 操作行（两行结构） ────────── */
+.editor-head { flex: none; display: flex; flex-direction: column; background: var(--surface-1); border-bottom: 1px solid var(--divider); }
+.editor-head-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 8px; }
+.editor-head-row.top { height: 28px; }
+.editor-head-row.actions { height: 32px; border-top: 1px solid var(--divider); }
+.editor-head-row .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 11px; }
+.editor-head-row .grow { flex: 1; }
+/* 顶行（28px）内的小按钮：压缩 .btn 默认 32px 高度避免溢出 */
+.editor-head-row.top .btn { height: 24px; padding: 0 10px; font-size: 11.5px; }
+
+/* ── 溢出工具栏（Toolbar/OverflowToolbar） ───────────── */
+.toolbar { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.toolbar > .toolbar-item { flex: none; }
+.toolbar-overflow-menu { position: absolute; z-index: 80; min-width: 180px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-0); box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 1px; }
+.toolbar-overflow-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: 12.5px var(--font-ui); text-align: left; cursor: pointer; }
+.toolbar-overflow-menu button:hover { background: var(--surface-hover); }
+.toolbar-overflow-menu .toolbar-overflow-label { font-size: 10.5px; color: var(--text-muted); padding: 4px 10px 2px; }
+
+/* ── 窄屏收缩（body.ra-compact 由布局组件设置） ──────────
+   标题栏：项目名隐藏、搜索框收窄、快捷键 hint 隐藏；
+   状态栏：隐藏低价值项（语言 pill、版本号）。 */
+body.ra-compact .titlebar-search { width: min(220px, 40vw); }
+body.ra-compact .titlebar-project { display: none; }
+body.ra-compact .titlebar-search .hint { display: none; }
+body.ra-compact .statusbar .sb-pill { display: none; }
+body.ra-compact .statusbar .sb-item:last-child { display: none; }
+
+/* ── M29 编辑器大纲面板：高度由外层（SplitHandle/outlineHeight，内联 px）控制，
+   覆盖 m3-finish.css 的 max-height: 180px（max-height 会压制内联 height，必须归零） ── */
+.editor-outline { max-height: none; height: 100%; }

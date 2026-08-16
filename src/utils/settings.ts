@@ -2,9 +2,10 @@
  * 设置：默认值与清洗逻辑。所有外部输入（本地存储、界面操作）都必须先经过清洗，
  * 防止损坏的数据进入应用。
  */
-import type { AppSettings, BackgroundKind, FileSort, ThemeMode } from '../types/domain'
+import type { AppSettings, BackgroundKind, FileSort, ThemeMode, WorkbenchLayoutSettings } from '../types/domain'
 import type { AiProviderType } from '../types/ai'
 import { defaultSemanticCheckerConfig, sanitizeCheckerConfig } from '../features/editor/semanticChecks/registry'
+import { INNER_RATIO_MAX, INNER_RATIO_MIN, WORKBENCH_CONSTRAINTS } from './layout'
 
 export const FONT_OPTIONS = [
   { label: '系统默认', value: 'system' },
@@ -21,6 +22,18 @@ export const CURSOR_EFFECT_COLORS = [
   { label: '樱花粉', value: '#FFB7C5' },
   { label: '浅海蓝', value: '#A5D8F3' },
 ] as const
+
+export const DEFAULT_LAYOUT: WorkbenchLayoutSettings = {
+  leftARatio: 0.3,
+  leftACollapsed: false,
+  rightARatio: 0.38,
+  rightACollapsed: false,
+  leftCollapsed: false,
+  rightCollapsed: false,
+  outlineHeight: 180,
+  // 大纲默认收起（与 M29 前的行为一致：点「大纲」按钮才展开）
+  outlineCollapsed: true,
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
   // 白色 Google Material 是默认主视觉；深色 / 跟随系统为可选主题
@@ -39,6 +52,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   translateMode: true,
   leftWidth: 280,
   rightWidth: 430,
+  layout: DEFAULT_LAYOUT,
   showHiddenFiles: false,
   /** M8：文件树排序方式（名称/类型/大小/修改时间；文件夹始终优先） */
   fileSort: 'name',
@@ -96,8 +110,9 @@ export function sanitizeSettings(input: unknown): AppSettings {
     fontSize: clamp(typeof raw.fontSize === 'number' ? raw.fontSize : DEFAULT_SETTINGS.fontSize, 12, 20),
     translateMode: typeof raw.translateMode === 'boolean' ? raw.translateMode : DEFAULT_SETTINGS.translateMode,
     avatar: sanitizeAvatar(raw.avatar),
-    leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, 220, 420),
-    rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, 260, 640),
+    leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, WORKBENCH_CONSTRAINTS.minLeft, WORKBENCH_CONSTRAINTS.maxLeft),
+    rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, WORKBENCH_CONSTRAINTS.minRight, WORKBENCH_CONSTRAINTS.maxRight),
+    layout: sanitizeLayout(raw.layout),
     showHiddenFiles: typeof raw.showHiddenFiles === 'boolean' ? raw.showHiddenFiles : DEFAULT_SETTINGS.showHiddenFiles,
     fileSort: FILE_SORTS.includes(raw.fileSort as FileSort) ? (raw.fileSort as FileSort) : DEFAULT_SETTINGS.fileSort,
     cursorEffect: typeof raw.cursorEffect === 'boolean' ? raw.cursorEffect : DEFAULT_SETTINGS.cursorEffect,
@@ -120,6 +135,21 @@ export function sanitizeSettings(input: unknown): AppSettings {
         : DEFAULT_SETTINGS.knowledgeSourceUrl,
     knowledgeSources: sanitizeSources(raw.knowledgeSources),
     ai: sanitizeAi(raw.ai),
+  }
+}
+
+/** M29 工作区布局清洗：比例夹紧（与布局纯函数同界）、布尔字段必须是布尔，损坏数据回退默认 */
+function sanitizeLayout(raw: unknown): WorkbenchLayoutSettings {
+  const input = (raw && typeof raw === 'object' ? raw : {}) as Partial<WorkbenchLayoutSettings>
+  return {
+    leftARatio: clamp(typeof input.leftARatio === 'number' ? input.leftARatio : DEFAULT_LAYOUT.leftARatio, INNER_RATIO_MIN, INNER_RATIO_MAX),
+    leftACollapsed: typeof input.leftACollapsed === 'boolean' ? input.leftACollapsed : DEFAULT_LAYOUT.leftACollapsed,
+    rightARatio: clamp(typeof input.rightARatio === 'number' ? input.rightARatio : DEFAULT_LAYOUT.rightARatio, INNER_RATIO_MIN, INNER_RATIO_MAX),
+    rightACollapsed: typeof input.rightACollapsed === 'boolean' ? input.rightACollapsed : DEFAULT_LAYOUT.rightACollapsed,
+    leftCollapsed: typeof input.leftCollapsed === 'boolean' ? input.leftCollapsed : DEFAULT_LAYOUT.leftCollapsed,
+    rightCollapsed: typeof input.rightCollapsed === 'boolean' ? input.rightCollapsed : DEFAULT_LAYOUT.rightCollapsed,
+    outlineHeight: clamp(typeof input.outlineHeight === 'number' ? input.outlineHeight : DEFAULT_LAYOUT.outlineHeight, 80, 560),
+    outlineCollapsed: typeof input.outlineCollapsed === 'boolean' ? input.outlineCollapsed : DEFAULT_LAYOUT.outlineCollapsed,
   }
 }
 

@@ -26,6 +26,26 @@ export interface BackgroundSettings {
   blur: number
 }
 
+/** M29：工作区布局持久化（可拖动分隔条的比例/折叠状态；左/右主栏宽度沿用 leftWidth/rightWidth） */
+export interface WorkbenchLayoutSettings {
+  /** 左栏内部「项目列表」比例（0-1；0.3 = 30%），文件树占剩余 */
+  leftARatio: number
+  /** 左栏「项目列表」折叠（展开时恢复 leftARatio） */
+  leftACollapsed: boolean
+  /** 右栏内部「对话列表」比例（0-1；0.38 = 38%），消息区占剩余 */
+  rightARatio: number
+  /** 右栏「对话列表」折叠 */
+  rightACollapsed: boolean
+  /** 左栏整体折叠（重新展开恢复 leftWidth） */
+  leftCollapsed: boolean
+  /** 右栏整体折叠（重新展开恢复 rightWidth） */
+  rightCollapsed: boolean
+  /** 编辑器「大纲」面板高度 px */
+  outlineHeight: number
+  /** 大纲折叠 */
+  outlineCollapsed: boolean
+}
+
 export interface AppSettings {
   theme: ThemeMode
   background: BackgroundSettings
@@ -50,6 +70,8 @@ export interface AppSettings {
   leftWidth: number
   /** 右侧对话栏宽度 */
   rightWidth: number
+  /** M29：工作区布局（分隔条比例/折叠状态） */
+  layout: WorkbenchLayoutSettings
   /** 文件树是否显示隐藏文件（以 . 开头） */
   showHiddenFiles: boolean
   /** M8：文件树排序方式（名称/类型/大小/修改时间；文件夹始终优先） */

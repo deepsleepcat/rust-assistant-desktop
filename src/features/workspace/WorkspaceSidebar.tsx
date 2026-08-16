@@ -12,6 +12,12 @@ export function WorkspaceSidebar() {
   const selectProject = useWorkspaceStore((s) => s.selectProject)
   const removeProject = useWorkspaceStore((s) => s.removeProject)
   const requestConfirm = useWorkspaceStore((s) => s.requestConfirm)
+  const layout = useWorkspaceStore((s) => s.settings.layout)
+
+  const toggleListCollapsed = () => {
+    const s = useWorkspaceStore.getState()
+    s.updateSettings({ layout: { ...s.settings.layout, leftACollapsed: !layout.leftACollapsed } })
+  }
 
   return (
     <section className="panel" style={{ minHeight: 0 }}>
@@ -19,6 +25,14 @@ export function WorkspaceSidebar() {
         <AppIcon name="folder" size={13} />
         项目
         <span className="grow" />
+        <button
+          className="icon-btn panel-collapse"
+          title={layout.leftACollapsed ? '展开项目列表' : '折叠项目列表'}
+          aria-label={layout.leftACollapsed ? '展开项目列表' : '折叠项目列表'}
+          onClick={toggleListCollapsed}
+        >
+          <AppIcon name={layout.leftACollapsed ? 'expand' : 'menu'} size={13} />
+        </button>
         <button className="icon-btn" title="导入模组（文件夹或 rwmod/zip）" onClick={() => void importModProject()}>
           <AppIcon name="plus" size={14} />
         </button>
@@ -37,7 +51,16 @@ export function WorkspaceSidebar() {
             <div
               key={p.id}
               className={`project-item${p.id === activeProjectId ? ' active' : ''}`}
+              role="button"
+              tabIndex={0}
               onClick={() => void selectProject(p.id)}
+              onKeyDown={(e) => {
+                // M29：键盘切换项目（Enter/Space）
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  void selectProject(p.id)
+                }
+              }}
               title={p.rootPath}
             >
               <span className="proj-icon">

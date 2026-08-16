@@ -1,5 +1,7 @@
 /**
- * 右侧「AI 对话」面板：
+ * 右侧「AI 对话」面板（M29 上下分栏拆分）：
+ * - ConversationListSection：面板头（AI 对话 + 折叠按钮 + 新建）+ 对话列表/空状态（上段）；
+ * - ConversationView：消息区 + 输入区（下段，业务逻辑不变）。
  * - 一个项目可创建多个对话，各自独立
  * - 支持：创建 / 切换 / 重命名 / 归档 / 删除
  */
@@ -23,15 +25,17 @@ function renderAssistantText(text: string) {
   )
 }
 
-export function ConversationPanel() {
+export function ConversationListSection() {
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
-  const activeConversationId = useWorkspaceStore((s) => s.activeConversationId)
   const createConversation = useWorkspaceStore((s) => s.createConversation)
   const conversations = useSortedConversations(project?.id ?? null)
+  const layout = useWorkspaceStore((s) => s.settings.layout)
 
-  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null)
+  const toggleCollapsed = () => {
+    const s = useWorkspaceStore.getState()
+    s.updateSettings({ layout: { ...s.settings.layout, rightACollapsed: !s.settings.layout.rightACollapsed } })
+  }
 
-  const active = conversations.find((c) => c.id === activeConversationId) ?? null
   const activeList = conversations.filter((c) => !c.archived)
   const archivedList = conversations.filter((c) => c.archived)
 
@@ -41,6 +45,14 @@ export function ConversationPanel() {
         <AppIcon name="tools" size={13} />
         AI 对话
         <span className="grow" />
+        <button
+          className="icon-btn panel-collapse"
+          title={layout.rightACollapsed ? '展开对话列表' : '折叠对话列表'}
+          aria-label={layout.rightACollapsed ? '展开对话列表' : '折叠对话列表'}
+          onClick={toggleCollapsed}
+        >
+          <AppIcon name={layout.rightACollapsed ? 'expand' : 'menu'} size={13} />
+        </button>
         <button className="icon-btn" title="新建对话" disabled={!project} onClick={() => createConversation()}>
           <AppIcon name="plus" size={14} />
         </button>
@@ -70,27 +82,6 @@ export function ConversationPanel() {
           ))}
         </div>
       )}
-
-      {active ? (
-        <ConversationView
-          id={active.id}
-          title={active.title}
-          onRename={() => setRenaming({ id: active.id, title: active.title })}
-        />
-      ) : null}
-
-      {renaming && (
-        <PromptModal
-          title="重命名对话"
-          initialValue={renaming.title}
-          confirmText="重命名"
-          onSubmit={(title) => {
-            useWorkspaceStore.getState().renameConversation(renaming.id, title)
-            setRenaming(null)
-          }}
-          onClose={() => setRenaming(null)}
-        />
-      )}
     </section>
   )
 }
@@ -110,7 +101,16 @@ function ConversationItem({ id }: { id: string }) {
     <>
       <div
         className={`conv-item${conv.id === activeConversationId ? ' active' : ''}${conv.archived ? ' archived' : ''}`}
+        role="button"
+        tabIndex={0}
         onClick={() => selectConversation(conv.id)}
+        onKeyDown={(e) => {
+          // M29：键盘切换对话（Enter/Space）
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            selectConversation(conv.id)
+          }
+        }}
       >
         <AppIcon name="file" size={14} />
         <span className="conv-info">
@@ -169,7 +169,7 @@ function toolLabel(name: string): string {
   return labels[name] ?? name
 }
 
-function ConversationView({ id, title, onRename }: { id: string; title: string; onRename: () => void }) {
+export function ConversationView({ id, title, onRename }: { id: string; title: string; onRename: () => void }) {
   const conversation = useWorkspaceStore((s) => s.conversations.find((c) => c.id === id))
   const messages = useMemo(() => conversation?.messages ?? [], [conversation])
   const toolEvents = useMemo(() => conversation?.toolEvents ?? [], [conversation])
@@ -198,6 +198,24 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
   const draftsRef = useRef<Map<string, string>>(new Map())
   const previousIdRef = useRef(id)
   const messagesRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // 输入法弹起（可视视口底部上移/收缩）时把输入框保持在可视区内：
+  // 键盘 overlay 模式下布局视口不变，只有 visualViewport 变化能感知；
+  // 桌面 Electron 的 visualViewport 高度恒等于布局视口，此守卫不会触发滚动
+  useEffect(() => {
+    const vv = window.visualViewport
+    const keepInputVisible = () => {
+      if (!vv || vv.height >= window.innerHeight) return // 键盘未弹起：不打扰桌面滚动
+      inputRef.current?.scrollIntoView({ block: 'nearest' })
+    }
+    vv?.addEventListener('resize', keepInputVisible)
+    vv?.addEventListener('scroll', keepInputVisible)
+    return () => {
+      vv?.removeEventListener('resize', keepInputVisible)
+      vv?.removeEventListener('scroll', keepInputVisible)
+    }
+  }, [])
 
   // 社区后端为预留服务（主进程也返回「即将上线」）：选中时输入区明确提示怎么恢复
   const communitySelected = aiSettings.provider === 'community'
@@ -273,6 +291,8 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
                   {/* 仅流式进行中且内容为空时显示「正在思考…」：done 后为空内容不再挂着占位符 */}
                   {item.msg.role === 'assistant' && item.msg.content === '' && !item.msg.reasoning && aiStreaming && <span className="msg-streaming">正在思考…</span>}
                 </div>
+                {/* M29：AI 回复可直接复制（全局禁选下鼠标拖选不便，给显式按钮） */}
+                {item.msg.role === 'assistant' && item.msg.content !== '' && <CopyMessageButton text={item.msg.content} />}
               </div>
             ),
           )
@@ -281,12 +301,14 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
 
       <div className="conv-input-area">
         <textarea
+          ref={inputRef}
           className="conv-input"
           value={input}
           // 低-5：textarea 不禁用（流式中允许起草下一条；发送守卫已覆盖全部流式场景）
           disabled={!providerReady}
           placeholder={providerReady ? '输入你的模组需求…（如：帮我做一个能隐身的侦察单位）' : communitySelected ? '社区后端即将上线，请先在设置中切换回 DeepSeek' : '请先在设置中配置 AI'}
           aria-label="对话输入框"
+          onFocus={() => inputRef.current?.scrollIntoView({ block: 'nearest' })}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             // 低-2：IME 组合输入（拼音/五笔候选确认）的 Enter 不触发发送
@@ -308,7 +330,7 @@ function ConversationView({ id, title, onRename }: { id: string; title: string; 
           </span>
           <button className="btn" disabled={!providerReady || aiStreaming || anyStreaming || !input.trim()} onClick={send}>
             <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-              <AppIcon name="add" size={13} />
+              <AppIcon name="export" size={13} />
               {aiStreaming ? '回复中' : anyStreaming ? '等待中' : '发送'}
             </span>
           </button>
@@ -456,7 +478,21 @@ function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: 
   if (!set) return null // 参数缺失/校验失败：交给 AI 文本说明（工具返回里已有错误）
   return (
     <div className={`lint-box${runResult && totalHits > 0 ? ' has-error' : ''}`}>
-      <button className="lint-toggle" onClick={() => setOpen(!open)} title="展开/收起检查用例">
+      {/* M29：折叠头由 button 改为 div role=button——原结构 button 嵌套 button 违反交互控件嵌套规则，
+          导致内部「试运行/保存规则」点击冒泡触发折叠且键盘行为不可靠 */}
+      <div
+        className="lint-toggle"
+        role="button"
+        tabIndex={0}
+        title="展开/收起检查用例"
+        onClick={() => setOpen(!open)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setOpen(!open)
+          }
+        }}
+      >
         <span className="lint-toggle-mark">{open ? '▾' : '▸'}</span>
         <span className="lint-toggle-title">
           <AppIcon name="tools" size={11} />
@@ -464,7 +500,7 @@ function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: 
           {targetPath && <code className="tool-path">{targetPath}</code>}
         </span>
         {!saved && (
-          <span className="tool-card-actions">
+          <span className="tool-card-actions" onClick={(e) => e.stopPropagation()}>
             <button
               className="btn"
               style={{ padding: '1px 8px', fontSize: 11 }}
@@ -480,7 +516,7 @@ function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: 
           </span>
         )}
         {saved && <span className="lint-suggestion">已保存 ✓</span>}
-      </button>
+      </div>
       {open && (
         <div className="lint-list" style={{ padding: '4px 8px' }}>
           {!targetPath && <div className="lint-evidence">AI 未指定目标文件：试运行需要目标单位文件（提示 AI 使用 generateCheckCases 时带上 targetPath）</div>}
@@ -619,4 +655,34 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+/** M29：复制 AI 消息内容（含代码块原文；成功后短暂显示「已复制」） */
+function CopyMessageButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    },
+    [],
+  )
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => setCopied(false), 1200)
+    } catch {
+      /* 剪贴板不可用：静默（不影响消息展示） */
+    }
+  }
+  return (
+    <button className="btn msg-copy-btn" title="复制消息内容" aria-label="复制消息内容" onClick={() => void copy()}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <AppIcon name={copied ? 'check' : 'copy'} size={11} />
+        {copied ? '已复制' : '复制'}
+      </span>
+    </button>
+  )
 }

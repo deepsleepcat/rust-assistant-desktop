@@ -280,12 +280,10 @@ export function FolderIcon({ size = 16, open = false }: { size?: number; open?: 
         placeItems: 'center',
         background: open ? '#333333' : '#777777',
         color: '#fff',
-        fontSize: size * 0.55,
-        fontWeight: 700,
         flexShrink: 0,
       }}
     >
-      {open ? '▾' : '▸'}
+      {open ? <IconFolderOpen size={Math.round(size * 0.72)} /> : <IconFolder size={Math.round(size * 0.72)} />}
     </span>
   )
 }

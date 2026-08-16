@@ -5,12 +5,13 @@
  * - 悬停操作：重命名、删除（回收站）
  * - 顶部工具栏：刷新、新建文件、新建文件夹
  */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FileSort, TreeNode } from '../../types/domain'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { FileTypeIcon, FolderIcon, IconChevronRight } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { PromptModal } from '../../components/Modal'
+import { PanelState } from '../../components/PanelState'
 
 /** 排序树节点：文件夹始终优先，组内按所选字段（名称/类型/大小/修改时间） */
 function sortChildren(children: TreeNode[], sort: FileSort): TreeNode[] {
@@ -47,6 +48,26 @@ export function ProjectPanel() {
   const [dialog, setDialog] = useState<null | { kind: 'file' | 'folder'; parent: string }>(null)
   const [renaming, setRenaming] = useState<null | TreeNode>(null)
   const [modMenu, setModMenu] = useState(false)
+  const treeRef = useRef<HTMLDivElement>(null)
+
+  // M29：文件树键盘导航（roving tabindex：方向键在行间移动；行内 Enter/空格/左右键处理打开/展开）
+  const onTreeKeyDown = (e: React.KeyboardEvent) => {
+    const el = treeRef.current
+    if (!el) return
+    const rows = Array.from(el.querySelectorAll<HTMLElement>('[data-tree-row]'))
+    if (rows.length === 0) return
+    // M30：焦点可能落在行内操作按钮上——沿 DOM 向上找所属行，避免 indexOf(-1) 跳回第一行
+    const activeEl = document.activeElement as HTMLElement | null
+    const rowEl = activeEl?.closest?.('[data-tree-row]') as HTMLElement | null
+    const idx = rowEl ? rows.indexOf(rowEl) : -1
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      rows[Math.min(idx + 1, rows.length - 1)]?.focus()
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      rows[Math.max(idx - 1, 0)]?.focus()
+    }
+  }
 
   if (!project) {
     return (
@@ -67,8 +88,7 @@ export function ProjectPanel() {
     <section className="panel" style={{ flex: 1, minHeight: 0 }}>
       <div className="panel-header">
         <IconFolderOpen2 size={13} />
-        {project.name}
-        <span className="grow" />
+        <span className="project-panel-name" title={project.name}>{project.name}</span>
         <select
           className="sort-select"
           value={settings.fileSort}
@@ -123,10 +143,13 @@ export function ProjectPanel() {
       {treeError ? (
         <div className="tree-error">无法读取项目：{treeError}</div>
       ) : treeRoot ? (
-        <div className="tree">
+        <div className="tree" ref={treeRef} role="tree" tabIndex={0} aria-label="项目文件树" onKeyDown={onTreeKeyDown}>
           <TreeRow node={treeRoot} depth={0} onRename={setRenaming} onNewIn={setDialog} />
         </div>
-      ) : null}
+      ) : (
+        // M29：根树加载态——「正在读取」与「空项目」不再混为一谈
+        <PanelState kind="loading" title="正在加载项目文件…" />
+      )}
       <FavoritesList onOpenFile={(path) => void useWorkspaceStore.getState().openFile(path)} />
 
       {dialog && (
@@ -224,8 +247,26 @@ function TreeRow({
       <>
         <div
           className={`tree-row${selected ? ' selected' : ''}`}
+          data-tree-row
+          role="treeitem"
+          aria-expanded={expanded}
+          aria-selected={selected}
+          tabIndex={-1}
           style={{ paddingLeft: 6 + indent }}
           onClick={() => void useWorkspaceStore.getState().toggleDir(node.path)}
+          onKeyDown={(e) => {
+            // M29：键盘展开/收起目录（Enter/空格/右箭头展开、左箭头收起）
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              void useWorkspaceStore.getState().toggleDir(node.path)
+            } else if (e.key === 'ArrowRight' && !expanded) {
+              e.preventDefault()
+              void useWorkspaceStore.getState().toggleDir(node.path)
+            } else if (e.key === 'ArrowLeft' && expanded) {
+              e.preventDefault()
+              void useWorkspaceStore.getState().toggleDir(node.path)
+            }
+          }}
           title={node.path}
         >
           <span className={`chev${expanded ? ' open' : ''}`}>
@@ -311,8 +352,19 @@ function TreeRow({
   return (
     <div
       className={`tree-row${selected ? ' selected' : ''}`}
+      data-tree-row
+      role="treeitem"
+      aria-selected={selected}
+      tabIndex={-1}
       style={{ paddingLeft: 22 + indent }}
       onDoubleClick={() => void openFile(node.path)}
+      onKeyDown={(e) => {
+        // M29：键盘打开文件（Enter/空格）
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          void openFile(node.path)
+        }
+      }}
       title={node.path}
     >
       <span className="chev placeholder">

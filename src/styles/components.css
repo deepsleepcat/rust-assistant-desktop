@@ -1,0 +1,158 @@
+/**
+ * M29 组件层：补齐此前「使用了但没有定义」的控件类，并统一基础控件外观。
+ * 颜色全部走 tokens.css 的语义令牌；布局类见 layout.css。
+ */
+
+/* ── 全局键盘焦点环（浅深主题均可见） ─────────────────── */
+:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-xs); }
+/* 输入框焦点环不套外阴影（自身已有边框高亮，避免双重视觉） */
+input:focus-visible, select:focus-visible, textarea:focus-visible { box-shadow: none; }
+
+/* ── 危险按钮：与 .btn 同尺寸，危险语义色 ─────────────── */
+.btn-danger {
+  height: var(--ctrl-h, 32px);
+  padding: 0 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--danger);
+  font: 500 13px var(--font-ui);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, transform .06s ease;
+}
+.btn-danger:hover { background: var(--danger-bg); }
+.btn-danger:active { transform: scale(.985); }
+
+/* ── 基础表单控件（此前 .input/.select/.sort-select 无定义） ── */
+.input, .select, .sort-select {
+  height: var(--ctrl-h, 32px);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-input);
+  color: var(--text-primary);
+  font: 13px var(--font-ui);
+  outline: 0;
+}
+.input:focus, .select:focus, .sort-select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.input::placeholder { color: var(--text-muted); }
+.input[disabled], .select[disabled] { opacity: .55; cursor: not-allowed; }
+
+/* ── 设置页分区与错误块 ─────────────────────────────── */
+.setting-section { display: flex; flex-direction: column; }
+.setting-error {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.setting-muted { color: var(--text-muted); font-size: 12px; }
+
+/* ── 小徽标（此前 .badge 无定义） ────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--divider);
+}
+.badge.ok { background: var(--success-bg); color: var(--success); border-color: transparent; }
+.badge.warn { background: var(--warning-bg); color: var(--warning); border-color: transparent; }
+.badge.err { background: var(--danger-bg); color: var(--danger); border-color: transparent; }
+.badge.info { background: var(--info-bg); color: var(--info); border-color: transparent; }
+
+/* ── 列表条目基础行（此前 .list-item 无定义，ValueType 等使用） ── */
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+.list-item:hover { background: var(--surface-hover); }
+
+/* ── 消息流式占位（此前 .msg-streaming 无定义） ───────── */
+.msg-streaming { color: var(--text-muted); font-style: italic; }
+.msg-streaming::after { content: "…"; animation: ra-ellipsis 1.2s steps(4, end) infinite; }
+@keyframes ra-ellipsis {
+  0% { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+  100% { content: ""; }
+}
+
+/* ── 欢迎页最近项目卡（此前 .rc-name/.rc-path 无定义） ── */
+.rc-name { font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-path { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 标题栏头像微光（此前 .glow-hover 无定义） ────────── */
+.glow-hover { transition: box-shadow .2s ease, border-color .2s ease; }
+.glow-hover:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* ── 欢迎页入场序列（此前 .stagger 无定义；配合 animations） ── */
+.stagger > * { animation: ra-rise-in .3s ease-out both; }
+.stagger > *:nth-child(1) { animation-delay: .02s; }
+.stagger > *:nth-child(2) { animation-delay: .07s; }
+.stagger > *:nth-child(3) { animation-delay: .12s; }
+.stagger > *:nth-child(n+4) { animation-delay: .18s; }
+
+/* ── 命令面板空结果（此前 .command-empty 无定义） ─────── */
+.command-empty { padding: 18px; text-align: center; color: var(--text-muted); font-size: 12.5px; }
+
+/* ── 统一加载/空/错误状态块（PanelState 组件使用） ─────── */
+.panel-state {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+.panel-state .panel-state-icon { display: grid; place-items: center; color: var(--text-muted); }
+.panel-state .panel-state-title { color: var(--text-primary); font-weight: 600; font-size: 13px; }
+.panel-state .panel-state-desc { color: var(--text-muted); font-size: 11.5px; line-height: 1.6; max-width: 360px; }
+.panel-state .panel-state-actions { display: flex; gap: 8px; margin-top: 4px; }
+.panel-state.error { color: var(--danger); }
+.panel-state.error .panel-state-title { color: var(--danger); }
+.panel-state-spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: ra-spin .8s linear infinite; }
+
+/* ── AI 消息复制按钮：悬停/聚焦消息时显现，键盘可达 ─────── */
+.msg-copy-btn {
+  margin-top: 4px;
+  padding: 1px 8px;
+  font-size: 11px;
+  height: 22px;
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+.msg:hover .msg-copy-btn, .msg:focus-within .msg-copy-btn { opacity: 1; }
+
+/* ── SVG 可交互节点（关系图）：键盘焦点可见 ─────────────── */
+.relgraph-node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── 文本选择：桌面工作台保持全局禁选（防误拖），但内容区允许复制 ── */
+.conv-messages, .conv-messages .msg-bubble, .assistant-code, .approval-preview,
+.diff-view, .diff-line, .git-diff-pre, .git-conflict-block pre, .report-body,
+.lint-evidence, .lint-suggestion, .tool-path, .vdiff-body, .editor-outline,
+.cm-content, .unit-form, .map-viewer, .image-hover-tooltip, .unitprev-canvas-wrap,
+.codetable-codes, .history-item { user-select: text; }
+.conv-messages .msg-bubble { cursor: text; }

@@ -9,10 +9,10 @@ import { TitleBar } from './components/TitleBar'
 import { StatusBar } from './components/StatusBar'
 import { ApprovalDialog, ConfirmDialog } from './components/Modal'
 import { installEscapeDispatcher } from './utils/modalStack'
-import { WorkspaceSidebar } from './features/workspace/WorkspaceSidebar'
-import { ProjectPanel } from './features/project/ProjectPanel'
+import { WorkbenchLayout } from './components/WorkbenchLayout'
+import { LeftColumn } from './features/workspace/LeftColumn'
+import { RightColumn } from './features/conversation/RightColumn'
 import { EditorArea } from './features/editor/EditorArea'
-import { ConversationPanel } from './features/conversation/ConversationPanel'
 import { SettingsModal } from './features/settings/SettingsModal'
 import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
@@ -167,15 +167,8 @@ export function App() {
 
       {settings.cursorEffect && <CursorEffect intensity={settings.cursorEffectIntensity} color={settings.cursorEffectColor} />}
 
-      <div className="app-body" style={{ gridTemplateColumns: `${settings.leftWidth}px 1fr ${settings.rightWidth}px` }}>
-        <aside className="sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--panel-gap)', minWidth: 0 }}>
-          <WorkspaceSidebar />
-          <ProjectPanel />
-        </aside>
-
-        <EditorArea />
-
-        <ConversationPanel />
+      <div className="app-body">
+        <WorkbenchLayout left={<LeftColumn />} editor={<EditorArea />} right={<RightColumn />} />
       </div>
 
       <StatusBar />

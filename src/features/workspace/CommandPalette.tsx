@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '../../stores/workspace'
 import { IconChat, IconClose, IconFolder, IconGear } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { useEscapeHandler } from '../../utils/modalStack'
+import { DEFAULT_LAYOUT, DEFAULT_SETTINGS } from '../../utils/settings'
 
 interface CommandItem {
   id: string
@@ -27,6 +28,9 @@ export function CommandPalette() {
   const checkModProject = useWorkspaceStore((s) => s.checkModProject)
   const closeTab = useWorkspaceStore((s) => s.closeTab)
   const activeTabId = useWorkspaceStore((s) => s.activeTabId)
+  // M29：布局折叠状态（命令面板动态显示「显示/隐藏」文案）
+  const leftCollapsed = useWorkspaceStore((s) => s.settings.layout.leftCollapsed)
+  const rightCollapsed = useWorkspaceStore((s) => s.settings.layout.rightCollapsed)
 
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
@@ -67,8 +71,53 @@ export function CommandPalette() {
       { id: 'version-diff', title: '版本差异对比（字段新增/弃用/迁移）', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setVersionDiffOpen(true) } },
       { id: 'relation-graph', title: '模组关系图（单位/资源/炮塔/弹体引用）', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setRelationGraphOpen(true) } },
       { id: 'value-type', title: '值类型管理（自定义补全规则）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setValueTypeOpen(true) } },
+      // M29：布局命令（折叠状态动态切换文案；操作前读最新 state，避免闭包旧值）
+      {
+        id: leftCollapsed ? 'layout-show-left' : 'layout-hide-left',
+        title: leftCollapsed ? '布局：显示项目区' : '布局：隐藏项目区',
+        icon: <AppIcon name={leftCollapsed ? 'eye' : 'eye-off'} size={15} />,
+        run: () => {
+          setOpen(false)
+          const s = useWorkspaceStore.getState()
+          s.updateSettings({ layout: { ...s.settings.layout, leftCollapsed: !s.settings.layout.leftCollapsed } })
+        },
+      },
+      {
+        id: rightCollapsed ? 'layout-show-right' : 'layout-hide-right',
+        title: rightCollapsed ? '布局：显示 AI 对话区' : '布局：隐藏 AI 对话区',
+        icon: <AppIcon name={rightCollapsed ? 'eye' : 'eye-off'} size={15} />,
+        run: () => {
+          setOpen(false)
+          const s = useWorkspaceStore.getState()
+          s.updateSettings({ layout: { ...s.settings.layout, rightCollapsed: !s.settings.layout.rightCollapsed } })
+        },
+      },
+      {
+        id: 'layout-reset',
+        title: '布局：恢复默认布局',
+        icon: <AppIcon name="refresh" size={15} />,
+        run: () => {
+          setOpen(false)
+          const s = useWorkspaceStore.getState()
+          s.updateSettings({
+            layout: { ...DEFAULT_LAYOUT },
+            leftWidth: DEFAULT_SETTINGS.leftWidth,
+            rightWidth: DEFAULT_SETTINGS.rightWidth,
+          })
+        },
+      },
+      {
+        id: 'layout-toggle-outline',
+        title: '布局：切换大纲',
+        icon: <AppIcon name="expand" size={15} />,
+        run: () => {
+          setOpen(false)
+          const s = useWorkspaceStore.getState()
+          s.updateSettings({ layout: { ...s.settings.layout, outlineCollapsed: !s.settings.layout.outlineCollapsed } })
+        },
+      },
     ],
-    [importModProject, createConversation, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen],
+    [importModProject, createConversation, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen, leftCollapsed, rightCollapsed],
   )
 
   const filtered = useMemo(() => {
