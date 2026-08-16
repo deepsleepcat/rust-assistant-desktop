@@ -266,7 +266,22 @@ function UnitGraph({ unit, onJump }: { unit: UnitNode; onJump: (line: number) =>
         ))}
         {/* 引用节点 */}
         {nodes.map((n, i) => (
-          <g key={`n-${i}`} className="relgraph-node" onClick={() => onJump(n.lines[0])} style={{ cursor: 'pointer' }}>
+          <g
+            key={`n-${i}`}
+            className="relgraph-node"
+            role="button"
+            tabIndex={0}
+            aria-label={`${KIND_LABELS[n.kind]}：${n.target}${n.missing ? '（悬空）' : ''} · 第 ${n.lines.join('、')} 行`}
+            onClick={() => onJump(n.lines[0])}
+            onKeyDown={(e) => {
+              // M29：键盘激活引用节点（Enter/Space 跳转到引用行）
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onJump(n.lines[0])
+              }
+            }}
+            style={{ cursor: 'pointer' }}
+          >
             <circle
               cx={n.x}
               cy={n.y}

@@ -178,7 +178,7 @@ export function VersionDiffModal({ onClose }: Props) {
                         <p className="codetable-empty">无</p>
                       ) : (
                         diff.added.map((c) => (
-                          <div key={c.code} className="vdiff-row" onClick={() => copy(c.code)} title="点击复制键名">
+                          <div key={c.code} className="vdiff-row" role="button" tabIndex={0} onClick={() => copy(c.code)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copy(c.code) } }} title="点击复制键名">
                             <code className="vdiff-code">{c.code}</code>
                             {c.translate && <span className="vdiff-zh">{c.translate}</span>}
                             <span className="vdiff-meta">{c.section.split(',')[0]}</span>
@@ -200,7 +200,7 @@ export function VersionDiffModal({ onClose }: Props) {
                         <p className="codetable-empty">无（当前数据没有标记弃用的字段）</p>
                       ) : (
                         diff.removed.map((c) => (
-                          <div key={c.code} className="vdiff-row" onClick={() => copy(c.code)} title="点击复制键名">
+                          <div key={c.code} className="vdiff-row" role="button" tabIndex={0} onClick={() => copy(c.code)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copy(c.code) } }} title="点击复制键名">
                             <code className="vdiff-code">{c.code}</code>
                             {c.translate && <span className="vdiff-zh">{c.translate}</span>}
                             <span className="vdiff-meta">{c.section.split(',')[0]}</span>
@@ -220,7 +220,7 @@ export function VersionDiffModal({ onClose }: Props) {
                           <span className="vdiff-desc">官方描述声明的旧名→现名替代（历史全量，不限于本次版本窗口）</span>
                         </div>
                         {diff.replaced.map((p) => (
-                          <div key={`${p.oldCode}->${p.newCode}`} className="vdiff-row" onClick={() => copy(p.newCode)} title="点击复制新键名">
+                          <div key={`${p.oldCode}->${p.newCode}`} className="vdiff-row" role="button" tabIndex={0} onClick={() => copy(p.newCode)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); copy(p.newCode) } }} title="点击复制新键名">
                             <code className="vdiff-code old">{p.oldCode}</code>
                             {p.oldTranslate && <span className="vdiff-zh">{p.oldTranslate}</span>}
                             <span className="vdiff-arrow">→</span>

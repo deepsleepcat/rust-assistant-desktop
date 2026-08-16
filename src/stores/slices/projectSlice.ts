@@ -18,6 +18,7 @@ import { basename, isPreviewableAudio, isPreviewableImage } from '../../utils/pa
 import { getEnToZhDict, getZhToEnDict, loadCodeData } from '../../services/codeData'
 import { enToZh, makeDict, zhToEn } from '../../services/translation'
 import { invalidateResourceCache } from '../../features/editor/completion'
+import { normalizeOpenPath } from '../../utils/projectPath'
 import { generateModReport as generateModReportFn } from '../../features/modTools/modReport'
 
 export interface ProjectSliceDeps {
@@ -28,6 +29,32 @@ export interface ProjectSliceDeps {
 
 /** loadDir 同目录并发守卫：目录路径 → 最近一次请求序号（旧响应落地前丢弃） */
 const dirLoadSeqs = new Map<string, number>()
+
+/** 标签路径去重比较：Windows 分隔符/大小写不敏感——
+ * 树节点（反斜杠绝对路径）与单位库（joinProjectPath 混合分隔符）打开同一文件
+ * 时按字符串比较会变成两个标签，这里统一规范化后比较 */
+function sameTabPath(a: string, b: string): boolean {
+  return a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase()
+}
+
+/** 路径归一化（分隔符 → /，小写）：用于前缀匹配与替换定位（\\/ 与大小写均为 1:1 映射，
+ * 归一化后的长度与原串一致，slice 索引可直接用于原串） */
+export function normPath(p: string): string {
+  return p.replace(/\\/g, '/').toLowerCase()
+}
+
+/** 路径前缀匹配（目录 target 匹配自身与子路径；分隔符/大小写不敏感） */
+export function pathStartsWith(path: string, target: string): boolean {
+  if (path === target) return true
+  return normPath(path).startsWith(normPath(target) + '/')
+}
+
+/** 替换路径前缀（target 匹配到的最前位置；分隔符/大小写不敏感，替换段保持 replacement 原文） */
+export function replacePathPrefix(path: string, target: string, replacement: string): string {
+  const idx = normPath(path).indexOf(normPath(target))
+  if (idx < 0) return path
+  return path.slice(0, idx) + replacement + path.slice(idx + target.length)
+}
 
 export function createProjectSlice(deps: ProjectSliceDeps) {
   return (set: StoreApi<WorkspaceStore>['setState'], get: () => WorkspaceStore) => {
@@ -371,18 +398,21 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         const pid = get().activeProjectId
         const project = activeProject()
         if (!project) return
-        const existing = get().openTabs.find((t) => t.path === path)
+        // 路径契约统一：绝对路径（文件树/收藏）原样，相对路径（单位库扫描结果）拼成项目内绝对路径，
+        // 否则 bridge 的 requireRealInsideRoot 按 CWD 解析相对路径必然「超出项目目录范围」
+        const absPath = normalizeOpenPath(project.rootPath, path)
+        const existing = get().openTabs.find((t) => sameTabPath(t.path, absPath))
         if (existing) {
           set({ activeTabId: existing.id })
           return
         }
         try {
           await loadCodeData()
-          const result = await deps.bridge.project.readFile(project.rootPath, path)
+          const result = await deps.bridge.project.readFile(project.rootPath, absPath)
           // 读取期间切换了项目：丢弃，别把旧项目的标签塞进新会话
           if (get().activeProjectId !== pid) return
           // 读取期间可能已被并发打开：复用已有标签
-          const again = get().openTabs.find((t) => t.path === path)
+          const again = get().openTabs.find((t) => sameTabPath(t.path, absPath))
           if (again) {
             set({ activeTabId: again.id })
             return
@@ -396,8 +426,8 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
           const view = translationEnabled ? enToZh(original, dict, tracker) : original
           const tab: EditorTab = {
             id: crypto.randomUUID(),
-            path,
-            name: basename(path),
+            path: absPath,
+            name: basename(absPath),
             content: view,
             original,
             hasBom: result.hasBom,
@@ -593,16 +623,17 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         try {
           await deps.bridge.project.rename(project.rootPath, targetPath, newPath)
           set({
-            // 标签同步改名（文件夹重命名时其内部文件的标签路径也要跟着改，否则保存指向失效路径）
+            // 标签同步改名（文件夹重命名时其内部文件的标签路径也要跟着改，否则保存指向失效路径；
+            // 前缀匹配对分隔符/大小写不敏感——单位库打开的标签可能是正斜杠路径）
             openTabs: get().openTabs.map((t) =>
-              t.path === targetPath || t.path.startsWith(targetPath + '\\') || t.path.startsWith(targetPath + '/')
-                ? { ...t, path: t.path.replace(targetPath, newPath), name: t.path === targetPath ? newName : t.name }
+              pathStartsWith(t.path, targetPath)
+                ? { ...t, path: replacePathPrefix(t.path, targetPath, newPath), name: t.path === targetPath ? newName : t.name }
                 : t,
             ),
             // 收藏同步改名（文件夹重命名时子项前缀也变）
             bookmarks: get().bookmarks.map((b) =>
-              b.projectId === project.id && (b.path === targetPath || b.path.startsWith(targetPath + '\\') || b.path.startsWith(targetPath + '/'))
-                ? { ...b, path: b.path.replace(targetPath, newPath) }
+              b.projectId === project.id && pathStartsWith(b.path, targetPath)
+                ? { ...b, path: replacePathPrefix(b.path, targetPath, newPath) }
                 : b,
             ),
           })
@@ -623,16 +654,14 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         try {
           await deps.bridge.project.delete(project.rootPath, targetPath)
           // 删除文件夹时其内部文件的标签一并关闭（前缀匹配，与收藏清理一致）
-          const remaining = get().openTabs.filter(
-            (t) => !(t.path === targetPath || t.path.startsWith(targetPath + '\\') || t.path.startsWith(targetPath + '/')),
-          )
+          const remaining = get().openTabs.filter((t) => !pathStartsWith(t.path, targetPath))
           set({
             openTabs: remaining,
             // 删除的是当前活动标签：回退到相邻标签，避免编辑器区域空白
             activeTabId: remaining.some((t) => t.id === get().activeTabId) ? get().activeTabId : (remaining[0]?.id ?? null),
             // 删除文件夹时其内部收藏一并清理（前缀匹配）
             bookmarks: get().bookmarks.filter(
-              (b) => !(b.projectId === project.id && (b.path === targetPath || b.path.startsWith(targetPath + '\\') || b.path.startsWith(targetPath + '/'))),
+              (b) => !(b.projectId === project.id && pathStartsWith(b.path, targetPath)),
             ),
           })
           // 局部刷新父目录（嵌套目录里的删除立即可见，已展开的子树同步清理）

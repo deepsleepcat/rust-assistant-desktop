@@ -29,9 +29,11 @@ function stubFetchFromDisk() {
   )
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   reloadCodeData()
   stubFetchFromDisk()
+  // 显式等数据加载：reloadCodeData 现在会清空旧索引，测试不得依赖上个用例的残留数据
+  await import('../src/services/codeData').then((m) => m.loadCodeData())
 })
 
 afterEach(() => {
