@@ -71,3 +71,4 @@ tests/gameExtract.test.ts
 # Python 缓存
 __pycache__/
 *.pyc
+tests/real-mods.config.json

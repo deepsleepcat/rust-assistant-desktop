@@ -4,8 +4,9 @@
  * - 解析不崩溃（checkFailedFiles === 0）；
  * - 引擎合法语法零误报（节名/键名 Unicode、action 前缀族、三引号值等）。
  *
- * 模组文件留在原目录（W:\mao\tx\ 下，含作者搬运声明，绝不复制进仓库）：
- * 目录存在则跑，缺失则整个 describe 跳过（与 officialUnits.test.ts 同模式）。
+ * 模组根目录由本地配置文件提供（tests/real-mods.config.json，.gitignore 排除、不入库）：
+ *   [{ "name": "模组名", "root": "模组绝对路径", "errorBudget": 20 }]
+ * 配置文件缺失或路径不存在时整个 describe 跳过（与 officialUnits.test.ts 同模式）。
  *
  * 引擎语义锚（反编译 ae.java/ag.java 实证）：
  * - 节名 = \s*\[([^]]*)\]\s*：除 ] 外任意字符；键名除 = : 外任意字符；
@@ -18,10 +19,29 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { scanResources, scanUnits, checkMod } from '../electron/modTools'
 
-const MOD_ROOTS = [
-  { name: 'ASEU深渊星辰-深渊扩展DLCX', root: 'W:\\mao\\tx\\ASEU深渊星辰-深渊扩展DLCX', errorBudget: 20 },
-  { name: 'AbyssStars深渊星辰0.7.10', root: 'W:\\mao\\tx\\AbyssStars深渊星辰0.7.10', errorBudget: 5 },
-]
+interface RealModConfig {
+  name: string
+  root: string
+  errorBudget: number
+}
+
+const CONFIG_PATH = path.join(process.cwd(), 'tests', 'real-mods.config.json')
+/** 本地配置文件 → 模组清单；缺失/损坏时为空数组（测试整体跳过） */
+function loadModRoots(): RealModConfig[] {
+  try {
+    if (!fs.existsSync(CONFIG_PATH)) return []
+    const parsed = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) as unknown
+    const arr = Array.isArray(parsed) ? parsed : Array.isArray((parsed as { mods?: unknown }).mods) ? (parsed as { mods: unknown[] }).mods : []
+    return arr.filter(
+      (m): m is RealModConfig =>
+        typeof m === 'object' && m !== null && typeof (m as RealModConfig).name === 'string' && typeof (m as RealModConfig).root === 'string',
+    )
+  } catch {
+    return []
+  }
+}
+
+const MOD_ROOTS = loadModRoots()
 
 const DATA_DIR = path.join(process.cwd(), 'public', 'data')
 
