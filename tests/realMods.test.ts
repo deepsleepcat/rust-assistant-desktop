@@ -43,6 +43,14 @@ function loadModRoots(): RealModConfig[] {
 
 const MOD_ROOTS = loadModRoots()
 
+// 占位套件：配置文件缺失时（CI/他人 clone）文件不能为空——vitest 对零测试文件报 Failed Suites。
+// 有配置时本套件跳过，真实模组回归由下方循环生成。
+describe.skipIf(MOD_ROOTS.length > 0)('真实模组回归（未配置）', () => {
+  it('缺少本地配置文件 tests/real-mods.config.json，跳过真实模组回归', () => {
+    expect(true).toBe(true)
+  })
+})
+
 const DATA_DIR = path.join(process.cwd(), 'public', 'data')
 
 /** 供 loadCodeData 的真实数据（Node 下 fetch 不可用，stub 返回 public/data 内容） */
