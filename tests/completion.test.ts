@@ -1,5 +1,16 @@
-import { describe, expect, it } from 'vitest'
-import { commitText, computeRustCompletions, localVariableCompletions, setCompletionChineseMode } from '../src/features/editor/completion'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { EditorState } from '@codemirror/state'
+import { CompletionContext } from '@codemirror/autocomplete'
+import {
+  commitText,
+  computeRustCompletions,
+  localVariableCompletions,
+  rustCompletionSource,
+  setCompletionChineseMode,
+  withTimeout,
+} from '../src/features/editor/completion'
 import type { CompletionDataSource } from '../src/features/editor/completion'
 import { parseValueList } from '../src/services/codeData'
 
@@ -271,5 +282,100 @@ describe('局部变量补全（${}）', () => {
     const lines = ['a: ${坦克名}']
     const result = localVariableCompletions(lines, '')
     expect(result[0].apply).toBe('${坦克名}')
+  })
+})
+
+describe('M31 语法/过滤/超时补强', () => {
+  it('值补全：= 分隔符（引擎两种写法）与 : 等价', async () => {
+    const byEq = await computeRustCompletions('price = ', 'core', '', 'price = ', 0, ['[core]', 'price = '], fakeData)
+    expect(byEq.map((r) => r.apply)).toContain('NONE')
+    expect(byEq.map((r) => r.apply)).toContain('AUTO')
+  })
+
+  it('dialect 中文说明命中：候选仍在（中文匹配不依赖 label）', async () => {
+    const result = await computeRustCompletions('logic: 飞行', 'logicBoolean', '飞行', 'logic: 飞行', 0, ['[logicBoolean]', 'logic: 飞行'], fakeData)
+    expect(result.map((r) => r.apply)).toContain('isFlying')
+    expect(result.map((r) => r.apply)).toContain('isAirUnit')
+  })
+})
+
+describe('withTimeout（资源扫描超时降级）', () => {
+  it('正常完成返回原值', async () => {
+    await expect(withTimeout(Promise.resolve(42), 100, -1)).resolves.toBe(42)
+  })
+
+  it('超时返回 fallback（不悬挂）', async () => {
+    await expect(withTimeout(new Promise<number>(() => {}), 30, -1)).resolves.toBe(-1)
+  })
+
+  it('原 Promise 拒绝 → fallback（不产生 unhandled rejection）', async () => {
+    await expect(withTimeout(Promise.reject(new Error('boom')), 100, -1)).resolves.toBe(-1)
+  })
+})
+
+describe('rustCompletionSource（真实数据集成：注释/空行守卫/等号）', () => {
+  const DATA_DIR = path.resolve(__dirname, '../public/data')
+
+  beforeEach(async () => {
+    // 用本地数据文件 mock fetch（vitest node 无网络；数据是应用内置的）
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const rel = String(url).replace(/^\.?\//, '')
+        const file = path.resolve(DATA_DIR, rel.replace(/^data\//, ''))
+        if (file !== DATA_DIR && !file.startsWith(DATA_DIR + path.sep)) throw new Error('测试夹具：路径越出数据目录')
+        const content = fs.readFileSync(file, 'utf8')
+        return { ok: true, status: 200, json: async () => JSON.parse(content) } as unknown as Response
+      }),
+    )
+    // 显式等数据加载完成：source 内部 await loadCodeData 是异步的，若跨越 afterEach 的
+    // unstub 窗口会加载失败并留下 null 缓存，导致后续用例数据缺失（dialect 词库为空）
+    const { loadCodeData } = await import('../src/services/codeData')
+    await loadCodeData()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('注释行不弹候选（activateOnTyping 下避免全局键干扰）', async () => {
+    const state = EditorState.create({ doc: '# 这是一行注释\n' })
+    const ctx = new CompletionContext(state, 8, false)
+    await expect(rustCompletionSource(ctx)).resolves.toBeNull()
+  })
+
+  it('空行/普通行且输入词为空：非显式触发不弹全局候选', async () => {
+    const state = EditorState.create({ doc: '[core]\n' })
+    const ctx = new CompletionContext(state, 7, false)
+    await expect(rustCompletionSource(ctx)).resolves.toBeNull()
+  })
+
+  it('空行显式触发（Ctrl+Space）：返回候选', async () => {
+    const state = EditorState.create({ doc: '[core]\n' })
+    const ctx = new CompletionContext(state, 7, true)
+    const result = await rustCompletionSource(ctx)
+    expect(result).not.toBeNull()
+    expect(result!.options.length).toBeGreaterThan(0)
+  })
+
+  it('= 分隔符值补全走真实数据（boolean 字段返回 true/false）', async () => {
+    const state = EditorState.create({ doc: 'teamColorsUseHue = tr\n' })
+    const ctx = new CompletionContext(state, 21, false)
+    const result = await rustCompletionSource(ctx)
+    expect(result).not.toBeNull()
+    const apps = result!.options.map((o) => String(o.apply))
+    expect(apps).toContain('true')
+  })
+
+  it('中文 dialect 查询：结果级 filter:false（CodeMirror 不再按英文 label 二次过滤）', async () => {
+    const state = EditorState.create({ doc: '[core]\nisLocked: 飞\n' })
+    // pos = 「飞」之后（doc: [core]\n = 7 字符，isLocked: 飞 = 11 字符 → 光标在 18）
+    const ctx = new CompletionContext(state, 18, false)
+    const result = await rustCompletionSource(ctx)
+    expect(result).not.toBeNull()
+    expect(result!.filter).toBe(false)
+    const apps = result!.options.map((o) => String(o.apply))
+    expect(apps).toContain('isFlying') // 中文说明命中，英文 label 不被过滤
+    expect(apps).toContain('flying')
   })
 })

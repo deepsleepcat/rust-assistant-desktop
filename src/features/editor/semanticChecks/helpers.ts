@@ -42,8 +42,10 @@ export interface ParsedIni {
 
 const SECTION_RE = /^\s*\[(.+?)\]\s*(?:#.*)?$/
 
-/** 键值行解析：key: value（值后允许行内注释；# 颜色值不剥离） */
-const KV_RE = /^([^:#][^:]*?)\s*:\s*(.*)$/
+/** 键值行解析：key: value 或 key = value（引擎两种写法都认；取先出现的分隔符）。
+ * 值后允许行内注释；# 颜色值不剥离。键不允许含 :（否则 ROOT:units/x.png 这类
+ * 值里的冒号会把键截断）。 */
+const KV_RE = /^([^:#][^:]*?)\s*(?::|=)\s*(.*)$/
 
 /** 剥离行内注释（与 rustLint.stripInlineComment 同规则） */
 export function stripInlineComment(value: string): string {

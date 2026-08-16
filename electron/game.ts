@@ -372,8 +372,9 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
     const content = await readTextLimited(file)
     if (!content) continue
     const rel = path.relative(root, file).replace(/\\/g, '/')
-    // 键名排除冒号/换行/#（m 标志下 [^:] 会跨行吞掉节名行，导致键名错乱）
-    const kvRe = /^([^:\n#][^:\n]*?)\s*:\s*(.*)$/gm
+    // 键名排除冒号/换行/#（m 标志下 [^:] 会跨行吞掉节名行，导致键名错乱）；
+    // 分隔符 : 与 = 都认（引擎两种写法，真实模组混用）
+    const kvRe = /^([^:\n#][^:\n]*?)\s*(?::|=)\s*(.*)$/gm
     for (const m of content.matchAll(kvRe)) {
       const key = m[1].trim().toLowerCase()
       if (!RESOURCE_REF_KEYS.has(key)) continue
@@ -383,8 +384,9 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
         if (!ref) continue
         const lower = ref.toLowerCase()
         if (RESOURCE_SKIP_VALUES.has(lower)) continue
-        // SHARED: 前缀 = 游戏共享资源（不检查存在性）；CUSTOM:/ROOT:/SHADOW: = 项目内引用（剥前缀）
-        if (lower.startsWith('shared:')) continue
+        // SHARED:/CORE: 前缀 = 游戏共享/内置资源（随游戏自带，不检查项目内存在性）；
+        // CUSTOM:/ROOT:/SHADOW: = 项目内引用（剥前缀）
+        if (lower.startsWith('shared:') || lower.startsWith('core:')) continue
         const rootBased = /^ROOT:/i.test(ref)
         ref = ref.replace(/^CUSTOM:/i, '').replace(/^ROOT:/i, '').replace(/^SHADOW:/i, '')
         if (!ref) continue

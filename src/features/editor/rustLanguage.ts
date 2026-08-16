@@ -3,7 +3,7 @@
  *
  * 规则（纯行内、无跨行状态）：
  * 1. 以 # 开头 → 注释
- * 2. 行内含 : → key: value（key 高亮，冒号与 value 常规色）
+ * 2. 行内含 : 或 = → key: value / key = value（key 高亮，分隔符与 value 常规色）
  * 3. 以 [ 开头且以 ] 结尾 → 节名（加粗）
  * 4. 其他 → 默认
  */
@@ -19,16 +19,25 @@ export function keyKind(key: string): RustKeyKind {
   return 'property'
 }
 
+/** 键值分隔符位置：取行内先出现的 : 或 =（引擎两种写法都认；键不允许含冒号） */
+function firstSepIndex(line: string): number {
+  const colon = line.indexOf(':')
+  const eq = line.indexOf('=')
+  if (colon < 0) return eq
+  if (eq < 0) return colon
+  return Math.min(colon, eq)
+}
+
 export function classifyLine(line: string): { kind: 'comment' | 'section' | 'keyvalue' | 'plain'; key?: string; value?: string } {
   const trimmed = line.trim()
   if (trimmed.startsWith('#')) return { kind: 'comment' }
   // 节头允许行尾注释：[core] # 说明 仍是节（否则该节下所有键值行会被误报「不在任何节内」）；
   // 空节名 [] 不算节（与 findSectionOfLine 判定一致）
   if (/^\[[^\]]+\]\s*(?:#.*)?$/.test(trimmed)) return { kind: 'section' }
-  const colon = line.indexOf(':')
-  if (colon >= 0) {
-    const key = line.slice(0, colon).trim()
-    const value = line.slice(colon + 1).trim()
+  const sep = firstSepIndex(line)
+  if (sep >= 0) {
+    const key = line.slice(0, sep).trim()
+    const value = line.slice(sep + 1).trim()
     if (key.length > 0) return { kind: 'keyvalue', key, value }
   }
   return { kind: 'plain' }
@@ -50,9 +59,9 @@ const rustConfigLanguage = StreamLanguage.define({
       return 'section'
     }
     if (classified.kind === 'keyvalue') {
-      const colon = rest.indexOf(':')
-      // 消费到冒号（含冒号），返回按字段类型区分的标签
-      stream.pos += colon
+      const sep = firstSepIndex(rest)
+      // 消费到分隔符（含分隔符），返回按字段类型区分的标签
+      stream.pos += sep
       stream.next()
       return keyKind(classified.key ?? '')
     }
@@ -89,11 +98,11 @@ export function isUnclosedSection(line: string): boolean {
   return trimmed.startsWith('[') && !trimmed.includes(']')
 }
 
-/** 行内冒号前的 key（补全值用）；无冒号返回 null */
+/** 行内键值分隔符前的 key（补全值用）；无分隔符返回 null（: 与 = 都认） */
 export function keyOfLine(line: string): string | null {
-  const colon = line.indexOf(':')
-  if (colon < 0) return null
-  const key = line.slice(0, colon).trim()
+  const sep = firstSepIndex(line)
+  if (sep < 0) return null
+  const key = line.slice(0, sep).trim()
   return key.length > 0 ? key : null
 }
 

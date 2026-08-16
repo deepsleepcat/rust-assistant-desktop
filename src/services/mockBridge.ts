@@ -55,6 +55,22 @@ fireRate = 0.5
 ` },
   { path: `${MOCK_PROJECT_ROOT}\\sounds\\notes.txt`, content: `# 音效文件说明
 本目录存放模组用到的音效。` },
+  // 示例单位（.ini）：单位库扫描返回相对路径，点击打开需真实存在于假文件树
+  { path: `${MOCK_PROJECT_ROOT}\\units\\tank\\tank.ini`, content: `[core]
+name: 重型坦克
+[graphics]
+image: tank.png
+total_frames: 1
+image_shadow: AUTO
+` },
+  { path: `${MOCK_PROJECT_ROOT}\\units\\tank\\tank.png`, content: 'mock-png' },
+  { path: `${MOCK_PROJECT_ROOT}\\units\\rifle\\rifle.ini`, content: `[core]
+name: 步枪兵
+[graphics]
+image: rifle.png
+image_turret: NONE
+` },
+  { path: `${MOCK_PROJECT_ROOT}\\units\\rifle\\rifle.png`, content: 'mock-png' },
   { path: `${MOCK_PROJECT_ROOT}\\README.md`, content: `# 我的第一个模组
 
 在浏览器预览模式下创建的示例模组。

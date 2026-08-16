@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { findGameExe, importOfficialUnits, launchGame, listOfficialUnitDirs, openDir, preflightCheck } from '../electron/game'
+import { findGameExe, importOfficialUnits, launchGame, listOfficialUnitDirs, openDir, preflightCheck, readGameAssetImage } from '../electron/game'
 
 function makeTmp(prefix: string): string {
   const dir = mkdtempSync(path.join(tmpdir(), prefix))
@@ -276,6 +276,90 @@ describe('M12 审查修复回归', () => {
   it('openDir 拒绝不存在的目录', async () => {
     const result = await openDir(path.join(makeTmp('rust-nodir-'), 'nope'))
     expect(result.ok).toBe(false)
+  })
+})
+
+describe('M31 单位预览资产读取（readGameAssetImage）', () => {
+  it('CORE 资产：assets/units 下文件读为 data URL（MIME 按扩展名）', async () => {
+    const game = makeTmp('rust-asset-')
+    mkdirSync(path.join(game, 'assets', 'units', 'tanks'), { recursive: true })
+    writeFileSync(path.join(game, 'assets', 'units', 'tanks', 'tank.png'), 'png-bytes')
+    try {
+      const url = await readGameAssetImage(game, 'assets/units/tanks/tank.png')
+      expect(url).toBe(`data:image/png;base64,${Buffer.from('png-bytes').toString('base64')}`)
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
+  })
+
+  it('SHARED 资产：assets/units/shared 下文件同样可读', async () => {
+    const game = makeTmp('rust-asset-')
+    mkdirSync(path.join(game, 'assets', 'units', 'shared'), { recursive: true })
+    writeFileSync(path.join(game, 'assets', 'units', 'shared', 'beam3.png'), 'beam')
+    try {
+      const url = await readGameAssetImage(game, 'assets/units/shared/beam3.png')
+      expect(url.startsWith('data:image/png;base64,')).toBe(true)
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
+  })
+
+  it('非游戏目录拒绝（缺 assets/units）', async () => {
+    const fake = makeTmp('rust-notgame-')
+    writeFileSync(path.join(fake, 'x.png'), 'x')
+    try {
+      await expect(readGameAssetImage(fake, 'x.png')).rejects.toThrow(/不是有效的铁锈战争安装目录/)
+    } finally {
+      rmSync(fake, { recursive: true, force: true })
+    }
+  })
+
+  it('路径穿越（../ 或盘符绝对）拒绝', async () => {
+    const game = makeTmp('rust-asset-')
+    mkdirSync(path.join(game, 'assets', 'units'), { recursive: true })
+    try {
+      await expect(readGameAssetImage(game, 'assets/units/../../secret.png')).rejects.toThrow(/无效的资产路径|超出游戏目录/)
+      await expect(readGameAssetImage(game, 'C:/evil.png')).rejects.toThrow(/无效的资产路径/)
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
+  })
+
+  it('文件不存在/过大拒绝', async () => {
+    const game = makeTmp('rust-asset-')
+    mkdirSync(path.join(game, 'assets', 'units'), { recursive: true })
+    try {
+      await expect(readGameAssetImage(game, 'assets/units/missing.png')).rejects.toThrow(/不存在/)
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
+  })
+
+  it('preflight：= 分隔符同样识别（等号文件缺图报错、存在放行）', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\n')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'a.png'), 'png')
+    writeFileSync(path.join(mod, 'units', 'a', 'a.ini'), '[core]\nname: a\n[graphics]\nimage = a.png\n')
+    const ok = await preflightCheck(mod)
+    expect(ok.issues.some((i) => i.message.includes('a.png'))).toBe(false)
+    writeFileSync(path.join(mod, 'units', 'a', 'b.ini'), '[core]\nname: b\n[graphics]\nimage = b.png\n')
+    const missing = await preflightCheck(mod)
+    expect(missing.issues.some((i) => i.severity === 'error' && i.message.includes('b.png'))).toBe(true)
+    rmSync(mod, { recursive: true, force: true })
+  })
+
+  it('preflight：CORE: 前缀是游戏内置资源，不检查项目内存在性', async () => {
+    const mod = makeTmp('rust-mod-')
+    writeFileSync(path.join(mod, 'mod-info.txt'), '[mod]\ntitle: x\n')
+    mkdirSync(path.join(mod, 'units', 'a'), { recursive: true })
+    writeFileSync(path.join(mod, 'units', 'a', 'a.ini'), '[core]\nname: a\n[graphics]\nimage: CORE:tanks/tank.png\nimage_wreak: CORE:tanks/tank_dead.png\n')
+    try {
+      const result = await preflightCheck(mod)
+      expect(result.issues.some((i) => i.severity === 'error')).toBe(false)
+    } finally {
+      rmSync(mod, { recursive: true, force: true })
+    }
   })
 })
 

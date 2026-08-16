@@ -296,8 +296,12 @@ export function lintIniText(
       // 值合法性
       const err = validateValue(classified.key, classified.value, data)
       if (err) {
+        // 定位值起始（: 与 = 都认，与 classifyLine 的键值判定一致；取先出现的分隔符，
+        // 否则 = 分隔行 colon=-1 会把整个键名划上波浪线）
         const colon = line.indexOf(':')
-        const from = lineStart + colon + 1
+        const eq = line.indexOf('=')
+        const sep = colon < 0 ? eq : eq < 0 ? colon : Math.min(colon, eq)
+        const from = lineStart + sep + 1
         diagnostics.push({ from, to: lineStart + line.length, message: err, severity: 'error' })
       }
     }

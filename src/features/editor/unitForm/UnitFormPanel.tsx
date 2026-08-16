@@ -44,7 +44,11 @@ export function UnitFormPanel({ tab, rootPath, onOpenPreview }: UnitFormPanelPro
   // 内容外部变更（格式化/重新加载）后旧草稿自动失效，不覆盖新内容）
   const [draft, setDraft] = useState<Record<string, { value: string; content: string }> | null>(null)
   const [errors, setErrors] = useState<Record<string, { msg: string; content: string }>>({})
-  const [resources, setResources] = useState<{ images: string[]; audios: string[] }>({ images: [], audios: [] })
+  // M29：资源扫描状态机——「扫描中 / 失败可重试 / 成功」分明，失败不再静默显示「没有资源」
+  const [resScan, setResScan] = useState<
+    { status: 'loading' } | { status: 'error'; error: string } | { status: 'done'; images: string[]; audios: string[] }
+  >({ status: 'loading' })
+  const [resSeq, setResSeq] = useState(0)
   const [picking, setPicking] = useState<string | null>(null)
 
   // 项目内资源列表（图片/音频，相对项目根）
@@ -61,13 +65,19 @@ export function UnitFormPanel({ tab, rootPath, onOpenPreview }: UnitFormPanelPro
           if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) images.push(f)
           else if (['ogg', 'wav', 'mp3'].includes(ext)) audios.push(f)
         }
-        setResources({ images, audios })
+        setResScan({ status: 'done', images, audios })
       })
-      .catch(() => undefined)
+      .catch((err) => alive && setResScan({ status: 'error', error: err instanceof Error ? err.message : String(err) }))
     return () => {
       alive = false
     }
-  }, [rootPath])
+  }, [rootPath, resSeq])
+
+  const retryResScan = () => {
+    setResScan({ status: 'loading' })
+    setResSeq((n) => n + 1)
+  }
+  const resources = resScan.status === 'done' ? { images: resScan.images, audios: resScan.audios } : { images: [], audios: [] }
 
   // 表单状态：内容变化（含外部编辑/撤销）重新解析，本地草稿失效；
   // 中文显示层传 zhToEn 词典（[核心]/名称/生命值 回译成英文键匹配字段定义）
@@ -186,7 +196,16 @@ export function UnitFormPanel({ tab, rootPath, onOpenPreview }: UnitFormPanelPro
                     {!err && field.description && <div className="unit-form-desc">{field.description}</div>}
                     {isResourcePicker && (
                       <div className="unit-form-picker">
-                        {pool.length === 0 ? (
+                        {resScan.status === 'loading' ? (
+                          <div className="unit-form-picker-empty">正在扫描项目资源…</div>
+                        ) : resScan.status === 'error' ? (
+                          <div className="unit-form-picker-empty">
+                            资源扫描失败：{resScan.error}
+                            <button className="btn" style={{ padding: '1px 8px', fontSize: 11, marginLeft: 8 }} onClick={retryResScan}>
+                              重试
+                            </button>
+                          </div>
+                        ) : pool.length === 0 ? (
                           <div className="unit-form-picker-empty">项目内没有匹配的资源文件</div>
                         ) : (
                           pool.map((f) => {

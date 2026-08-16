@@ -4,12 +4,15 @@
  * - 项目单位：扫描项目 .ini/.template，显示名称/描述/路径，双击打开编辑
  * 历史记录跟随编辑器标签（最近打开 = 当前已打开的文件优先展示）。
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useEscapeHandler } from '../../utils/modalStack'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { getBridge } from '../../services/bridge'
 import { getAllOfficialUnits, loadCodeData, type OfficialUnitInfo } from '../../services/codeData'
 import { AppIcon } from '../../components/AppIcon'
+import { PanelState } from '../../components/PanelState'
+import { useFocusTrap } from '../../utils/focusTrap'
+import { joinProjectPath } from '../../utils/projectPath'
 
 interface Props {
   onClose: () => void
@@ -25,26 +28,37 @@ interface UnitEntry {
 
 export function UnitLibraryModal({ onClose }: Props) {
   const [query, setQuery] = useState('')
-  const [units, setUnits] = useState<UnitEntry[] | null>(null)
   const [official, setOfficial] = useState<OfficialUnitInfo[] | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [scanSeq, setScanSeq] = useState(0)
+  // M29：扫描状态机——「加载中 / 失败可重试 / 成功」三者分明，失败不再伪装成空
+  const [scan, setScan] = useState<{ status: 'loading' } | { status: 'error'; error: string } | { status: 'done'; units: UnitEntry[] }>({ status: 'loading' })
   const openFile = useWorkspaceStore((s) => s.openFile)
+  const titleId = useId()
+  const cardRef = useRef<HTMLDivElement>(null)
 
   useEscapeHandler(onClose)
+  useFocusTrap(cardRef, true)
+
+  const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
 
   useEffect(() => {
+    if (!project) return
     let alive = true
-    const project = useWorkspaceStore.getState().projects.find((p) => p.id === useWorkspaceStore.getState().activeProjectId)
-    if (!project) {
-      alive = false
-      return
-    }
     void getBridge()
       .mod.scanUnits(project.rootPath)
-      .then((list) => alive && setUnits(list))
-      .catch(() => alive && setUnits([]))
+      .then((list) => alive && setScan({ status: 'done', units: list }))
+      .catch((err) => alive && setScan({ status: 'error', error: err instanceof Error ? err.message : String(err) }))
     return () => { alive = false }
-  }, [])
+  }, [project, scanSeq])
+
+  const retryScan = () => {
+    setScan({ status: 'loading' })
+    setScanSeq((n) => n + 1)
+  }
+
+  const units = scan.status === 'done' ? scan.units : null
+  const scanError = scan.status === 'error' ? scan.error : null
 
   // 官方单位（units.json 随应用打包，加载失败时为空数组）
   useEffect(() => {
@@ -72,7 +86,10 @@ export function UnitLibraryModal({ onClose }: Props) {
   }, [units, query])
 
   const open = (path: string) => {
-    void openFile(path)
+    // 扫描结果路径是相对项目根的写法（units/tank/tank.ini），而 fs 通道要求绝对路径：
+    // 打开前拼成项目内绝对路径（openFile 也有兜底归一化，双保险）
+    if (!project) return
+    void openFile(joinProjectPath(project.rootPath, path))
     onClose()
   }
 
@@ -83,13 +100,20 @@ export function UnitLibraryModal({ onClose }: Props) {
     })
   }
 
-  const loading = units === null || official === null
+  const loading = (scan.status === 'loading') || official === null
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card unitlib-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">单位库</div>
+      <div ref={cardRef} className="modal-card unitlib-card" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header" id={titleId}>单位库</div>
         <div className="modal-body unitlib-body">
+          {!project ? (
+            // M29：无项目时明确提示，不再永久「正在加载」
+            <PanelState kind="empty" icon="folder" title="还没有打开项目" description="打开一个模组项目后，这里会显示项目内全部单位。" />
+          ) : scanError ? (
+            <PanelState kind="error" icon="warn" title="读取项目单位失败" description={scanError} onRetry={retryScan} />
+          ) : (
+            <>
           <input
             className="codetable-search"
             placeholder="搜索单位名 / 文件名 / 描述"
@@ -149,6 +173,8 @@ export function UnitLibraryModal({ onClose }: Props) {
                   </div>
                 )}
               </div>
+            </>
+          )}
             </>
           )}
         </div>

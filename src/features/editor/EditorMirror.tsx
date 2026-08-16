@@ -6,9 +6,9 @@
  */
 import { useEffect, useRef } from 'react'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
-import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
+import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, repositionTooltips, tooltips } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { autocompletion } from '@codemirror/autocomplete'
+import { autocompletion, startCompletion } from '@codemirror/autocomplete'
 import { search, searchKeymap } from '@codemirror/search'
 import { rustConfigLanguageSupport, smartEnterBindings } from './rustLanguage'
 import { rustHoverExtension } from './rustHover'
@@ -173,6 +173,19 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
         rustHoverExtension,
         autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
+        tooltips({
+          // 输入法弹起时可视视口底部上移：补全空间按 visualViewport 计算，
+          // 候选才会在键盘上方翻转/压缩而不是落在软键盘下面
+          // （默认按 documentElement 布局视口计算，看不到键盘顶部）。
+          // 桌面 Electron 的 visualViewport 与布局视口一致，行为不变。
+          tooltipSpace: (_view) => {
+            const vv = window.visualViewport
+            if (vv && vv.height > 0) {
+              return { top: vv.offsetTop, left: vv.offsetLeft, right: vv.offsetLeft + vv.width, bottom: vv.offsetTop + vv.height }
+            }
+            return { top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight }
+          },
+        }),
         search({ top: true }),
         keymap.of([
           ...smartEnterBindings, // 必须排在 defaultKeymap 之前：defaultKeymap 的 Enter（换行）无条件返回 true，
@@ -200,8 +213,41 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     })
     const view = new EditorView({ state, parent: containerRef.current })
     viewRef.current = view
+    // 可视视口变化（输入法弹起/收起、窗口尺寸变化、中文合成提交）→ 重定位补全浮层。
+    // CodeMirror 默认只在 window resize 时重测，不感知 visualViewport
+    let reopenTimer: ReturnType<typeof setTimeout> | undefined
+    // 用户 Esc 显式关闭补全后的一小段时间内，IME 提交不再强制重开浮层（否则中文用户
+    // 每次关掉候选都会被 compositionend 重新弹出来，无法主动关闭）
+    let suppressReopenUntil = 0
+    const onCompositionEnd = () => {
+      repositionTooltips(view)
+      if (Date.now() < suppressReopenUntil) return
+      // IME 组合提交后重开补全：CodeMirror 只在组合期间「内容变化且光标移动」时
+      // 自动重开（view 内部 ChangedAndMoved 分支），而中文输入组合不移动光标，
+      // 提交后补全不会弹——这里补上。显式查询幂等：无候选时 source 返回 null，
+      // 已有浮层时刷新列表，无副作用
+      reopenTimer = setTimeout(() => {
+        if (view.hasFocus) startCompletion(view)
+      }, 20)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') suppressReopenUntil = Date.now() + 2000
+    }
+    const reposition = () => repositionTooltips(view)
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', reposition)
+    vv?.addEventListener('scroll', reposition)
+    window.addEventListener('resize', reposition)
+    view.dom.addEventListener('compositionend', onCompositionEnd)
+    view.dom.addEventListener('keydown', onKeyDown)
     return () => {
       view.destroy()
+      if (reopenTimer) clearTimeout(reopenTimer)
+      vv?.removeEventListener('resize', reposition)
+      vv?.removeEventListener('scroll', reposition)
+      window.removeEventListener('resize', reposition)
+      view.dom.removeEventListener('compositionend', onCompositionEnd)
+      view.dom.removeEventListener('keydown', onKeyDown)
       viewRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时创建一次编辑器实例

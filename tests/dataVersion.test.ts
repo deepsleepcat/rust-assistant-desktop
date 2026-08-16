@@ -4,7 +4,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { getDataVersionInfo, loadCodeData, reloadCodeData } from '../src/services/codeData'
+import {
+  findCodesBySection,
+  findSectionsByQuery,
+  findValueTypes,
+  getDataVersionInfo,
+  loadCodeData,
+  normalizeSectionName,
+  reloadCodeData,
+} from '../src/services/codeData'
 
 const DATA_DIR = path.resolve(__dirname, '../public/data')
 
@@ -64,5 +72,46 @@ describe('getDataVersionInfo（离线数据版本）', () => {
     expect(info.codeCount).toBeGreaterThan(1000) // 代码表正常
     expect(info.versionCount).toBe(0) // 版本表失败
     expect(info.consistent).toBeUndefined()
+  })
+})
+
+describe('M31 补全数据查询（真实数据）', () => {
+  beforeEach(() => {
+    stubFetchFromDisk()
+  })
+
+  it('多值类型 findValueTypes：float,logicBoolean 合并全部命中段（补全不再只取第一段）', async () => {
+    await loadCodeData()
+    const vts = findValueTypes('float,logicBoolean')
+    expect(vts.length).toBeGreaterThanOrEqual(2)
+    // float 段给数值候选，logicBoolean 段给 true/false/@type 指令
+    const merged = vts.flatMap((v) => (v.list ?? '').split(','))
+    expect(merged.some((s) => s.trim() === 'true')).toBe(true)
+    expect(merged.some((s) => s.trim() === 'false')).toBe(true)
+    expect(merged.some((s) => s.trim().startsWith('@type('))).toBe(true)
+  })
+
+  it('编号节 findCodesBySection：turret_1 归一化为基础节 turret，当前节键候选不丢', async () => {
+    await loadCodeData()
+    const base = findCodesBySection('turret', '')
+    expect(base.length).toBeGreaterThan(0)
+    const numbered = findCodesBySection('turret_1', '')
+    expect(numbered.length).toBeGreaterThan(0)
+    expect(numbered.map((c) => c.code)).toEqual(base.map((c) => c.code))
+  })
+
+  it('normalizeSectionName：中文编号节 [炮塔_1] → turret', async () => {
+    await loadCodeData()
+    expect(normalizeSectionName('turret_1')).toBe('turret')
+    expect(normalizeSectionName('炮塔_1')).toBe('turret')
+    expect(normalizeSectionName('core')).toBe('core')
+  })
+
+  it('findSectionsByQuery：手写编号节前缀 [turret_1 仍返回基础 needName 节候选', async () => {
+    await loadCodeData()
+    const list = findSectionsByQuery('turret_1')
+    expect(list.some((s) => s.code === 'turret')).toBe(true)
+    const zh = findSectionsByQuery('炮塔_1')
+    expect(zh.some((s) => s.code === 'turret')).toBe(true)
   })
 })

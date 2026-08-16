@@ -11,6 +11,8 @@
  * 默认使用 codeData 的真实数据。
  */
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete'
+import { pickedCompletion } from '@codemirror/autocomplete'
+import { Transaction } from '@codemirror/state'
 import {
   findCodeByCode,
   findCodesByQuery,
@@ -18,9 +20,11 @@ import {
   findCodesByType,
   findSectionsByQuery,
   findValueType,
+  findValueTypes,
   getDialectWords,
   getKeyZhToEnDict,
   getZhToEnDict,
+  loadCodeData,
   parseValueList,
   searchLogicBooleans,
   zhToEnKeySegments,
@@ -33,6 +37,8 @@ export interface CompletionDataSource {
   findCodesBySection(section: string, query: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string; section?: string }>
   findCodeByCode(code: string): { code: string; translate: string; description: string; type: string } | undefined
   findValueType(type: string): { external?: string; list?: string; describe?: string } | undefined
+  /** M31：多值类型合并查询（float,logicBoolean → 全部命中段；未提供时回退 findValueType 单条） */
+  findValueTypes?(type: string): Array<{ external?: string; list?: string; describe?: string }>
   findCodesByQuery(query: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string }>
   /** 按值类型查代码（@type(类型) 关联联想） */
   findCodesByType(type: string, query?: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string }>
@@ -65,8 +71,39 @@ export const realDataSource: CompletionDataSource = {
  * 默认数据源 + 项目资源联想（@file 文件列表 / 单位名）。
  * 延迟引入 store 与桥，避免模块循环依赖；扫描结果按项目缓存，
  * 项目内容变化（刷新树/保存）时由外部调用 invalidateResourceCache() 失效。
+ * 资源扫描惰性执行：只有值上下文真正需要 @file/@customType/单位名 时才发起
+ * 全项目扫描，节/键补全不再被整个项目的递归 readdir 阻塞。
  */
-let resourceCache: { root: string; data: ProjectResources } | null = null
+let resourceCache: { root: string; data: ProjectResources | null; at: number } | null = null
+/** 在途扫描去重（按项目根键控）：同一项目并发触发多次补全时只发起一次扫描；
+ * 切项目瞬间不串用旧项目的在途结果 */
+let resourceInflight: { root: string; promise: Promise<ProjectResources | null> } | null = null
+
+/** 资源扫描超时（大项目/网络盘/锁目录）：超时放弃本次扫描降级为空资源，
+ * 下次输入再试——不能为了一张候选图把整个补全卡死 */
+const RESOURCE_SCAN_TIMEOUT_MS = 5000
+/** 扫描失败（含超时）结果的缓存时长：失败也缓存避免大项目每次输入都重扫，
+ * 但带 TTL——10s 后自然重试，项目变化另有 invalidateResourceCache() 立即刷新 */
+const RESOURCE_FAIL_TTL_MS = 10_000
+
+/** 带超时的 Promise（超时返回 fallback；原 Promise 的拒绝被吞掉防 unhandled rejection） */
+export async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  const guarded = promise.then(
+    (v) => v,
+    () => fallback,
+  )
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      guarded,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
 
 /** 项目内容变化后调用：清空资源缓存，下次补全重新扫描 */
 export function invalidateResourceCache(): void {
@@ -78,25 +115,47 @@ async function loadProjectResources(): Promise<ProjectResources | null> {
   const state = useWorkspaceStore.getState()
   const project = state.projects.find((p) => p.id === state.activeProjectId)
   if (!project) return null
-  if (resourceCache && resourceCache.root === project.rootPath) return resourceCache.data
-  const { getBridge } = await import('../../services/bridge')
-  // 扫描失败（如目录被锁）时降级为无资源联想，不让整个补全失效
-  const data = await getBridge().mod.scanResources(project.rootPath).catch(() => null)
-  if (!data) return null
-  resourceCache = { root: project.rootPath, data }
-  return data
+  // 成功结果长期缓存；失败结果带 TTL（超时/失败后 10s 内不重扫，之后自然重试）
+  if (resourceCache && resourceCache.root === project.rootPath) {
+    if (resourceCache.data !== null || Date.now() - resourceCache.at < RESOURCE_FAIL_TTL_MS) {
+      return resourceCache.data
+    }
+  }
+  if (resourceInflight) {
+    if (resourceInflight.root === project.rootPath) {
+      return resourceInflight.promise
+    }
+    // 切项目瞬间：旧在途结果不属于当前项目，丢弃等待重新发起
+    resourceInflight = null
+  }
+  resourceInflight = {
+    root: project.rootPath,
+    promise: (async () => {
+      const { getBridge } = await import('../../services/bridge')
+      // 扫描失败/超时（如目录被锁）时降级为无资源联想，不让整个补全失效
+      const data = await withTimeout(getBridge().mod.scanResources(project.rootPath), RESOURCE_SCAN_TIMEOUT_MS, null).catch(() => null)
+      resourceCache = { root: project.rootPath, data, at: Date.now() }
+      return data
+    })(),
+  }
+  try {
+    return await resourceInflight.promise
+  } finally {
+    resourceInflight = null
+  }
 }
 
-export async function realResourcesDataSource(): Promise<CompletionDataSource> {
-  const data = await loadProjectResources()
+export function realResourcesDataSource(): CompletionDataSource {
   return {
     ...realDataSource,
+    findValueTypes: (t) => findValueTypes(t),
     listResourceFiles: async (exts) => {
+      const data = await loadProjectResources()
       if (!data) return []
       const lower = exts.map((e) => e.toLowerCase())
       return data.files.filter((f) => lower.includes(f.split('.').pop()?.toLowerCase() ?? ''))
     },
-    listUnitNames: async () => data?.unitNames ?? [],
+    listUnitNames: async () => (await loadProjectResources())?.unitNames ?? [],
   }
 }
 
@@ -145,19 +204,24 @@ function toCompletion(c: { code: string; translate: string; description: string;
     detail: c.description || undefined,
     type: 'property',
     apply: defaultVal
-      ? (view, _completion, from, to) => {
+      ? (view, completion, from, to) => {
           // M1：中文提交前登记追踪表；同译名撞键时改用英文原文（防保存回译改键）
           const ok = trackCommit(c.code, c.translate)
           const insert = (ok ? text : c.code + suffix) + defaultVal
           view.dispatch({
             changes: { from, to, insert },
             selection: { anchor: from + (ok ? text : c.code + suffix).length, head: from + insert.length },
+            // 标准补全事务标记：保留撤销分组/事件语义（否则 CM 不识别这次插入是补全提交）
+            annotations: [pickedCompletion.of(completion), Transaction.userEvent.of('input.complete')],
           })
           return true
         }
-      : (view, _completion, from, to) => {
+      : (view, completion, from, to) => {
           const ok = trackCommit(c.code, c.translate)
-          view.dispatch({ changes: { from, to, insert: ok ? text : c.code + suffix } })
+          view.dispatch({
+            changes: { from, to, insert: ok ? text : c.code + suffix },
+            annotations: [pickedCompletion.of(completion), Transaction.userEvent.of('input.complete')],
+          })
           return true
         },
   }
@@ -178,13 +242,14 @@ function toSectionCompletion(s: { code: string; translate: string; needName?: bo
     return {
       label: s.translate ? `${s.code} · ${s.translate}` : s.code,
       type: 'keyword',
-      apply: (view, _completion, from, to) => {
+      apply: (view, completion, from, to) => {
         const ok = trackCommit(s.code, s.translate)
         const base = ok ? commitText(s.code, s.translate) : s.code
         const text = sectionTextWith(view, from, base, '_')
         view.dispatch({
           changes: { from, to, insert: text },
           selection: { anchor: from + text.length, head: from + text.length },
+          annotations: [pickedCompletion.of(completion), Transaction.userEvent.of('input.complete')],
         })
         return true
       },
@@ -193,11 +258,14 @@ function toSectionCompletion(s: { code: string; translate: string; needName?: bo
   return {
     label: s.translate ? `${s.code} · ${s.translate}` : s.code,
     type: 'keyword',
-    apply: (view, _completion, from, to) => {
+    apply: (view, completion, from, to) => {
       const ok = trackCommit(s.code, s.translate)
       const base = ok ? commitText(s.code, s.translate) : s.code
       const text = sectionTextWith(view, from, base, ']')
-      view.dispatch({ changes: { from, to, insert: text } })
+      view.dispatch({
+        changes: { from, to, insert: text },
+        annotations: [pickedCompletion.of(completion), Transaction.userEvent.of('input.complete')],
+      })
       return true
     },
   }
@@ -247,6 +315,13 @@ function withThumbnail(c: Completion, projectId: string | null): Completion {
   }
 }
 
+/** 多值类型合并：data 提供 findValueTypes 用合并结果，否则回退单条（测试注入数据） */
+function valueTypeInfos(data: CompletionDataSource, type: string): Array<{ external?: string; list?: string; describe?: string }> {
+  if (data.findValueTypes) return data.findValueTypes(type)
+  const single = data.findValueType(type)
+  return single ? [single] : []
+}
+
 /** 值补全：key 查类型 → 类型 list → 候选（中文模式下键是中文，先回译成英文再查） */
 async function valueCompletions(key: string, query: string, data: CompletionDataSource): Promise<Completion[]> {
   // 中文显示层：key 可能是中文译名或分段翻译的宏字段（建造自_1_名称），
@@ -261,21 +336,26 @@ async function valueCompletions(key: string, query: string, data: CompletionData
       info = data.findCodeByCode(back)
     }
   }
-  const vt = info ? data.findValueType(info.type) : undefined
+  // 多值类型（float,logicBoolean）：合并所有命中段，与 lint 的 OR 语义一致
+  const vts = info ? valueTypeInfos(data, info.type) : []
   const q = query.trim().toLowerCase()
   const result: Completion[] = []
 
-  if (vt) {
-    const items = parseValueList(vt.list)
+  if (vts.length > 0) {
+    // 合并 list 与特殊指令（去重保序）
+    const items: string[] = []
+    const directives: string[] = []
+    for (const vt of vts) {
+      for (const v of parseValueList(vt.list)) {
+        if (!items.includes(v)) items.push(v)
+      }
+      for (const d of (vt.list ?? '').split(',').map((s) => s.trim()).filter((s) => s.startsWith('@'))) {
+        if (!directives.includes(d)) directives.push(d)
+      }
+    }
     for (const v of items.filter((v) => !q || v.toLowerCase().includes(q))) {
       result.push({ label: v, type: 'value', apply: v })
     }
-
-    // 特殊指令（@file/@type/@customType）：逗号分隔的 list 元素
-    const directives = (vt.list ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter((s) => s.startsWith('@'))
 
     // @file(类型)：扫描项目内资源文件（png/jpg/ogg/ini…）
     const fileExts = directives
@@ -295,7 +375,7 @@ async function valueCompletions(key: string, query: string, data: CompletionData
     // @type(类型)：从代码库联想同类型的键（对齐手机版 findCodeByCodeInType，
     // 如 logicBoolean 键值 self.isFlying ← type=noParameterLogicStatement 的键）
     for (const d of directives) {
-      const m = /^@type\((.+)\)$/.exec(d)
+      const m = d.match(/^@type\((.+)\)$/)
       if (m) {
         for (const c of data.findCodesByType(m[1], query, 20)) {
           result.push(toCompletion(c))
@@ -306,7 +386,7 @@ async function valueCompletions(key: string, query: string, data: CompletionData
     // @customType(类型)：从当前模组联想自定义值（对齐手机版 FileDataBase.ValueTable；
     // 桌面版数据源 = 项目内单位名 [core] name，如 unit 值类型引用的 unitName）
     for (const d of directives) {
-      const m = /^@customType\((.+)\)$/.exec(d)
+      const m = d.match(/^@customType\((.+)\)$/)
       if (m && data.listUnitNames) {
         const names = (await data.listUnitNames()) ?? []
         for (const n of names.filter((n) => !q || n.toLowerCase().includes(q))) {
@@ -367,8 +447,10 @@ const LOGIC_VALUE_TYPES = new Set([
 /** 键补全：当前节内优先 */
 function keyCompletions(section: string, query: string, data: CompletionDataSource): Completion[] {
   return data.findCodesBySection(section, query).map((c) => {
-    const vt = data.findValueType(c.type)
-    return toCompletion(c, vt?.external ?? '')
+    // 多值类型合并：external 取第一个非空段（如 float,logicBoolean → float 的 :）
+    const vts = valueTypeInfos(data, c.type)
+    const external = vts.find((v) => v.external)?.external ?? ''
+    return toCompletion(c, external)
   })
 }
 
@@ -403,6 +485,10 @@ export async function computeRustCompletions(
 
 /** CodeMirror 补全 source：根据光标上下文选择处理器 */
 export async function rustCompletionSource(context: CompletionContext): Promise<CompletionResult | null> {
+  // 数据未就绪/加载失败时显式等待（codeData 失败会置回 null，下次输入自动重试，
+  // 不会整个会话永久失去补全/翻译）
+  await loadCodeData()
+
   const doc = context.state.doc
   const lineInfo = doc.lineAt(context.pos)
   const line = lineInfo.text
@@ -410,6 +496,10 @@ export async function rustCompletionSource(context: CompletionContext): Promise<
   const lines = doc.toString().split('\n')
   const lineIndex = lineInfo.number - 1
   const section = findSectionOfLine(lines, lineIndex)
+
+  // 注释行不补全（# 开头；activateOnTyping 下否则会弹全局键候选干扰阅读）
+  if (line.trimStart().startsWith('#')) return null
+
   // 分隔符包含 [ ] 等结构符号：光标前的「词」不含这些符号，
   // 保证节补全（[tur → from 指向 tur）等场景的替换范围正确
   const word = before.split(/[\s:;,()=[\]{}]+/).pop() ?? ''
@@ -427,12 +517,22 @@ export async function rustCompletionSource(context: CompletionContext): Promise<
     }
   }
 
-  const data = await realResourcesDataSource()
+  // 空白/非键值普通行且输入词为空：只有显式触发（Ctrl+Space）才弹候选，
+  // 避免 activateOnTyping 在空行/普通行弹出全局前 40 个键。
+  // 未闭合节头（[ 开头）是节补全场景，不受此守卫影响
+  const key = keyOfLine(line)
+  if (key === null && !word && !context.explicit && !isUnclosedSection(line)) return null
+
+  const data = realResourcesDataSource()
   const completions = await computeRustCompletions(line, section, word, before, lineIndex, lines, data)
 
   if (completions.length === 0) return null
   const from = context.pos - word.length
-  return { from, options: completions, validFor: /^[\w\u4e00-\u9fff]*$/ }
+  // validFor 覆盖 self. / 资源路径（units/tank/t.png）等真实输入字符：
+  // 旧规则只认字母数字汉字，输入 . / - 时旧候选立即失效导致列表闪烁/反复查询。
+  // filter:false：候选已按输入词/中文说明/译名过滤过一遍，交给 CodeMirror 按
+  // label 二次匹配会滤掉「中文命中但 label 是英文」的候选（dialect 词、@type 键）
+  return { from, options: completions, validFor: /^[\w\u4e00-\u9fff./-]*$/, filter: false }
 }
 
 /** 局部变量补全候选（纯函数，供测试）：当前文件出现过的 ${名字} */

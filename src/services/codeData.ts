@@ -121,9 +121,22 @@ async function fetchJson<T>(name: string): Promise<T> {
   return (await res.json()) as T
 }
 
-/** 重载全部数据（值类型管理保存自定义类型后调用：清缓存重新加载，补全/lint 立即生效） */
+/** 重载全部数据（值类型管理保存自定义类型后调用：清缓存重新加载，补全/lint 立即生效）。
+ * 旧索引一并清空：重载失败时不残留「新旧混合」的半加载状态（下次成功加载前查询返回空）。 */
 export function reloadCodeData(): void {
   loaded = null
+  codes = []
+  sections = []
+  valueTypes = []
+  enToZhDict.clear()
+  zhToEnDict.clear()
+  keyZhToEnDict.clear()
+  sectionZhToEnDict.clear()
+  vocabulary = []
+  dialectWords = []
+  logicBooleans = []
+  officialUnits = []
+  gameVersions = []
 }
 
 /** 从本地存储读取用户自定义值类型（M8 值类型管理 UI 保存，store key: customValueTypes） */
@@ -287,11 +300,23 @@ export function zhToEnKeySegments(key: string): string {
     .join('_')
 }
 
+/** 节名归一化（补全/lint 查当前节键用）：
+ * 中文段经节名词典优先回译（[炮塔_1] → turret_1），编号节去掉 _N 后缀
+ * （代码表字段的 section 是基础节名 turret，没有 turret_1）。 */
+export function normalizeSectionName(section: string): string {
+  const en = section
+    .split('_')
+    .map((seg) => sectionZhToEnDict.get(seg) ?? zhToEnDict.get(seg) ?? seg)
+    .join('_')
+    .toLowerCase()
+  return en.replace(/_\d+$/, '')
+}
+
 /** 按节查询代码（节为 all 时全局适用；英文 code 或中文 translate 匹配）。
- * 中文显示层传入的中文节名（如「核心」）先经词典回译成英文（core）再匹配。 */
+ * 中文显示层传入的中文节名（如「核心」）与编号节（[turret_1]）都会先归一化。 */
 export function findCodesBySection(section: string, query: string, limit = 40): CodeInfo[] {
   const q = query.trim().toLowerCase()
-  const enSection = zhToEnDict.get(section) ?? section
+  const enSection = normalizeSectionName(section)
   const matchSection = (c: CodeInfo) => c.section === 'all' || (c.section ?? '').split(',').includes(enSection)
   const list = codes.filter((c) => matchSection(c) && (c.code.toLowerCase().includes(q) || c.translate.includes(query.trim())))
   return list.slice(0, limit)
@@ -325,10 +350,18 @@ export function findCodesByType(type: string, query = '', limit = 40): CodeInfo[
   return list.slice(0, limit)
 }
 
-/** 按节英文 code 或中文译名模糊查节 */
+/** 按节英文 code 或中文译名模糊查节。
+ * 用户手写编号节前缀（[turret_1 / [炮塔_1）时按基础节名（turret/炮塔）兜底命中，
+ * 让 needName 节候选仍能出现。 */
 export function findSectionsByQuery(query: string, limit = 40): SectionInfo[] {
   const q = query.trim().toLowerCase()
-  const list = sections.filter((s) => s.code.toLowerCase().includes(q) || s.translate.includes(query.trim()))
+  const base = q.replace(/_\d+$/, '')
+  const list = sections.filter(
+    (s) =>
+      s.code.toLowerCase().includes(q) ||
+      s.translate.includes(query.trim()) ||
+      (base !== q && (s.code.toLowerCase().includes(base) || s.translate.includes(base))),
+  )
   return list.slice(0, limit)
 }
 
@@ -430,19 +463,26 @@ export function getDataVersionInfo(): DataVersionInfo {
 /** 按值类型 type 查（大小写不敏感 + 逗号分段：数据里 LogicBoolean/bool 大小写不一致、
  * 'float,logicBoolean' 等多值 type 也能命中其中任一段） */
 export function findValueType(type: string): ValueTypeInfo | undefined {
+  return findValueTypes(type)[0]
+}
+
+/** 多值类型合并查询（float,logicBoolean → 全部命中段的值类型）：
+ * 补全按 lint 的 OR 语义合并所有命中的 list/directives，而不是只取第一段
+ * （否则 float,logicBoolean 字段会丢掉 true/false/@type(...) 候选）。 */
+export function findValueTypes(type: string): ValueTypeInfo[] {
   const direct = valueTypes.find((v) => v.type === type)
-  if (direct) return direct
+  if (direct) return [direct]
   const lower = type.toLowerCase()
   const ci = valueTypes.find((v) => v.type.toLowerCase() === lower)
-  if (ci) return ci
-  // 多值 type（'float,logicBoolean'）：任一段匹配即用该段的值类型
+  if (ci) return [ci]
+  const hits: ValueTypeInfo[] = []
   for (const seg of type.split(',')) {
     const t = seg.trim()
     if (!t) continue
     const hit = valueTypes.find((v) => v.type === t) ?? valueTypes.find((v) => v.type.toLowerCase() === t.toLowerCase())
-    if (hit) return hit
+    if (hit && !hits.includes(hit)) hits.push(hit)
   }
-  return undefined
+  return hits
 }
 
 /** 值类型合法值列表（解析逗号分隔，含特殊指令 @xxx） */

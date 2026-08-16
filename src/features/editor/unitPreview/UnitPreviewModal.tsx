@@ -3,11 +3,11 @@
  * 按 [graphics] 配方把「主体帧切片 + 阴影 + 炮塔 + 残骸」合成画到 Canvas——
  * 纯本地实现，不内置游戏引擎、不依赖服务器。
  *
- * 图像来源：
- * - 本地引用 → 项目文件（readImageAsDataUrl，相对单位文件目录/项目根）；
- * - CORE:/ROOT:/SHARED:/CUSTOM: 引用 → 需要游戏路径（readGameAssetImage），
- *   未配置游戏路径时显示占位并提示；
- * - 缺图一律占位（灰块 + 名称），不报错不崩溃。
+ * 图像来源（命名空间语义与运行前检查/官方文档一致）：
+ * - 无前缀 / ROOT: / CUSTOM: → 项目内文件（readImageAsDataUrl，绝对路径）
+ * - CORE: → 游戏 assets/units/ 下资源（readGameAssetImage）
+ * - SHARED: → 游戏共享图库 assets/units/shared/ 下资源（readGameAssetImage）
+ * - 缺图一律占位（灰块 + 名称），不报错不崩溃；加载失败原因分类提示。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getBridge } from '../../../services/bridge'
@@ -16,9 +16,9 @@ import { useEscapeHandler } from '../../../utils/modalStack'
 import {
   computeDrawLayout,
   computeFrames,
-  isGameImageRef,
-  isLocalImageRef,
+  framePath,
   parseGraphicsRecipe,
+  parseImageRef,
   parsePreviewTurrets,
   resolveImageCandidates,
 } from './recipe'
@@ -27,13 +27,21 @@ interface Props {
   file: string
   content: string
   rootPath: string
-  /** 配置的游戏安装路径（可为空：CORE: 等官方贴图无法加载，显示占位） */
+  /** 配置的游戏安装路径（可为空：CORE:/SHARED: 官方贴图无法加载，显示占位） */
   gamePath?: string
+  /** 中文显示层回译（[图像组]/主体图像 → graphics/image）；英文模式可不传 */
+  zhToEn?: (s: string) => string | undefined
   onClose: () => void
 }
 
-/** 图像加载缓存（同一会话内不重复读盘；上限 200 条防长期会话膨胀） */
-const imageCache = new Map<string, Promise<HTMLImageElement | null>>()
+/** 加载失败原因（提示文案区分：本地缺图 / 游戏内置读取失败 / 未配置游戏路径） */
+type FailReason = 'local-missing' | 'game-missing' | 'no-game-path'
+
+/** 图像加载缓存（同一会话内不重复读盘；只缓存成功，失败不污染后续重试；
+ * 上限 200 条防长期会话膨胀）。缓存键含 gamePath——换游戏目录不串图。 */
+const imageCache = new Map<string, Promise<HTMLImageElement>>()
+/** 在途加载去重（成功落地进 imageCache，失败/成功都立即移除） */
+const imageInflight = new Map<string, Promise<HTMLImageElement | null>>()
 const MAX_CACHE = 200
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement | null> {
@@ -45,7 +53,7 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement | null> {
   })
 }
 
-function cacheSet(key: string, value: Promise<HTMLImageElement | null>): void {
+function cacheSuccess(key: string, value: Promise<HTMLImageElement>): void {
   if (imageCache.size >= MAX_CACHE) {
     // 简单淘汰：清掉最旧的一半（预览场景图片数量有限，够用）
     const keys = [...imageCache.keys()].slice(0, Math.floor(MAX_CACHE / 2))
@@ -59,56 +67,67 @@ function cacheSet(key: string, value: Promise<HTMLImageElement | null>): void {
  * 缓存键含单位文件路径——同名贴图在不同单位目录（units/a/img.png vs units/b/img.png）
  * 不能串用 */
 async function fetchImage(
-  image: string | undefined,
+  image: string,
   file: string,
   rootPath: string,
   gamePath: string | undefined,
-): Promise<{ url: string; img: HTMLImageElement | null } | null> {
-  if (!image || (!isLocalImageRef(image) && !isGameImageRef(image))) return null
-  const cacheKey = `${rootPath}\u0000${file}\u0000${image}`
+): Promise<{ url: string; img: HTMLImageElement } | null> {
+  const ref = parseImageRef(image)
+  if (!ref) return null
+  // 帧延迟后缀（a.png:0.1）不参与文件路径（命名空间前缀已在 parseImageRef 剥掉）
+  ref.rel = framePath(ref.rel)
+  if (!ref.rel) return null
+  const cacheKey = `${gamePath ?? ''}\u0000${rootPath}\u0000${file}\u0000${image}`
   const cached = imageCache.get(cacheKey)
-  if (cached) return cached.then((img) => (img ? { url: cacheKey, img } : null))
+  if (cached) return cached.then((img) => ({ url: cacheKey, img }))
+  const inflight = imageInflight.get(cacheKey)
+  if (inflight) return inflight.then((img) => (img ? { url: cacheKey, img } : null))
   const promise = (async (): Promise<HTMLImageElement | null> => {
     try {
-      if (isLocalImageRef(image)) {
-        for (const rel of resolveImageCandidates(file, image)) {
-          try {
-            const dataUrl = await getBridge().project.readImageAsDataUrl(rootPath, `${rootPath}/${rel}`)
-            const img = await loadImage(dataUrl)
-            if (img) return img
-          } catch {
-            // 候选失败继续下一个
-          }
-        }
-        return null
-      }
-      // 游戏资产（CORE:/ROOT: 等）
-      if (gamePath) {
-        const rel = image.replace(/^[A-Za-z]+:/i, '')
-        const dataUrl = await getBridge().game.readAssetImage(gamePath, rel)
+      if (ref.namespace === 'core' || ref.namespace === 'shared') {
+        if (!gamePath) return null
+        // CORE = 游戏 assets/units/ 下资源；SHARED = 共享图库 assets/units/shared/（已实测游戏目录结构）
+        const assetRel =
+          ref.namespace === 'core' ? `assets/units/${ref.rel}` : `assets/units/shared/${ref.rel}`
+        const dataUrl = await getBridge().game.readAssetImage(gamePath, assetRel)
         return loadImage(dataUrl)
+      }
+      // 项目内引用（无前缀/ROOT:/CUSTOM:）：绝对路径候选逐个尝试
+      for (const abs of resolveImageCandidates(file, ref.rel, rootPath)) {
+        try {
+          const dataUrl = await getBridge().project.readImageAsDataUrl(rootPath, abs)
+          const img = await loadImage(dataUrl)
+          if (img) return img
+        } catch {
+          // 候选失败继续下一个
+        }
       }
       return null
     } catch {
       return null
     }
   })()
-  cacheSet(cacheKey, promise)
-  return promise.then((img) => (img ? { url: cacheKey, img } : null))
+  imageInflight.set(cacheKey, promise)
+  return promise.then((img) => {
+    imageInflight.delete(cacheKey)
+    if (img) cacheSuccess(cacheKey, Promise.resolve(img))
+    return img ? { url: cacheKey, img } : null
+  })
 }
 
 /** 单位合成预览器（模态弹窗） */
-export function UnitPreviewModal({ file, content, rootPath, gamePath, onClose }: Props) {
+export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, onClose }: Props) {
   useEscapeHandler(onClose)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [images, setImages] = useState<Map<string, HTMLImageElement | null>>(new Map())
   const [frame, setFrame] = useState(0)
   const [showWreck, setShowWreck] = useState(false)
   const [zoom, setZoom] = useState(1)
-  const [failed, setFailed] = useState<string[]>([])
+  const [failed, setFailed] = useState<Array<{ image: string; reason: FailReason }>>([])
 
-  const recipe = useMemo(() => parseGraphicsRecipe(content), [content])
-  const turrets = useMemo(() => parsePreviewTurrets(content), [content])
+  // 中文显示层：传回译函数才能解析 [图像组]/主体图像 等中文节键（与单位表单一致）
+  const recipe = useMemo(() => parseGraphicsRecipe(content, zhToEn), [content, zhToEn])
+  const turrets = useMemo(() => parsePreviewTurrets(content, zhToEn), [content, zhToEn])
 
   // 帧切片信息：主图加载后才能确定（frameWidth 覆盖 / 默认按图像宽切）
   const mainImg = recipe.image ? images.get(recipe.image) : null
@@ -121,21 +140,31 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, onClose }:
   // 帧号钳制：切单位/改帧数后滑块可能越界——渲染期钳制，不触发额外 setState
   const clampedFrame = Math.min(frame, Math.max(0, frameInfo.count - 1))
 
-  // 加载全部引用图像（主体/阴影/炮塔/残骸去重）
+  // 加载全部引用图像（主体多帧/阴影/炮塔/残骸去重）
   useEffect(() => {
     let alive = true
     const need = new Map<string, string>()
     for (const item of computeDrawLayout(recipe, turrets)) {
-      if (item.image) need.set(item.image, item.image)
+      if (item.kind === 'body' && recipe.imageFrames?.length) {
+        for (const f of recipe.imageFrames) if (f) need.set(f, f)
+      } else if (item.image) {
+        need.set(item.image, item.image)
+      }
     }
     void (async () => {
       const map = new Map<string, HTMLImageElement | null>()
-      const bad: string[] = []
+      const bad: Array<{ image: string; reason: FailReason }> = []
       for (const image of need.values()) {
+        const ref = parseImageRef(image)
+        const isGameNs = ref?.namespace === 'core' || ref?.namespace === 'shared'
+        if (isGameNs && !gamePath) {
+          bad.push({ image, reason: 'no-game-path' })
+          continue
+        }
         const res = await fetchImage(image, file, rootPath, gamePath)
         if (!alive) return
         if (res) map.set(image, res.img)
-        else bad.push(image)
+        else bad.push({ image, reason: isGameNs ? 'game-missing' : 'local-missing' })
       }
       if (!alive) return
       setImages(map)
@@ -171,14 +200,19 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, onClose }:
     const cy = canvas.height / 2
     const items = computeDrawLayout(recipe, turrets).filter((i) => (i.kind === 'wreck' ? showWreck : true))
     for (const item of items) {
-      const img = item.image ? images.get(item.image) : undefined
-      if (!img || !item.image) {
+      // 多帧引用（a.png;b.png）：主体按帧号切换整图；其余（阴影/炮塔）用首帧或原引用
+      let imgKey = item.image
+      if (item.kind === 'body' && recipe.imageFrames?.length) {
+        imgKey = recipe.imageFrames[clampedFrame] ?? item.image
+      }
+      const img = imgKey ? images.get(imgKey) : undefined
+      if (!img || !imgKey) {
         drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
         continue
       }
       // 主体与 AUTO 阴影跟随帧滑块；炮塔单帧
       const f = item.kind === 'turret' ? 0 : clampedFrame
-      const sx = f * fi.frameW
+      const sx = fi.multiFile ? 0 : f * fi.frameW
       const sy = 0
       const dw = fi.frameW * item.scale * scale
       const dh = fi.frameH * item.scale * scale
@@ -193,14 +227,16 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, onClose }:
     }
   }, [images, frameInfo, clampedFrame, showWreck, zoom, recipe, turrets, mainImgOrNull])
 
-  const gameMissing = failed.some((f) => isGameImageRef(f))
+  const noGamePath = failed.filter((f) => f.reason === 'no-game-path')
+  const gameMissing = failed.filter((f) => f.reason === 'game-missing')
+  const localMissing = failed.filter((f) => f.reason === 'local-missing')
   const totalFrames = frameInfo.count
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card vdiff-card unitprev-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          单位预览 · {file.split('/').pop()}
+          单位预览 · {file.split(/[\\/]/).pop()}
           {recipe.image && <code className="tool-path" style={{ marginLeft: 8 }}>{recipe.image}</code>}
         </div>
         <div className="modal-body vdiff-body">
@@ -230,10 +266,19 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, onClose }:
           <div className="unitprev-canvas-wrap">
             <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" />
           </div>
-          {gameMissing && (
+          {noGamePath.length > 0 && (
             <div className="lint-evidence">
-              部分贴图是游戏内置引用（CORE:/ROOT: 等）：{failed.filter((f) => isGameImageRef(f)).join('、')}——
-              {gamePath ? '读取失败（文件可能不存在）' : '需在 设置 → 游戏 配置铁锈战争安装目录后才能加载'}
+              游戏内置引用（{noGamePath.map((f) => f.image).join('、')}）需在 设置 → 游戏 配置铁锈战争安装目录后才能加载
+            </div>
+          )}
+          {gameMissing.length > 0 && (
+            <div className="lint-evidence">
+              游戏内置引用读取失败（文件可能不存在）：{gameMissing.map((f) => f.image).join('、')}
+            </div>
+          )}
+          {localMissing.length > 0 && (
+            <div className="lint-evidence">
+              以下图像未找到：{localMissing.map((f) => f.image).join('、')}（图片应放在单位文件同目录或项目根下）
             </div>
           )}
           {failed.length === 0 && <div className="lint-suggestion">预览正常：{recipe.image ? `${recipe.image}（${totalFrames} 帧）` : '未配置主体图像'}{turrets.length > 0 ? ` · ${turrets.length} 个炮塔` : ''}</div>}

@@ -1,7 +1,8 @@
 /** 图片文件预览：保持比例、支持适应窗口/原始尺寸/缩放。 */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getBridge } from '../../services/bridge'
 import { AppIcon } from '../../components/AppIcon'
+import { OverflowToolbar, type ToolbarAction } from '../../components/OverflowToolbar'
 import { truncateMiddle } from '../../utils/paths'
 
 interface ImageViewerProps {
@@ -26,6 +27,16 @@ export function ImageViewer({ path, rootPath }: ImageViewerProps) {
   const url = loaded.path === path ? loaded.url : null
   const error = loaded.path === path ? loaded.error : null
 
+  // M29：模式按钮放进溢出工具栏（useMemo 保持引用稳定，避免 OverflowToolbar 重测循环）；
+  // 缩小/放大步进簇（− 比例 +）保持相邻常驻，缩放逻辑不变
+  const modeActions = useMemo<ToolbarAction[]>(
+    () => [
+      { key: 'fit', label: '适应窗口', active: scale === 'fit', onClick: () => setScale('fit') },
+      { key: 'actual', label: '原始尺寸', active: scale === 'actual', onClick: () => setScale('actual') },
+    ],
+    [scale],
+  )
+
   const imageStyle: React.CSSProperties = scale === 'fit'
     ? { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }
     : scale === 'actual'
@@ -37,8 +48,7 @@ export function ImageViewer({ path, rootPath }: ImageViewerProps) {
       <div className="image-viewer-toolbar">
         <span className="image-viewer-path" title={path}>{truncateMiddle(path, 90)}</span>
         <span className="image-viewer-spacer" />
-        <button className={scale === 'fit' ? 'btn primary' : 'btn'} onClick={() => setScale('fit')}>适应窗口</button>
-        <button className={scale === 'actual' ? 'btn primary' : 'btn'} onClick={() => setScale('actual')}>原始尺寸</button>
+        <OverflowToolbar actions={modeActions} />
         <button className="icon-btn" title="缩小" onClick={() => setScale((s) => typeof s === 'number' ? Math.max(25, s - 25) : 75)}>
           −
         </button>
