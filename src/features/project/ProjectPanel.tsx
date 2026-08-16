@@ -8,6 +8,7 @@
 import { useRef, useState } from 'react'
 import type { FileSort, TreeNode } from '../../types/domain'
 import { useWorkspaceStore } from '../../stores/workspace'
+import { pathStartsWith } from '../../stores/slices/projectSlice'
 import { FileTypeIcon, FolderIcon, IconChevronRight } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { PromptModal } from '../../components/Modal'
@@ -202,10 +203,26 @@ function TreeRow({
   const openFile = useWorkspaceStore((s) => s.openFile)
   const deleteItem = useWorkspaceStore((s) => s.deleteItem)
   const requestConfirm = useWorkspaceStore((s) => s.requestConfirm)
+  const openTabs = useWorkspaceStore((s) => s.openTabs)
   const isBookmarked = useWorkspaceStore((s) => s.bookmarks.some((b) => b.path === node.path && b.projectId === s.activeProjectId))
   const fileSort = useWorkspaceStore((s) => s.settings.fileSort)
 
   const indent = depth * 14
+
+  /** 删除确认（文件/文件夹统一）：被删路径下打开的脏标签提示未保存修改，防止静默丢编辑 */
+  const confirmDelete = (name: string, path: string) => {
+    const dirtyTabs = openTabs.filter((t) => t.dirty && pathStartsWith(t.path, path))
+    const dirtyTip = dirtyTabs.length > 0
+      ? `\n\n⚠ ${dirtyTabs.length} 个已打开文件有未保存修改（${dirtyTabs.map((t) => t.name).join('、')}），删除后这些修改将丢失。`
+      : ''
+    requestConfirm({
+      title: '删除到回收站',
+      message: `确定把「${name}」移入回收站吗？\n此操作无法在应用内撤销。${dirtyTip}`,
+      danger: true,
+      confirmText: '删除',
+      onConfirm: () => void deleteItem(path),
+    })
+  }
 
   /** 复制游戏引用格式的相对路径（ROOT: 前缀，可直接粘进代码引用） */
   const copyRelPath = async () => {
@@ -314,13 +331,7 @@ function TreeRow({
               title="删除（回收站）"
               onClick={(e) => {
                 e.stopPropagation()
-                requestConfirm({
-                  title: '删除到回收站',
-                  message: `确定把「${node.name}」整个文件夹移入回收站吗？\n此操作无法在应用内撤销。`,
-                  danger: true,
-                  confirmText: '删除',
-                  onConfirm: () => void deleteItem(node.path),
-                })
+                confirmDelete(node.name, node.path)
               }}
             >
               <AppIcon name="delete" size={12} />
@@ -383,15 +394,7 @@ function TreeRow({
         <button
           className="icon-btn"
           title="删除（回收站）"
-          onClick={() =>
-            requestConfirm({
-              title: '删除到回收站',
-              message: `确定把「${node.name}」移入回收站吗？`,
-              danger: true,
-              confirmText: '删除',
-              onConfirm: () => void deleteItem(node.path),
-            })
-          }
+          onClick={() => confirmDelete(node.name, node.path)}
         >
           <AppIcon name="delete" size={12} />
         </button>

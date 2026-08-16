@@ -39,6 +39,13 @@ const RULE_ID_RE = /^[A-Za-z0-9_-]{1,64}$/
 const SEVERITIES: ReadonlySet<string> = new Set(['error', 'warning', 'info'])
 export const CHECK_TYPES: ReadonlyArray<CustomCheckType> = ['numeric-range', 'required-key', 'forbidden-value', 'regex-match', 'enum-value']
 
+/**
+ * 嵌套量词检测（灾难性回溯经典形态）：组内带量词 + 组后又带量词的 pattern——
+ * (a+)+ / (a*)* / (a|b+)+ 等指数级回溯。单层量词（a+、[0-9]+、(ab)+）是线性/多项式，
+ * 配合值截断可接受，不拦截。
+ */
+const NESTED_QUANTIFIER_RE = /\([^()]*[+*][+*?]?\)[+*?]/
+
 /** 规则集校验：返回人类可读的错误列表（空 = 通过） */
 export function validateRuleSet(input: unknown): { ok: true; set: CustomRuleSet } | { ok: false; errors: string[] } {
   const errors: string[] = []
@@ -103,6 +110,14 @@ export function validateRuleSet(input: unknown): { ok: true; set: CustomRuleSet 
     if (c.type === 'regex-match') {
       if (typeof c.pattern !== 'string' || !c.pattern) {
         errors.push(`${prefix}：regex-match 必须指定 pattern`)
+      } else if (c.pattern.length > 256) {
+        // M32 安全：pattern 是模组文件可控的（rules/*.json 自动加载），
+        // 灾难性回溯正则（如 (a+)+$）配合超长值可冻结渲染层——限制长度双保险
+        errors.push(`${prefix}：regex-match 的 pattern 过长（>256 字符），请简化表达式`)
+      } else if (NESTED_QUANTIFIER_RE.test(c.pattern)) {
+        // M32 安全：嵌套量词（(a+)+ / (a*)* / (ab|cd)+?+ 等）是灾难性回溯的
+        // 经典形态——指数级回溯与输入长度无关，长度限制/值截断都拦不住，直接拒绝
+        errors.push(`${prefix}：regex-match 的 pattern 含嵌套量词（可能导致灾难性回溯），请简化表达式`)
       } else {
         try {
           new RegExp(c.pattern)

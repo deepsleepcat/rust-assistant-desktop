@@ -26,7 +26,7 @@ export function CommandPalette() {
   const setModDialog = useWorkspaceStore((s) => s.setModDialog)
   const packModProject = useWorkspaceStore((s) => s.packModProject)
   const checkModProject = useWorkspaceStore((s) => s.checkModProject)
-  const closeTab = useWorkspaceStore((s) => s.closeTab)
+  const closeTab = useWorkspaceStore((s) => s.closeTabChecked)
   const activeTabId = useWorkspaceStore((s) => s.activeTabId)
   // M29：布局折叠状态（命令面板动态显示「显示/隐藏」文案）
   const leftCollapsed = useWorkspaceStore((s) => s.settings.layout.leftCollapsed)

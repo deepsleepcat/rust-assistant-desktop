@@ -184,6 +184,14 @@ export function validateFormValue(field: UnitFieldDef, value: string): string | 
   if (!v) return null
   switch (field.type) {
     case 'number': {
+      const full = /^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i
+      if (!full.test(v)) {
+        // M32：数字输入中间态放行（-、1.、.5、1e 等）——Number() 对它们返回 NaN
+        // 导致报错回退，负数字段（shadowOffsetX 等）无法键盘输入负号；
+        // 只有最终完整数字才检查范围
+        if (/^-?\d*\.?\d*(?:e[+-]?\d*)?$/i.test(v)) return null
+        return '必须是数字'
+      }
       const n = Number(v)
       if (!Number.isFinite(n)) return '必须是数字'
       if (field.min !== undefined && n < field.min) return `不能小于 ${field.min}`

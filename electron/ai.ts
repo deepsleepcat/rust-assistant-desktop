@@ -116,7 +116,7 @@ export async function streamAgent(
   params: AiChatParams,
   config: DeepSeekConfig,
   projectRoot: string,
-  approvalResolver: (id: string, resolve: (response: AiApprovalResponse) => void) => void,
+  approvalResolver: (id: string, resolve: (response: AiApprovalResponse) => void) => () => void,
   cancelled: { current: boolean; abort?: () => void },
   feedback?: { wait: (timeoutMs: number) => Promise<string | null> },
 ): Promise<void> {
@@ -210,19 +210,26 @@ export async function streamAgent(
       emit({ type: 'approval_request', id, tool: context.toolCall.name, path: args.path ?? '?', contentPreview: preview, contentLength: full.length, diff, diffSummary, oldExists, newFile })
       const response = await new Promise<AiApprovalResponse>((resolve) => {
         let settled = false
+        // timer 先声明：approvalResolver 在本流已取消时可能同步 resolve（→ finish → clearTimeout），
+        // 此时 timer 尚未赋值——settled 守卫 + 判空保证不抛 TDZ（取消路径会先走 finish 返回）
+        let timer: ReturnType<typeof setTimeout> | undefined = undefined
         const finish = (approved: boolean) => {
           if (settled) return
           settled = true
-          clearTimeout(timer)
+          if (timer) clearTimeout(timer)
           resolve({ id, approved })
         }
-        const timer = setTimeout(() => {
+        // 把请求 id 一并交给主进程：界面响应时按 id 匹配，过期响应一律忽略；
+        // 返回的清除回调用于超时/结束时清掉主进程单槽 pendingApproval
+        const clearApproval = approvalResolver(id, (r) => finish(r.approved))
+        timer = setTimeout(() => {
           // 超时：通知界面关闭审批弹窗，按“拒绝”继续对话
           if (!webContents.isDestroyed()) webContents.send(channel, { type: 'approval_expired', id })
+          // M32：同时清除主进程单槽 pendingApproval——否则用户之后点「批准」会命中
+          // 旧 id 被当成已接受（实际写入已被拒），界面误报「已批准」
+          clearApproval()
           finish(false)
         }, APPROVAL_TIMEOUT_MS)
-        // 把请求 id 一并交给主进程：界面响应时按 id 匹配，过期响应一律忽略
-        approvalResolver(id, (r) => finish(r.approved))
       })
       // 只有被批准执行的写操作才进入写后质检反馈窗口——拒绝/失败不等待
       //（否则流结束会白等 10s 反馈超时）

@@ -82,6 +82,18 @@ describe('validateRuleSet（schema 校验）', () => {
     expect(validateRuleSet({ formatVersion: 1, name: 'x', rules: [{ id: 'a', title: 't', check: { type: 'regex-match', pattern: '[' } }] }).ok).toBe(false)
     expect(validateRuleSet({ formatVersion: 1, name: 'x', rules: [{ id: 'a', title: 't', check: { type: 'regex-match', pattern: '^\\d+$' } }] }).ok).toBe(true)
   })
+
+  it('M32 安全：嵌套量词（灾难性回溯）与超长 pattern 被拒绝', () => {
+    // (a+)+ 是经典指数回溯形态——即使很短也必须拒绝
+    expect(validateRuleSet({ formatVersion: 1, name: 'x', rules: [{ id: 'a', title: 't', check: { type: 'regex-match', pattern: '(a+)+' } }] }).ok).toBe(false)
+    expect(validateRuleSet({ formatVersion: 1, name: 'x', rules: [{ id: 'a', title: 't', check: { type: 'regex-match', pattern: '(a*)*' } }] }).ok).toBe(false)
+    expect(validateRuleSet({ formatVersion: 1, name: 'x', rules: [{ id: 'a', title: 't', check: { type: 'regex-match', pattern: '(ab|cd+)+' } }] }).ok).toBe(false)
+    // 单层量词是安全的（线性/多项式，配合值截断可接受）
+    expect(validateRuleSet({ formatVersion: 1, name: 'x', rules: [{ id: 'a', title: 't', check: { type: 'regex-match', pattern: 'a+b+c*' } }] }).ok).toBe(true)
+    expect(validateRuleSet({ formatVersion: 1, name: 'x', rules: [{ id: 'a', title: 't', check: { type: 'regex-match', pattern: '(ab)+' } }] }).ok).toBe(true)
+    // 超长 pattern 拒绝
+    expect(validateRuleSet({ formatVersion: 1, name: 'x', rules: [{ id: 'a', title: 't', check: { type: 'regex-match', pattern: 'a'.repeat(300) } }] }).ok).toBe(false)
+  })
 })
 
 const SAMPLE = '[core]\nname: 步枪兵\nmaxHp: 200\nprice: -5\n[attack]\nrange: 300\nmaxHp: 99999\n'

@@ -21,6 +21,7 @@ import { isMapFile, MapViewer } from '../map/MapViewer'
 import { ImageViewer } from './ImageViewer'
 import { AudioViewer } from './AudioViewer'
 import { isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
+import { normPath } from '../../stores/slices/projectSlice'
 import { formatIni } from './iniFormatter'
 import { scanSections } from './outline'
 import { OverflowToolbar, type ToolbarAction } from '../../components/OverflowToolbar'
@@ -248,6 +249,8 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
   const [templateName, setTemplateName] = useState<string | null>(null)
   // 文件被外部修改后「重新加载」的确认（有未保存修改时才需要）
   const [reloadConfirm, setReloadConfirm] = useState(false)
+  // 文件被外部修改后「覆盖保存」的确认（覆盖会丢掉磁盘上的外部修改）
+  const [forceSaveConfirm, setForceSaveConfirm] = useState(false)
   // 大纲跳转请求：{ line, seq }，seq 递增触发 EditorMirror 定位
   const [jumpRequest, setJumpRequest] = useState<{ line: number; seq: number } | null>(null)
   // M9：质检清单「定位」按钮的外部跳转请求（store.editorJump）。
@@ -257,7 +260,9 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
   const editorJump = useWorkspaceStore((s) => s.editorJump)
   const consumeEditorJump = useWorkspaceStore((s) => s.consumeEditorJump)
   const jumpTo = useMemo(() => {
-    if (editorJump && tab && editorJump.path === tab.path) {
+    // 路径归一化比较：外部跳转（质检清单/关系图）传的是 joinProjectPath 混合分隔符路径，
+    // 标签路径是树打开的全反斜杠绝对路径——严格 === 会永不命中（点击「定位」无反应）
+    if (editorJump && tab && normPath(editorJump.path) === normPath(tab.path)) {
       return { line: editorJump.line, seq: editorJump.seq, external: true }
     }
     return jumpRequest
@@ -397,6 +402,13 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
               >
                 重新加载
               </button>
+              <button
+                className="btn"
+                title="用编辑器当前内容覆盖磁盘（外部修改会丢失）"
+                onClick={() => setForceSaveConfirm(true)}
+              >
+                覆盖保存
+              </button>
             </>
           )}
           {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
@@ -515,6 +527,20 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
           onConfirm={() => {
             setReloadConfirm(false)
             void useWorkspaceStore.getState().reloadTab(tab.id)
+          }}
+        />
+      )}
+      {forceSaveConfirm && (
+        <ConfirmBox
+          title="覆盖保存"
+          message={`「${tab.name}」已被外部修改。覆盖保存会用编辑器当前内容替换磁盘文件，外部修改将丢失。`}
+          danger
+          confirmText="覆盖保存"
+          cancelText="取消"
+          onCancel={() => setForceSaveConfirm(false)}
+          onConfirm={() => {
+            setForceSaveConfirm(false)
+            void useWorkspaceStore.getState().saveTab(tab.id, { force: true })
           }}
         />
       )}

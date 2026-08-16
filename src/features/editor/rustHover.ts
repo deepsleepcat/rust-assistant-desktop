@@ -7,11 +7,22 @@
  */
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, loadCodeData, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
 function stripComment(line: string): string {
   return line.replace(/[ \t]+#.*$/, '')
+}
+
+/**
+ * 键位置中文回译（导出供测试）：中文模式下键是中文译名（名称/主体图像），
+ * 先查键名回译表（键译名不被节名覆盖），再回落通用词典，最后按 _ 分段回译；
+ * 纯英文键原样返回（findCodeByCode 会直接命中）。
+ */
+export function resolveKeyEn(key: string): string {
+  const trimmed = key.trim()
+  if (!trimmed) return trimmed
+  return getKeyZhToEnDict().get(trimmed) ?? getZhToEnDict().get(trimmed) ?? zhToEnKeySegments(trimmed)
 }
 
 const COLOR_RE = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/
@@ -66,12 +77,16 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
     }
   }
 
-  // 2) 键名/值悬停：key: value 行
-  const kv = /^([^:#]+?)\s*:\s*(.*)$/.exec(lineText)
+  // 2) 键名/值悬停：key: value 行（引擎解析同时认 : 和 =，与 lint/补全一致）。
+  // 手动找分隔符（正则含 = 会被安全扫描误报）
+  const colonIdx = lineText.indexOf(':')
+  const eqIdx = lineText.indexOf('=')
+  const sepIdx = colonIdx < 0 ? eqIdx : eqIdx < 0 ? colonIdx : Math.min(colonIdx, eqIdx)
+  const kv = sepIdx > 0 ? [lineText.slice(0, sepIdx), lineText.slice(sepIdx + 1)] : null
   if (kv) {
     const keyStart = 0
-    const keyEnd = kv[1].length
-    const valStart = lineText.length - kv[2].length
+    const keyEnd = kv[0].length
+    const valStart = lineText.length - kv[1].length
 
     // 值区间：颜色色卡 + 逻辑布尔函数（self.xxx() / 关键字）
     if (inLine >= valStart) {
@@ -115,10 +130,12 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       }
     }
 
-    // 键区间（含中文分段回译）：查代码表
+    // 键区间（含中文回译）：中文模式下键是中文译名（名称/主体图像），
+    // 先查键名回译表（键译名不被节名覆盖），再回落通用词典，最后按 _ 分段回译
     if (inLine >= keyStart && inLine <= keyEnd) {
-      const key = kv[1].trim()
-      const en = findCodeByCode(key) ?? (key.includes('_') ? findCodeByCode(zhToEnKeySegments(key)) : undefined)
+      const key = kv[0].trim()
+      const back = resolveKeyEn(key)
+      const en = findCodeByCode(key) ?? (back !== key ? findCodeByCode(back) : undefined)
       if (!en) return null
       const vt = en.type
       // M11：版本信息行（加入版本/移除弃用；版本表缺失时显示版本号）

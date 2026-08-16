@@ -1193,9 +1193,14 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
             // 本流已取消：新到的审批请求直接拒绝，不挂 UI
             if (cancelled.current) {
               resolve({ id, approved: false })
-              return
+              return () => undefined
             }
             ctx.ai.pendingApproval = { id, resolve }
+            // 返回清除回调：审批超时（ai.ts 120s）时清掉单槽 pendingApproval，
+            // 防止过期响应命中旧 id 被误报「已批准」
+            return () => {
+              if (ctx.ai.pendingApproval?.id === id) ctx.ai.pendingApproval = null
+            }
           },
           cancelled,
           feedbackChannel,

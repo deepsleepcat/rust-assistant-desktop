@@ -70,7 +70,9 @@ export function createConversationSlice(deps: ConversationSliceDeps) {
       const target = s.conversations.find((c) => c.id === id)
       set({ conversations: s.conversations.filter((c) => c.id !== id) })
       if (target && s.activeConversationId === id) {
-        const projectConvs = get().conversations.filter((c) => c.projectId === target.projectId)
+        // 与 toggleArchive 一致：只落到未归档的对话上（归档对话在「已归档」分组，
+        // 激活它主视图会显示归档内容而列表里看不到，像串了数据）
+        const projectConvs = get().conversations.filter((c) => c.projectId === target.projectId && !c.archived)
         const next = projectConvs[0]?.id ?? null
         set({
           activeConversationId: next,

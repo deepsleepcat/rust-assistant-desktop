@@ -2,7 +2,7 @@
 export interface SectionOutline { name: string; line: number; from: number }
 export interface FoldRange { from: number; to: number }
 
-const SECTION_RE = /^\s*\[(.+?)\]\s*$/
+const SECTION_RE = /^\s*\[(.+?)\]\s*(?:#.*)?$/
 
 export function scanSections(text: string): SectionOutline[] {
   const sections: SectionOutline[] = []

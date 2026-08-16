@@ -172,7 +172,10 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         rustConfigLanguageSupport(),
         lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
         rustHoverExtension,
-        autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
+        // aboveCursor：补全框显示在光标上方——中文输入时系统输入法候选窗
+        // 在光标正下方，框在下方会被完全挡住（表现为「中文补全不可用」；
+        // 空间不足时 CodeMirror 会自动翻回下方，不丢失候选）
+        autocompletion({ override: [rustCompletionSource], activateOnTyping: true, aboveCursor: true }),
         tooltips({
           // 输入法弹起时可视视口底部上移：补全空间按 visualViewport 计算，
           // 候选才会在键盘上方翻转/压缩而不是落在软键盘下面

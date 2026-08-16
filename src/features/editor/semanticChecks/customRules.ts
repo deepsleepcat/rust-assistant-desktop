@@ -120,7 +120,9 @@ export function runCustomRules(content: string, rules: CustomRule[], ctx: Semant
             } catch {
               continue // 校验已拦，防御性跳过
             }
-            if (!re.test(value)) {
+            // M32 安全：值截断到 2K 再匹配——灾难性回溯正则配合超长值（64MB 上限）
+            // 会把渲染层冻结数分钟；截断后最坏回溯量级可控（规则 pattern 另有 256 长度上限）
+            if (!re.test(value.slice(0, 2000))) {
               message = `规则「${rule.title}」：${kv.key} 的值「${value}」不匹配 ${c.pattern}`
               suggestion = '按规则要求修正该值'
             }

@@ -120,11 +120,14 @@ export interface WorkspaceStoreActions {
   toggleDir(path: string): void
   openFile(path: string): Promise<void>
   updateTabContent(id: string, content: string): void
-  /** 保存标签页：返回是否保存成功（外部修改拦截/失败时返回 false，调用方据此决定是否关闭标签） */
-  saveTab(id: string): Promise<boolean>
+  /** 保存标签页：返回是否保存成功（外部修改拦截/失败时返回 false，调用方据此决定是否关闭标签）；
+   * force=true 跳过外部修改检查（用户明确「覆盖保存」） */
+  saveTab(id: string, opts?: { force?: boolean }): Promise<boolean>
   /** 重新加载标签页内容（丢弃本地修改，用于文件被外部修改后） */
   reloadTab(id: string): Promise<void>
   closeTab(id: string): void
+  /** 带脏确认的关闭（有未保存修改时弹全局确认，命令面板等无标签栏上下文入口用） */
+  closeTabChecked(id: string): void
   setActiveTabId(id: string): void
   toggleTranslation(id: string): void
   checkExternalChanges(): Promise<void>

@@ -14,6 +14,14 @@ import { invalidateResourceCache } from '../../features/editor/completion'
 import { checkAiWrittenFile, lintItemsToFeedback } from '../../features/ai/aiQualityCheck'
 import { parseStoredUsage } from '../../features/ai/usageStats'
 import { RUST_ASSISTANT_SYSTEM_PROMPT } from '../../ai/rustSystemPrompt'
+import { normalizeOpenPath } from '../../utils/projectPath'
+
+/** 标签路径匹配：relPath（AI 工具相对路径）与标签绝对路径按分隔符/大小写归一化比较
+ * （严格 === 会因「相对 vs 绝对/混合分隔符」永远不命中，导致脏确认跳过、标签不重载） */
+function tabMatchesPath(tabPath: string, relPath: string, rootPath: string): boolean {
+  const abs = normalizeOpenPath(rootPath, relPath)
+  return tabPath.replace(/\\/g, '/').toLowerCase() === abs.replace(/\\/g, '/').toLowerCase()
+}
 
 export interface AiSliceDeps {
   bridge: BridgeApi
@@ -62,7 +70,7 @@ export function createAiSlice(deps: AiSliceDeps) {
           }
           invalidateResourceCache()
           await get().refreshTree()
-          const tab = get().openTabs.find((t) => t.path === relPath)
+          const tab = get().openTabs.find((t) => tabMatchesPath(t.path, relPath, project.rootPath))
           if (tab) await get().reloadTab(tab.id)
           get().notify(res.deleted ? '已恢复到所选历史版本（该版本为文件创建前，文件已删除）' : '已恢复到所选历史版本')
           return true
@@ -71,7 +79,7 @@ export function createAiSlice(deps: AiSliceDeps) {
           return false
         }
       }
-      const tab = s.openTabs.find((t) => t.path === relPath)
+      const tab = get().openTabs.find((t) => tabMatchesPath(t.path, relPath, project.rootPath))
       if (tab?.dirty) {
         s.requestConfirm({
           title: '恢复历史版本',
@@ -330,12 +338,23 @@ export function createAiSlice(deps: AiSliceDeps) {
         // stream 同步抛错（违反契约）的防御：不锁死 AI 通道（aiStreamingConversationId 释放）
         let streamSyncError: unknown = null
         try {
+          // 动态附加当前查看文件（M32：打开多个文件时 AI 必须知道用户在看哪个）。
+          // 编辑器标签是用户当前工作上下文：列出全部打开的标签 + 标注当前激活的，
+          // 避免 AI 拿旧文件当依据回答（readFile 工具查的是磁盘内容，标签可能未保存）
+          const tabsNow = get().openTabs
+          const activeTabNow = tabsNow.find((t) => t.id === get().activeTabId)
+          const currentFileNote = tabsNow.length === 0
+            ? ''
+            : `\n\n## 当前打开的编辑器标签\n${tabsNow
+                .map((t) => `- ${t.name}${t.id === activeTabNow?.id ? '（用户当前正在查看）' : ''} — ${t.path}${t.dirty ? '（有未保存修改，标签内容是用户的最新版本）' : ''}`)
+                .join('\n')}
+用户提问时优先围绕「当前正在查看」的文件回答；如用户问题涉及其他文件，先询问确认，不要擅自假设。`
           void deps.bridge.ai
             .stream(
               {
                 provider: settings.provider,
                 model: settings.provider === 'deepseek' ? settings.deepseekModel : settings.communityModel,
-                systemPrompt: RUST_ASSISTANT_SYSTEM_PROMPT,
+                systemPrompt: RUST_ASSISTANT_SYSTEM_PROMPT + currentFileNote,
                 messages,
               },
               settings,

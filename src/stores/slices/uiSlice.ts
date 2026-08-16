@@ -47,6 +47,10 @@ export function createUiSlice() {
     },
 
     requestConfirm(req: ConfirmRequest) {
+      // M32：新确认覆盖旧确认前，先释放旧确认挂起的调用方（如 confirmDirtySwitch 的
+      // Promise）——否则旧调用方永远等不到 resolve，其善后回调（如导入失败清理解压目录）不执行
+      const prev = get().confirm
+      if (prev && prev !== req) prev.onCancel?.()
       set({ confirm: req })
     },
     dismissConfirm() {

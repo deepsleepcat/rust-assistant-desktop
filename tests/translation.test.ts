@@ -157,3 +157,135 @@ describe('M9 第四轮修复回归：编号/宏字段键往返', () => {
     expect(back).toBe('name: 我的坦克2')
   })
 })
+
+describe('M32 保存回译修复（E1/E2/E3）', () => {
+  function dict() {
+    return makeDict(
+      new Map([
+        ['x', 'x坐标'],
+        ['y', 'y坐标'],
+        ['name', '名称'],
+        ['attack', '攻击'],
+        ['tank', '坦克'],
+        ['true', '是'],
+      ]),
+      new Map([
+        ['x坐标', 'x'],
+        ['y坐标', 'y'],
+        ['名称', 'name'],
+        ['攻击', 'attack'],
+        ['坦克', 'tank'],
+        ['是', 'true'],
+      ]),
+      new Map([
+        ['x坐标', 'x'],
+        ['y坐标', 'y'],
+        ['名称', 'name'],
+        ['生命值', 'hp'],
+      ]),
+    )
+  }
+
+  it('E1：ASCII 开头译名键（x坐标）保存往返无损，不再中文键写盘', () => {
+    const d = dict()
+    const tracker = new Map<string, string>()
+    const original = '[turret_1]\nx: 50\ny: 20'
+    const zh = enToZh(original, d, tracker)
+    expect(zh).toContain('x坐标: 50')
+    expect(zh).toContain('y坐标: 20')
+    // 无任何编辑直接保存：回译必须还原成英文键（旧实现会原样中文写盘）
+    const back = zhToEn(zh, d, tracker)
+    expect(back).toBe(original)
+  })
+
+  it('E1b：x坐标 键不做编辑时 dirty 判定为 false（回译 == 原文）', () => {
+    const d = dict()
+    const tracker = new Map<string, string>()
+    const original = 'x: 50'
+    const zh = enToZh(original, d, tracker)
+    expect(zhToEn(zh, d, tracker)).toBe(original)
+  })
+
+  it('E2：用户中文值与词典译名词内撞串（攻击力强 里的 攻击）保存不被改写', () => {
+    const d = dict()
+    const tracker = new Map<string, string>()
+    // 文件里同时有英文 attack 键（登记 攻击→attack）与用户中文值「攻击力强」
+    const zh = enToZh('attack: 1\ndescription: 攻击力强', d, tracker)
+    expect(zh).toBe('攻击: 1\ndescription: 攻击力强')
+    const back = zhToEn(zh, d, tracker)
+    // 「攻击」键位置还原；「攻击力强」中词内「攻击」不得改写
+    expect(back).toBe('attack: 1\ndescription: 攻击力强')
+  })
+
+  it('E3：表单新增中文键未登记 tracker → 键位置词典兜底回译（不中文写盘）', () => {
+    const d = dict()
+    // 空 tracker 模拟表单写入（不登记）：中文键靠词典兜底还原
+    const tracker = new Map<string, string>()
+    const back = zhToEn('[核心]\n名称: myTank', d, tracker)
+    expect(back).toBe('[核心]\nname: myTank')
+  })
+
+  it('值位置未登记的中文保留（词典兜底只用于键位置）', () => {
+    const d = dict()
+    const tracker = new Map<string, string>()
+    const back = zhToEn('name: 攻击力强', d, tracker)
+    expect(back).toBe('name: 攻击力强')
+  })
+
+  it('E4：needName 节中文名（[炮塔_主炮]）只回译翻译部分 → [turret_主炮]', () => {
+    const d = makeDict(
+      new Map([['turret', '炮塔'], ['name', '名称'], ['tank', '坦克']]),
+      new Map([['炮塔', 'turret'], ['名称', 'name'], ['坦克', 'tank']]),
+      new Map([['炮塔', 'turret'], ['名称', 'name']]),
+    )
+    const tracker = new Map<string, string>()
+    // enToZh：turret_1 节登记 炮塔_1；补全提交的 [炮塔_ 前缀登记 炮塔（不带 _）
+    const zh = enToZh('[turret_1]\nname: tank', d, tracker)
+    expect(zh).toContain('[炮塔_1]')
+    tracker.set('炮塔', 'turret') // 模拟中文模式下补全提交 [炮塔_ 前缀
+    // 用户中文模式输入 主炮 作为节实例名（不登记 tracker）
+    const back = zhToEn('[炮塔_主炮]\n名称: myTank', d, tracker)
+    // 「炮塔」来自翻译还原成 turret，实例名「主炮」是用户数据保留
+    expect(back).toBe('[turret_主炮]\nname: myTank')
+  })
+
+  it('宏字段带数字后缀（建造自_1_名称_2）整体回译', () => {
+    const d = makeDict(
+      new Map([['builtfrom', '建造自'], ['name', '名称'], ['tank', '坦克']]),
+      new Map([['建造自', 'builtfrom'], ['名称', 'name'], ['坦克', 'tank']]),
+    )
+    const tracker = new Map<string, string>()
+    const zh = enToZh('builtFrom_1_name_2: tank', d, tracker)
+    expect(zh).toContain('建造自_1_名称_2')
+    const back = zhToEn(zh, d, tracker)
+    expect(back).toBe('builtFrom_1_name_2: tank')
+  })
+
+  it('值位置下划线后缀保留（坦克_2 不被改写；键位置宏字段后缀仍回译）', () => {
+    const d = makeDict(
+      new Map([['tank', '坦克'], ['name', '名称'], ['builtfrom', '建造自']]),
+      new Map([['坦克', 'tank'], ['名称', 'name'], ['建造自', 'builtfrom']]),
+    )
+    const tracker = new Map<string, string>()
+    const zh = enToZh('name: 坦克_2\nbuiltFrom_1_name: tank', d, tracker)
+    expect(zh).toContain('名称: 坦克_2')
+    expect(zh).toContain('建造自_1_名称')
+    const back = zhToEn(zh, d, tracker)
+    // 值位置 坦克_2 完整保留（严格边界）；键位置宏字段回译
+    expect(back).toBe('name: 坦克_2\nbuiltFrom_1_name: tank')
+  })
+
+  it('分隔符前空白保留（name = 50 往返无损，不误标脏）', () => {
+    const d = makeDict(
+      new Map([['name', '名称']]),
+      new Map([['名称', 'name']]),
+      new Map([['名称', 'name']]),
+    )
+    const tracker = new Map<string, string>()
+    const original = 'name = 50'
+    const zh = enToZh(original, d, tracker)
+    expect(zh).toBe('名称 = 50')
+    const back = zhToEn(zh, d, tracker)
+    expect(back).toBe(original)
+  })
+})

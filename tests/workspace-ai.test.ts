@@ -288,4 +288,35 @@ describe('AI 消息流（sendAiMessage）', () => {
     expect(conv.messages[1].reasoning).toContain('思考第一步')
     expect(conv.messages[1].reasoning).toContain('思考第二步')
   })
+
+  it('M32：打开标签后系统提示词注入当前查看文件（多文件时 AI 知道用户在哪个）', async () => {
+    let capturedPrompt = ''
+    bridge.ai.stream = async (params) => {
+      capturedPrompt = params.systemPrompt ?? ''
+      emit({ type: 'done', fullText: '好' })
+      return 'ai:stream'
+    }
+    // 打开两个文件，激活 tank.ini
+    await store.getState().openFile('units/tank/tank.ini')
+    await store.getState().openFile('units/rifle/rifle.ini')
+    const tabs = store.getState().openTabs
+    const tankTab = tabs.find((t) => t.name === 'tank.ini')!
+    store.getState().setActiveTabId(tankTab.id)
+    await store.getState().sendAiMessage(convId, '看下当前文件')
+    expect(capturedPrompt).toContain('当前打开的编辑器标签')
+    expect(capturedPrompt).toContain('tank.ini（用户当前正在查看）')
+    expect(capturedPrompt).toContain('rifle.ini') // 未激活的文件也列出（不带「正在查看」标记）
+    expect(capturedPrompt).not.toContain('rifle.ini（用户当前正在查看）')
+  })
+
+  it('未打开任何文件时系统提示词不加标签上下文', async () => {
+    let capturedPrompt = ''
+    bridge.ai.stream = async (params) => {
+      capturedPrompt = params.systemPrompt ?? ''
+      emit({ type: 'done', fullText: '好' })
+      return 'ai:stream'
+    }
+    await store.getState().sendAiMessage(convId, '你好')
+    expect(capturedPrompt).not.toContain('当前打开的编辑器标签')
+  })
 })

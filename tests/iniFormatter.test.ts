@@ -33,4 +33,18 @@ describe('INI 格式化', () => {
   it('保留 CRLF 换行风格', () => {
     expect(formatIni('a: b\r\nc: d\r\n')).toBe('a: b\r\nc: d\r\n')
   })
+
+  it('M32：节头行尾注释里的 = : 不被重排', () => {
+    expect(formatIni('[core] # 说明 = 测试')).toBe('[core] # 说明 = 测试')
+    expect(formatIni('[core] # 说明: 测试')).toBe('[core] # 说明: 测试')
+  })
+
+  it('M32：三引号多行值块内行原样保留（含 : = 也不重排）', () => {
+    const input = 'desc: """\n第一行 a : b\n第二行 c = d\n"""\nname: tank'
+    expect(formatIni(input)).toBe(input)
+  })
+
+  it('M32：三引号单行成对（key: """x"""）正常格式化', () => {
+    expect(formatIni('desc : """x"""')).toBe('desc: """x"""')
+  })
 })

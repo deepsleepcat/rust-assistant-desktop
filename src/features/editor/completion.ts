@@ -141,7 +141,9 @@ async function loadProjectResources(): Promise<ProjectResources | null> {
   try {
     return await resourceInflight.promise
   } finally {
-    resourceInflight = null
+    // 只清自己的在途条目：切项目后旧在途 promise 落地时不能清掉新项目刚建立的条目
+    //（否则新项目同一输入会重复发起全量扫描）
+    if (resourceInflight && resourceInflight.root === project.rootPath) resourceInflight = null
   }
 }
 
@@ -322,6 +324,29 @@ function valueTypeInfos(data: CompletionDataSource, type: string): Array<{ exter
   return single ? [single] : []
 }
 
+/**
+ * @file 指令扩展名解析：兼容知识包复合格式（@file(apk{res/raw/}type{ogg,wav}) →
+ * 取 type{...} 内的 ogg/wav；简单格式 @file(png) → png）。
+ * 复合格式整体传下去会一个文件都匹配不到（listResourceFiles 按扩展名过滤）。
+ */
+function parseFileExts(spec: string): string[] {
+  const open = spec.indexOf('(')
+  const close = spec.lastIndexOf(')')
+  const inner = open >= 0 && close > open ? spec.slice(open + 1, close) : spec
+  const typeOpen = inner.indexOf('type{')
+  if (typeOpen >= 0) {
+    const typeClose = inner.indexOf('}', typeOpen + 5)
+    if (typeClose > typeOpen) {
+      return inner
+        .slice(typeOpen + 5, typeClose)
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    }
+  }
+  return [inner]
+}
+
 /** 值补全：key 查类型 → 类型 list → 候选（中文模式下键是中文，先回译成英文再查） */
 async function valueCompletions(key: string, query: string, data: CompletionDataSource): Promise<Completion[]> {
   // 中文显示层：key 可能是中文译名或分段翻译的宏字段（建造自_1_名称），
@@ -360,7 +385,7 @@ async function valueCompletions(key: string, query: string, data: CompletionData
     // @file(类型)：扫描项目内资源文件（png/jpg/ogg/ini…）
     const fileExts = directives
       .filter((s) => s.startsWith('@file('))
-      .map((s) => s.match(/^@file\((.+)\)$/)?.[1] ?? '')
+      .flatMap((s) => parseFileExts(s))
       .filter((s) => s.length > 0)
     if (fileExts.length > 0 && data.listResourceFiles) {
       const files = (await data.listResourceFiles(fileExts)) ?? []
