@@ -17,7 +17,7 @@ import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } f
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import {
   applyOptimization, checkMod, copyUnit, createMod, createUnit, createUnitFromTemplate, deleteUserTemplate,
-  globalOp, importModBuffer, importTemplateFile, listTemplates, listUserTemplateKeys,
+  deployMod, globalOp, importModBuffer, importTemplateFile, listTemplates, listUserTemplateKeys,
   packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources,
   scanUnits, writeModInfo,
 } from './modTools'
@@ -707,6 +707,27 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   })
 
   // mod:pack 已合并为单次打包（见上）；未暴露给界面的 packTo 已移除（最小特权）
+
+  // M35 F3：打包并部署到游戏 mods/units 目录（一键验证：打包→部署→启动）。
+  // 与 mod:pack 同一互斥域；游戏目录不是项目根——目录判定在 deployMod 内部
+  // 与 looksLikeGameDir 同标准，文件名清洗防穿越，同名未确认覆盖返回 EXISTS
+  ipc('mod:packAndDeploy', async (_event, rootPath: unknown, options: unknown, gamePath: unknown, overwrite: unknown) => {
+    if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
+    if (typeof gamePath !== 'string' || !gamePath) return { ok: false, message: '请先在设置中配置游戏安装目录' }
+    if (overwrite !== undefined && typeof overwrite !== 'boolean') throw new Error('overwrite 参数必须是布尔值')
+    if (ctx.packing.active) throw new Error('已有打包任务正在进行，请稍候')
+    ctx.packing.active = true
+    try {
+      // 登记校验用规范化路径（大小写不敏感）；执行传原始 rootPath——
+      // normalizePath 在 win32 会把路径转小写，部署文件名取项目根 basename，
+      // 传小写会让游戏内模组名（= .rwmod 文件名）丢失大小写（MyTankMod→mytankmod）
+      const normalized = normalizePath(rootPath)
+      if (!ctx.roots.has(normalized)) throw new Error('项目目录未登记，拒绝访问')
+      return await deployMod(rootPath, gamePath, (options ?? {}) as import('./modTools').PackOptions, overwrite === true)
+    } finally {
+      ctx.packing.active = false
+    }
+  })
 
   ipc('mod:check', async (_event, rootPath: string) => {
     requireInsideRoot(ctx, rootPath, rootPath)

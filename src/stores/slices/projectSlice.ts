@@ -882,22 +882,60 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         set({ modDialog: 'pack' })
       },
 
-      async packModWithOptions(options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }) {
+      async packModWithOptions(
+        options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean },
+        deployToGame = false,
+      ) {
         const project = activeProject()
         if (!project) return
+        const gamePath = get().settings.gamePath
+        if (deployToGame && !gamePath) {
+          get().notify('未配置游戏安装目录，请在 设置 → 游戏 中配置后再试')
+          return
+        }
         set({ modDialog: null })
-        get().notify('正在打包模组…')
+        get().notify(deployToGame ? '正在打包并部署到游戏…' : '正在打包模组…')
         try {
-          const result = await deps.bridge.mod.pack(project.rootPath, options)
-          if ('canceled' in result && result.canceled) {
-            get().notify('已取消打包')
-            return
+          if (deployToGame) {
+            // M35 F3：一键验证——打包 → 部署到游戏 mods/units → 自动启动游戏
+            let result = await deps.bridge.mod.packAndDeploy(project.rootPath, options, gamePath, false)
+            if (!result.ok && result.code === 'EXISTS') {
+              const fileName = result.filePath?.split(/[\\/]/).pop() ?? ''
+              if (window.confirm(`游戏模组目录已存在同名模组「${fileName}」，覆盖它？`)) {
+                result = await deps.bridge.mod.packAndDeploy(project.rootPath, options, gamePath, true)
+              } else {
+                get().notify('已取消部署（同名模组未覆盖）')
+                return
+              }
+            }
+            if (!result.ok) {
+              get().notify(`部署失败：${result.message}`)
+              return
+            }
+            const mb = (result.size / 1024 / 1024).toFixed(2)
+            const skippedTip = result.skippedLinks ? `；已跳过 ${result.skippedLinks} 个指向项目外的链接` : ''
+            get().notify(
+              `已部署到游戏：${result.files} 个文件，${mb} MB${skippedTip}（${result.filePath}）`,
+            )
+            // 自动启动游戏（不阻塞部署结果提示）
+            void getBridge()
+              .game.launch(gamePath)
+              .then((r) => {
+                if (!r.ok) get().notify(`启动游戏失败：${r.message}`)
+              })
+              .catch(() => undefined)
+          } else {
+            const result = await deps.bridge.mod.pack(project.rootPath, options)
+            if ('canceled' in result && result.canceled) {
+              get().notify('已取消打包')
+              return
+            }
+            const mb = (result.size / 1024 / 1024).toFixed(2)
+            // LOW-1：指向项目外的链接被跳过时给出提示（不再中止整次打包）
+            const skippedTip = result.skippedLinks ? `；已跳过 ${result.skippedLinks} 个指向项目外的链接` : ''
+            get().notify(`打包完成：${result.files} 个文件，${mb} MB → ${result.filePath}${skippedTip}`)
           }
-          const mb = (result.size / 1024 / 1024).toFixed(2)
-          // LOW-1：指向项目外的链接被跳过时给出提示（不再中止整次打包）
-          const skippedTip = result.skippedLinks ? `；已跳过 ${result.skippedLinks} 个指向项目外的链接` : ''
-          get().notify(`打包完成：${result.files} 个文件，${mb} MB → ${result.filePath}${skippedTip}`)
-          // M12：打包后自动运行前检查（不阻塞；结果持久化到设置「试玩联动」，
+          // M12：打包后自动运行前检查（两种模式共用；不阻塞；结果持久化到设置「试玩联动」，
           // 失败时追加提示引导去查看/修复——「打包 → 检查 → 进游戏」闭环）
           void getBridge()
             .game.preflight(project.rootPath)

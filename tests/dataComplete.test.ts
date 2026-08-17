@@ -18,6 +18,8 @@ interface CodeEntry {
   code: string
   translate: string
   description: string
+  addVersion?: number
+  removeVersion?: number
 }
 
 describe('code.json 汉化完整性', () => {
@@ -44,6 +46,35 @@ describe('code.json 汉化完整性', () => {
   })
 })
 
+describe('code.json 版本元数据完整性（M35：D3 补全后防回归）', () => {
+  const code = load<{ data: CodeEntry[] }>('code.json').data
+  const versions = load<{ data: Array<{ versionName: string; versionNumber: number }> }>('game_version.json').data
+  const latest = Math.max(...versions.map((v) => v.versionNumber))
+
+  it('所有字段都有 addVersion（无版本号 = 0 全版本存在）且非负', () => {
+    const bad = code.filter((c) => typeof c.addVersion !== 'number' || c.addVersion < 0)
+    expect(bad.map((c) => c.code)).toEqual([])
+  })
+
+  it('所有字段都有 removeVersion（-1 = 未移除；>=0 = 废弃）', () => {
+    const bad = code.filter((c) => typeof c.removeVersion !== 'number')
+    expect(bad.map((c) => c.code)).toEqual([])
+  })
+
+  it('版本号不超出版本表（无孤儿版本）；废弃标记 ≤ 最新版本', () => {
+    const badAdd = code.filter((c) => (c.addVersion ?? 0) > latest)
+    const badRemove = code.filter((c) => (c.removeVersion ?? -1) > latest)
+    expect([...badAdd.map((c) => c.code), ...badRemove.map((c) => c.code)]).toEqual([])
+  })
+
+  it('官方废弃字段已标记（D4：removeVersion = 最新版 = 终版已废弃）', () => {
+    const outdated = code.filter((c) => (c.removeVersion ?? -1) >= 0)
+    expect(outdated.length).toBeGreaterThanOrEqual(19)
+    expect(outdated.some((c) => c.code === 'turretSize')).toBe(true)
+    expect(outdated.every((c) => c.removeVersion === latest)).toBe(true)
+  })
+})
+
 describe('section.json 汉化完整性', () => {
   const sections = load<{ data: Array<{ code: string; translate: string }> }>('section.json').data
 
@@ -54,10 +85,21 @@ describe('section.json 汉化完整性', () => {
 })
 
 describe('units.json 官方单位中文名完整性', () => {
-  const units = load<{ data: Array<{ name: string; zhName?: string }> }>('units.json').data
+  const units = load<{ data: Array<{ name: string; zhName?: string; zhDesc?: string }> }>('units.json').data
 
   it('所有官方单位都有中文名', () => {
     const bad = units.filter((u) => !u.zhName || !u.zhName.trim())
+    expect(bad.map((u) => u.name)).toEqual([])
+  })
+
+  it('所有官方单位都有中文描述（M35：37 条补齐，AI 参考与单位库展示依赖）', () => {
+    const bad = units.filter((u) => !u.zhDesc || !u.zhDesc.trim())
+    expect(bad.map((u) => u.name)).toEqual([])
+  })
+
+  it('中文描述使用游戏内 [[短句]] tooltip 风格（除官方原文外）', () => {
+    // modularSpider_emptySlot 的官方原文是整句提示，其余统一用 [[...]] 分段
+    const bad = units.filter((u) => u.zhDesc && !u.zhDesc.includes('[[') && u.name !== 'modularSpider_emptySlot')
     expect(bad.map((u) => u.name)).toEqual([])
   })
 })

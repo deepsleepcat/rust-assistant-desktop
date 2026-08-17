@@ -301,6 +301,8 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       discardImport: async () => ({ ok: true }),
       createUnit: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
       pack: async () => ({ canceled: true }),
+      // M35 F3：模拟环境无游戏目录，返回未配置提示（与主进程返回结构一致）
+      packAndDeploy: async () => ({ ok: false, message: '模拟环境：未配置游戏安装目录' }),
       check: async () => ({ issues: [], unitCount: 0, fileCount: 0 }),
       readModInfo: async () => ({ title: '我的模组', musicFiles: [], musicExclusive: false, mapsFiles: [], mapsExtra: false }),
       writeModInfo: async () => ({ ok: true }),
