@@ -8,7 +8,7 @@
  * - 编辑、保存、脏标记
  * - 中文路径文件读写
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createWorkspaceStore } from '../src/stores/workspace'
 import { createMockBridge, MOCK_PROJECT_ROOT } from '../src/services/mockBridge'
 
@@ -39,6 +39,21 @@ describe('工作区 store 业务流', () => {
     const names = (s.treeRoot?.children ?? []).map((n) => n.name)
     expect(names).toContain('units')
     expect(names).toContain('mod.json')
+  })
+
+  it('导入模组先打开应用内来源选择，选择后才调用对应 bridge', async () => {
+    const importMod = vi.fn(async () => null)
+    bridge.mod.import = importMod
+    const s = store.getState()
+    await s.importModProject()
+    expect(store.getState().modDialog).toBe('import')
+    expect(importMod).not.toHaveBeenCalled()
+
+    store.getState().setModDialog(null)
+    await store.getState().startModImport('archive')
+    expect(importMod).toHaveBeenLastCalledWith('archive')
+    await store.getState().startModImport('folder')
+    expect(importMod).toHaveBeenLastCalledWith('folder')
   })
 
   it('一个项目可创建多个对话并正确切换', async () => {

@@ -7,7 +7,7 @@
  */
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, getKeyZhToEnDict, getZhToEnDict, loadCodeData, normalizeSectionName, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
 function stripComment(line: string): string {
@@ -57,11 +57,11 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
     const secEnd = secStart + lineText.indexOf(']', secStart) + 1
     if (inLine >= secStart && inLine <= secEnd) {
       const secName = secMatch[1].trim()
-      // 编号节（[turret_1]/[spawnUnits_2]）：剥离数字后缀匹配基础节名，才有中文名；
-      // 回退只保留「基础节名是编号节的前缀」（turret_1 → turret），不做反向匹配
-      const baseSec = secName.replace(/_\d+$/, '')
+      // 编号/命名节（[turret_1]/[turret_main]）：归一化到已知基础节名，才有中文名；
+      // 未知节不猜测归类，避免把用户自定义节误显示成官方节。
+      const baseSec = normalizeSectionName(secName)
       const candidates = findSectionsByQuery(baseSec, 10)
-      const sec = candidates.find((s) => s.code === baseSec) ?? candidates.find((s) => s.code.startsWith(baseSec))
+      const sec = candidates.find((s) => s.code.toLowerCase() === baseSec) ?? candidates.find((s) => s.code.toLowerCase().startsWith(baseSec))
       const zh = sec?.translate && sec.translate !== baseSec ? sec.translate : ''
       return {
         pos: line.from + secStart,

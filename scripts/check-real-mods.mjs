@@ -12,13 +12,14 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+const projectRoot = fileURLToPath(new URL('..', import.meta.url))
+const vitestEntry = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url))
 const result = spawnSync(
-  process.platform === 'win32' ? 'npx.cmd' : 'npx',
-  // vitest 4 已移除 basic reporter（加载会直接启动失败），用默认 reporter
-  ['vitest', 'run', 'tests/realMods.test.ts'],
-  // fileURLToPath：URL.pathname 在 Windows 会带前导斜杠（/W:/...），
-  // spawnSync 的 cwd 不认（实测 ENOENT），必须转成平台路径
-  { stdio: 'inherit', cwd: fileURLToPath(new URL('..', import.meta.url)) },
+  process.execPath,
+  // 直接调用本地 Vitest 入口，避免 Windows 下 spawnSync(npx.cmd) 返回 EINVAL。
+  // vitest 4 已移除 basic reporter（加载会直接启动失败），用默认 reporter。
+  [vitestEntry, 'run', 'tests/realMods.test.ts'],
+  { stdio: 'inherit', cwd: projectRoot },
 )
 
 console.log('\n──────── 真实模组检查 ────────')

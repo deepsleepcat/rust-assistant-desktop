@@ -53,6 +53,9 @@ export function CommandPalette() {
       { id: 'open-project', title: '导入模组…', hint: 'Ctrl+O', icon: <IconFolder size={15} />, run: () => void importModProject() },
       { id: 'new-conversation', title: '新建 AI 对话', hint: 'Ctrl+Shift+C', icon: <IconChat size={15} />, run: () => createConversation() },
       { id: 'open-settings', title: '打开设置', hint: 'Ctrl+,', icon: <IconGear size={15} />, run: () => setSettingsOpen(true) },
+      // M33-社区：工作区切换命令（与左侧导航一致：紧凑模式下顺带收起抽屉，避免目标工作区被抽屉遮挡）
+      { id: 'surface-community', title: '打开社区（本地示例数据）', icon: <AppIcon name="share" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setDrawerSide(null); useWorkspaceStore.getState().setActiveSurface('community') } },
+      { id: 'surface-editor', title: '返回工作台（编辑器）', icon: <AppIcon name="code" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setDrawerSide(null); useWorkspaceStore.getState().setActiveSurface('editor') } },
       {
         id: 'close-tab',
         title: '关闭当前文件',

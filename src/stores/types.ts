@@ -3,6 +3,8 @@
  */
 import type { AppSettings, Conversation, EditorTab, ProjectInfo, TreeNode } from '../types/domain'
 import type { DiffLine } from '../types/diff'
+import type { ModImportKind } from '../types/bridge'
+import type { CommunityTab } from '../features/community/communityData'
 
 export interface ConfirmRequest {
   title: string
@@ -43,6 +45,12 @@ export interface WorkspaceStoreState {
   commandOpen: boolean
   /** M29：紧凑窗口下打开的抽屉（'left' | 'right'；null = 关闭） */
   drawerSide: 'left' | 'right' | null
+  /** M33-社区：当前中心工作区（编辑器 / 社区；切换不丢标签与光标） */
+  activeSurface: 'editor' | 'community'
+  /** 社区当前页签（推荐/关注/排行/我的） */
+  communityTab: CommunityTab
+  /** 社区关注的创作者 id（会话内状态，不持久化；服务器上线后并入账号数据） */
+  communityFollowing: string[]
   /** M7：代码表浏览弹窗 */
   codeTableOpen: boolean
   /** M17：版本差异对比弹窗（P2 任务 1） */
@@ -80,7 +88,7 @@ export interface WorkspaceStoreState {
   /** 「定位到文件行」请求（质检清单跳转用）：{ path, line, seq }，seq 递增保证重复跳转同位置也生效 */
   editorJump: { path: string; line: number; seq: number } | null
   /** M5：模组工具弹窗（null 表示关闭） */
-  modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'report' | null
+  modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'report' | 'import' | null
   /** M5：单位检查结果 */
   modCheckResult: { issues: Array<{ file: string; level: 'error' | 'warning' | 'info'; message: string }>; unitCount: number; fileCount: number } | null
   /** M13：模组质量报告（生成中为 null；reportOpen 控制弹窗） */
@@ -107,7 +115,10 @@ export interface WorkspaceStoreState {
 export interface WorkspaceStoreActions {
   init(): Promise<void>
   openProject(): Promise<void>
+  /** 打开应用内导入类型选择框。 */
   importModProject(): Promise<void>
+  /** 按用户选择的来源执行导入。 */
+  startModImport(kind: ModImportKind): Promise<void>
   /** M8：把已存在的目录注册为新项目（游戏示例/游戏模组导入用）：
    * 确认未保存编辑 → 切到新项目 → 刷新树 → 通知；用户取消返回 false */
   addImportedProject(rootPath: string, name: string, message: string): Promise<boolean>
@@ -155,6 +166,12 @@ export interface WorkspaceStoreActions {
   setCommandOpen(open: boolean): void
   /** M29：紧凑窗口抽屉开关 */
   setDrawerSide(side: 'left' | 'right' | null): void
+  /** M33-社区：切换中心工作区（编辑器 ↔ 社区） */
+  setActiveSurface(surface: 'editor' | 'community'): void
+  /** M33-社区：切换社区页签 */
+  setCommunityTab(tab: CommunityTab): void
+  /** M33-社区：关注/取消关注创作者（会话内状态） */
+  toggleCommunityFollow(creatorId: string): void
   setCodeTableOpen(open: boolean): void
   setVersionDiffOpen(open: boolean): void
   setRelationGraphOpen(open: boolean): void
@@ -178,7 +195,7 @@ export interface WorkspaceStoreActions {
   sendAiMessage(conversationId: string, text: string): Promise<void>
   respondApproval(approved: boolean): Promise<void>
   /** M5：模组工具 */
-  setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | null): void
+  setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | null): void
   createModProject(params: { title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean; updateUrl?: string }): Promise<void>
   /** M7：编辑模组自述文件（mod-info.txt 读写，包含 thumbnail/music/maps） */
   saveModInfo(data: { title: string; description?: string; author?: string; version?: string; thumbnail?: string; minVersion?: string; musicFiles: string[]; musicExclusive: boolean; mapsFiles: string[]; mapsExtra: boolean; musicSourceFolder?: string; mapsSourceFolder?: string; updateUrl?: string }): Promise<void>

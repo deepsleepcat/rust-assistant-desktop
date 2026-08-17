@@ -34,11 +34,24 @@ describe('parseUnitForm', () => {
     expect(parseUnitForm('[mod]\ntitle: x\n')).toEqual({})
   })
 
-  it('中文显示层（zhToEn）回译后解析', () => {
-    const zh = '[核心]\n名称: 我的坦克\n生命值: 800\n'
-    const state = parseUnitForm(zh, { zhToEn: (k) => (k === '核心' ? 'core' : k === '名称' ? 'name' : k === '生命值' ? 'maxHp' : undefined) })
-    expect(state['core']?.find((v) => v.key === 'name')?.value).toBe('我的坦克')
+  it('中文显示层按节名/键名/值词典分层回译', () => {
+    const zh = '[核心]\n名称: 是\n生命值: 800\n'
+    const state = parseUnitForm(zh, {
+      zhToEn: (k) => (k === '名称' ? 'name' : k === '生命值' ? 'maxHp' : undefined),
+      zhToEnSection: (k) => (k === '核心' ? 'core' : undefined),
+      zhToEnValue: (k) => (k === '是' ? 'true' : undefined),
+    })
+    expect(state['core']?.find((v) => v.key === 'name')?.value).toBe('true')
     expect(state['core']?.find((v) => v.key === 'maxHp')?.value).toBe('800')
+  })
+
+  it('中文命名炮塔节仍解析为 turret 组', () => {
+    const state = parseUnitForm('[炮塔_主炮]\nx坐标: 3\n弹体: cannon\n', {
+      zhToEn: (k) => (k === '弹体' ? 'projectile' : k === 'x坐标' ? 'x' : undefined),
+      zhToEnSection: (k) => (k === '炮塔' ? 'turret' : undefined),
+    })
+    expect(state['turret']?.find((v) => v.key === 'projectile')?.value).toBe('cannon')
+    expect(state['turret']?.find((v) => v.key === 'x')?.value).toBe('3')
   })
 })
 
@@ -151,11 +164,22 @@ describe('M14 第二轮审查回归', () => {
     expect(state['core']?.find((v) => v.key === 'maxHp')?.value).toBe('500')
   })
 
-  it('中文文件替换键保留中文键名（不混入英文键）', () => {
-    const zhToEn = (k: string) => (k === '核心' ? 'core' : k === '名称' ? 'name' : k === '生命值' ? 'maxHp' : undefined)
-    const out = applyUnitFormValue('[核心]\n名称: x\n生命值: 500\n', 'core', 'maxHp', '800', { zhToEn })
-    expect(out).toContain('生命值: 800')
+  it('中文表单写回分层定位节名和字段名，并保留中文键', () => {
+    const zhToEn = (k: string) => (k === '名称' ? 'name' : k === '生命值' ? 'maxHp' : undefined)
+    const zhToEnSection = (k: string) => (k === '核心' ? 'core' : undefined)
+    const out = applyUnitFormValue('[核心]\n名称: x\n生命值: 500\n', 'core', 'maxHp', '800', { zhToEn, zhToEnSection })
+    expect(out).toContain('[核心]\n名称: x\n生命值: 800\n')
     expect(out).not.toContain('maxHp: 800')
+  })
+
+  it('中文表单写回命名炮塔节不追加重复节', () => {
+    const out = applyUnitFormValue('[炮塔_主炮]\n名称: cannon\nx坐标: 3\n', 'turret', 'x', '5', {
+      zhToEn: (k) => (k === '名称' ? 'name' : k === 'x坐标' ? 'x' : undefined),
+      zhToEnSection: (k) => (k === '炮塔' ? 'turret' : undefined),
+      enToZh: (k) => (k === 'x' ? 'x坐标' : undefined),
+    })
+    expect(out).toContain('[炮塔_主炮]\n名称: cannon\nx坐标: 5\n')
+    expect(out).not.toContain('[turret_1]')
   })
 
   it('无炮塔节时新建 [turret_1]（官方节名）', () => {

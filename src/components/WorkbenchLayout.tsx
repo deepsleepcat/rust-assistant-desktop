@@ -178,15 +178,15 @@ export function WorkbenchLayout({ left, editor, right }: WorkbenchLayoutProps) {
               data-side={drawerSide === 'right' ? 'right' : 'left'}
               role="dialog"
               aria-modal="true"
-              aria-label={drawerSide === 'right' ? 'AI 对话区' : '项目区'}
+              aria-label={drawerSide === 'right' ? 'AI 对话区' : '工作台与项目区'}
             >
               {drawerSide === 'right' ? right : left}
             </div>
           )}
           {/* 浮动开关：同侧抽屉打开时隐藏（避免叠压抽屉头部） */}
           {drawerSide !== 'left' && (
-            <button className="wb-chip" style={{ position: 'absolute', left: 8, top: 8 }} title="打开项目区" aria-label="打开项目区" onClick={() => setDrawerSide('left')}>
-              项目
+            <button className="wb-chip" style={{ position: 'absolute', left: 8, top: 8 }} title="打开工作台与项目区" aria-label="打开工作台与项目区" onClick={() => setDrawerSide('left')}>
+              工作台
             </button>
           )}
           {drawerSide !== 'right' && (

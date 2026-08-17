@@ -31,6 +31,11 @@ function toEnKey(key: string, zhToEn?: ZhToEn): string {
   return key
 }
 
+/** 节名回译独立于键名回译，避免「炮塔」等同名词条互相覆盖。 */
+function toEnSection(section: string, zhToEn?: ZhToEn, zhToEnSection?: ZhToEn): string {
+  return toEnKey(section, zhToEnSection ?? zhToEn)
+}
+
 /** 值回译（中文显示层 是/真 → true） */
 function toEnValue(value: string, zhToEn?: ZhToEn): string {
   if (!zhToEn || !value) return value
@@ -43,6 +48,8 @@ const KV_RE = /^([^:#][^:]*?)\s*:\s*(.*)$/
 
 export interface ParseUnitFormOptions {
   zhToEn?: ZhToEn
+  zhToEnSection?: ZhToEn
+  zhToEnValue?: ZhToEn
 }
 
 /**
@@ -52,13 +59,15 @@ export interface ParseUnitFormOptions {
  */
 export function parseUnitForm(content: string, options: ParseUnitFormOptions = {}): UnitFormState {
   const zhToEn = options.zhToEn
+  const zhToEnSection = options.zhToEnSection
+  const zhToEnValue = options.zhToEnValue ?? zhToEn
   const state: UnitFormState = {}
   const lines = content.split(/\r?\n/)
   let section = ''
   for (const line of lines) {
     const sec = SECTION_RE.exec(line)
     if (sec) {
-      section = toEnKey(sec[1].trim(), zhToEn).toLowerCase()
+      section = toEnSection(sec[1].trim(), zhToEn, zhToEnSection).toLowerCase()
       continue
     }
     const kv = KV_RE.exec(line)
@@ -71,7 +80,7 @@ export function parseUnitForm(content: string, options: ParseUnitFormOptions = {
     const list = state[group.section] ?? []
     // 同键重复（多炮塔节 [turret_1]/[turret_2]）：只取第一个（表单管理主炮塔）
     if (!list.some((v) => v.key.toLowerCase() === field.key.toLowerCase())) {
-      list.push({ key: field.key, value: toEnValue(kv[2].replace(/[ \t]+#.*$/, '').trim(), zhToEn), present: true })
+      list.push({ key: field.key, value: toEnValue(kv[2].replace(/[ \t]+#.*$/, '').trim(), zhToEnValue), present: true })
     }
     state[group.section] = list
   }
@@ -100,6 +109,7 @@ export function findGroups(): Array<{ section: string; label: string; fields: Un
 
 export interface ApplyUnitFormOptions {
   zhToEn?: ZhToEn
+  zhToEnSection?: ZhToEn
   enToZh?: EnToZh
 }
 
@@ -112,6 +122,7 @@ export interface ApplyUnitFormOptions {
  */
 export function applyUnitFormValue(content: string, groupSection: string, key: string, value: string, options: ApplyUnitFormOptions = {}): string {
   const zhToEn = options.zhToEn
+  const zhToEnSection = options.zhToEnSection
   const enToZh = options.enToZh
   const crlf = content.includes('\r\n')
   const lines = content.split(/\r?\n/)
@@ -127,7 +138,7 @@ export function applyUnitFormValue(content: string, groupSection: string, key: s
   for (let i = 0; i < lines.length; i++) {
     const sec = SECTION_RE.exec(lines[i])
     if (sec) {
-      const name = toEnKey(sec[1].trim(), zhToEn).toLowerCase()
+      const name = toEnSection(sec[1].trim(), zhToEn, zhToEnSection).toLowerCase()
       if (sectionLine >= 0) {
         // 已找到目标节：遇到下一个节即结束
         sectionEnd = i

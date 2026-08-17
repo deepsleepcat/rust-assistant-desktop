@@ -7,6 +7,7 @@ import './styles/m3-visual.css'
 import './styles/m3-finish.css'
 import './styles/components.css'
 import './styles/layout.css'
+import './styles/community.css'
 import './styles/animations.css'
 
 // 首帧前同步应用上次的主题（读 localStorage 缓存；设置数据随后经 IPC 异步加载，

@@ -13,6 +13,7 @@ import { WorkbenchLayout } from './components/WorkbenchLayout'
 import { LeftColumn } from './features/workspace/LeftColumn'
 import { RightColumn } from './features/conversation/RightColumn'
 import { EditorArea } from './features/editor/EditorArea'
+import { CommunityPanel } from './features/community/CommunityPanel'
 import { SettingsModal } from './features/settings/SettingsModal'
 import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
@@ -39,6 +40,8 @@ export function App() {
   const valueTypeOpen = useWorkspaceStore((s) => s.valueTypeOpen)
   const toast = useWorkspaceStore((s) => s.toast)
   const dismissToast = useWorkspaceStore((s) => s.dismissToast)
+  // M33-社区：中心区域在编辑器与社区之间切换（切换不丢标签/光标/项目状态）
+  const activeSurface = useWorkspaceStore((s) => s.activeSurface)
 
 
   // 初始化：读取本地设置与工作区（失败时展示错误面板与重试入口；initPromise 已重置可重试）
@@ -168,7 +171,7 @@ export function App() {
       {settings.cursorEffect && <CursorEffect intensity={settings.cursorEffectIntensity} color={settings.cursorEffectColor} />}
 
       <div className="app-body">
-        <WorkbenchLayout left={<LeftColumn />} editor={<EditorArea />} right={<RightColumn />} />
+        <WorkbenchLayout left={<LeftColumn />} editor={activeSurface === 'community' ? <CommunityPanel /> : <EditorArea />} right={<RightColumn />} />
       </div>
 
       <StatusBar />

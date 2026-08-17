@@ -76,6 +76,10 @@ describe('preload 桥契约', () => {
     expect(mocks.invoke).toHaveBeenLastCalledWith('mod:pack', 'r', {})
     await mod.globalOp('r', { kind: 'replace' })
     expect(mocks.invoke).toHaveBeenLastCalledWith('mod:globalOp', 'r', { kind: 'replace' })
+    await mod.import('archive')
+    expect(mocks.invoke).toHaveBeenLastCalledWith('mod:import', 'archive')
+    await mod.import('folder')
+    expect(mocks.invoke).toHaveBeenLastCalledWith('mod:import', 'folder')
     const game = a.game as Record<string, (...x: unknown[]) => Promise<unknown>>
     await game.importMod('g', 'm.rwmod', 'r')
     expect(mocks.invoke).toHaveBeenLastCalledWith('game:importMod', 'g', 'm.rwmod', 'r')
