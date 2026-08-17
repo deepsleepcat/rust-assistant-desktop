@@ -111,6 +111,22 @@ describe('M34 copyUnit 主进程', () => {
     rmSync(root, { recursive: true, force: true })
   })
 
+  it('节名大小写不敏感：[CORE] / [Core] 也能识别（与 scanUnits 一致）', async () => {
+    const root = tmp()
+    mkdirSync(path.join(root, 'units'), { recursive: true })
+    writeFileSync(path.join(root, 'units', 'big.ini'), '[CORE]\nname: BigTank\n', 'utf8')
+
+    await copyUnit({
+      sourceRoot: root,
+      sourceFilePath: 'units/big.ini',
+      targetRoot: root,
+      targetName: 'bigCopy',
+    })
+
+    expect(readFileSync(path.join(root, 'bigCopy', 'bigCopy.ini'), 'utf8')).toContain('[CORE]')
+    rmSync(root, { recursive: true, force: true })
+  })
+
   it('非法目标名中的路径分隔符被替换为 -，不会穿目录', async () => {
     const root = tmp()
     mkdirSync(path.join(root, 'units'), { recursive: true })

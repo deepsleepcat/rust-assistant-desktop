@@ -83,16 +83,19 @@ const editorTheme = EditorView.theme({
     zIndex: 95,
   },
   // M34：候选过多时在提示框内滚动，避免撑出编辑器/视口被裁切；
-  // 宽度贴着可用视口约束（补全候选行可能很长）
+  // 宽度贴着可用视口约束（补全候选行可能很长）。
+  // 注意：ul 选择器必须带 .cm-tooltip 前缀与 CodeMirror baseTheme 同级
+  // specificity（.ͼb .cm-tooltip.cm-tooltip-autocomplete > ul），否则被
+  // baseTheme 的 max-height:10em 覆盖，高度限制不生效
   '.cm-tooltip-autocomplete': {
     maxHeight: 'min(340px, 55vh)',
     maxWidth: 'min(560px, calc(100vw - 24px))',
     display: 'flex',
     flexDirection: 'column',
   },
-  '.cm-tooltip-autocomplete > ul': {
+  '.cm-tooltip.cm-tooltip-autocomplete > ul': {
     overflowY: 'auto',
-    maxHeight: 'none',
+    maxHeight: 'min(300px, 48vh)',
     maxWidth: '100%',
   },
   '.cm-tooltip-autocomplete > ul li': {

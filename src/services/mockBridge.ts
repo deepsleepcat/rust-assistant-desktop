@@ -320,12 +320,13 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       ],
       createUnitFromTemplate: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
       copyUnit: async (params) => {
-        // 模拟环境：校验基本参数后返回固定目标路径（与 preload/IPC 契约一致）
+        // 模拟环境：与主进程 copyUnit 对齐的轻量校验（预览用途，不做真实文件操作）
         if (!params || typeof params !== 'object') throw new Error('复制参数错误')
         if (!params.sourceRoot || !params.targetRoot || !params.sourceFilePath || !params.targetName) throw new Error('复制参数不完整')
+        if (!/\.(ini|template)$/i.test(params.sourceFilePath)) throw new Error('只能复制 .ini / .template 单位文件')
+        const safeName = params.targetName.trim().replace(/[\\/:*?"<>|]/g, '-') || 'unit'
         const folder = (params.targetFolder ?? '').replace(/^\/+|\/+$/g, '')
-        const name = params.targetName.trim()
-        return { path: folder ? `${folder}/${name}/${name}.ini` : `${name}/${name}.ini` }
+        return { path: folder ? `${folder}/${safeName}/${safeName}.ini` : `${safeName}/${safeName}.ini` }
       },
       saveFileAsTemplate: async () => ({ key: 'mock-template' }),
       importTemplate: async () => null,

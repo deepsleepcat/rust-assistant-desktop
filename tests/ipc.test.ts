@@ -453,6 +453,13 @@ describe('mod / game / app 通道', () => {
 
     // 参数校验：缺项目目录拒绝
     await expect(invoke(channels, 'mod:copyUnit', { sourceRoot: src })).rejects.toThrow('复制参数')
+    // 非字符串参数拒绝（防 TypeError 泄露内部细节）
+    await expect(
+      invoke(channels, 'mod:copyUnit', { sourceRoot: src, sourceFilePath: 123, targetRoot: dst, targetName: 'b' }),
+    ).rejects.toThrow('复制参数')
+    await expect(
+      invoke(channels, 'mod:copyUnit', { sourceRoot: src, sourceFilePath: 'units/tank.ini', targetRoot: dst, targetName: 'b', targetFolder: 7 }),
+    ).rejects.toThrow('目标文件夹无效')
   })
 
   it('mod:discardImport：只清理本次会话导入的目录', async () => {

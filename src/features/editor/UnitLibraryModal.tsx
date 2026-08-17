@@ -176,6 +176,8 @@ export function UnitLibraryModal({ onClose }: Props) {
               value={source?.id ?? ''}
               onChange={(e) => {
                 setSourceProjectId(e.target.value || null)
+                // 立即回到加载态：防止旧项目列表在新项目名下短暂展示（复制时会用错路径）
+                setScan({ status: 'loading' })
                 setQuery('')
               }}
             >

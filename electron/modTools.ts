@@ -1052,7 +1052,7 @@ export async function copyUnit(params: CopyUnitParams): Promise<{ path: string }
   const { sourceRoot, sourceFilePath, targetRoot, targetName, targetFolder } = params
   if (!sourceRoot || !targetRoot || !sourceFilePath || !targetName) throw new Error('复制参数不完整')
 
-  // 1) 源：限定 .ini/.template，解析为源项目内绝对路径（越界即抛错）
+  // 2) 源：限定 .ini/.template，解析为源项目内绝对路径（越界即抛错）
   if (!/\.(ini|template)$/i.test(sourceFilePath)) {
     throw new Error(`只能复制 .ini / .template 单位文件：${sourceFilePath}`)
   }
@@ -1061,21 +1061,27 @@ export async function copyUnit(params: CopyUnitParams): Promise<{ path: string }
   await assertNoLinkEscape(sourceRoot, sourceAbs)
   const content = await readTextLimited(sourceAbs)
   if (!content) throw new Error('源单位文件为空或不可读（超过 64MB 上限？）')
-  if (!/^\s*\[(core|核心)\s*\]/m.test(content)) {
+  // 节名大小写不敏感（引擎同，与 scanUnits/scanResources 的小写化识别对齐）
+  if (!/^\s*\[(core|核心)\s*\]/im.test(content)) {
     throw new Error('源文件不是单位文件（缺少 [core] / [核心] 节）')
   }
 
-  // 2) 目标：与 createUnitFromTemplate 相同的路径规则与安全校验
+  // 3) 目标：与 createUnitFromTemplate 相同的路径规则与安全校验
   const safeName = targetName.trim().replace(/[\\/:*?"<>|]/g, '-') || 'unit'
   const folder = (targetFolder ?? '').replace(/^\/+|\/+$/g, '')
   const rel = folder ? path.posix.join(folder, safeName, `${safeName}.ini`) : path.posix.join(safeName, `${safeName}.ini`)
   const targetAbs = resolveInside(targetRoot, rel)
-  if (await exists(targetAbs)) {
-    throw new Error(`目标文件已存在：${rel}（不会覆盖已有文件）`)
-  }
   await assertNoLinkEscape(targetRoot, targetAbs)
+  // flag 'wx'：目标已存在即失败（原子防重，消除 exists 检查与写入之间的 TOCTOU 窗口）
   await fs.mkdir(path.dirname(targetAbs), { recursive: true })
-  await fs.writeFile(targetAbs, content, 'utf8')
+  try {
+    await fs.writeFile(targetAbs, content, { encoding: 'utf8', flag: 'wx' })
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && (err as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(`目标文件已存在：${rel}（不会覆盖已有文件）`, { cause: err })
+    }
+    throw new Error(`写入目标文件失败：${rel}`, { cause: err })
+  }
   return { path: rel }
 }
 

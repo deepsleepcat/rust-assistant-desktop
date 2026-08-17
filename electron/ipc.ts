@@ -745,6 +745,8 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   ipc('mod:copyUnit', async (_event, params: import('./modTools').CopyUnitParams) => {
     if (!params || typeof params !== 'object') throw new Error('复制参数错误')
     if (typeof params.sourceRoot !== 'string' || typeof params.targetRoot !== 'string') throw new Error('复制参数缺少项目目录')
+    if (typeof params.sourceFilePath !== 'string' || typeof params.targetName !== 'string') throw new Error('复制参数缺少源文件或目标名称')
+    if (params.targetFolder !== undefined && typeof params.targetFolder !== 'string') throw new Error('复制参数中的目标文件夹无效')
     requireInsideRoot(ctx, params.sourceRoot, params.sourceRoot)
     requireInsideRoot(ctx, params.targetRoot, params.targetRoot)
     return copyUnit(params)
