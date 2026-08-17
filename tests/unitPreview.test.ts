@@ -7,9 +7,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  animationFrameNumber,
   cleanImageValue,
   computeDrawLayout,
   computeFrames,
+  directionCount,
+  directionSourceRect,
   framePath,
   isGameImageRef,
   isLoadableImageRef,
@@ -310,5 +313,102 @@ describe('配方解析（等号/引号/多帧）', () => {
     expect(wreck?.image).toBe('CORE:tanks/tank_dead.png')
     const turret = items.find((i) => i.kind === 'turret')
     expect(turret?.image).toBe('SHARED:beam3.png')
+  })
+})
+
+// ===== M34：队伍着色 / 动画配置 / 播放帧计算 / 多向布局 / 阴影顺序 =====
+
+describe('M34 parseGraphicsRecipe：队伍着色与动画配置', () => {
+  it('解析 teamColoringMode（大小写不敏感，非法值回落 disabled）', () => {
+    expect(parseGraphicsRecipe('[graphics]\nteamColoringMode: pureGreen\n').teamColoringMode).toBe('pureGreen')
+    expect(parseGraphicsRecipe('[graphics]\nteamColoringMode: HueAdd\n').teamColoringMode).toBe('hueAdd')
+    expect(parseGraphicsRecipe('[graphics]\nteamColoringMode: hueShift\n').teamColoringMode).toBe('hueShift')
+    expect(parseGraphicsRecipe('[graphics]\nteamColoringMode: rainbow\n').teamColoringMode).toBe('disabled')
+    expect(parseGraphicsRecipe('[graphics]\nimage: a.png\n').teamColoringMode).toBe('disabled')
+  })
+
+  it('解析三态动画字段（idle/moving/attack 的 start/end/speed/pingPong/blendIn）', () => {
+    const r = parseGraphicsRecipe(
+      '[graphics]\n' +
+        'animation_idle_start: 0\nanimation_idle_end: 3\nanimation_idle_speed: 2\nanimation_idle_pingPong: true\n' +
+        'animation_moving_start: 4\nanimation_moving_end: 7\nanimation_attack_speed: 0\n',
+    )
+    expect(r.animations.idle).toEqual({ start: 0, end: 3, speed: 2, pingPong: true })
+    expect(r.animations.moving.start).toBe(4)
+    expect(r.animations.moving.end).toBe(7)
+    expect(r.animations.attack.speed).toBe(1) // speed 0/非法 → 1
+    expect(r.animations.attack.pingPong).toBe(false)
+  })
+
+  it('解析多向动画配置（animation_direction_*）', () => {
+    const r = parseGraphicsRecipe(
+      '[graphics]\nanimation_direction_units: 45\nanimation_direction_strideX: 20\nanimation_direction_strideY: 50\nanimation_direction_starting: 90\n',
+    )
+    expect(r.direction).toEqual({ units: 45, strideX: 20, strideY: 50, starting: 90 })
+    expect(parseGraphicsRecipe('[graphics]\nimage: a.png\n').direction).toBeUndefined()
+  })
+})
+
+describe('M34 animationFrameNumber（播放帧计算）', () => {
+  it('无配置：整序列按 1 帧/秒循环', () => {
+    expect(animationFrameNumber(undefined, 0, 4)).toBe(0)
+    expect(animationFrameNumber(undefined, 1000, 4)).toBe(1)
+    expect(animationFrameNumber(undefined, 3999, 4)).toBe(3)
+    expect(animationFrameNumber(undefined, 4000, 4)).toBe(0)
+  })
+
+  it('start..end 区间循环（speed 帧/秒）', () => {
+    const anim = { start: 2, end: 5, speed: 2, pingPong: false }
+    expect(animationFrameNumber(anim, 0, 8)).toBe(2)
+    expect(animationFrameNumber(anim, 500, 8)).toBe(3)
+    expect(animationFrameNumber(anim, 1000, 8)).toBe(4)
+    expect(animationFrameNumber(anim, 1500, 8)).toBe(5)
+    expect(animationFrameNumber(anim, 2000, 8)).toBe(2)
+  })
+
+  it('pingPong：到 end 反向播回 start', () => {
+    const anim = { start: 0, end: 3, speed: 1, pingPong: true }
+    expect(animationFrameNumber(anim, 0, 8)).toBe(0)
+    expect(animationFrameNumber(anim, 3000, 8)).toBe(3)
+    expect(animationFrameNumber(anim, 4000, 8)).toBe(2)
+    expect(animationFrameNumber(anim, 6000, 8)).toBe(0)
+    expect(animationFrameNumber(anim, 7000, 8)).toBe(1)
+  })
+
+  it('单帧防御恒 0；区间越界钳制到帧数内', () => {
+    expect(animationFrameNumber(undefined, 5000, 1)).toBe(0)
+    expect(animationFrameNumber({ start: 0, end: 99, speed: 1, pingPong: false }, 1000, 4)).toBe(1)
+  })
+})
+
+describe('M34 多向动画布局', () => {
+  it('directionCount：360/units（45 → 8 方向）；非法配置为 1', () => {
+    const dir = { units: 45, strideX: 20, strideY: 50, starting: 0 }
+    expect(directionCount(dir)).toBe(8)
+    expect(directionCount({ ...dir, units: 90 })).toBe(4)
+    expect(directionCount(undefined)).toBe(1)
+    expect(directionCount({ ...dir, units: 0 })).toBe(1)
+  })
+
+  it('方向块源矩形：横排 strideX×strideY，越界钳制', () => {
+    const dir = { units: 45, strideX: 20, strideY: 50, starting: 0 }
+    expect(directionSourceRect(dir, 0, 200, 100)).toEqual({ sx: 0, sy: 0, sw: 20, sh: 50 })
+    expect(directionSourceRect(dir, 3, 200, 100).sx).toBe(60)
+    const clipped = directionSourceRect(dir, 5, 120, 100)
+    expect(clipped.sx).toBe(100)
+    expect(clipped.sw).toBe(20)
+  })
+})
+
+describe('M34 computeDrawLayout：阴影绘制顺序', () => {
+  it('阴影项排在最前（投影在主体底层，不再盖压主体）', () => {
+    const recipe = parseGraphicsRecipe('[graphics]\nimage: body.png\nimage_shadow: AUTO\nshadowOffsetX: 0\nshadowOffsetY: 8\n')
+    const items = computeDrawLayout(recipe, [])
+    expect(items.map((i) => i.kind)).toEqual(['shadow', 'body'])
+  })
+
+  it('无阴影主体在最前；NONE 阴影不产出绘制项', () => {
+    expect(computeDrawLayout(parseGraphicsRecipe('[graphics]\nimage: body.png\n'), []).map((i) => i.kind)).toEqual(['body'])
+    expect(computeDrawLayout(parseGraphicsRecipe('[graphics]\nimage: body.png\nimage_shadow: NONE\n'), []).map((i) => i.kind)).toEqual(['body'])
   })
 })

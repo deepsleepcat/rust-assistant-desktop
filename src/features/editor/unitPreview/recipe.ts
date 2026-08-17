@@ -43,6 +43,44 @@ export interface GraphicsRecipe {
   imageShadow?: string
   shadowOffsetX: number
   shadowOffsetY: number
+  /** 队伍着色模式（M34：teamColoringMode；官方 pureGreen/hueAdd/hueShift/disabled） */
+  teamColoringMode: TeamColoringMode
+  /** 三态动画配置（animation_idle_* / animation_moving_* / animation_attack_*） */
+  animations: { idle: AnimationStateConfig; moving: AnimationStateConfig; attack: AnimationStateConfig }
+  /** 多向动画（animation_direction_*；无配置时不启用） */
+  direction?: DirectionConfig
+}
+
+/** 队伍着色模式（官方 teamColoringMode：pureGreen=纯绿、hueAdd=色相叠加、hueShift=色相偏移） */
+export type TeamColoringMode = 'pureGreen' | 'hueAdd' | 'hueShift' | 'disabled'
+
+/** 动画状态配置（graphics 节 animation_状态_* 字段；缺省时按整帧序列循环） */
+export interface AnimationStateConfig {
+  /** 起始帧（缺省 0） */
+  start?: number
+  /** 结束帧（缺省最后一帧） */
+  end?: number
+  /** 播放速度（帧/秒，缺省 1） */
+  speed: number
+  /** 往返播放（到结束帧反向播回） */
+  pingPong: boolean
+  /** 淡入帧数（1.13+；预览暂不模拟，仅解析） */
+  blendIn?: number
+}
+
+/** 多向动画配置（animation_direction_units/strideX/strideY/starting）：
+ * 官方引擎按 strideX×strideY 像素的方向块横排布局，direction_units 为每方向角度
+ * （45=8 方向），direction_starting 为第一块朝向。反编译产物中帧计算类缺失，
+ * 预览按「方向块横排、块内单帧」估算（比按总帧数横向切片切出混叠图准确）。 */
+export interface DirectionConfig {
+  /** 每方向角度（45=8 方向；0/缺省=未启用） */
+  units: number
+  /** 方向块 X 跨度（像素） */
+  strideX: number
+  /** 方向块 Y 跨度（像素） */
+  strideY: number
+  /** 起始方向角度（缺省 0） */
+  starting: number
 }
 
 /** 炮塔信息（位置/图像覆盖），来自 [turret_N] 节 */
@@ -141,6 +179,14 @@ export function isLoadableImageRef(image: string | undefined): boolean {
   return parseImageRef(image) !== null
 }
 
+/** 队伍着色模式规范名映射（teamColoringMode 值大小写不敏感 → camelCase） */
+const TEAM_COLOR_MAP: Record<string, TeamColoringMode> = {
+  puregreen: 'pureGreen',
+  hueadd: 'hueAdd',
+  hueshift: 'hueShift',
+  disabled: 'disabled',
+}
+
 /** 从单位文件内容解析 [graphics] 配方（无该节返回默认值） */
 export function parseGraphicsRecipe(content: string, zhToEn?: (s: string) => string | undefined): GraphicsRecipe {
   const recipe: GraphicsRecipe = {
@@ -151,10 +197,21 @@ export function parseGraphicsRecipe(content: string, zhToEn?: (s: string) => str
     turretImageScale: 1,
     shadowOffsetX: 0,
     shadowOffsetY: 0,
+    teamColoringMode: 'disabled',
+    animations: {
+      idle: { speed: 1, pingPong: false },
+      moving: { speed: 1, pingPong: false },
+      attack: { speed: 1, pingPong: false },
+    },
   }
   const ini = parseIni(content)
   const section = ini.sections.find((s) => sectionEnName(s, zhToEn) === 'graphics')
   if (!section) return recipe
+  // 动画状态解析 helper：animation_idle_start → (idle, start)；animation_TYPE_* 同构
+  const animStateOf = (key: string): 'idle' | 'moving' | 'attack' | null => {
+    const m = /^animation_(idle|moving|attack)_/.exec(key)
+    return m ? (m[1] as 'idle' | 'moving' | 'attack') : null
+  }
   for (const kv of section.kvs) {
     const key = toEnKey(kv.key, zhToEn).toLowerCase()
     const value = kv.value.trim()
@@ -206,6 +263,47 @@ export function parseGraphicsRecipe(content: string, zhToEn?: (s: string) => str
       case 'shadowoffsety':
         setNum((n) => (recipe.shadowOffsetY = n))
         break
+      case 'teamcoloringmode': {
+        const mapped = TEAM_COLOR_MAP[value.toLowerCase()]
+        if (mapped) recipe.teamColoringMode = mapped
+        break
+      }
+      // 多向动画：animation_direction_units/stridex/stridey/starting
+      case 'animation_direction_units':
+        setNum((n) => {
+          recipe.direction = recipe.direction ?? { units: 0, strideX: 0, strideY: 0, starting: 0 }
+          recipe.direction.units = n
+        })
+        break
+      case 'animation_direction_stridex':
+        setNum((n) => {
+          recipe.direction = recipe.direction ?? { units: 0, strideX: 0, strideY: 0, starting: 0 }
+          recipe.direction.strideX = n
+        })
+        break
+      case 'animation_direction_stridey':
+        setNum((n) => {
+          recipe.direction = recipe.direction ?? { units: 0, strideX: 0, strideY: 0, starting: 0 }
+          recipe.direction.strideY = n
+        })
+        break
+      case 'animation_direction_starting':
+        setNum((n) => {
+          recipe.direction = recipe.direction ?? { units: 0, strideX: 0, strideY: 0, starting: 0 }
+          recipe.direction.starting = n
+        })
+        break
+    }
+    // 三态动画字段：animation_idle_start / animation_moving_end / animation_attack_pingpong …
+    const state = animStateOf(key)
+    if (state) {
+      const field = key.slice(`animation_${state}_`.length)
+      const anim = recipe.animations[state]
+      if (field === 'start') setNum((n) => (anim.start = n))
+      else if (field === 'end') setNum((n) => (anim.end = n))
+      else if (field === 'speed') setNum((n) => (anim.speed = n > 0 ? n : 1))
+      else if (field === 'pingpong' || field === 'pingPong') anim.pingPong = value.toLowerCase() === 'true' || value === '1'
+      else if (field === 'blendin') setNum((n) => (anim.blendIn = n))
     }
   }
   return recipe
@@ -288,23 +386,60 @@ export function resolveImageCandidates(file: string, image: string, rootPath?: s
   })
 }
 
-/** 计算完整绘制布局（纯函数；缺图由渲染层决定占位，这里只出几何） */
+/** 方向数（360/units；非法防御为 1） */
+export function directionCount(dir: DirectionConfig | undefined): number {
+  if (!dir || !(dir.units > 0) || !(dir.strideX > 0) || !(dir.strideY > 0)) return 1
+  return Math.max(1, Math.round(360 / dir.units))
+}
+
+/** 方向块源矩形（图像坐标）：方向 i 的块从 (i*strideX, 0) 起，宽高 strideX×strideY。
+ * 越界钳制到图像内（防手写 stride 大于图宽时切出空白）。 */
+export function directionSourceRect(
+  dir: DirectionConfig,
+  directionIndex: number,
+  imageW: number,
+  imageH: number,
+): { sx: number; sy: number; sw: number; sh: number } {
+  const sx = Math.max(0, Math.min(directionIndex * dir.strideX, Math.max(0, imageW - dir.strideX)))
+  const sw = Math.min(dir.strideX, Math.max(0, imageW - sx))
+  const sy = 0
+  const sh = Math.min(dir.strideY, Math.max(0, imageH - sy))
+  return { sx, sy, sw, sh }
+}
+
+/**
+ * 播放帧号计算（纯函数，供测试与渲染层）：
+ * - 无配置：整帧序列按 speed=1 循环；
+ * - 有配置：start..end 区间内按 speed（帧/秒）推进；
+ * - pingPong：到 end 反向播回 start（周期 = span*2）。
+ */
+export function animationFrameNumber(anim: AnimationStateConfig | undefined, elapsedMs: number, frameCount: number): number {
+  if (frameCount <= 1) return 0
+  if (!anim) {
+    return Math.floor(elapsedMs / 1000) % frameCount
+  }
+  const start = Math.max(0, Math.min(anim.start ?? 0, frameCount - 1))
+  const end = Math.max(start, Math.min(anim.end ?? frameCount - 1, frameCount - 1))
+  const span = end - start
+  const speed = anim.speed > 0 ? anim.speed : 1
+  const t = Math.floor((elapsedMs / 1000) * speed)
+  if (span <= 0) return start
+  if (anim.pingPong) {
+    const period = span * 2
+    const m = t % period
+    return start + (m <= span ? m : period - m)
+  }
+  return start + (t % (span + 1))
+}
+
+/** 计算完整绘制布局（纯函数；缺图由渲染层决定占位，这里只出几何）。
+ * M34：阴影项排在最前（投影在主体/炮塔底层，修复此前半透明剪影盖压主体的问题）。 */
 export function computeDrawLayout(recipe: GraphicsRecipe, turrets: PreviewTurret[]): DrawItem[] {
   const items: DrawItem[] = []
   const bodyScale = recipe.imageScale
 
-  // 主体（含帧偏移）
-  items.push({
-    kind: 'body',
-    image: recipe.image,
-    cx: recipe.imageOffsetX * bodyScale,
-    cy: recipe.imageOffsetY * bodyScale,
-    scale: bodyScale,
-    alpha: 1,
-    placeholder: recipe.image && isLocalImageRef(recipe.image) ? recipe.image : '主体图像',
-  })
-
-  // 阴影：AUTO = 主图黑色剪影（渲染层画），文件 = 独立图像；NONE 不画
+  // 阴影：AUTO = 主图黑色剪影（渲染层画），文件 = 独立图像；NONE 不画。
+  // 必须先于主体入列——阴影是投在地面的投影，绘制顺序在最底层
   const shadow = recipe.imageShadow
   if (shadow && cleanImageValue(shadow).toUpperCase() !== 'NONE') {
     const isAuto = /^AUTO/.test(cleanImageValue(shadow).toUpperCase())
@@ -318,6 +453,17 @@ export function computeDrawLayout(recipe: GraphicsRecipe, turrets: PreviewTurret
       placeholder: '阴影图像',
     })
   }
+
+  // 主体（含帧偏移）
+  items.push({
+    kind: 'body',
+    image: recipe.image,
+    cx: recipe.imageOffsetX * bodyScale,
+    cy: recipe.imageOffsetY * bodyScale,
+    scale: bodyScale,
+    alpha: 1,
+    placeholder: recipe.image && isLocalImageRef(recipe.image) ? recipe.image : '主体图像',
+  })
 
   // 炮塔：节内 image 覆盖 > 配方 image_turret；位置按 turret x/y（不缩放）。
   // image 为 NONE/AUTO（官方单位常见 image_turret: NONE）表示「无炮塔图」，
