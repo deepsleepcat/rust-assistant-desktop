@@ -176,10 +176,14 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     let raf = 0
     const loop = (ts: number) => {
       if (lastTsRef.current == null) lastTsRef.current = ts
-      elapsedRef.current += ts - lastTsRef.current
+      // 钳制单帧 delta（<=250ms）：标签页后台 rAF 停摆后恢复不产生巨跳
+      const delta = Math.min(250, ts - lastTsRef.current)
       lastTsRef.current = ts
+      elapsedRef.current += delta
       const anim = recipe.animations[animState]
-      setFrame(animationFrameNumber(anim, elapsedRef.current, animFrameCount))
+      const n = animationFrameNumber(anim, elapsedRef.current, animFrameCount)
+      // 帧号未变不触发重渲染（60fps 下大多数帧号不变）
+      setFrame((prev) => (prev === n ? prev : n))
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -287,8 +291,8 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       const dh = sh * item.scale * scale
       ctx.save()
       ctx.globalAlpha = item.alpha
-      if (item.kind === 'shadow' && recipe.imageShadow?.toUpperCase() === 'AUTO') {
-        // AUTO 阴影：主图剪影（黑色半透明）——不随队伍着色
+      if (item.kind === 'shadow' && recipe.imageShadow && /^AUTO/i.test(recipe.imageShadow)) {
+        // AUTO 阴影：主图剪影（黑色半透明）——不随队伍着色；AUTO_ANIMATED 同属自动剪影
         ctx.filter = 'grayscale(1) brightness(0.2)'
       } else if (item.kind !== 'shadow' && teamMode !== 'disabled') {
         applyTeamColor(ctx, teamMode)
