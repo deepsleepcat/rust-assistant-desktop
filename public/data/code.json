@@ -2484,6 +2484,7 @@
     {
       "code": "disableDeathOnZeroHp",
       "translate": "零生命值时不死亡",
+      "description": "生命值归零时不触发死亡（供特殊脚本单位使用）。",
       "type": "boolean",
       "addVersion": 3,
       "removeVersion": -1,
@@ -2733,6 +2734,7 @@
     {
       "code": "exitHeightIgnoreParent",
       "translate": "退出高度忽略父级",
+      "description": "单位离开（卸载/脱出）时，高度忽略父单位的高度。",
       "type": "boolean",
       "addVersion": 2,
       "removeVersion": -1,
@@ -3392,6 +3394,7 @@
     {
       "code": "canReclaimUnitsOnlyWithTags",
       "translate": "只能回收带标签的单位",
+      "description": "仅可回收带有指定标签的单位。",
       "type": "tags",
       "addVersion": 3,
       "removeVersion": -1,
@@ -3401,6 +3404,7 @@
     {
       "code": "canRepairUnitsOnlyWithTags",
       "translate": "只能修复带标签的单位",
+      "description": "仅可维修带有指定标签的单位。",
       "type": "tags",
       "addVersion": 3,
       "removeVersion": -1,
@@ -3410,6 +3414,7 @@
     {
       "code": "isUnselectableAsTarget",
       "translate": "不可选择为目标",
+      "description": "该单位不能被选为攻击/施法目标。",
       "type": "boolean",
       "addVersion": 3,
       "removeVersion": -1,
@@ -4609,6 +4614,7 @@
     {
       "code": "lowPriorityTargetForOtherUnits",
       "translate": "对其他单位低优先级",
+      "description": "作为其它单位攻击目标时的优先级较低。",
       "type": "boolean",
       "addVersion": 3,
       "removeVersion": -1,
@@ -4618,6 +4624,7 @@
     {
       "code": "notPassivelyTargetedByOtherUnits",
       "translate": "不是其他单位的被动目标",
+      "description": "不会被其它单位被动瞄准（如自动攻击范围内的目标）。",
       "type": "boolean",
       "addVersion": 2,
       "removeVersion": -1,
@@ -5017,6 +5024,7 @@
     {
       "code": "keepWaypointsNeedingMovement",
       "translate": "保持航点需要移动",
+      "description": "保留需要移动才能执行的路径点。",
       "type": "boolean",
       "addVersion": 3,
       "removeVersion": -1,
@@ -6676,6 +6684,7 @@
     {
       "code": "disconnectFromParent",
       "translate": "脱离父单位",
+      "description": "与父单位断开连接（如从运输单位中脱离）。",
       "type": "boolean",
       "addVersion": 2,
       "removeVersion": -1,
@@ -7475,6 +7484,7 @@
     {
       "code": "energy",
       "translate": "能量",
+      "description": "单位初始能量值。",
       "type": "resource",
       "addVersion": 2,
       "removeVersion": -1,
@@ -7484,6 +7494,7 @@
     {
       "code": "hp",
       "translate": "血量",
+      "description": "单位初始生命值。",
       "type": "resource",
       "addVersion": 1,
       "removeVersion": -1,
@@ -7493,6 +7504,7 @@
     {
       "code": "shield",
       "translate": "护盾",
+      "description": "单位初始护盾值。",
       "type": "resource",
       "addVersion": 2,
       "removeVersion": -1,
@@ -8282,6 +8294,7 @@
     {
       "code": "turretImageScale",
       "translate": "炮塔图像缩放比例",
+      "description": "炮塔图像的缩放比例（百分比）。",
       "type": "float",
       "addVersion": 1,
       "removeVersion": -1,
@@ -8411,6 +8424,7 @@
     {
       "code": "ignoreParentShootDamageMultiplier",
       "translate": "忽略父单位射击伤害乘数",
+      "description": "忽略父单位的射击伤害倍率影响。",
       "type": "boolean",
       "addVersion": 1,
       "removeVersion": -1,
@@ -8710,6 +8724,7 @@
     {
       "code": "takeResources_includeReference",
       "translate": "提取资源包括引用",
+      "description": "提取资源时是否包含资源引用本身。",
       "type": "unknown",
       "addVersion": 1,
       "removeVersion": -1,
@@ -8719,6 +8734,7 @@
     {
       "code": "takeResources_excludeUnitsWithoutCustomTarget1EqualTo",
       "translate": "提取资源没有自定义目标为",
+      "description": "排除自定义目标1不等于指定值的单位。",
       "type": "unknown",
       "addVersion": 1,
       "removeVersion": -1,
@@ -8728,6 +8744,7 @@
     {
       "code": "takeResources_saveFirstUnitToCustomTarget1",
       "translate": "提取资源保存第一个单元自定义目标1",
+      "description": "将范围内第一个符合条件的单位保存到自定义目标1。",
       "type": "unknown",
       "addVersion": 1,
       "removeVersion": -1,
@@ -8737,6 +8754,7 @@
     {
       "code": "takeResources_saveFirstUnitToCustomTarget2",
       "translate": "提取资源保存第一个单元自定义目标2",
+      "description": "将范围内第一个符合条件的单位保存到自定义目标2。",
       "type": "unknown",
       "addVersion": 1,
       "removeVersion": -1,
@@ -11276,6 +11294,7 @@
     {
       "code": "id",
       "translate": "ID",
+      "description": "单位的唯一标识（一般与文件名一致）。",
       "type": "string",
       "section": "action",
       "demo": "示例：\nid: fireShot"
@@ -11283,6 +11302,7 @@
     {
       "code": "autoTriggerOnEventRecursionLimit",
       "translate": "事件自动触发递归限制",
+      "description": "自动触发事件的递归上限，防止无限循环触发。",
       "type": "int",
       "section": "action",
       "demo": "示例：\nautoTriggerOnEventRecursionLimit: 4"
@@ -11290,6 +11310,7 @@
     {
       "code": "setHeight",
       "translate": "设置高度",
+      "description": "设置单位的高度。",
       "type": "logicNumber",
       "section": "action",
       "demo": "示例：\nsetHeight: parent.height+5"
@@ -11297,6 +11318,7 @@
     {
       "code": "setCustomTarget1",
       "translate": "设置自定义目标1",
+      "description": "设置自定义目标1（供动作/条件引用）。",
       "type": "unit ref",
       "section": "action",
       "demo": "示例：\nsetCustomTarget1: self.parent"
@@ -11304,6 +11326,7 @@
     {
       "code": "setCustomTarget2",
       "translate": "设置自定义目标2",
+      "description": "设置自定义目标2（供动作/条件引用）。",
       "type": "unit ref",
       "section": "action",
       "demo": "示例：\nsetCustomTarget2: lastDamagedBy"
@@ -11311,6 +11334,7 @@
     {
       "code": "sendMessageTo",
       "translate": "发送消息到",
+      "description": "向指定单位/标签发送消息。",
       "type": "unit ref",
       "section": "action",
       "demo": "示例：\nsendMessageTo: unitref nearestUnit(withinRange=100, withTag=\"fish\")."
@@ -11318,6 +11342,7 @@
     {
       "code": "sendMessageWithTags",
       "translate": "带标签发送消息",
+      "description": "向带有指定标签的单位发送消息。",
       "type": "Message Tag",
       "section": "action",
       "demo": "示例：\nsendMessageWithTags: hitZone"
@@ -11325,6 +11350,7 @@
     {
       "code": "sendMessageWithData",
       "translate": "带数据发送消息",
+      "description": "发送携带数据的消息。",
       "type": "key-value",
       "section": "action",
       "demo": "示例：\nsendMessageWithData: fish=\"nice!\", cat=self.activeWaypointTarget, amount=4, xyz=memory.something"
@@ -11332,6 +11358,7 @@
     {
       "code": "refundAllQueuedItems",
       "translate": "退还所有排队项目",
+      "description": "退还所有排队中的生产/建造项目资源。",
       "type": "boolean",
       "section": "action",
       "demo": "示例：\nrefundAllQueuedItems: true"
@@ -11339,6 +11366,7 @@
     {
       "code": "removeAllQueuedItemsWithoutRefund",
       "translate": "移除所有排队项目无退款",
+      "description": "移除所有排队项目且不退还资源。",
       "type": "boolean",
       "section": "action",
       "demo": "示例：\nremoveAllQueuedItemsWithoutRefund: true"
@@ -11346,6 +11374,7 @@
     {
       "code": "alsoTriggerOrQueueActionWithTarget",
       "translate": "也触发或排队动作带目标",
+      "description": "同时触发或排队执行另一个带目标参数的动作。",
       "type": "unitref",
       "section": "action",
       "demo": "示例：\nalsoTriggerOrQueueActionWithTarget: lastDamagedBy"
@@ -11353,6 +11382,7 @@
     {
       "code": "alsoTriggerActionRepeat",
       "translate": "也触发动作重复",
+      "description": "同时重复触发另一个动作。",
       "type": "logicNumber",
       "section": "action",
       "demo": "示例：\nalsoTriggerActionRepeat: 5"
@@ -11360,6 +11390,7 @@
     {
       "code": "fireTurretXAtGround_showGuideDecals",
       "translate": "向地面开火炮塔X显示引导贴花",
+      "description": "炮击地面目标时显示引导贴花（弹着点指示）。",
       "type": "decal refs",
       "section": "action",
       "demo": "示例：\nfireTurretXAtGround_showGuideDecals: strikeZone300"
@@ -11367,6 +11398,7 @@
     {
       "code": "teleportTo",
       "translate": "传送到",
+      "description": "将单位传送到指定位置。",
       "type": "unit ref/marker",
       "section": "action",
       "demo": "示例：\nteleportTo: memory.lastLocation"
@@ -11374,6 +11406,7 @@
     {
       "code": "transportTargetNow",
       "translate": "立即运输目标",
+      "description": "立即将目标装载进运输单位。",
       "type": "unit ref",
       "section": "action",
       "demo": "示例：\ntransportTargetNow: lastDamagedBy"
@@ -11381,6 +11414,7 @@
     {
       "code": "takeResources_triggerActionForEach",
       "translate": "获取资源为每个触发动作",
+      "description": "对范围内的每个单位触发一次动作。",
       "type": "action refs",
       "section": "action",
       "demo": "示例：\ntakeResources_triggerActionForEach: manufacture"
@@ -11388,6 +11422,7 @@
     {
       "code": "takeResources_searchOnly",
       "translate": "获取资源仅搜索",
+      "description": "仅搜索资源单位，不实际提取资源。",
       "type": "bool",
       "section": "action",
       "demo": "示例：\ntakeResources_searchOnly: true"
@@ -11395,6 +11430,7 @@
     {
       "code": "arm#_[time]",
       "translate": "手臂关键帧",
+      "description": "手臂关键帧：定义手臂在指定时间点的旋转/姿态。",
       "type": "",
       "section": "animation",
       "demo": "示例：\narm1_5s: {x: 5, dir: 90 }"
@@ -11402,6 +11438,7 @@
     {
       "code": "leg#_[time]",
       "translate": "腿部关键帧",
+      "description": "腿部关键帧：定义腿部在指定时间点的姿态。",
       "type": "",
       "section": "animation",
       "demo": "示例：\nleg1_3s: {dir: 300}"
@@ -11409,6 +11446,7 @@
     {
       "code": "body_[time]",
       "translate": "主体关键帧",
+      "description": "主体关键帧：定义主体在指定时间点的帧/缩放。",
       "type": "",
       "section": "animation",
       "demo": "示例：\nbody_4s: {frame: 4, scale: 0.5}"
@@ -11416,6 +11454,7 @@
     {
       "code": "direction_units",
       "translate": "方向单位",
+      "description": "方向单位：动画方向旋转的增量单位。",
       "type": "float",
       "section": "animation",
       "demo": "示例：\ndirection_units: 45"
@@ -11423,6 +11462,7 @@
     {
       "code": "onConvertKeepExistingUnitInSameSlot",
       "translate": "转换时保持现有单位在同一槽位",
+      "description": "单位转换时保留原单位占用同一槽位。",
       "type": "bool",
       "section": "attachment",
       "demo": "示例：\nonConvertKeepExistingUnitInSameSlot"
@@ -11430,6 +11470,7 @@
     {
       "code": "unloadInCurrentPosition",
       "translate": "在当前位置卸载",
+      "description": "在当前位置卸载单位。",
       "type": "bool",
       "section": "attachment",
       "demo": "示例：\nunloadInCurrentPosition"
@@ -11437,6 +11478,7 @@
     {
       "code": "borrowResourcesWhileBuilt",
       "translate": "建造时借用资源",
+      "description": "建造期间可借用资源（允许负资源建造）。",
       "type": "price",
       "section": "core",
       "demo": "示例：\nborrowResourcesWhileBuilt: supplyCap = -10"
@@ -11444,6 +11486,7 @@
     {
       "code": "allowCaptureWhenNeutralByAI",
       "translate": "中立时允许AI捕获",
+      "description": "允许 AI 捕获中立单位。",
       "type": "bool",
       "section": "core",
       "demo": "示例：\nallowCaptureWhenNeutralByAI: true"
@@ -11451,6 +11494,7 @@
     {
       "code": "resourceReclaimMultiplier",
       "translate": "资源回收倍数",
+      "description": "资源回收（回收单位/残骸）的倍率。",
       "type": "float",
       "section": "core",
       "demo": "示例：\nresourceReclaimMultiplier: 1.5"
@@ -11458,6 +11502,7 @@
     {
       "code": "nanoUnbuildSpeed",
       "translate": "纳米拆解速度",
+      "description": "纳米拆除（拆除建筑）的速度倍率。",
       "type": "float",
       "section": "core",
       "demo": "示例：\nnanoUnbuildSpeed: 1.4"
@@ -11465,6 +11510,7 @@
     {
       "code": "nanoReclaimSpeed",
       "translate": "纳米回收速度",
+      "description": "纳米回收（回收残骸）的速度倍率。",
       "type": "float",
       "section": "core",
       "demo": "示例：\nnanoReclaimSpeed: 0.23"
@@ -11472,6 +11518,7 @@
     {
       "code": "builtFrom_{NUM}_name",
       "translate": "建造自_{NUM}_名称",
+      "description": "该单位可从哪些建筑/单位建造（写单位名称，逗号分隔）。",
       "type": "string(s)",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_name: landFactory, airFactory"
@@ -11479,6 +11526,7 @@
     {
       "code": "builtFrom_{NUM}_pos",
       "translate": "建造自_{NUM}_位置",
+      "description": "建造按钮在建造面板中的位置。",
       "type": "float",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_pos: 0.1"
@@ -11486,6 +11534,7 @@
     {
       "code": "builtFrom_{NUM}_forceNano",
       "translate": "建造自_{NUM}_强制纳米",
+      "description": "建造时强制使用纳米机器人（不能直接部署）。",
       "type": "bool",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_forceNano: true"
@@ -11493,6 +11542,7 @@
     {
       "code": "builtFrom_{NUM}_isLocked",
       "translate": "建造自_{NUM}_是否锁定",
+      "description": "该建造项初始是否锁定（解锁需使用解锁类动作）。",
       "type": "LogicBoolean",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_isLocked: if self.hp(lessThan=100)"
@@ -11500,6 +11550,7 @@
     {
       "code": "builtFrom_{NUM}_isLockedMessage",
       "translate": "建造自_{NUM}_锁定提示",
+      "description": "建造项锁定时的提示文本。",
       "type": "LocaleString",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_isLockedMessage: -Needs more population"
@@ -11507,6 +11558,7 @@
     {
       "code": "builtFrom_{NUM}_tooltip",
       "translate": "建造自_{NUM}_提示",
+      "description": "建造按钮的悬浮提示文本。",
       "type": "LocaleString",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_tooltip: Builds advanced tanks"
@@ -11514,6 +11566,7 @@
     {
       "code": "builtFrom_{NUM}_icon",
       "translate": "建造自_{NUM}_图标",
+      "description": "建造按钮的图标图像。",
       "type": "string",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_icon: custom_factory_icon.png"
@@ -11521,6 +11574,7 @@
     {
       "code": "builtFrom_{NUM}_category",
       "translate": "建造自_{NUM}_分类",
+      "description": "建造按钮所属的分类。",
       "type": "string",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_category: vehicle"
@@ -11528,6 +11582,7 @@
     {
       "code": "builtFrom_{NUM}_sortOrder",
       "translate": "建造自_{NUM}_排序",
+      "description": "建造按钮在分类内的排序值。",
       "type": "int",
       "section": "core",
       "demo": "示例：\nbuiltFrom_1_sortOrder: 10"
@@ -11535,6 +11590,7 @@
     {
       "code": "action_#_convertTo",
       "translate": "动作_#_转换为",
+      "description": "动作执行时将单位转换为指定单位。",
       "type": "string",
       "section": "core",
       "demo": "示例：\naction_1_convertTo: customTank_2"
@@ -11542,6 +11598,7 @@
     {
       "code": "action_#_pos",
       "translate": "动作_#_位置",
+      "description": "动作按钮在面板中的位置。",
       "type": "float",
       "section": "core",
       "demo": "示例：\naction_1_pos: 0.1"
@@ -11549,6 +11606,7 @@
     {
       "code": "action_#_price",
       "translate": "动作_#_价格",
+      "description": "执行动作所需的价格（资源）。",
       "type": "int",
       "section": "core",
       "demo": "示例：\naction_1_price: 1000"
@@ -11556,6 +11614,7 @@
     {
       "code": "action_#_text",
       "translate": "动作_#_文本",
+      "description": "动作按钮上显示的文本。",
       "type": "string",
       "section": "core",
       "demo": "示例：\naction_1_text: Upgrade to Custom Tank 2"
@@ -11563,6 +11622,7 @@
     {
       "code": "action_#_description",
       "translate": "动作_#_描述",
+      "description": "动作按钮的说明文字（悬浮提示）。",
       "type": "string",
       "section": "core",
       "demo": "示例：\naction_1_description: -Converts the tank"
@@ -11570,6 +11630,7 @@
     {
       "code": "action_#_addEnergy",
       "translate": "动作_#_增加能量",
+      "description": "执行动作时增加的能量值。",
       "type": "float",
       "section": "core",
       "demo": "示例：\naction_1_addEnergy: 10"
@@ -11577,6 +11638,7 @@
     {
       "code": "action_#_whenBuilding_cannotMove",
       "translate": "动作_#_建造中不能移动",
+      "description": "建造期间该动作不可移动/不可用。",
       "type": "bool",
       "section": "core",
       "demo": "示例：\naction_1_whenBuilding_cannotMove: true"
@@ -11584,6 +11646,7 @@
     {
       "code": "canBuild_#_name/pos/isLocked",
       "translate": "可建造_#_名称/位置/锁定",
+      "description": "可建造单位的名称/位置/初始锁定组合宏。",
       "type": "string",
       "section": "core",
       "demo": "示例：\ncanBuild_1_name: tank"
@@ -11591,6 +11654,7 @@
     {
       "code": "canBuild_#_name",
       "translate": "可建造_#_名称",
+      "description": "该工厂/建筑可建造的单位名称。",
       "type": "string",
       "section": "core",
       "demo": "示例：\ncanBuild_1_name: tank"
@@ -11598,6 +11662,7 @@
     {
       "code": "canBuild_#_pos",
       "translate": "可建造_#_位置",
+      "description": "可建造单位的按钮位置。",
       "type": "float",
       "section": "core",
       "demo": "示例：\ncanBuild_1_pos: 0.1"
@@ -11605,6 +11670,7 @@
     {
       "code": "canBuild_#_isLocked",
       "translate": "可建造_#_是否锁定",
+      "description": "该可建造项初始是否锁定。",
       "type": "bool",
       "section": "core",
       "demo": "示例：\ncanBuild_1_isLocked: true"
@@ -11612,6 +11678,7 @@
     {
       "code": "autoTriggerCheckWhileNotBuilt",
       "translate": "未建造时自动触发检查",
+      "description": "单位未建造完成时也检查自动触发事件。",
       "type": "bool",
       "section": "core",
       "demo": "示例：\nautoTriggerCheckWhileNotBuilt: true"
@@ -11619,6 +11686,7 @@
     {
       "code": "defineUnitMemory: boolean nukeActive, boolean laserReady, float experience, unit nextTarget, unit homeBase, string customText",
       "translate": "定义单位内存",
+      "description": "示例：定义单位内存变量（类型 变量名，逗号分隔）。",
       "type": "defineUnitMemory",
       "section": "core",
       "demo": "示例：\ndefineUnitMemory: boolean nukeActive, boolean laserReady, float experience, unit nextTarget, unit homeBase, string customText"
@@ -11626,6 +11694,7 @@
     {
       "code": "defineUnitMemory: unit[] squad, float[] mango",
       "translate": "定义单位内存",
+      "description": "示例：定义数组类型的内存变量。",
       "type": "defineUnitMemory",
       "section": "core",
       "demo": "示例：\ndefineUnitMemory: unit[] squad, float[] mango"
@@ -11633,6 +11702,7 @@
     {
       "code": "onlyOnBodyFrameOf",
       "translate": "仅在身体帧上",
+      "description": "仅在该主体帧上执行/显示。",
       "type": "int",
       "section": "decal",
       "demo": "示例：\nonlyOnBodyFrameOf: 0"
@@ -11640,6 +11710,7 @@
     {
       "code": "addBodyFrameMultipliedBy",
       "translate": "添加身体帧乘以",
+      "description": "在主体帧的基础上乘以指定值。",
       "type": "int",
       "section": "decal",
       "demo": "示例：\naddBodyFrameMultipliedBy: 2"
@@ -11647,6 +11718,7 @@
     {
       "code": "basePositionFromTurret",
       "translate": "从炮塔的基础位置",
+      "description": "基准位置取自炮塔位置。",
       "type": "turret",
       "section": "decal",
       "demo": "示例：\nbasePositionFromTurret: rocketLauncherBase"
@@ -11654,6 +11726,7 @@
     {
       "code": "imageShadow",
       "translate": "图像阴影",
+      "description": "阴影图像。",
       "type": "image",
       "section": "effect",
       "demo": "示例：\nimageShadow: AUTO"
@@ -11661,6 +11734,7 @@
     {
       "code": "appendResourceInHUD",
       "translate": "在HUD中追加资源",
+      "description": "在 HUD 中追加显示该资源。",
       "type": "resource ref",
       "section": "global_resource",
       "demo": "示例：\nappendResourceInHUD: <resources:name>"
@@ -11668,6 +11742,7 @@
     {
       "code": "displayPostfixInHUD",
       "translate": "HUD中显示后缀",
+      "description": "在 HUD 中显示后缀。",
       "type": "string",
       "section": "global_resource",
       "demo": "示例：\ndisplayPostfixInHUD: 123"
@@ -11675,6 +11750,7 @@
     {
       "code": "includeInStats",
       "translate": "包含在统计中",
+      "description": "计入统计（如击毁数）。",
       "type": "bool",
       "section": "global_resource",
       "demo": "示例：\nincludeInStats: true"
@@ -11682,6 +11758,7 @@
     {
       "code": "valueInStats",
       "translate": "统计中的值",
+      "description": "统计中使用的值。",
       "type": "bool/int",
       "section": "global_resource",
       "demo": "示例：\nvalueInStats: true"
@@ -11689,6 +11766,7 @@
     {
       "code": "displayInHud",
       "translate": "在HUD中显示",
+      "description": "在 HUD 中显示。",
       "type": "bool",
       "section": "global_resource",
       "demo": "示例：\ndisplayInHud: true"
@@ -11696,6 +11774,7 @@
     {
       "code": "displayDigitGrouping",
       "translate": "数字分组显示",
+      "description": "数字分组显示方式：none=不分，comma=千分位逗号，space=空格。",
       "type": "display type",
       "section": "global_resource",
       "demo": "示例：\ndisplayDigitGrouping: none"
@@ -11703,6 +11782,7 @@
     {
       "code": "displayTextAppendResource",
       "translate": "在文本中追加资源",
+      "description": "显示文本中追加资源。",
       "type": "resource ref",
       "section": "global_resource",
       "demo": "示例：\ndisplayTextAppendResource: <resource:name>"
@@ -11710,6 +11790,7 @@
     {
       "code": "displayPos",
       "translate": "显示位置",
+      "description": "显示位置。",
       "type": "int",
       "section": "global_resource",
       "demo": "示例：\ndisplayPos: 1"
@@ -11717,6 +11798,7 @@
     {
       "code": "displayWithRounding",
       "translate": "带舍入显示",
+      "description": "显示时四舍五入。",
       "type": "bool",
       "section": "global_resource",
       "demo": "示例：\ndisplayWithRounding: true"
@@ -11724,6 +11806,7 @@
     {
       "code": "displayTextPrefix",
       "translate": "文本显示前缀",
+      "description": "显示文本前缀。",
       "type": "string",
       "section": "global_resource",
       "demo": "示例：\ndisplayTextPrefix: 321"
@@ -11731,6 +11814,7 @@
     {
       "code": "displayTextPostfix",
       "translate": "文本显示后缀",
+      "description": "显示文本后缀。",
       "type": "string",
       "section": "global_resource",
       "demo": "示例：\ndisplayTextPostfix: 123"
@@ -11738,6 +11822,7 @@
     {
       "code": "image_offsetH",
       "translate": "图像偏移H",
+      "description": "图像的水平偏移量。",
       "type": "int",
       "section": "graphics",
       "demo": "示例：\nimage_offsetH: 25"
@@ -11745,6 +11830,7 @@
     {
       "code": "image_floatingPointSize",
       "translate": "图像浮点大小",
+      "description": "图像使用浮点尺寸（允许半像素缩放）。",
       "type": "int",
       "section": "graphics",
       "demo": "示例：\nimage_floatingPointSize: 10"
@@ -11752,6 +11838,7 @@
     {
       "code": "icon_build",
       "translate": "建造图标",
+      "description": "建造图标图像。",
       "type": "file (image)",
       "section": "graphics",
       "demo": "示例：\nicon_build: iconFish.png"
@@ -11759,6 +11846,7 @@
     {
       "code": "default_frame",
       "translate": "默认帧",
+      "description": "默认帧：单位初始显示的第几帧。",
       "type": "int",
       "section": "graphics",
       "demo": "示例：\ndefault_frame: 0"
@@ -11766,6 +11854,7 @@
     {
       "code": "showSelectionIndicator",
       "translate": "显示选择指示器",
+      "description": "显示选择指示器（脚下光圈）。",
       "type": "bool",
       "section": "graphics",
       "demo": "示例：\nshowSelectionIndicator: false"
@@ -11773,6 +11862,7 @@
     {
       "code": "liftingHeightOffset",
       "translate": "提升高度偏移",
+      "description": "提升（空运/吊装）时的高度偏移。",
       "type": "int",
       "section": "leg_arm",
       "demo": "示例：\nliftingHeightOffset: 20"
@@ -11780,6 +11870,7 @@
     {
       "code": "targetHeightRelative",
       "translate": "目标高度相对",
+      "description": "目标高度取相对值。",
       "type": "bool",
       "section": "leg_arm",
       "demo": "示例：\ntargetHeightRelative: true"
@@ -11787,6 +11878,7 @@
     {
       "code": "stackHorizontal",
       "translate": "水平堆叠",
+      "description": "水平堆叠。",
       "type": "Boolean",
       "section": "resource",
       "demo": "示例：\nstackHorizontal: true"
@@ -11794,6 +11886,7 @@
     {
       "code": "minVersion",
       "translate": "最低游戏版本",
+      "description": "兼容的最低游戏版本号。",
       "type": "string",
       "section": "mod-info",
       "demo": "示例：\nminVersion: 1.15p7"
@@ -11801,6 +11894,7 @@
     {
       "code": "title",
       "translate": "模组标题",
+      "description": "模组/地图标题。",
       "type": "string",
       "section": "mod-info",
       "demo": "示例：\ntitle: Mega Builders"
@@ -11808,6 +11902,7 @@
     {
       "code": "sourceFolder",
       "translate": "源文件夹",
+      "description": "源文件夹：模组数据的来源目录。",
       "type": "string",
       "section": "mod-info",
       "demo": "示例：\nsourceFolder: soundtrack"
@@ -11815,6 +11910,7 @@
     {
       "code": "whenUsingUnitsFromThisMod_playExclusively",
       "translate": "使用本模组单位时独占播放",
+      "description": "使用本模组单位时独占播放该模组的音效/音乐。",
       "type": "bool",
       "section": "mod-info",
       "demo": "示例：\nwhenUsingUnitsFromThisMod_playExclusively: true"
@@ -11822,216 +11918,217 @@
     {
       "code": "addToNormalPlaylist",
       "translate": "加入正常播放列表",
+      "description": "将该模组的音乐加入正常播放列表。",
       "type": "bool",
       "section": "mod-info",
       "demo": "示例：\naddToNormalPlaylist: false"
     },
     {
       "code": "animateFrameStartRandomAdd",
-      "translate": "animateFrameStartRandomAdd",
+      "translate": "动画帧起始随机增量",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "effect"
     },
     {
       "code": "action_1_buildSpeed",
-      "translate": "action_1_buildSpeed",
+      "translate": "建造速度（动作1）",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "float",
       "section": "action"
     },
     {
       "code": "animation_idle_start",
-      "translate": "animation_idle_start",
+      "translate": "待机动画起始帧",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_idle_end",
-      "translate": "animation_idle_end",
+      "translate": "待机动画结束帧",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_idle_speed",
-      "translate": "animation_idle_speed",
+      "translate": "待机动画速度",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "float",
       "section": "animation"
     },
     {
       "code": "animation_idle_scale_start",
-      "translate": "animation_idle_scale_start",
+      "translate": "待机动画起始缩放",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_idle_scale_end",
-      "translate": "animation_idle_scale_end",
+      "translate": "待机动画结束缩放",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "float",
       "section": "animation"
     },
     {
       "code": "animation_idle_pingPong",
-      "translate": "animation_idle_pingPong",
+      "translate": "待机动画往返播放",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "bool",
       "section": "animation"
     },
     {
       "code": "animation_moving_start",
-      "translate": "animation_moving_start",
+      "translate": "移动动画起始帧",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_moving_end",
-      "translate": "animation_moving_end",
+      "translate": "移动动画结束帧",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_moving_speed",
-      "translate": "animation_moving_speed",
+      "translate": "移动动画速度",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "float",
       "section": "animation"
     },
     {
       "code": "animation_attack_start",
-      "translate": "animation_attack_start",
+      "translate": "攻击动画起始帧",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_attack_end",
-      "translate": "animation_attack_end",
+      "translate": "攻击动画结束帧",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_attack_speed",
-      "translate": "animation_attack_speed",
+      "translate": "攻击动画速度",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_attack_scale_start",
-      "translate": "animation_attack_scale_start",
+      "translate": "攻击动画起始缩放",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "int",
       "section": "animation"
     },
     {
       "code": "animation_attack_scale_end",
-      "translate": "animation_attack_scale_end",
+      "translate": "攻击动画结束缩放",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "float",
       "section": "animation"
     },
     {
       "code": "animation_attack_pingPong",
-      "translate": "animation_attack_pingPong",
+      "translate": "攻击动画往返播放",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "bool",
       "section": "animation"
     },
     {
       "code": "action_1_displayType",
-      "translate": "action_1_displayType",
+      "translate": "动作1显示类型",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "Action1DisplayType",
       "section": "action"
     },
     {
       "code": "animation_idle_blendIn",
-      "translate": "animation_idle_blendIn",
+      "translate": "待机动画淡入",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "string",
       "section": "animation"
     },
     {
       "code": "buildSpeed_ignoreFactorySpeedModifiers",
-      "translate": "buildSpeed_ignoreFactorySpeedModifiers",
+      "translate": "忽略工厂建造速度修正",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "bool",
       "section": "action"
     },
     {
       "code": "ignoreMoveOrders",
-      "translate": "ignoreMoveOrders",
+      "translate": "忽略移动指令",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "bool",
       "section": "movement"
     },
     {
       "code": "image_back_always_use_full_image",
-      "translate": "image_back_always_use_full_image",
+      "translate": "后方图像始终使用完整图像",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "bool",
       "section": "graphics"
     },
     {
       "code": "explodeOnDeathGroundCollosion",
-      "translate": "explodeOnDeathGroundCollosion",
+      "translate": "死亡地面爆炸",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "bool",
       "section": "core"
     },
     {
       "code": "effectOnDeathGroundCollosion",
-      "translate": "effectOnDeathGroundCollosion",
+      "translate": "死亡地面效果",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "string",
       "section": "core"
     },
     {
       "code": "slowDeathFallSmoke",
-      "translate": "slowDeathFallSmoke",
+      "translate": "死亡坠落烟雾",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "bool",
       "section": "movement"
     },
     {
       "code": "action_1_isActive",
-      "translate": "action_1_isActive",
+      "translate": "动作1初始启用",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "string",
       "section": "action"
     },
     {
       "code": "aiUse",
-      "translate": "aiUse",
+      "translate": "AI 使用方式",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "AiUse",
       "section": "action"
     },
     {
       "code": "aiTags",
-      "translate": "aiTags",
+      "translate": "AI 标签",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "string",
       "section": "ai"
     },
     {
       "code": "action_1_iconExtraImage",
-      "translate": "action_1_iconExtraImage",
+      "translate": "动作1图标附加图像",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "string",
       "section": "action"
     },
     {
       "code": "action_1_iconExtraColor",
-      "translate": "action_1_iconExtraColor",
+      "translate": "动作1图标附加颜色",
       "description": "（官方游戏数据，待补充翻译）",
       "type": "string",
       "section": "action"

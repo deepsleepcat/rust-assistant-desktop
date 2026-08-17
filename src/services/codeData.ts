@@ -3,10 +3,11 @@
  * 构建内存索引（键/节/值类型/翻译词典/词库），供补全、翻译、高亮使用。
  *
  * 数据来源：
- * - code.json       1130 条代码键（英文键/中文译名/说明/值类型/所属节）
- * - section.json    30 个节
- * - value_type.json 66 种值类型（补全规则、合法值列表）
- * - translations.json 旧版 758 条 en↔zh 翻译对
+ * - code.json       1238 条代码键（英文键/中文译名/说明/值类型/所属节）
+ * - section.json    32 个节
+ * - value_type.json 87 种值类型（补全规则、合法值列表）
+ * - value_zh.json   枚举值中文词典（补全/悬浮时给英文枚举值配中文解释）
+ * - translations.json 旧版 832 条 en↔zh 翻译对
  * - vocabulary.json 旧版 1759 条 词库（word+explanation）
  */
 import type { Completion } from '@codemirror/autocomplete'
@@ -67,6 +68,13 @@ export interface GameVersionInfo {
   versionNumber: number
 }
 
+/** 枚举值中文词典（value_zh.json）：引擎枚举值 → 中文解释（补全 detail / 悬浮提示） */
+interface RawValueZh {
+  name?: string
+  /** data 顶层是「值 → 中文」映射对象（区别于其它文件的数组） */
+  data?: Record<string, string>
+}
+
 interface RawDataset {
   name?: string
   data?: unknown[]
@@ -96,6 +104,9 @@ const keyZhToEnDict = new Map<string, string>()
  * 节名译名与代码表键译名可能撞车（炮塔→节 turret vs 键 c_turret_t1）——
  * 节位置必须得到节名，与键位置的 keyZhToEnDict 分开，互不覆盖。 */
 const sectionZhToEnDict = new Map<string, string>()
+/** M34：枚举值中文词典（value_zh.json：own→己方、BUILDING→建筑…）：
+ * 补全值候选与悬浮提示给英文枚举值配中文解释（引擎值本身不可改） */
+const valueZhDict = new Map<string, string>()
 
 /** 已初始化的数据（未加载前为空） */
 export function dataReady(): boolean {
@@ -137,6 +148,7 @@ export function reloadCodeData(): void {
   logicBooleans = []
   officialUnits = []
   gameVersions = []
+  valueZhDict.clear()
 }
 
 /** 从本地存储读取用户自定义值类型（M8 值类型管理 UI 保存，store key: customValueTypes） */
@@ -172,10 +184,11 @@ export function loadCodeData(): Promise<void> {
   if (!loaded) {
     loaded = (async () => {
       try {
-        const [codeRaw, sectionRaw, valueRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw, dialectRaw] = await Promise.all([
+        const [codeRaw, sectionRaw, valueRaw, valueZhRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw, dialectRaw] = await Promise.all([
           fetchJson<RawDataset>('code.json'),
           fetchJson<RawDataset>('section.json'),
           fetchJson<RawDataset>('value_type.json'),
+          fetchJson<RawValueZh>('value_zh.json').catch(() => ({ data: {} } as RawValueZh)),
           fetchJson<RawDataset>('translations.json'),
           fetchJson<RawDataset>('vocabulary.json'),
           fetchJson<RawDataset>('logicboolean.json').catch(() => ({ data: [] })),
@@ -193,6 +206,11 @@ export function loadCodeData(): Promise<void> {
         // translations/vocabulary 的顶层键是 words（不是 data），两边都兼容
         const translations = (transRaw.words ?? transRaw.data ?? []) as Array<{ en?: string; zh?: string }>
         const vocab = (vocabRaw.words ?? vocabRaw.data ?? []) as VocabularyItem[]
+        // 枚举值中文词典（M34）：值 → 中文解释；重载时先清空再重建（知识包更新回滚同理）
+        valueZhDict.clear()
+        for (const [val, zh] of Object.entries(valueZhRaw.data ?? {})) {
+          if (val && zh) valueZhDict.set(val.toLowerCase(), zh)
+        }
 
         // M18：知识包更新/回滚后重载时，旧数据独有的词条必须清掉——
         // 只 set 不 clear 会让已删除字段的翻译/回译残留，造成「数据说没有这个
@@ -289,6 +307,11 @@ export function getKeyZhToEnDict(): Map<string, string> {
 /** 获取节名回译表快照（节名位置回译优先查：见 sectionZhToEnDict 注释） */
 export function getSectionZhToEnDict(): Map<string, string> {
   return sectionZhToEnDict
+}
+
+/** 获取枚举值中文词典快照（M34：own→己方 等；键为小写英文枚举值） */
+export function getValueZhDict(): Map<string, string> {
+  return valueZhDict
 }
 
 /** 中文键分段回译（建造自_1_名称 → builtFrom_1_name）：

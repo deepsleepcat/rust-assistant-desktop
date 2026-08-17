@@ -7,7 +7,7 @@
  */
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, getKeyZhToEnDict, getZhToEnDict, loadCodeData, normalizeSectionName, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, getKeyZhToEnDict, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
 function stripComment(line: string): string {
@@ -125,6 +125,30 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
               dom.innerHTML = parts.join('')
               return { dom }
             },
+          }
+        }
+      }
+      // 枚举值中文解释（M34）：值位置是引擎枚举（own/BUILDING/true…）且命中
+      // value_zh 词典时显示中文——引擎值本身必须保留原写法，只做解释。
+      // 放在颜色/self 逻辑之后，避免拦截上面已经处理过的内容。
+      const cursorInValue = Math.max(0, inLine - valStart)
+      const wordAt = valueText.slice(cursorInValue).match(/[A-Za-z_][A-Za-z0-9_-]*/)
+      if (wordAt && wordAt[0]) {
+        const ws = valStart + cursorInValue + (wordAt.index ?? 0)
+        const we = ws + wordAt[0].length
+        if (inLine >= ws && inLine <= we) {
+          const zh = getValueZhDict().get(wordAt[0].toLowerCase())
+          if (zh && wordAt[0] !== zh) {
+            return {
+              pos: ws,
+              end: we,
+              create: () => {
+                const dom = document.createElement('div')
+                dom.className = 'cm-hover-doc'
+                dom.innerHTML = `<b>${escapeHtml(wordAt[0])}</b> · ${escapeHtml(zh)}<div class="cm-hover-muted">枚举值（引擎保留原写法）</div>`
+                return { dom }
+              },
+            }
           }
         }
       }
