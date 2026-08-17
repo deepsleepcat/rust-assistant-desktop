@@ -78,6 +78,27 @@ const editorTheme = EditorView.theme({
     borderRadius: '8px',
     boxShadow: 'var(--shadow-md)',
     color: 'var(--text-primary)',
+    // M34：补全/悬浮提示浮层层级明确化——高于工具栏溢出菜单(z80)
+    // 与紧凑抽屉(z90)、mod-tools 菜单(z60)，低于全局弹窗(z200)
+    zIndex: 95,
+  },
+  // M34：候选过多时在提示框内滚动，避免撑出编辑器/视口被裁切；
+  // 宽度贴着可用视口约束（补全候选行可能很长）
+  '.cm-tooltip-autocomplete': {
+    maxHeight: 'min(340px, 55vh)',
+    maxWidth: 'min(560px, calc(100vw - 24px))',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  '.cm-tooltip-autocomplete > ul': {
+    overflowY: 'auto',
+    maxHeight: 'none',
+    maxWidth: '100%',
+  },
+  '.cm-tooltip-autocomplete > ul li': {
+    overflowX: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
     backgroundColor: 'var(--surface-hover)',

@@ -147,6 +147,12 @@ body {
 .tabbar { height: 36px; flex-shrink: 0; display: flex; gap: 0; padding: 0; overflow-x: auto; background: var(--surface-1); border-bottom: 1px solid var(--divider); scrollbar-width: none; }
 .tabbar::-webkit-scrollbar { display: none; }
 .tab { position: relative; display: flex; align-items: center; gap: 7px; min-width: 120px; max-width: 210px; padding: 0 10px; border: 0; border-right: 1px solid var(--divider); background: transparent; color: var(--text-secondary); font: 12.5px var(--font-ui); cursor: pointer; }
+/* M34：标签很多时压缩单个标签宽度，让更多标签可见；窄窗口再进一步收缩 */
+.tabbar-many .tab { min-width: 96px; max-width: 150px; }
+@media (max-width: 900px) {
+  .tab { min-width: 96px; }
+  .tabbar-many .tab { min-width: 80px; padding: 0 7px; }
+}
 .tab:hover { background: var(--surface-hover); color: var(--text-primary); }
 .tab.active { background: var(--editor); color: var(--text-primary); }
 .tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); }
