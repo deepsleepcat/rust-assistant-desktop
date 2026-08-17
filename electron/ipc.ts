@@ -793,20 +793,26 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     return result.filePaths
   })
 
-  // M6.5 导入 .rwmod：选文件 → 选目标目录 → 解压 → 注册为项目
-  ipc('mod:import', async () => {
+  // M6.5 导入模组：导入类型由应用内模态框明确传入。Windows/Linux 上一次系统对话框
+  // 不能同时选文件和文件夹，所以主进程只打开与导入类型对应的一种原生选择器。
+  ipc('mod:import', async (_event, kind: unknown) => {
+    if (kind !== 'archive' && kind !== 'folder') throw new Error('无效的模组导入类型')
+    if (kind === 'folder') {
+      const pick = await ctx.dialog.showOpenDialog({ title: '选择模组文件夹', properties: ['openDirectory'] })
+      if (pick.canceled || pick.filePaths.length === 0) return null
+      const selected = pick.filePaths[0]
+      registerRoot(ctx, selected)
+      return { rootPath: selected, name: path.basename(selected) }
+    }
+
+    // 文件包：.rwmod/.zip（rwmod 即 zip 容器）
     const pick = await ctx.dialog.showOpenDialog({
-      title: '导入模组（文件夹或 rwmod/zip）',
-      properties: ['openFile', 'openDirectory', 'createDirectory'],
+      title: '选择模组文件（.rwmod / .zip）',
+      properties: ['openFile'],
       filters: [{ name: '模组包', extensions: ['rwmod', 'zip'] }, { name: '所有文件', extensions: ['*'] }],
     })
     if (pick.canceled || pick.filePaths.length === 0) return null
     const selected = pick.filePaths[0]
-    const stat = await fs.stat(selected)
-    if (stat.isDirectory()) {
-      registerRoot(ctx, selected)
-      return { rootPath: selected, name: path.basename(selected) }
-    }
 
     const dest = await ctx.dialog.showOpenDialog({
       title: '选择导入位置（将自动解压到该目录下）',

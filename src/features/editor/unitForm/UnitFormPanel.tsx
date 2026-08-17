@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { EditorTab } from '../../../types/domain'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import { getBridge } from '../../../services/bridge'
-import { getEnToZhDict, getZhToEnDict } from '../../../services/codeData'
+import { getEnToZhDict, getKeyZhToEnDict, getSectionZhToEnDict, getZhToEnDict } from '../../../services/codeData'
 import { AppIcon } from '../../../components/AppIcon'
 import { findUnitGroup, UNIT_FORM_GROUPS, type UnitFieldDef } from './unitFormFields'
 import { applyUnitFormValue, fillDefaults, parseUnitForm, validateFormValue, type UnitFormState } from './unitFormSync'
@@ -80,9 +80,16 @@ export function UnitFormPanel({ tab, rootPath, onOpenPreview }: UnitFormPanelPro
   const resources = resScan.status === 'done' ? { images: resScan.images, audios: resScan.audios } : { images: [], audios: [] }
 
   // 表单状态：内容变化（含外部编辑/撤销）重新解析，本地草稿失效；
-  // 中文显示层传 zhToEn 词典（[核心]/名称/生命值 回译成英文键匹配字段定义）
+  // 中文显示层传键名专用 zhToEn 词典（[核心]/名称/生命值 回译成英文键匹配字段定义）
   const formState: UnitFormState = useMemo(
-    () => fillDefaults(parseUnitForm(tab.content, { zhToEn: tab.translationEnabled ? (k) => getZhToEnDict().get(k) : undefined })),
+    () =>
+      fillDefaults(
+        parseUnitForm(tab.content, {
+          zhToEn: tab.translationEnabled ? (k) => getKeyZhToEnDict().get(k) : undefined,
+          zhToEnSection: tab.translationEnabled ? (k) => getSectionZhToEnDict().get(k) : undefined,
+          zhToEnValue: tab.translationEnabled ? (k) => getZhToEnDict().get(k) : undefined,
+        }),
+      ),
     [tab.content, tab.translationEnabled],
   )
   /** 提交表单值到文件（实时双向同步；中文显示层新键写回中文键名） */
@@ -91,8 +98,10 @@ export function UnitFormPanel({ tab, rootPath, onOpenPreview }: UnitFormPanelPro
     setErrors((prev) => ({ ...prev, [`${groupSection}.${field.key}`]: { msg: err ?? '', content: tab.content } }))
     if (err) return // 非法值不写回（代码保持上一次合法值，表单显示红框）
     setDraft((prev) => ({ ...(prev ?? {}), [`${groupSection}.${field.key}`]: { value, content: tab.content } }))
+    const zhToEn = tab.translationEnabled ? (k: string) => getKeyZhToEnDict().get(k) : undefined
+    const zhToEnSection = tab.translationEnabled ? (k: string) => getSectionZhToEnDict().get(k) : undefined
     const enToZh = tab.translationEnabled ? (k: string) => getEnToZhDict().get(k) : undefined
-    updateTabContent(tab.id, applyUnitFormValue(tab.content, groupSection, field.key, value.trim(), { enToZh }))
+    updateTabContent(tab.id, applyUnitFormValue(tab.content, groupSection, field.key, value.trim(), { zhToEn, zhToEnSection, enToZh }))
   }
 
   /** 资源选择：从项目内文件里选（相对单位文件目录） */

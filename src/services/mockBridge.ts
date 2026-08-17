@@ -297,7 +297,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     mod: {
       create: async () => ({ files: ['mod-info.txt', 'units/'] }),
       chooseMusic: async () => [],
-      import: async () => null,
+      import: async (_kind) => null,
       discardImport: async () => ({ ok: true }),
       createUnit: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
       pack: async () => ({ canceled: true }),

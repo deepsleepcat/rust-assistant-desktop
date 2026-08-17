@@ -100,18 +100,24 @@ describe('M31 补全数据查询（真实数据）', () => {
     expect(numbered.map((c) => c.code)).toEqual(base.map((c) => c.code))
   })
 
-  it('normalizeSectionName：中文编号节 [炮塔_1] → turret', async () => {
+  it('normalizeSectionName：中文编号节和命名节归一化到已知基础节', async () => {
     await loadCodeData()
     expect(normalizeSectionName('turret_1')).toBe('turret')
     expect(normalizeSectionName('炮塔_1')).toBe('turret')
+    expect(normalizeSectionName('turret_main')).toBe('turret')
+    expect(normalizeSectionName('炮塔_主炮')).toBe('turret')
     expect(normalizeSectionName('core')).toBe('core')
+    expect(normalizeSectionName('custom_main')).toBe('custom_main')
+    expect(normalizeSectionName('custom_1')).toBe('custom_1')
   })
 
-  it('findSectionsByQuery：手写编号节前缀 [turret_1 仍返回基础 needName 节候选', async () => {
+  it('findSectionsByQuery：编号和命名节前缀仍返回基础 needName 节候选', async () => {
     await loadCodeData()
     const list = findSectionsByQuery('turret_1')
     expect(list.some((s) => s.code === 'turret')).toBe(true)
-    const zh = findSectionsByQuery('炮塔_1')
+    const named = findSectionsByQuery('turret_main')
+    expect(named.some((s) => s.code === 'turret')).toBe(true)
+    const zh = findSectionsByQuery('炮塔_主炮')
     expect(zh.some((s) => s.code === 'turret')).toBe(true)
   })
 })

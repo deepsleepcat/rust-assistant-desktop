@@ -74,7 +74,7 @@ const api: BridgeApi = {
   mod: {
     create: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:create', rootPath, params),
     chooseMusic: () => ipcRenderer.invoke('mod:chooseMusic'),
-    import: () => ipcRenderer.invoke('mod:import'),
+    import: (kind: 'archive' | 'folder') => ipcRenderer.invoke('mod:import', kind),
     discardImport: (rootPath: string) => ipcRenderer.invoke('mod:discardImport', rootPath),
     createUnit: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnit', rootPath, params),
     pack: (rootPath: string, options?: unknown) => ipcRenderer.invoke('mod:pack', rootPath, options),

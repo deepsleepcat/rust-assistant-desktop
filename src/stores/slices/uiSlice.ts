@@ -5,6 +5,7 @@
  */
 import type { StoreApi } from 'zustand'
 import type { ConfirmRequest, EditorPosition, WorkspaceStore } from '../types'
+import type { CommunityTab } from '../../features/community/communityData'
 
 export function createUiSlice() {
   return (set: StoreApi<WorkspaceStore>['setState'], get: () => WorkspaceStore) => ({
@@ -20,6 +21,18 @@ export function createUiSlice() {
     },
     setDrawerSide(side: 'left' | 'right' | null) {
       set({ drawerSide: side })
+    },
+    setActiveSurface(surface: 'editor' | 'community') {
+      set({ activeSurface: surface })
+    },
+    setCommunityTab(tab: CommunityTab) {
+      set({ communityTab: tab })
+    },
+    toggleCommunityFollow(creatorId: string) {
+      const list = get().communityFollowing
+      set({
+        communityFollowing: list.includes(creatorId) ? list.filter((id) => id !== creatorId) : [...list, creatorId],
+      })
     },
     setCodeTableOpen(open: boolean) {
       set({ codeTableOpen: open })
@@ -69,7 +82,7 @@ export function createUiSlice() {
     },
 
     /** M5：模组工具弹窗开关 */
-    setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | null) {
+    setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | null) {
       // 优化弹窗：每次打开都清掉旧扫描结果，由弹窗重新扫描（避免显示过期列表）
       if (kind === 'optimize') set({ optimizeItems: null, optimizeError: null })
       set({ modDialog: kind })

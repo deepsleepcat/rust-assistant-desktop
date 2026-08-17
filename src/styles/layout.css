@@ -95,6 +95,38 @@
 @keyframes ra-slide-in-right { from { transform: translateX(16px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
 /* ── 左/右栏内部上下分栏（--row-a = 上部面板高度 px；折叠=归零） ── */
+.wb-left-col {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* ── 左侧固定导航（工作台/社区）：不随内部折叠消失，紧凑抽屉内同样可见 ── */
+.surface-nav {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface-1);
+}
+.surface-nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: 12.5px var(--font-ui);
+  cursor: pointer;
+}
+.surface-nav-item:hover { background: var(--surface-hover); color: var(--text-primary); }
+.surface-nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.surface-nav-item:focus-visible { box-shadow: var(--focus-ring); }
+
 .wb-left-inner, .wb-right-inner {
   flex: 1;
   min-height: 0;

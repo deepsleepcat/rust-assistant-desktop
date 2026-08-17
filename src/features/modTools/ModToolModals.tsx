@@ -12,7 +12,9 @@
 import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { AppIcon } from '../../components/AppIcon'
+import { Modal } from '../../components/Modal'
 import { useEscapeHandler } from '../../utils/modalStack'
+import type { ModImportKind } from '../../types/bridge'
 import { getBridge } from '../../services/bridge'
 
 export function ModToolModals() {
@@ -20,6 +22,7 @@ export function ModToolModals() {
   const setModDialog = useWorkspaceStore((s) => s.setModDialog)
   const createModProject = useWorkspaceStore((s) => s.createModProject)
   const createUnitFile = useWorkspaceStore((s) => s.createUnitFile)
+  const startModImport = useWorkspaceStore((s) => s.startModImport)
   const checkResult = useWorkspaceStore((s) => s.modCheckResult)
   const reportOpen = useWorkspaceStore((s) => s.modReportOpen)
 
@@ -52,7 +55,46 @@ export function ModToolModals() {
     return <CreateUnitModal onClose={() => setModDialog(null)} onSubmit={createUnitFile} />
   }
 
+  if (kind === 'import') {
+    return <ImportModModal onClose={() => setModDialog(null)} onSelect={startModImport} />
+  }
+
   return <CreateModModal onClose={() => setModDialog(null)} onSubmit={createModProject} />
+}
+
+function ImportModModal({ onClose, onSelect }: { onClose: () => void; onSelect: (kind: ModImportKind) => Promise<void> }) {
+  const choose = (kind: ModImportKind) => {
+    onClose()
+    void onSelect(kind)
+  }
+
+  return (
+    <Modal
+      title="导入模组"
+      onClose={onClose}
+      footer={<button className="btn" onClick={onClose}>取消</button>}
+    >
+      <p className="import-mod-intro">选择导入来源</p>
+      <div className="import-mod-options">
+        <button className="import-mod-option" onClick={() => choose('archive')} autoFocus>
+          <span className="import-mod-icon"><AppIcon name="archive" size={20} /></span>
+          <span className="import-mod-copy">
+            <strong>模组文件</strong>
+            <span>.rwmod / .zip</span>
+          </span>
+          <span className="import-mod-detail">解压到指定位置</span>
+        </button>
+        <button className="import-mod-option" onClick={() => choose('folder')}>
+          <span className="import-mod-icon"><AppIcon name="folder" size={20} /></span>
+          <span className="import-mod-copy">
+            <strong>模组文件夹</strong>
+            <span>已有项目目录</span>
+          </span>
+          <span className="import-mod-detail">直接作为项目打开</span>
+        </button>
+      </div>
+    </Modal>
+  )
 }
 
 function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (p: { title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean; updateUrl?: string }) => void }) {

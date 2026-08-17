@@ -24,6 +24,9 @@ export interface OpenedProject {
   name: string
 }
 
+/** 导入来源：压缩模组包或已有模组文件夹。 */
+export type ModImportKind = 'archive' | 'folder'
+
 export interface StoreApi {
   get(key: string): Promise<unknown>
   set(key: string, value: unknown): Promise<void>
@@ -87,8 +90,8 @@ export interface BridgeApi {
   mod: {    create(rootPath: string, params: { name?: string; title: string; description?: string; author?: string; version?: string; thumbnail?: string; musicFiles?: string[]; musicExclusive?: boolean; updateUrl?: string }): Promise<{ files: string[]; musicFailed?: string[] }>
     /** M6.5 选择背景音乐（多选，返回绝对路径列表；取消返回空数组） */
     chooseMusic(): Promise<string[]>
-    /** 统一导入模组：文件夹直接注册，rwmod/zip 自动解压；取消返回 null */
-    import(): Promise<{ rootPath: string; name: string; files?: number } | null>
+    /** 导入模组：文件夹直接注册，rwmod/zip 自动解压；取消返回 null */
+    import(kind: ModImportKind): Promise<{ rootPath: string; name: string; files?: number } | null>
     /** 撤销导入：删除本次会话刚解压但未被使用的目录（导入确认被取消时调用） */
     discardImport(rootPath: string): Promise<{ ok: boolean }>
     createUnit(rootPath: string, params: { name: string; displayName?: string; folder?: string }): Promise<{ path: string }>

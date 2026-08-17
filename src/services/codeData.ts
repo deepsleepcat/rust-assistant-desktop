@@ -301,15 +301,16 @@ export function zhToEnKeySegments(key: string): string {
 }
 
 /** 节名归一化（补全/lint 查当前节键用）：
- * 中文段经节名词典优先回译（[炮塔_1] → turret_1），编号节去掉 _N 后缀
- * （代码表字段的 section 是基础节名 turret，没有 turret_1）。 */
+ * 中文段经节名词典优先回译（[炮塔_1] → turret_1），编号节去掉 _N 后缀；
+ * 已知 needName 节允许用户命名后缀（[turret_main] → turret），未知节不猜测归类。 */
 export function normalizeSectionName(section: string): string {
   const en = section
     .split('_')
     .map((seg) => sectionZhToEnDict.get(seg) ?? zhToEnDict.get(seg) ?? seg)
     .join('_')
     .toLowerCase()
-  return en.replace(/_\d+$/, '')
+  const namedBase = sections.find((s) => s.needName && en.startsWith(`${s.code.toLowerCase()}_`))
+  return namedBase?.code.toLowerCase() ?? en
 }
 
 /** 按节查询代码（节为 all 时全局适用；英文 code 或中文 translate 匹配）。
@@ -351,17 +352,21 @@ export function findCodesByType(type: string, query = '', limit = 40): CodeInfo[
 }
 
 /** 按节英文 code 或中文译名模糊查节。
- * 用户手写编号节前缀（[turret_1 / [炮塔_1）时按基础节名（turret/炮塔）兜底命中，
- * 让 needName 节候选仍能出现。 */
+ * 用户手写编号/命名节前缀（[turret_1] / [炮塔_主炮]）时按已知基础节兜底，
+ * 让 needName 节候选仍能出现；未知节名不强行归类。 */
 export function findSectionsByQuery(query: string, limit = 40): SectionInfo[] {
-  const q = query.trim().toLowerCase()
-  const base = q.replace(/_\d+$/, '')
-  const list = sections.filter(
-    (s) =>
-      s.code.toLowerCase().includes(q) ||
-      s.translate.includes(query.trim()) ||
-      (base !== q && (s.code.toLowerCase().includes(base) || s.translate.includes(base))),
-  )
+  const raw = query.trim()
+  const q = raw.toLowerCase()
+  const normalized = normalizeSectionName(raw)
+  const base = normalized !== q ? normalized : q.replace(/_\d+$/, '')
+  const list = sections.filter((s) => {
+    const code = s.code.toLowerCase()
+    return (
+      code.includes(q) ||
+      s.translate.includes(raw) ||
+      (base !== q && (code.includes(base) || (s.needName && base === code)))
+    )
+  })
   return list.slice(0, limit)
 }
 

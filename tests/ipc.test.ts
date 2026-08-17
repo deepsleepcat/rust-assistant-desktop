@@ -436,6 +436,56 @@ describe('mod / game / app 通道', () => {
     await expect(fs.stat(imported)).rejects.toThrow()
   })
 
+  it('mod:import：前端类型决定文件包或文件夹选择器', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerModIpc(ctx, ipc)
+    const showMessageBox = vi.fn(async () => ({ response: 0, checkboxChecked: false }))
+
+    // 无效类型在打开任何原生选择器前拒绝，且导入不再弹系统消息框
+    ctx.dialog = { ...ctx.dialog, showMessageBox }
+    await expect(invoke(channels, 'mod:import', 'file')).rejects.toThrow('无效的模组导入类型')
+    expect(showMessageBox).not.toHaveBeenCalled()
+
+    // 文件夹：只打开目录选择器；用户取消则不改变项目根
+    const canceledFolderPicker = vi.fn(async () => ({ canceled: true, filePaths: [] }))
+    ctx.dialog = { ...ctx.dialog, showOpenDialog: canceledFolderPicker }
+    expect(await invoke(channels, 'mod:import', 'folder')).toBeNull()
+    expect(canceledFolderPicker).toHaveBeenCalledWith(expect.objectContaining({ properties: ['openDirectory'] }))
+
+    const folderPicker = vi.fn(async () => ({ canceled: false, filePaths: [tmp] }))
+    ctx.dialog = { ...ctx.dialog, showOpenDialog: folderPicker }
+    const folder = await invoke<{ rootPath: string; name: string }>(channels, 'mod:import', 'folder')
+    expect(folder.rootPath).toBe(tmp)
+    expect(ctx.roots.has(normalizePath(tmp))).toBe(true)
+    expect(folderPicker).toHaveBeenCalledWith(expect.objectContaining({ properties: ['openDirectory'] }))
+
+    // 文件包：第一次只选 .rwmod/.zip 文件，第二次只选解压目标目录
+    const JSZip = (await import('jszip')).default
+    const zip = new JSZip()
+    zip.file('mod-info.txt', 'name: sample')
+    zip.file('units/a.ini', '[core]\nname: a')
+    const zipPath = path.join(tmp, 'sample.rwmod')
+    const zipDest = path.join(tmp, 'import-root')
+    await fs.writeFile(zipPath, await zip.generateAsync({ type: 'nodebuffer' }))
+    const archivePicker = vi.fn(async (opts?: { title?: string }) =>
+      opts?.title?.includes('模组文件')
+        ? { canceled: false, filePaths: [zipPath] }
+        : { canceled: false, filePaths: [zipDest] },
+    )
+    ctx.dialog = { ...ctx.dialog, showOpenDialog: archivePicker }
+    const pkg = await invoke<{ rootPath: string; name: string; files: number }>(channels, 'mod:import', 'archive')
+    expect(pkg.files).toBe(2)
+    expect(pkg.name).toBe('sample')
+    expect(ctx.roots.has(normalizePath(pkg.rootPath))).toBe(true)
+    expect((await fs.readdir(pkg.rootPath)).sort()).toEqual(['mod-info.txt', 'units'])
+    expect(archivePicker.mock.calls[0][0]).toEqual(expect.objectContaining({ properties: ['openFile'] }))
+    expect(archivePicker.mock.calls[0][0]).toEqual(expect.objectContaining({ filters: expect.arrayContaining([expect.objectContaining({ extensions: ['rwmod', 'zip'] })]) }))
+    expect(archivePicker.mock.calls[1][0]).toEqual(expect.objectContaining({ properties: ['openDirectory', 'createDirectory'] }))
+    // 撤销语义登记：本次导入创建的目录可被 discardImport 清理
+    expect(await invoke<{ ok: boolean }>(channels, 'mod:discardImport', pkg.rootPath)).toEqual({ ok: true })
+    expect(showMessageBox).not.toHaveBeenCalled()
+  })
+
   it('game:openDir / preflight：未登记根拒绝', async () => {
     const { channels, ipc } = createFakeIpc()
     registerGameIpc(ctx, ipc)

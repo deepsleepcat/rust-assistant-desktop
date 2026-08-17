@@ -1,0 +1,272 @@
+/**
+ * M33-社区 中心工作区样式。
+ * 沿用全局 token（surface/accent/divider/radius 系列）与面板规范；
+ * 背景图模式与浅/深主题跟随 app.css 的混合规则。
+ */
+
+/* ── 面板骨架 ─────────────────────────────────────── */
+.community-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+}
+
+/* ── 页签条（与编辑器 tabbar 同高度同视觉语言） ─────── */
+.community-tabs {
+  flex: none;
+  display: flex;
+  height: 36px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface-1);
+}
+.community-tab {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 12.5px var(--font-ui);
+  cursor: pointer;
+}
+.community-tab:hover { background: var(--surface-hover); color: var(--text-primary); }
+.community-tab.active { color: var(--text-primary); font-weight: 600; }
+.community-tab.active::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.community-tab .count { color: var(--text-muted); font-size: 11px; }
+.community-tab.active .count { color: var(--accent); }
+
+/* ── 内容区（唯一滚动容器，防撑破工作台） ───────────── */
+.community-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+/* tabpanel 可聚焦（键盘滚动）：焦点环弱化为内描边，不喧宾夺主 */
+.community-body:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
+.community-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.community-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .03em;
+}
+.community-section-title .grow { flex: 1; }
+
+/* ── 通用小按钮（社区卡片内用，28px 比 .btn 更紧凑） ─── */
+.btn-sm {
+  height: 26px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font: 12px var(--font-ui);
+  cursor: pointer;
+}
+.btn-sm:hover { background: var(--surface-hover); border-color: var(--accent); }
+.btn-sm:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── 卡片基础 ─────────────────────────────────────── */
+.community-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-0);
+}
+
+/* ── 精选轮换（横向滚动轨道） ───────────────────────── */
+.featured-scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.featured-scroll > .mod-card { flex: 0 0 250px; }
+
+/* ── 模组卡片 ─────────────────────────────────────── */
+.mod-card { gap: 7px; }
+.mod-card-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mod-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 13px; font-weight: 600; }
+.mod-version { flex: none; color: var(--text-muted); font-size: 10.5px; font-family: var(--font-mono); }
+.mod-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.mod-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.mod-tags .badge { font-size: 10.5px; }
+.mod-stats { display: flex; flex-wrap: wrap; gap: 10px; color: var(--text-muted); font-size: 11px; }
+.mod-stat { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.mod-card-foot { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.mod-author { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 11px; }
+
+/* ── 网格（最新发布 / 收藏 / 创作者） ─────────────────
+   min(240px, 100%)：窄容器（最小窗口宽度下编辑器列仅约 200px）时轨道收缩，
+   不会产生横向滚动；宽容器保持 240px 起档多列排布。 */
+.mod-grid, .creator-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  gap: 10px;
+}
+
+/* ── 创作者卡片 ───────────────────────────────────── */
+.creator-card { flex-direction: row; align-items: center; gap: 10px; }
+.creator-avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font: 600 14px var(--font-ui);
+  user-select: none;
+}
+.creator-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.creator-name { display: flex; align-items: center; gap: 5px; color: var(--text-primary); font-size: 12.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.creator-name .creator-star { flex: none; color: var(--accent); }
+.creator-tagline { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.creator-meta { color: var(--text-muted); font-size: 10.5px; }
+.follow-btn { flex: none; }
+.follow-btn.following { color: var(--text-muted); border-color: var(--border); }
+
+/* ── 关注动态流 ────────────────────────────────────── */
+.activity-list { display: flex; flex-direction: column; gap: 8px; }
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+.activity-icon { flex: none; display: grid; color: var(--accent); }
+.activity-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.activity-creator { flex: none; color: var(--text-primary); font-weight: 600; font-size: 12.5px; }
+.activity-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12.5px; }
+.activity-meta { flex: none; color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+
+/* ── 排行 ─────────────────────────────────────────── */
+.rank-filter { display: flex; flex-wrap: wrap; gap: 6px; }
+.rank-chip {
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-0);
+  color: var(--text-secondary);
+  font: 12px var(--font-ui);
+  cursor: pointer;
+}
+.rank-chip:hover { border-color: var(--accent); color: var(--accent); }
+.rank-chip.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.rank-list { display: flex; flex-direction: column; }
+.rank-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--divider);
+}
+.rank-item:last-child { border-bottom: 0; }
+.rank-no {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font: 600 11.5px var(--font-ui);
+}
+.rank-no.top { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.rank-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.rank-name { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 12.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-meta { color: var(--text-muted); font-size: 11px; }
+
+/* ── 我的 ─────────────────────────────────────────── */
+.me-profile { flex-direction: row; align-items: center; gap: 12px; }
+.me-avatar { width: 44px; height: 44px; font-size: 17px; }
+.me-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+}
+.me-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 9px 6px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+.me-stat-value { color: var(--text-primary); font: 650 15px var(--font-display); font-variant-numeric: tabular-nums; }
+.me-stat-label { color: var(--text-muted); font-size: 10.5px; }
+
+/* ── 本地示例说明 / 禁用在线动作 ────────────────────── */
+.local-note {
+  padding: 8px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+.local-note strong { color: var(--text-secondary); }
+.disabled-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ── 详情弹窗 ─────────────────────────────────────── */
+.community-detail-body { display: flex; flex-direction: column; gap: 12px; }
+.community-detail-desc { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
+.detail-meta { color: var(--text-muted); font-size: 11.5px; }
+
+/* ── 背景图模式：面板/卡片按主题 token 半透明混合 ─────── */
+.has-backdrop .app-body .community-panel,
+.has-backdrop .app-body .community-tabs { background: color-mix(in srgb, var(--surface-1) 78%, transparent); }
+.has-backdrop .app-body .community-card,
+.has-backdrop .app-body .activity-item,
+.has-backdrop .app-body .me-stat,
+.has-backdrop .app-body .local-note,
+.has-backdrop .app-body .rank-chip,
+.has-backdrop .app-body .btn-sm { background: color-mix(in srgb, var(--surface-0) 74%, transparent); }
+
+/* ── 窄屏收缩（body.ra-compact，由 WorkbenchLayout 设置） ── */
+body.ra-compact .community-body { padding: 10px 12px 22px; }
+body.ra-compact .featured-scroll > .mod-card { flex-basis: 220px; }
+body.ra-compact .mod-grid, body.ra-compact .creator-grid { grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); }
+body.ra-compact .activity-meta { display: none; }

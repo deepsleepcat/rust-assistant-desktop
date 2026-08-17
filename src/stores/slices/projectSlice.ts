@@ -9,7 +9,7 @@
  */
 import type { StoreApi } from 'zustand'
 import type { AppSettings, EditorTab, ProjectInfo, TreeNode } from '../../types/domain'
-import type { BridgeApi } from '../../types/bridge'
+import type { BridgeApi, ModImportKind } from '../../types/bridge'
 import type { WorkspaceStore } from '../types'
 import { getBridge } from '../../services/bridge'
 import { sanitizeSettings } from '../../utils/settings'
@@ -125,10 +125,15 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         })
       },
 
-      /** M6.5 导入 .rwmod：选包+目标目录 → 解压 → 注册为模组项目 */
+      /** 打开应用内导入类型选择框；实际磁盘选择由 startModImport 在用户选定来源后执行。 */
       async importModProject() {
+        set({ modDialog: 'import' })
+      },
+
+      /** 导入文件包或文件夹：保留原有脏编辑确认、项目切换与解压回滚语义。 */
+      async startModImport(kind: ModImportKind) {
         try {
-          const imported = await deps.bridge.mod.import()
+          const imported = await deps.bridge.mod.import(kind)
           if (!imported) return
           const prevActiveId = get().activeProjectId // 失败清理时回退到导入前的项目
           const project: ProjectInfo = {
@@ -427,7 +432,8 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         const absPath = normalizeOpenPath(project.rootPath, path)
         const existing = get().openTabs.find((t) => sameTabPath(t.path, absPath))
         if (existing) {
-          set({ activeTabId: existing.id })
+          // M33-社区：从社区浏览中打开文件 → 切回编辑器工作区（文件可见，不留在社区页）
+          set({ activeTabId: existing.id, activeSurface: 'editor' })
           return
         }
         try {
@@ -438,7 +444,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
           // 读取期间可能已被并发打开：复用已有标签
           const again = get().openTabs.find((t) => sameTabPath(t.path, absPath))
           if (again) {
-            set({ activeTabId: again.id })
+            set({ activeTabId: again.id, activeSurface: 'editor' })
             return
           }
           const translationEnabled = get().settings.translateMode
@@ -461,7 +467,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             size: result.size,
             mtimeMs: result.mtimeMs,
           }
-          set({ openTabs: [...get().openTabs, tab], activeTabId: tab.id })
+          set({ openTabs: [...get().openTabs, tab], activeTabId: tab.id, activeSurface: 'editor' })
         } catch (err) {
           get().notify(`无法打开文件：${err instanceof Error ? err.message : String(err)}`)
         }

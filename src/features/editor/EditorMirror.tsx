@@ -8,7 +8,7 @@ import { useEffect, useRef } from 'react'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, repositionTooltips, tooltips } from '@codemirror/view'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
-import { autocompletion, startCompletion } from '@codemirror/autocomplete'
+import { autocompletion, CompletionContext, startCompletion } from '@codemirror/autocomplete'
 import { search, searchKeymap } from '@codemirror/search'
 import { rustConfigLanguageSupport, smartEnterBindings } from './rustLanguage'
 import { rustHoverExtension } from './rustHover'
@@ -19,6 +19,7 @@ import { colorDecorationExtension } from './colorDecorationsExtension'
 import { rustSectionFolding } from './sectionFolding'
 import { rustLintExtension } from './rustLint'
 import { loadCodeData } from '../../services/codeData'
+import { shouldReopenAfterComposition } from './imeCompletion'
 
 interface EditorMirrorProps {
   value: string
@@ -219,18 +220,33 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     // 可视视口变化（输入法弹起/收起、窗口尺寸变化、中文合成提交）→ 重定位补全浮层。
     // CodeMirror 默认只在 window resize 时重测，不感知 visualViewport
     let reopenTimer: ReturnType<typeof setTimeout> | undefined
+    let compositionStartDoc: string | null = null
     // 用户 Esc 显式关闭补全后的一小段时间内，IME 提交不再强制重开浮层（否则中文用户
     // 每次关掉候选都会被 compositionend 重新弹出来，无法主动关闭）
     let suppressReopenUntil = 0
+    const onCompositionStart = () => {
+      compositionStartDoc = view.state.doc.toString()
+    }
     const onCompositionEnd = () => {
       repositionTooltips(view)
-      if (Date.now() < suppressReopenUntil) return
-      // IME 组合提交后重开补全：CodeMirror 只在组合期间「内容变化且光标移动」时
-      // 自动重开（view 内部 ChangedAndMoved 分支），而中文输入组合不移动光标，
-      // 提交后补全不会弹——这里补上。显式查询幂等：无候选时 source 返回 null，
-      // 已有浮层时刷新列表，无副作用
+      const startedDoc = compositionStartDoc
+      compositionStartDoc = null
+      if (!shouldReopenAfterComposition({
+        startedDoc,
+        endedDoc: view.state.doc.toString(),
+        hasFocus: view.hasFocus,
+        now: Date.now(),
+        suppressReopenUntil,
+      })) return
+      // 组合提交后只在当前上下文确实有候选时刷新。普通中文文本、取消组合和
+      // 非键值上下文都不会因为显式触发而弹出全局候选。
+      const submittedDoc = view.state.doc.toString()
       reopenTimer = setTimeout(() => {
-        if (view.hasFocus) startCompletion(view)
+        if (!view.hasFocus || view.state.doc.toString() !== submittedDoc) return
+        const pos = view.state.selection.main.head
+        void rustCompletionSource(new CompletionContext(view.state, pos, false)).then((result) => {
+          if (result && view.hasFocus && view.state.doc.toString() === submittedDoc) startCompletion(view)
+        })
       }, 20)
     }
     const onKeyDown = (e: KeyboardEvent) => {
@@ -241,6 +257,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     vv?.addEventListener('resize', reposition)
     vv?.addEventListener('scroll', reposition)
     window.addEventListener('resize', reposition)
+    view.dom.addEventListener('compositionstart', onCompositionStart)
     view.dom.addEventListener('compositionend', onCompositionEnd)
     view.dom.addEventListener('keydown', onKeyDown)
     return () => {
@@ -249,6 +266,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
       vv?.removeEventListener('resize', reposition)
       vv?.removeEventListener('scroll', reposition)
       window.removeEventListener('resize', reposition)
+      view.dom.removeEventListener('compositionstart', onCompositionStart)
       view.dom.removeEventListener('compositionend', onCompositionEnd)
       view.dom.removeEventListener('keydown', onKeyDown)
       viewRef.current = null
