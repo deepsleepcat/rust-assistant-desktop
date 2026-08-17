@@ -1027,6 +1027,58 @@ export async function createUnitFromTemplate(
   return { path: rel }
 }
 
+/** M34 单位复制参数：sourceRoot/sourceFilePath 指明源单位，targetRoot 目标项目 */
+export interface CopyUnitParams {
+  /** 源项目根目录（须已登记；与目标可以相同=同模组复制） */
+  sourceRoot: string
+  /** 源单位文件相对源项目根的路径（scanUnits 返回的 path） */
+  sourceFilePath: string
+  /** 目标项目根目录（须已登记） */
+  targetRoot: string
+  /** 目标单位名（用作新文件目录名；非法字符替换为 -） */
+  targetName: string
+  /** 目标文件夹（相对目标项目根的目录，可空） */
+  targetFolder?: string
+}
+
+/**
+ * 从其它模组（或同模组）复制单位配置到目标模组（M34）。
+ * 主进程原子操作：两端项目根都校验登记 → 源文件越界/链接逃逸校验 →
+ * 单位格式校验（.ini/.template + [core]/[核心]）→ 目标不存在才写入。
+ * 复制的是单位配置文本（含注释/节顺序），不自动复制图片/音频等外部资源；
+ * 与 createUnitFromTemplate 的目标路径规则一致：<folder>/<name>/<name>.ini。
+ */
+export async function copyUnit(params: CopyUnitParams): Promise<{ path: string }> {
+  const { sourceRoot, sourceFilePath, targetRoot, targetName, targetFolder } = params
+  if (!sourceRoot || !targetRoot || !sourceFilePath || !targetName) throw new Error('复制参数不完整')
+
+  // 1) 源：限定 .ini/.template，解析为源项目内绝对路径（越界即抛错）
+  if (!/\.(ini|template)$/i.test(sourceFilePath)) {
+    throw new Error(`只能复制 .ini / .template 单位文件：${sourceFilePath}`)
+  }
+  const sourceAbs = resolveInside(sourceRoot, sourceFilePath)
+  // 源文件不能通过 junction/符号链接指向项目外
+  await assertNoLinkEscape(sourceRoot, sourceAbs)
+  const content = await readTextLimited(sourceAbs)
+  if (!content) throw new Error('源单位文件为空或不可读（超过 64MB 上限？）')
+  if (!/^\s*\[(core|核心)\s*\]/m.test(content)) {
+    throw new Error('源文件不是单位文件（缺少 [core] / [核心] 节）')
+  }
+
+  // 2) 目标：与 createUnitFromTemplate 相同的路径规则与安全校验
+  const safeName = targetName.trim().replace(/[\\/:*?"<>|]/g, '-') || 'unit'
+  const folder = (targetFolder ?? '').replace(/^\/+|\/+$/g, '')
+  const rel = folder ? path.posix.join(folder, safeName, `${safeName}.ini`) : path.posix.join(safeName, `${safeName}.ini`)
+  const targetAbs = resolveInside(targetRoot, rel)
+  if (await exists(targetAbs)) {
+    throw new Error(`目标文件已存在：${rel}（不会覆盖已有文件）`)
+  }
+  await assertNoLinkEscape(targetRoot, targetAbs)
+  await fs.mkdir(path.dirname(targetAbs), { recursive: true })
+  await fs.writeFile(targetAbs, content, 'utf8')
+  return { path: rel }
+}
+
 /** 打包选项：打包时对源文件做清理/格式化 */
 export interface PackOptions {
   /** 移除空文件（源文件内容为空则不打包） */

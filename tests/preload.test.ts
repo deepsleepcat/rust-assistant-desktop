@@ -80,6 +80,8 @@ describe('preload 桥契约', () => {
     expect(mocks.invoke).toHaveBeenLastCalledWith('mod:import', 'archive')
     await mod.import('folder')
     expect(mocks.invoke).toHaveBeenLastCalledWith('mod:import', 'folder')
+    await mod.copyUnit({ sourceRoot: 'src', sourceFilePath: 'units/a.ini', targetRoot: 'dst', targetName: 'b' })
+    expect(mocks.invoke).toHaveBeenLastCalledWith('mod:copyUnit', { sourceRoot: 'src', sourceFilePath: 'units/a.ini', targetRoot: 'dst', targetName: 'b' })
     const game = a.game as Record<string, (...x: unknown[]) => Promise<unknown>>
     await game.importMod('g', 'm.rwmod', 'r')
     expect(mocks.invoke).toHaveBeenLastCalledWith('game:importMod', 'g', 'm.rwmod', 'r')

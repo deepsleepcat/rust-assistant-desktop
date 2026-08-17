@@ -122,6 +122,16 @@ export interface BridgeApi {
     /** M23 模板库：用户模板目录的 key 列表（分类展示用） */
     listUserTemplateKeys(): Promise<string[]>
     createUnitFromTemplate(rootPath: string, params: { name: string; folder?: string; templateKey: string; values: Record<string, string> }): Promise<{ path: string }>
+    /** M34 单位复制：从其它/同模组复制单位配置到目标项目。
+     * 源/目标项目根都须已登记；仅复制单位文本（不含图片/音频等外部资源），
+     * 目标同名文件已存在时拒绝覆盖。返回新文件相对目标项目根的路径。 */
+    copyUnit(params: {
+      sourceRoot: string
+      sourceFilePath: string
+      targetRoot: string
+      targetName: string
+      targetFolder?: string
+    }): Promise<{ path: string }>
   }
   /** M8 游戏集成：铁锈战争安装目录检测 / 官方单位示例 / 游戏内模组导入 */
   game: {

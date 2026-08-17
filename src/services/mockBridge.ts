@@ -319,6 +319,14 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         { key: 'mock-tank', name: '基础模板-坦克-陆军模板', nameEn: 'Base-Template(Tank)LAND', actions: [{ label: '名称', key: 'name', section: 'core', tag: 'name-core', type: 'input' }], defaults: { 'name-core': '基础坦克' } },
       ],
       createUnitFromTemplate: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
+      copyUnit: async (params) => {
+        // 模拟环境：校验基本参数后返回固定目标路径（与 preload/IPC 契约一致）
+        if (!params || typeof params !== 'object') throw new Error('复制参数错误')
+        if (!params.sourceRoot || !params.targetRoot || !params.sourceFilePath || !params.targetName) throw new Error('复制参数不完整')
+        const folder = (params.targetFolder ?? '').replace(/^\/+|\/+$/g, '')
+        const name = params.targetName.trim()
+        return { path: folder ? `${folder}/${name}/${name}.ini` : `${name}/${name}.ini` }
+      },
       saveFileAsTemplate: async () => ({ key: 'mock-template' }),
       importTemplate: async () => null,
       deleteUserTemplate: async () => ({ ok: false, message: '模拟环境：无法删除模板' }),

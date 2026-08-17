@@ -16,7 +16,7 @@ import { getHistory } from './aiHistory'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import {
-  applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, deleteUserTemplate,
+  applyOptimization, checkMod, copyUnit, createMod, createUnit, createUnitFromTemplate, deleteUserTemplate,
   globalOp, importModBuffer, importTemplateFile, listTemplates, listUserTemplateKeys,
   packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources,
   scanUnits, writeModInfo,
@@ -737,6 +737,17 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   ipc('mod:scanUnits', async (_event, rootPath: string) => {
     requireInsideRoot(ctx, rootPath, rootPath)
     return scanUnits(rootPath)
+  })
+
+  // M34 单位复制：从其它/同模组复制单位配置到当前项目。
+  // 源与目标两端项目根都必须是已登记目录；真实文件级校验（越界/链接逃逸/
+  // 单位格式/不覆盖）在 copyUnit 内完成，这里只做信任锚校验。
+  ipc('mod:copyUnit', async (_event, params: import('./modTools').CopyUnitParams) => {
+    if (!params || typeof params !== 'object') throw new Error('复制参数错误')
+    if (typeof params.sourceRoot !== 'string' || typeof params.targetRoot !== 'string') throw new Error('复制参数缺少项目目录')
+    requireInsideRoot(ctx, params.sourceRoot, params.sourceRoot)
+    requireInsideRoot(ctx, params.targetRoot, params.targetRoot)
+    return copyUnit(params)
   })
 
   // 优化工具：扫描可优化项 / 执行优化
