@@ -13,6 +13,7 @@ import type { App, Dialog, Shell, WebContents } from 'electron'
 import type { JsonStore } from './store'
 import { createKnowledgePack } from './knowledgePack'
 import { getHistory } from './aiHistory'
+import { searchProjectFiles } from './projectSearch'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import {
@@ -501,6 +502,16 @@ export function registerFsIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       return a.name.localeCompare(b.name, 'zh-CN')
     })
     return out
+  })
+
+  // M37：一次性在主进程递归文件名/相对路径，避免渲染层对每个目录反复 IPC。
+  // 只搜索已登记项目根内的普通文件；实现本身不读取任何文件内容。
+  ipc('project:searchFiles', async (_event, rootPath: unknown, query: unknown, showHidden: unknown = false) => {
+    if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
+    if (typeof query !== 'string' || query.length > 256) throw new Error('搜索关键词无效')
+    if (typeof showHidden !== 'boolean') throw new Error('隐藏文件参数无效')
+    await requireRealInsideRoot(ctx, rootPath, rootPath)
+    return searchProjectFiles(rootPath, query, showHidden)
   })
 
   ipc('fs:readFile', async (_event, rootPath: string, filePath: string) => {

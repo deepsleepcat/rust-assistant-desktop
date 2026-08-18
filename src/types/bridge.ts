@@ -19,6 +19,12 @@ export interface ReadFileResult {
   size: number
 }
 
+/** 项目内文件名搜索结果（轻量路径，不传文件内容）。 */
+export interface ProjectSearchResult {
+  entries: Array<{ path: string; relativePath: string; name: string }>
+  truncated: boolean
+}
+
 export interface OpenedProject {
   rootPath: string
   name: string
@@ -55,6 +61,8 @@ export interface BridgeApi {
     saveText(title: string, defaultName: string, content: string): Promise<{ ok: boolean; canceled?: boolean; path?: string; message?: string }>
     registerRoots(roots: string[]): Promise<void>
     readDir(rootPath: string, dirPath: string, showHidden?: boolean): Promise<DirEntry[]>
+    /** M37：全项目文件名/相对路径搜索（不读文件内容；受主进程递归上限保护） */
+    searchFiles(rootPath: string, query: string, showHidden?: boolean): Promise<ProjectSearchResult>
     /** 只读元数据（mtimeMs/size）：外部修改轮询用，不传输文件内容 */
     stat(rootPath: string, filePath: string): Promise<{ mtimeMs: number; size: number }>
     readFile(rootPath: string, filePath: string): Promise<ReadFileResult>

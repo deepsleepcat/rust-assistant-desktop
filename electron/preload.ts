@@ -35,6 +35,7 @@ const api: BridgeApi = {
     saveText: (title: string, defaultName: string, content: string) => ipcRenderer.invoke('dialog:saveText', title, defaultName, content),
     registerRoots: (roots: string[]) => ipcRenderer.invoke('project:registerRoots', roots),
     readDir: (rootPath: string, dirPath: string, showHidden?: boolean) => ipcRenderer.invoke('fs:readDir', rootPath, dirPath, showHidden),
+    searchFiles: (rootPath: string, query: string, showHidden?: boolean) => ipcRenderer.invoke('project:searchFiles', rootPath, query, showHidden),
     stat: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:stat', rootPath, filePath),
     readFile: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:readFile', rootPath, filePath),
     writeFile: (rootPath: string, filePath: string, content: string, opts: { hasBom: boolean }) =>
