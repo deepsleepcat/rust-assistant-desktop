@@ -88,7 +88,7 @@ export interface WorkspaceStoreState {
   /** 「定位到文件行」请求（质检清单跳转用）：{ path, line, seq }，seq 递增保证重复跳转同位置也生效 */
   editorJump: { path: string; line: number; seq: number } | null
   /** M5：模组工具弹窗（null 表示关闭） */
-  modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'report' | 'import' | null
+  modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'report' | 'import' | 'translationRepair' | null
   /** M5：单位检查结果 */
   modCheckResult: { issues: Array<{ file: string; level: 'error' | 'warning' | 'info'; message: string }>; unitCount: number; fileCount: number } | null
   /** M13：模组质量报告（生成中为 null；reportOpen 控制弹窗） */
@@ -99,7 +99,10 @@ export interface WorkspaceStoreState {
   modReportError: string | null
   /** 报告生成进度（done/total 为可检查文件数） */
   modReportProgress: { done: number; total: number } | null
-  /** M7：优化工具扫描结果 */
+  /** M38：翻译损坏修复扫描结果 */
+  translationRepairItems: Array<{ path: string; digest: string; changeCount: number; changes: Array<{ line: number; kind: 'section' | 'key' | 'boolean'; before: string; after: string }> }> | null
+  /** M38：翻译损坏修复扫描失败信息 */
+  translationRepairError: string | null
   optimizeItems: Array<{ id: string; kind: 'emptyFile' | 'emptyFolder' | 'backupFile' | 'emptyLine' | 'comment'; rel: string; detail?: string }> | null
   /** M8：优化扫描失败信息（null 表示无失败；重试入口由弹窗提供） */
   optimizeError: string | null
@@ -195,7 +198,7 @@ export interface WorkspaceStoreActions {
   sendAiMessage(conversationId: string, text: string): Promise<void>
   respondApproval(approved: boolean): Promise<void>
   /** M5：模组工具 */
-  setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | null): void
+  setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | 'translationRepair' | null): void
   createModProject(params: { title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean; updateUrl?: string }): Promise<void>
   /** M7：编辑模组自述文件（mod-info.txt 读写，包含 thumbnail/music/maps） */
   saveModInfo(data: { title: string; description?: string; author?: string; version?: string; thumbnail?: string; minVersion?: string; musicFiles: string[]; musicExclusive: boolean; mapsFiles: string[]; mapsExtra: boolean; musicSourceFolder?: string; mapsSourceFolder?: string; updateUrl?: string }): Promise<void>
@@ -217,6 +220,10 @@ export interface WorkspaceStoreActions {
   applyOptimizeProject(ids: string[]): Promise<void>
   /** 全局操作：批量替换/头部附加/尾部附加（返回结果供弹窗展示；失败返回 null） */
   globalOpProject(params: { kind: 'replace' | 'prepend' | 'append'; find?: string; text?: string }): Promise<{ files: number; changed: number; skipped: number } | null>
+  /** M38：扫描当前项目中可确定的翻译损坏预览 */
+  scanTranslationRepairProject(): Promise<void>
+  /** M38：对选定的扫描结果执行恢复 */
+  applyTranslationRepairProject(selections: Array<{ path: string; digest: string }>): Promise<void>
   /** M6：自动更新 */
   checkUpdate(): Promise<void>
   downloadUpdate(): Promise<void>

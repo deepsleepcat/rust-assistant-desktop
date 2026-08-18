@@ -6,7 +6,8 @@
  *
  * 文件系统是内存中的一棵假目录树，存储（设置/工作区）走 localStorage。
  */
-import type { BridgeApi, DirEntry, ReadFileResult } from '../types/bridge'
+import type { BridgeApi, DirEntry, ReadFileResult, TranslationRepairApplyResult, TranslationRepairScanResult } from '../types/bridge'
+import { repairIniContent, type TranslationRepairDictionary } from './translationRepair'
 import { DEFAULT_SETTINGS, sanitizeSettings } from '../utils/settings'
 
 interface MockFile {
@@ -396,6 +397,40 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       importTemplate: async () => null,
       deleteUserTemplate: async () => ({ ok: false, message: '模拟环境：无法删除模板' }),
       listUserTemplateKeys: async () => [],
+      translationRepairScan: async (_rootPath: string): Promise<TranslationRepairScanResult> => {
+        const files: TranslationRepairScanResult['files'] = []
+        for (const entry of tree.children.units?.children?.tank?.children?.['tank.ini'] ? [MOCK_FILES.find((f) => f.path.endsWith('tank.ini'))] : []) {
+          if (!entry) continue
+          const repaired = repairIniContent(entry.content, MOCK_REPAIR_DICT)
+          if (repaired.changes.length === 0) continue
+          const rel = entry.path.replace(MOCK_PROJECT_ROOT + '\\', '').replace(/\\/g, '/')
+          files.push({ path: rel, digest: mockDigest(entry.content), changeCount: repaired.changes.length, changes: repaired.changes })
+        }
+        return { files, scanned: MOCK_FILES.length, skipped: 0, truncated: false }
+      },
+      translationRepairApply: async (_rootPath: string, selections: Array<{ path: string; digest: string }>): Promise<TranslationRepairApplyResult> => {
+        let done = 0; let skipped = 0; let failed = 0; const changedPaths: string[] = []
+        for (const s of selections) {
+          const spec = MOCK_FILES.find((f) => f.path.replace(MOCK_PROJECT_ROOT + '\\', '').replace(/\\/g, '/') === s.path)
+          if (!spec) { skipped++; continue }
+          const currentDigest = mockDigest(spec.content)
+          if (currentDigest !== s.digest) { skipped++; continue }
+          const repaired = repairIniContent(spec.content, MOCK_REPAIR_DICT)
+          if (repaired.changes.length === 0) { skipped++; continue }
+          const parts = spec.path.replace(MOCK_PROJECT_ROOT + '\\', '').split('\\')
+          let node: MockNode = tree
+          for (let i = 0; i < parts.length - 1; i++) {
+            const dir = node.kind === 'dir' ? node.children[parts[i]] : undefined
+            if (!dir || dir.kind !== 'dir') { failed++; break }
+            node = dir
+            if (i === parts.length - 2) {
+              (node as MockDir).children[parts[parts.length - 1]] = { kind: 'file', content: repaired.content, hasBom: false }
+              done++; changedPaths.push(s.path)
+            }
+          }
+        }
+        return { done, skipped, failed, changedPaths }
+      },
     },
     git: {
     info: async () => ({ available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [], message: '模拟环境：无 git' }),

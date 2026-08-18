@@ -97,6 +97,8 @@ const api: BridgeApi = {
     createUnitFromTemplate: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnitFromTemplate', rootPath, params),
     /** M34 单位复制：从其它/同模组复制单位配置（两侧项目根都须已登记） */
     copyUnit: (params: unknown) => ipcRenderer.invoke('mod:copyUnit', params),
+    translationRepairScan: (rootPath: string) => ipcRenderer.invoke('mod:translationRepairScan', rootPath),
+    translationRepairApply: (rootPath: string, selections: unknown) => ipcRenderer.invoke('mod:translationRepairApply', rootPath, selections),
   },
   git: {
     info: (rootPath: string) => ipcRenderer.invoke('git:info', rootPath),

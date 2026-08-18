@@ -14,6 +14,10 @@ export interface TranslationDict {
   /** 键名回译表（code.json 译名 → 键名）：键位置词典兜底优先查，
    * 避免键译名被节名/旧词条译名撞车覆盖（价格→price 误成 prices） */
   keyZhToEn?: Map<string, string>
+  /** 节名回译表（section.json 译名 → 节名）：节头位置回译优先查。
+   * 节名译名与代码表键译名可能撞车（炮塔→节 turret vs 键 c_turret_t1）——
+   * 节位置必须得到节名，与键位置的 keyZhToEn 分开，互不覆盖。 */
+  sectionZhToEn?: Map<string, string>
 }
 
 const EN_WORD_RE = /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g
@@ -149,9 +153,25 @@ function zhToEnLine(line: string, dict: TranslationDict, tracker: TranslationTra
 function tracedReplace(text: string, tracker: TranslationTracker, allowUnderscoreRight = false): string {
   if (tracker.size === 0) return text
   const keys = [...tracker.keys()].sort((a, b) => b.length - a.length) // 最长优先，防短键先吞长键
-  const right = allowUnderscoreRight ? '(?![\\u4e00-\\u9fffA-Za-z0-9])' : '(?![\\u4e00-\\u9fffA-Za-z0-9_])'
-  const re = new RegExp('(?<![\\u4e00-\\u9fffA-Za-z0-9_])(' + keys.map(escapeRegExp).join('|') + ')' + right, 'g')
-  return text.replace(re, (hit) => tracker.get(hit)!)
+  const rightStrict = '(?![\\u4e00-\\u9fffA-Za-z0-9_])'
+  const rightLoose = '(?![\\u4e00-\\u9fffA-Za-z0-9])'
+  const re = new RegExp(
+    '(?<![\\u4e00-\\u9fffA-Za-z0-9_])(' + keys.map(escapeRegExp).join('|') + ')' +
+    (allowUnderscoreRight ? rightLoose : rightStrict),
+    'g',
+  )
+  return text.replace(re, (hit) => {
+    // tracker 键本身已以下划线结尾（如「炮塔_→turret_」）：下划线已消费，
+    // 后续跟中文实例名是合法的，右边界放宽为 rightLoose
+    if (hit.endsWith('_')) {
+      const relaxed = new RegExp(
+        '(?<![\\u4e00-\\u9fffA-Za-z0-9_])(' + escapeRegExp(hit) + ')' + rightLoose,
+        'g',
+      )
+      if (!relaxed.test(text)) return text.slice(text.indexOf(hit), text.indexOf(hit) + hit.length)
+    }
+    return tracker.get(hit)!
+  })
 }
 
 /** 键位置回译：tracker 精确还原优先；未覆盖（表单新增中文键）时词典兜底（整串 → 分段） */
@@ -190,6 +210,6 @@ function escapeRegExp(s: string): string {
 }
 
 /** 构造词典对象（从快照 Map；keyZhToEn 可选：键位置词典兜底优先表） */
-export function makeDict(enToZh: Map<string, string>, zhToEn: Map<string, string>, keyZhToEn?: Map<string, string>): TranslationDict {
-  return { enToZh, zhToEn, keyZhToEn }
+export function makeDict(enToZh: Map<string, string>, zhToEn: Map<string, string>, keyZhToEn?: Map<string, string>, sectionZhToEn?: Map<string, string>): TranslationDict {
+  return { enToZh, zhToEn, keyZhToEn, sectionZhToEn }
 }

@@ -270,6 +270,7 @@ export function ProjectPanel() {
                 <button onClick={() => { setModMenu(false); void checkModProject() }}>检查模组</button>
                 <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setModReportOpen(true) }}>质量报告</button>
                 <button onClick={() => { setModMenu(false); setModDialog('optimize') }}>优化模组</button>
+                <button onClick={() => { setModMenu(false); setModDialog('translationRepair') }}>修复中文翻译</button>
                 <button onClick={() => { setModMenu(false); setModDialog('globalOp') }}>全局操作</button>
                 <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setCodeTableOpen(true) }}>浏览代码表</button>
               </div>

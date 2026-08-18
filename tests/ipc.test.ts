@@ -101,7 +101,7 @@ afterEach(async () => {
 })
 
 describe('IPC 通道完整性', () => {
-  it('九个域注册函数覆盖全部 73 个通道，无遗漏无重复', () => {
+  it('九个域注册函数覆盖全部 75 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerKnowledgeIpc(ctx, ipc)
@@ -129,6 +129,7 @@ describe('IPC 通道完整性', () => {
       'mod:create', 'mod:createUnit', 'mod:listTemplates', 'mod:saveFileAsTemplate', 'mod:createUnitFromTemplate',
       'mod:pack', 'mod:packAndDeploy', 'mod:check', 'mod:readModInfo', 'mod:writeModInfo', 'mod:scanResources', 'mod:scanUnits', 'mod:copyUnit',
       'mod:optimizeScan', 'mod:optimizeApply', 'mod:globalOp', 'mod:chooseMusic', 'mod:import', 'mod:discardImport',
+      'mod:translationRepairScan', 'mod:translationRepairApply',
       'template:import', 'template:deleteUser', 'template:listUserKeys',
       // game
       'game:detect', 'game:importSample', 'game:importMod', 'game:launch', 'game:openDir', 'game:preflight', 'game:readAssetImage',
@@ -139,7 +140,7 @@ describe('IPC 通道完整性', () => {
       'ai:check', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(73)
+    expect(channels.size).toBe(75)
   })
 })
 
@@ -195,6 +196,25 @@ describe('fs 通道（路径安全边界）', () => {
     expect(result.truncated).toBe(false)
     await expect(invoke(channels, 'project:searchFiles', path.join(tmp, 'other'), 'x', false)).rejects.toThrow('未登记的项目目录')
     await expect(invoke(channels, 'project:searchFiles', tmp, 123, false)).rejects.toThrow('搜索关键词无效')
+  })
+
+  it('mod:translationRepairScan：参数校验和未登记根拒绝', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerModIpc(ctx, ipc)
+    await expect(invoke(channels, 'mod:translationRepairScan')).rejects.toThrow('项目目录为空')
+    await expect(invoke(channels, 'mod:translationRepairScan', 123)).rejects.toThrow('项目目录为空')
+    await expect(invoke(channels, 'mod:translationRepairScan', path.join(tmp, 'other'))).rejects.toThrow('未登记的项目目录')
+  })
+
+  it('mod:translationRepairApply：参数校验和互斥', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerModIpc(ctx, ipc)
+    ctx.roots.add(normalizePath(tmp))
+    await expect(invoke(channels, 'mod:translationRepairApply')).rejects.toThrow('项目目录为空')
+    await expect(invoke(channels, 'mod:translationRepairApply', tmp, 'not-array')).rejects.toThrow('修复选择无效')
+    ctx.packing.active = true
+    await expect(invoke(channels, 'mod:translationRepairApply', tmp, [])).rejects.toThrow('已有打包')
+    ctx.packing.active = false
   })
 
   it('越界路径拒绝（.. 穿越与根外绝对路径）', async () => {

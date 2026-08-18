@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { getEnToZhDict, getKeyZhToEnDict, getZhToEnDict } from '../../services/codeData'
+import { getEnToZhDict, getKeyZhToEnDict, getSectionZhToEnDict, getZhToEnDict } from '../../services/codeData'
 import { makeDict, zhToEn } from '../../services/translation'
 import { TurretEditorModal } from '../modTools/TurretEditorModal'
 import { formatRelativeTime } from '../../utils/conversation'
@@ -345,7 +345,7 @@ function EditorPane({
   // 这里用 tracker 精确回译，既保留未保存修改也不会把用户原有中文数据误改为英文。
   const mapContent = useMemo(() => {
     if (!tab || !tab.translationEnabled) return tabContent
-    return zhToEn(tabContent, makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict()), tab.translationMap)
+    return zhToEn(tabContent, makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict(), getSectionZhToEnDict()), tab.translationMap)
   }, [tab, tabContent])
 
   // M29：第二行操作行动作。useMemo 保持数组引用稳定——OverflowToolbar 的 useLayoutEffect

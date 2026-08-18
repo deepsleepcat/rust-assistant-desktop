@@ -157,6 +157,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       modReportProgress: null,
       optimizeItems: null,
       optimizeError: null,
+      translationRepairItems: null,
+      translationRepairError: null,
       updateState: { status: 'idle' },
 
       // ── 领域切片（按域拆分，见 slices/）──

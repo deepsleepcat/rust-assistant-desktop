@@ -176,14 +176,15 @@ export function applyUnitFormValue(content: string, groupSection: string, key: s
     const displayKey = enToZh ? enToZh(key) ?? key : key
     lines.splice(insertAt, 0, `${displayKey}: ${value}`)
   } else {
-    // 节不存在：追加新节到文件尾（前面补空行分隔）
+    // 节不存在：追加新节到文件尾（前面补空行分隔）；中文模式用中文键
     const displayKey = enToZh ? enToZh(key) ?? key : key
-    const displayValue = enToZh && /^(true|false)$/i.test(value) ? (enToZh(value) ?? value) : value
+    // M38：新建节时布尔值保持英文原值，不翻译为真/假——
+    // 新建的中文键/值未登记 tracker，保存后真/假无法还原，游戏不识别。
     if (lines.length > 0 && lines[lines.length - 1] !== '') lines.push('')
     // 炮塔组新建节用官方编号节名 [turret_1]（裸 [turret] 游戏不识别）
     const newSection = isTurretGroup ? 'turret_1' : groupSection
     lines.push(`[${newSection}]`)
-    lines.push(`${displayKey}: ${displayValue}`)
+    lines.push(`${displayKey}: ${value}`)
   }
   return crlf ? lines.join('\r\n') : lines.join('\n')
 }

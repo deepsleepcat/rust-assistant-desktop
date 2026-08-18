@@ -148,6 +148,10 @@ export interface BridgeApi {
       targetName: string
       targetFolder?: string
     }): Promise<{ path: string }>
+    /** M38：扫描项目中可确定的翻译损坏预览（只读） */
+    translationRepairScan(rootPath: string): Promise<TranslationRepairScanResult>
+    /** M38：对选定的扫描结果执行恢复（写前重新读取并比对摘要，外部修改会跳过） */
+    translationRepairApply(rootPath: string, selections: TranslationRepairSelection[]): Promise<TranslationRepairApplyResult>
   }
   /** M8 游戏集成：铁锈战争安装目录检测 / 官方单位示例 / 游戏内模组导入 */
   game: {
