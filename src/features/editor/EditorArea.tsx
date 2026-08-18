@@ -6,7 +6,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { getZhToEnDict } from '../../services/codeData'
+import { getEnToZhDict, getKeyZhToEnDict, getZhToEnDict } from '../../services/codeData'
+import { makeDict, zhToEn } from '../../services/translation'
 import { TurretEditorModal } from '../modTools/TurretEditorModal'
 import { formatRelativeTime } from '../../utils/conversation'
 import { truncateMiddle } from '../../utils/paths'
@@ -17,7 +18,7 @@ import { ConfirmBox, PromptModal } from '../../components/Modal'
 import { EditorMirror } from './EditorMirror'
 import { isUnitFile, UnitFormPanel } from './unitForm/UnitFormPanel'
 import { UnitPreviewModal } from './unitPreview/UnitPreviewModal'
-import { isMapFile, MapViewer } from '../map/MapViewer'
+import { isMapFile, MapViewer, type MapCamera } from '../map/MapViewer'
 import { ImageViewer } from './ImageViewer'
 import { AudioViewer } from './AudioViewer'
 import { isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
@@ -27,6 +28,19 @@ import { scanSections } from './outline'
 import { OverflowToolbar, type ToolbarAction } from '../../components/OverflowToolbar'
 import { SplitHandle } from '../../components/SplitHandle'
 
+interface MapSession {
+  editMode: boolean
+  camera?: MapCamera
+}
+
+function keepMapSession(previous: Record<string, MapSession>, id: string, session: MapSession): Record<string, MapSession> {
+  const next = { ...previous, [id]: session }
+  const ids = Object.keys(next)
+  // UUID 键按插入顺序枚举；最多保留 32 个最近用过的地图会话。
+  if (ids.length > 32) delete next[ids[0]]
+  return next
+}
+
 export function EditorArea() {
   const tabs = useWorkspaceStore((s) => s.openTabs)
   const activeTabId = useWorkspaceStore((s) => s.activeTabId)
@@ -35,6 +49,12 @@ export function EditorArea() {
   const turretEditorOpen = useWorkspaceStore((s) => s.turretEditorOpen)
   // M22：单位合成预览弹窗（本地状态——只服务于当前标签）
   const [previewOpen, setPreviewOpen] = useState(false)
+  // M36：地图代码/预览模式与镜头是每标签会话状态，不写入 workspace 持久化协议。
+  // 记录只在本次 Electron 会话存在，并在写入时限制 32 个，防反复开关地图标签累积。
+  const [mapSessions, setMapSessions] = useState<Record<string, MapSession>>({})
+
+  const activeId = activeTabId ?? tabs[0]?.id
+  const activeSession = activeId ? mapSessions[activeId] : undefined
 
   return (
     <section className="editor-panel panel" style={{ flex: 1, minWidth: 0 }}>
@@ -65,7 +85,25 @@ export function EditorArea() {
       ) : (
         // key=tabId：每个标签独立挂载编辑器实例，撤销/重做历史互不串扰
         // （共享单实例时，跨标签 Ctrl+Z 会撤销「标签切换替换」而把 A 的内容写进 B，损坏数据）
-        <EditorPane key={activeTabId ?? tabs[0].id} tabId={activeTabId ?? tabs[0].id} onOpenPreview={() => setPreviewOpen(true)} />
+        <EditorPane
+          key={activeId!}
+          tabId={activeId!}
+          onOpenPreview={() => setPreviewOpen(true)}
+          mapEditMode={activeSession?.editMode ?? false}
+          mapCamera={activeSession?.camera}
+          onMapEditModeChange={(editMode) => {
+            if (!activeId) return
+            setMapSessions((previous) => keepMapSession(previous, activeId, { ...previous[activeId], editMode }))
+          }}
+          onMapCameraChange={(camera) => {
+            if (!activeId) return
+            setMapSessions((previous) => {
+              const old = previous[activeId]?.camera
+              if (old?.x === camera.x && old.y === camera.y && old.zoom === camera.zoom) return previous
+              return keepMapSession(previous, activeId, { ...previous[activeId], editMode: previous[activeId]?.editMode ?? false, camera })
+            })
+          }}
+        />
       )}
       {previewOpen && <PreviewModalForActiveTab onClose={() => setPreviewOpen(false)} />}
     </section>
@@ -237,7 +275,21 @@ function WelcomeView() {
   )
 }
 
-function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: () => void }) {
+function EditorPane({
+  tabId,
+  onOpenPreview,
+  mapEditMode,
+  mapCamera,
+  onMapEditModeChange,
+  onMapCameraChange,
+}: {
+  tabId: string
+  onOpenPreview?: () => void
+  mapEditMode: boolean
+  mapCamera?: MapCamera
+  onMapEditModeChange: (editMode: boolean) => void
+  onMapCameraChange: (camera: MapCamera) => void
+}) {
   const tab = useWorkspaceStore((s) => s.openTabs.find((t) => t.id === tabId))
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
@@ -253,8 +305,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
   const [liveOutlineH, setLiveOutlineH] = useState<number | null>(null)
   // M14：表单模式（仅单位文件；表单与代码实时双向同步）
   const [formMode, setFormMode] = useState(false)
-  // M15：地图文件「代码编辑」切换（MapViewer 只读，XML 可能需手改）
-  const [mapEditMode, setMapEditMode] = useState(false)
+  // M36：地图模式由 EditorArea 按标签保存，切换标签后不重置。
   // 保存为模板：弹窗输入模板名（null 表示关闭）
   const [templateName, setTemplateName] = useState<string | null>(null)
   // 文件被外部修改后「重新加载」的确认（有未保存修改时才需要）
@@ -290,6 +341,12 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
   const tabContent = tab?.content ?? ''
   const sections = useMemo(() => scanSections(tabContent), [tabContent])
   const formatted = useMemo(() => formatIni(tabContent), [tabContent])
+  // M36：TMX 解析必须使用当前编辑中的英文 XML。中文显示层仅供编辑器展示，
+  // 这里用 tracker 精确回译，既保留未保存修改也不会把用户原有中文数据误改为英文。
+  const mapContent = useMemo(() => {
+    if (!tab || !tab.translationEnabled) return tabContent
+    return zhToEn(tabContent, makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict()), tab.translationMap)
+  }, [tab, tabContent])
 
   // M29：第二行操作行动作。useMemo 保持数组引用稳定——OverflowToolbar 的 useLayoutEffect
   // 依赖 actions 身份重测宽度，每次渲染新建数组会陷入 setState 无限循环。
@@ -366,7 +423,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
         icon: <AppIcon name="edit" size={12} />,
         title: '地图查看器只读；切换到代码模式可手改 XML',
         active: mapEditMode,
-        onClick: () => setMapEditMode((v) => !v),
+        onClick: () => onMapEditModeChange(!mapEditMode),
       })
     }
     list.push({
@@ -377,7 +434,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
       onClick: () => void saveTab(tab.id),
     })
     return list
-  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onOpenPreview, saveTab])
+  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onMapEditModeChange, onOpenPreview, saveTab])
 
   if (!tab) return null
   if (isPreviewableImage(tab.path) && project) {
@@ -491,7 +548,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
               fileName={tab.path}
             />
           ) : (
-            <MapViewer path={tab.path} rootPath={project.rootPath} />
+            <MapViewer path={tab.path} rootPath={project.rootPath} content={mapContent} initialCamera={mapCamera} onCameraChange={onMapCameraChange} />
           )
         ) : formMode && isUnitFile(tab.content) && project ? (
           <UnitFormPanel tab={tab} rootPath={project.rootPath} onOpenPreview={onOpenPreview} />
