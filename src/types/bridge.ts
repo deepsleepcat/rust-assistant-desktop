@@ -25,6 +25,41 @@ export interface ProjectSearchResult {
   truncated: boolean
 }
 
+/** M38：翻译损坏恢复预览中的单行变更。 */
+export interface TranslationRepairChange {
+  line: number
+  kind: 'section' | 'key' | 'boolean' | 'logic'
+  before: string
+  after: string
+}
+
+/** M38：单个文件的翻译损坏恢复预览。 */
+export interface TranslationRepairPreview {
+  path: string
+  digest: string
+  changeCount: number
+  changes: TranslationRepairChange[]
+}
+
+export interface TranslationRepairScanResult {
+  files: TranslationRepairPreview[]
+  scanned: number
+  skipped: number
+  truncated: boolean
+}
+
+export interface TranslationRepairSelection {
+  path: string
+  digest: string
+}
+
+export interface TranslationRepairApplyResult {
+  done: number
+  skipped: number
+  failed: number
+  changedPaths: string[]
+}
+
 export interface OpenedProject {
   rootPath: string
   name: string

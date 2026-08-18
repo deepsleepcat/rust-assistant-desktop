@@ -1,0 +1,194 @@
+铁锈助手 M38/M39 翻译与补全问题修复清单
+执行对象：Claude Code
+项目根目录：W:\mao\tx\ohmytx
+当前分支：feature/m33
+
+【核心目标】
+彻底修复 Rusted Warfare 模组编辑器的中文翻译、回译、补全和知识包覆盖问题。
+不得直接修改 W:\mao\tx\问题单位 中的用户源文件。
+不得合并到 main/master。
+不得推送 GitHub。
+不得继续执行无限循环子代理任务。
+
+【一、必须先完成的根因修复】
+
+[ ] 检查并修复打开/重新加载文件时的翻译状态：
+    - 打开和重新加载不得自动写盘。
+    - 已损坏中文节名/字段只允许在内存显示层规范化。
+    - 明确保存时才把英文键写回磁盘。
+    - 保留 pendingRepair 状态，保存成功后清除。
+    - 确认普通打开流程中没有隐式调用 saveTab、writeFile 或批量修复 apply。
+
+[ ] 修复中文显示层和回译链：
+    - [隐藏行动_治疗友军2] 只在显示层显示为 [隐藏行动_治疗友军2] 或对应中文显示形式。
+    - 磁盘保存必须恢复为 [hiddenAction_治疗友军2]。
+    - autoTrigger、allowMultipleInQueue、addWaypoint_type、addWaypoint_target_nearestUnit_* 等字段必须完整中文显示。
+    - 保存时必须恢复英文字段名。
+    - 保留用户中文单位名、资源名、图片名、音效名、描述、注释和逻辑表达式。
+    - 混合损坏键如 addWaypoint_target_接近单位_tagged 必须能够恢复为英文键。
+    - 命名节只恢复官方前缀，保留用户自定义后缀。
+
+[ ] 检查 TranslationTracker 和 sectionZhToEn 的交互：
+    - tracker 为空时也能恢复已知中文节名前缀。
+    - tracker 命中时优先保留原始英文大小写。
+    - 节名位置与字段位置必须使用独立词典，避免同名译词互相覆盖。
+    - 不能因为值区存在中文而误回译用户数据。
+
+【一-A、用户反馈新增 Bug（截图复现）】
+
+[ ] 修复 `isbuilder:true` 的字段翻译错误：
+    - 核对代码表中的规范字段名、大小写和中文译名（重点检查 `isBuilder`/`isbuilder` 的兼容关系）。
+    - 英文键大小写匹配必须与游戏解析规则一致，不能因为显示层翻译把字段识别成错误字段。
+    - 中文显示层可以显示正确中文，但保存和语义检查必须使用规范英文键。
+    - 增加 `isbuilder:true`、`isBuilder:true`、中文显示模式三种回归测试，避免误报或错误写回。
+
+[ ] 修复中文逻辑表达式导致的错误提示：
+    - 截图中的 `autoTrigger: if self.血量(lessThan=120)` 被语义检查报告为 `Unknown function or field: 血量`。
+    - 翻译显示层不能让语义检查器直接把中文函数/字段名当成游戏语法解析。
+    - 语义检查、悬停、补全和保存回译前必须使用英文逻辑表达式；显示层再单独呈现中文解释。
+    - 支持 `self.hp`/`self.health` 等真实逻辑字段的中文显示与英文回译，保留参数名 `lessThan` 等引擎语法。
+    - 用户值中的普通中文词不能被误判为逻辑函数或字段。
+    - 增加 `autoTrigger`、`self.血量(lessThan=120)`、英文原文往返和未知函数误报回归测试。
+
+[ ] 修复同一单位文件中英文/中文字段混杂显示：
+    - 中文模式下，`hiddenAction`、`autoTrigger`、`addWaypoint_*`、`allowMultipleInQueue` 等已收录字段必须统一按代码表显示中文。
+    - 英文模式下全部保持英文原文。
+    - 已损坏中文源文件打开时，显示层不得再次出现“部分字段中文、部分字段英文”的混合状态。
+    - 源文件仍只允许保存英文节名、字段名和引擎枚举值；中文单位名、资源名、描述和图片名必须保留。
+    - 增加完整“亚洲分部医疗兵”结构的打开、显示、保存、重新加载回归测试。
+
+[ ] 修复代码大小写被覆写的问题：
+    - 中文显示/保存往返必须保留源文件原始大小写，不能把 `Image` 改成 `image`、`True` 改成 `true` 或反过来。
+    - 字段名、节名、枚举值、逻辑函数名、参数名和资源引用分别处理，不能使用统一小写回译覆盖原文。
+    - `TranslationTracker` 命中原文时必须优先恢复原始大小写；未命中时只能使用明确的规范英文代码，不得猜测大小写。
+    - 检查 `zhToEnDict`、`keyZhToEnDict`、`sectionZhToEnDict` 构建过程，避免 Map 写入时用小写值覆盖原始拼写。
+    - 同一中文译名对应多个英文大小写变体时，不得静默选择一个变体；应保留英文原文或报告歧义。
+    - 增加大小写回归测试：`Image/image`、`True/true`、`AUTO/Auto/auto`、大小写混合字段和中文模式保存后再次打开。
+    - 批量中文损坏修复也必须保留未涉及内容的大小写，不得因修复节名前缀而重写其它字段。
+
+【二、知识包和代码表】
+
+[ ] 完善知识包数据完整性门禁：
+    - code.json 必须包含并正确翻译：
+      autoTrigger
+      allowMultipleInQueue
+      addWaypoint_type
+      addWaypoint_target_nearestUnit_tagged
+      addWaypoint_target_nearestUnit_team
+      addWaypoint_target_nearestUnit_maxRange
+    - section.json 必须包含并正确翻译：
+      hiddenAction、action、turret、projectile、effect
+    - value_type.json 必须包含路径点和队伍关系类型。
+    - value_zh.json 必须包含 move、attackMove、guard、loadInto、setPassiveTarget 等关键值。
+    - 更新知识包缺少核心字段、字段译名为空或 data 为空时，必须回退内置 public/data。
+    - 不允许旧知识包静默覆盖新内置代码表。
+
+[ ] 修复代码数据异步重载竞态：
+    - reloadCodeData 后，旧 Promise 不得覆盖新一轮词典。
+    - reloadTab 必须等待 loadCodeData 完成后再翻译。
+    - 更新/回滚知识包后，所有 Map 必须重新构建，不得残留旧词条。
+
+[ ] 对照工作簿：
+    文件：W:\mao\tx\代码表1.15超强版(兼容)0830.xlsx
+    - merge-xlsx-data.py 必须识别没有末尾冒号的字段。
+    - 支持 #、{NUM}、[]、点号、短横线等模板字段。
+    - 默认只审计，不得默认写入。
+    - --apply 才允许写入 code.json/translations.json。
+    - 保留 Excel 行号并报告重复键和元数据冲突。
+    - 不把枚举值错误加入通用 translations.json。
+
+[ ] 校核已确认的数据类型修复：
+    - addWaypoint_target_nearestUnit_team 使用正确的专属关系类型。
+    - addWaypoint_type.rule 包含 setPassiveTarget。
+    - 相关 team 类型 rule 与 list 保持一致，包含 notOwn（只有确认该值合法时保留）。
+    - 不要凭猜测批量修改其它 unknown 类型；必须有工作簿、现有引擎资料或项目测试依据。
+
+【三、补全和悬停】
+
+[ ] 修复枚举补全显示：
+    - addWaypoint_type: 输入中文“移动”可以命中 move、attackMove。
+    - 候选显示英文原值 + 中文解释，例如 move · 移动。
+    - apply 始终写英文引擎值，不能把中文枚举写进模组文件。
+    - 中文过滤必须同时匹配英文原值和 value_zh 中文解释。
+    - 参数化枚举按括号前基础值匹配中文解释，同时保留完整参数串。
+    - value type 的 name/describe 应在候选 detail 中可见。
+
+[ ] 修复枚举悬停：
+    - 显示英文原值、中文解释、所属字段、值类型中文名和类型说明。
+    - 支持逗号分隔的枚举值。
+    - 支持 queueItemAdded(...) 等参数化枚举。
+    - 资源路径、单位名、局部变量和用户自定义值没有可靠翻译时保留原文，不要猜测翻译。
+
+【四、测试补齐】
+
+[ ] 增加真实 code.json 翻译回归：
+    - 使用真实 public/data 构造 TranslationDict。
+    - 覆盖 hiddenAction 命名节、autoTrigger、allowMultipleInQueue、addWaypoint_type、addWaypoint_target_nearestUnit_tagged/team/maxRange。
+    - 断言 enToZh 后字段完整中文。
+    - 断言 zhToEn 后严格恢复英文原文。
+    - 断言值区中文不被修改。
+
+[ ] 增加 store 回归：
+    - 打开损坏文件不调用 writeFile。
+    - 打开后磁盘内容不变。
+    - 内存显示层完成规范化。
+    - 明确 saveTab 后才写回英文键。
+    - 保存成功后 pendingRepair 清除。
+    - reloadTab 同样不自动写盘。
+
+[ ] 增加知识包回归：
+    - 更新包 code.json 为 data:[] 时回退内置。
+    - 更新包缺少核心字段时回退内置。
+    - 更新包字段存在但 translate 缺失时回退内置。
+    - value_zh 缺关键枚举时回退内置。
+    - 完整更新包仍可正常覆盖内置数据。
+
+[ ] 增加补全测试：
+    - 输入中文枚举解释可命中英文值。
+    - 候选 label/detail 中文存在。
+    - apply 保持英文。
+    - 参数化枚举能够显示基础中文解释。
+
+[ ] 增加 hover 测试：
+    - 字段 hover 显示字段中文名和说明。
+    - 枚举 hover 显示中文解释和类型上下文。
+    - 逗号枚举和参数化枚举覆盖。
+
+[ ] 增加工作簿解析测试：
+    - 无冒号字段。
+    - 模板字段。
+    - 重复键和冲突报告。
+    - 缺少工作表时明确失败。
+    - 默认审计不写盘。
+
+【五、已知问题与验证】
+
+[ ] 重新运行：
+    npm run typecheck
+    npm run lint
+    npm run build
+    npm run check:real-mods
+
+[ ] 运行专项测试：
+    npx vitest run tests/translation.test.ts tests/translationRepair.test.ts tests/dataVersion.test.ts tests/completion.test.ts tests/rustLint.test.ts tests/store.test.ts tests/knowledgePack.test.ts
+
+[ ] 运行完整测试：
+    npm test
+    如果 tests/streamAgent.test.ts 仍然出现 5 秒时序超时，单独定位并修复，不能直接忽略。
+
+[ ] 处理启动日志中的缺失目录错误：
+    ENOENT: scandir W:\mao\tx\问题单位\rules
+    文件树遇到不存在目录时应优雅降级，不影响应用启动。
+
+[ ] 重新构建 code-review-graph：
+    - 图谱 built_at_sha 必须等于当前 HEAD。
+    - 检查受影响流、桥接节点、未测试热点和意外跨模块耦合。
+    - 完成安全与逻辑审查。
+
+【六、交付纪律】
+
+[ ] 检查 git diff 和 git status，区分本轮修改与用户已有的无关修改。
+[ ] 不要修改用户问题单位源文件作为测试手段。
+[ ] 不要合并 main/master。
+[ ] 不要推送 GitHub。
+[ ] 最终报告必须列出实际通过和失败的命令，不能宣称未运行的检查已通过。

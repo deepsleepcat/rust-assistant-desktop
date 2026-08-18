@@ -59,6 +59,16 @@ export function enToZh(text: string, dict: TranslationDict, tracker?: Translatio
       return existing === word ? zh : word
     }
 
+    // 完整字段优先：addWaypoint_target_nearestUnit_tagged 这类代码表已有的
+    // 复合键不能先按 _ 拆开，否则只会显示成「addWaypoint_类型」。
+    const direct = dict.enToZh.get(word.toLowerCase())
+    if (direct) {
+      if (/^[A-Z]/.test(word) && !/^[A-Z]/.test(direct)) {
+        return record(direct.charAt(0).toUpperCase() + direct.slice(1))
+      }
+      return record(direct)
+    }
+
     // 兜底链：①带编号后缀（projectile_1 → projectile）
     // ②以 _ 结尾的节名前缀（global_resource_聚能 → global_resource_ → global_resource）
     // 均翻译基础词后拼回原文后缀
@@ -84,12 +94,7 @@ export function enToZh(text: string, dict: TranslationDict, tracker?: Translatio
       if (joined !== word) return record(joined)
     }
 
-    const zh = dict.enToZh.get(word.toLowerCase())
-    if (!zh) return word
-    if (/^[A-Z]/.test(word) && !/^[A-Z]/.test(zh)) {
-      return record(zh.charAt(0).toUpperCase() + zh.slice(1))
-    }
-    return record(zh)
+    return word
   })
 }
 
@@ -128,12 +133,23 @@ export function zhToEn(text: string, dict: TranslationDict, tracker?: Translatio
 /** 追踪模式单行回译：认 : 与 = 分隔符（与引擎解析一致）；
  * 键位置（含节头 [name]）允许键后跟 _（宏字段后缀/needName 节实例名），
  * 值位置严格边界（用户数据「攻击_力强」里的 攻击 不被改写） */
+function restoreSectionLine(line: string, dict: TranslationDict, tracker: TranslationTracker): string {
+  const open = line.indexOf('[')
+  const close = open >= 0 ? line.indexOf(']', open + 1) : -1
+  if (open >= 0 && close > open && dict.sectionZhToEn) {
+    const rawName = line.slice(open + 1, close)
+    const restored = restoreSectionText(rawName, dict.sectionZhToEn)
+    if (restored !== rawName) return line.slice(0, open + 1) + restored + line.slice(close)
+  }
+  return tracedReplace(line, tracker, true)
+}
+
 function zhToEnLine(line: string, dict: TranslationDict, tracker: TranslationTracker): string {
   const kv = /^(\s*)([^:=]*?)(\s*)([:=])(.*)$/.exec(line)
   if (!kv) {
-    // 节头行（[name]）按键位置宽松边界处理；其余行（注释/普通文本）严格边界
-    const isSection = line.trimStart().startsWith('[')
-    return tracedReplace(line, tracker, isSection)
+    // 节头使用独立节名词典兜底；普通文本仍只按 tracker 精确回译。
+    if (line.trimStart().startsWith('[')) return restoreSectionLine(line, dict, tracker)
+    return tracedReplace(line, tracker, false)
   }
   const [, indent, keyRaw, ws, sep, rest] = kv
   const keyEn = restoreKeyText(keyRaw, dict, tracker)
@@ -182,6 +198,23 @@ function restoreKeyText(keyRaw: string, dict: TranslationDict, tracker: Translat
   const direct = keyMap.get(keyRaw.trim()) ?? dict.zhToEn.get(keyRaw.trim())
   if (direct) return keyRaw.replace(keyRaw.trim(), direct)
   return dictFallback(keyRaw, dict, keyMap)
+}
+
+/** 节头回译：整段优先，再按已知中文节名前缀恢复并保留自定义后缀。 */
+function restoreSectionText(text: string, map: Map<string, string>): string {
+
+  const trimmed = text.trim()
+  const direct = map.get(trimmed)
+  if (direct) return text.replace(trimmed, direct)
+  const prefixes = [...map.entries()]
+    .filter(([from]) => from.endsWith('_'))
+    .sort((a, b) => b[0].length - a[0].length)
+  for (const [from, to] of prefixes) {
+    if (trimmed.startsWith(from) && trimmed.length > from.length) {
+      return text.replace(trimmed, to + trimmed.slice(from.length))
+    }
+  }
+  return text
 }
 
 /** 词典回译（整段优先查表，未命中按汉字 run 最长前缀拆解） */

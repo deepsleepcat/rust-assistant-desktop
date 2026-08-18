@@ -100,7 +100,7 @@ export interface WorkspaceStoreState {
   /** 报告生成进度（done/total 为可检查文件数） */
   modReportProgress: { done: number; total: number } | null
   /** M38：翻译损坏修复扫描结果 */
-  translationRepairItems: Array<{ path: string; digest: string; changeCount: number; changes: Array<{ line: number; kind: 'section' | 'key' | 'boolean'; before: string; after: string }> }> | null
+  translationRepairItems: Array<{ path: string; digest: string; changeCount: number; changes: Array<{ line: number; kind: 'section' | 'key' | 'boolean' | 'logic'; before: string; after: string }> }> | null
   /** M38：翻译损坏修复扫描失败信息 */
   translationRepairError: string | null
   optimizeItems: Array<{ id: string; kind: 'emptyFile' | 'emptyFolder' | 'backupFile' | 'emptyLine' | 'comment'; rel: string; detail?: string }> | null

@@ -9,8 +9,11 @@
  * - 中文路径文件读写
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
 import { createWorkspaceStore } from '../src/stores/workspace'
-import { createMockBridge, MOCK_PROJECT_ROOT } from '../src/services/mockBridge'
+import { createMockBridge, MOCK_PROJECT_ROOT, type MockFileSpec } from '../src/services/mockBridge'
+import { reloadCodeData, loadCodeData } from '../src/services/codeData'
 
 describe('工作区 store 业务流', () => {
   let store: ReturnType<typeof createWorkspaceStore>
@@ -171,6 +174,91 @@ describe('工作区 store 业务流', () => {
     await store.getState().openProject()
     await store.getState().refreshTree()
     expect(store.getState().treeRoot?.children?.length).toBeGreaterThan(0)
+  })
+
+  it('打开已损坏中文键：reloadTab 只内存修复且不写盘', async () => {
+    const DATA_DIR = path.resolve(__dirname, '../public/data')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const rel = String(url).replace(/^\.?\//, '').replace(/^data\//, '')
+        const file = path.resolve(DATA_DIR, rel)
+        if (file !== DATA_DIR && !file.startsWith(DATA_DIR + path.sep)) throw new Error('测试夹具：路径越出数据目录')
+        return { ok: true, status: 200, json: async () => JSON.parse(fs.readFileSync(file, 'utf8')) } as unknown as Response
+      }),
+    )
+    reloadCodeData()
+    await loadCodeData()
+    try {
+      const broken: MockFileSpec[] = [{
+        path: `${MOCK_PROJECT_ROOT}\\units\\broken-reload.ini`,
+        content: '[隐藏行动_治疗友军2]\nautoTrigger:true\nisbuilder:true',
+      }]
+      bridge = createMockBridge(broken)
+      store = createWorkspaceStore(bridge)
+      await store.getState().init()
+      await store.getState().openProject()
+      const filePath = `${MOCK_PROJECT_ROOT}\\units\\broken-reload.ini`
+      await store.getState().openFile(filePath)
+      const tab = store.getState().openTabs.find((t) => t.path === filePath)!
+      const before = await bridge.project.readFile(MOCK_PROJECT_ROOT, filePath)
+      await store.getState().reloadTab(tab.id)
+      const after = await bridge.project.readFile(MOCK_PROJECT_ROOT, filePath)
+      const reloaded = store.getState().openTabs.find((t) => t.id === tab.id)!
+      expect(after.content).toBe(before.content)
+      expect(reloaded.pendingRepair).toBe(true)
+      expect(reloaded.dirty).toBe(false)
+      expect(reloaded.content).toContain('[隐藏行动_治疗友军2]')
+      expect(reloaded.content).toContain('自动触发:真')
+    } finally {
+      vi.unstubAllGlobals()
+      reloadCodeData()
+    }
+  })
+
+  it('完整单位结构中文显示后保存再加载：字段、节名和值区均保持契约', async () => {
+    const DATA_DIR = path.resolve(__dirname, '../public/data')
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const rel = String(url).replace(/^\.?\//, '').replace(/^data\//, '')
+      const file = path.resolve(DATA_DIR, rel)
+      return { ok: true, status: 200, json: async () => JSON.parse(fs.readFileSync(file, 'utf8')) } as unknown as Response
+    }))
+    reloadCodeData()
+    await loadCodeData()
+    try {
+      const original = [
+        '[core]', 'name: 亚洲分部医疗兵', 'isbuilder:true',
+        '[graphics]', 'image: medic.png', 'image_shadow:AUTO',
+        '[attack]', 'canAttackFlyingUnits:true',
+        '[movement]', 'movementType:LAND',
+        '[隐藏行动_治疗友军2]', 'autoTrigger:if self.血量(lessThan=120)',
+        'addWaypoint_type:move', 'addWaypoint_target_nearestUnit_team:own',
+        '[炮塔_枪]', 'x: 1', 'y: 2',
+        '[抛射体_子弹]', 'life: 10',
+        '[效果_闪光]', 'image: flash.png',
+        '# 用户中文描述保留',
+      ].join('\n')
+      const filePath = `${MOCK_PROJECT_ROOT}\\units\\asia-medical-full.ini`
+      bridge = createMockBridge([{ path: filePath, content: original }])
+      store = createWorkspaceStore(bridge)
+      await store.getState().init()
+      await store.getState().openProject()
+      await store.getState().openFile(filePath)
+      const tab = store.getState().openTabs.find((t) => t.path === filePath)!
+      expect(tab.content).toContain('自动触发')
+      expect(tab.content).toContain('添加路径点动作类型')
+      expect(tab.content).toContain('[隐藏行动_治疗友军2]')
+      expect(tab.content).toContain('亚洲分部医疗兵')
+      expect(await store.getState().saveTab(tab.id)).toBe(true)
+      const disk = await bridge.project.readFile(MOCK_PROJECT_ROOT, filePath)
+      expect(disk.content).toContain('autoTrigger:if self.hp(lessThan=120)')
+      expect(disk.content).toContain('isbuilder:true')
+      await store.getState().reloadTab(tab.id)
+      expect(store.getState().openTabs.find((t) => t.id === tab.id)?.dirty).toBe(false)
+    } finally {
+      vi.unstubAllGlobals()
+      reloadCodeData()
+    }
   })
 })
 

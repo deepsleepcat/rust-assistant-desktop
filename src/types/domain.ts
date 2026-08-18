@@ -168,6 +168,8 @@ export interface EditorTab {
   translationEnabled: boolean
   /** 翻译追踪表（中文显示串 → 原始英文串）：保存时精确还原，未追踪中文保留 */
   translationMap?: Map<string, string>
+  /** 打开时只在内存规范化了已知中文键；必须用户明确保存才写回磁盘。 */
+  pendingRepair?: boolean
   /** 读取文件时的大小（仅供展示） */
   size: number
   /** 磁盘快照时间与外部修改标记 */

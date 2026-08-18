@@ -479,6 +479,11 @@ function EditorPane({
             </>
           )}
           {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
+          {tab.pendingRepair && !tab.dirty && (
+            <span style={{ color: 'var(--warn, #d99014)', fontSize: 11.5 }} title="打开时已在内存中恢复中文键；保存时写回英文到磁盘">
+              ◐ 待写回修复
+            </span>
+          )}
           <button
             className={tab.translationEnabled ? 'btn primary' : 'btn'}
             onClick={() => toggleTranslation(tab.id)}

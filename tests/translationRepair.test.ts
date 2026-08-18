@@ -19,6 +19,7 @@ const dict: TranslationRepairDictionary = {
     { code: 'canAttackFlyingUnits', translate: '可攻击空中单位', type: 'logicBoolean' },
     { code: 'canAttackLandUnits', translate: '可攻击表面单位', type: 'logicBoolean' },
     { code: 'canAttackUnderwaterUnits', translate: '可攻击水下单位', type: 'logicBoolean' },
+    { code: 'autoTrigger', translate: '自动触发', type: 'logicBoolean' },
     { code: 'name', translate: '名称', type: 'string' },
     { code: 'true', translate: '真', type: 'constant' },
     { code: 'false', translate: '假', type: 'constant' },
@@ -49,6 +50,35 @@ describe('已翻译 INI 恢复器', () => {
     ].join('\n'))
     expect(result.changes).toHaveLength(5)
     expect(result.changes.every((change) => change.kind === 'section')).toBe(true)
+  })
+
+  it('修复截图中的混合键：只回译已知中文片段', () => {
+    const mixedDict: TranslationRepairDictionary = {
+      ...dict,
+      codes: [
+        ...dict.codes,
+        { code: 'addWaypoint', translate: '添加路径点', type: 'action' },
+        { code: 'type', translate: '类型', type: 'string' },
+        { code: 'nearestUnit', translate: '接近单位', type: 'string' },
+        { code: 'takeResources', translate: '提取资源', type: 'action' },
+        { code: 'includeUnitsWithinRange', translate: '范围', type: 'float' },
+        { code: 'excludeUnitsWithoutTags', translate: '排除标签', type: 'tags' },
+      ],
+    }
+    const source = [
+      'addWaypoint_类型:move',
+      'addWaypoint_target_接近单位_tagged:伤员',
+      '提取资源_includeUnitsWithinRange:150',
+      '提取资源_excludeUnitsWithoutTags:弹药补给',
+    ].join('\n')
+    const result = repairIniContent(source, mixedDict)
+    expect(result.content).toBe([
+      'addWaypoint_type:move',
+      'addWaypoint_target_nearestUnit_tagged:伤员',
+      'takeResources_includeUnitsWithinRange:150',
+      'takeResources_excludeUnitsWithoutTags:弹药补给',
+    ].join('\n'))
+    expect(result.changes.map((change) => change.kind)).toEqual(['key', 'key', 'key', 'key'])
   })
 
   it('恢复唯一字段译名和明确布尔值，普通中文内容保持不变', () => {
@@ -128,7 +158,7 @@ describe('真实问题单位回归（亚洲分部医疗兵）', () => {
     expect(result.content).toContain('addWaypoint_target_nearestUnit_tagged:伤员')
     expect(result.content).toContain('text_zh:剩余弹匣 1弹药=1弹匣')
     expect(result.content).toContain('price:弹药=1')
-    expect(result.content).toContain('autoTrigger:if self.血量(lessThan=120)')
+    expect(result.content).toContain('autoTrigger:if self.hp(lessThan=120)')
     // 注释保留
     expect(result.content).toContain('#淡出')
     // 英文混合节不变
@@ -138,6 +168,19 @@ describe('真实问题单位回归（亚洲分部医疗兵）', () => {
     expect(result.content).toContain('[turret_投掷手雷]')
     expect(result.content).toContain('invisible:true')
     expect(result.content).toContain('canAttackFlyingUnits:false')
+  })
+
+  it('只恢复已知 self 中文逻辑函数，未知 self 函数与普通中文值保持原样', () => {
+    const source = [
+      '[隐藏行动_测试]',
+      'autoTrigger:if self.血量(lessThan=120)',
+      'autoTrigger:if self.自定义函数(tag=伤员)',
+      'description:血量不足时治疗伤员',
+    ].join('\n')
+    const result = repairIniContent(source, dict)
+    expect(result.content).toContain('autoTrigger:if self.hp(lessThan=120)')
+    expect(result.content).toContain('autoTrigger:if self.自定义函数(tag=伤员)')
+    expect(result.content).toContain('description:血量不足时治疗伤员')
   })
 
   it('保留 CRLF 换行', () => {

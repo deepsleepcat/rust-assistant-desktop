@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lintIniText, stripInlineComment, validateValue } from '../src/features/editor/rustLint'
+import { lintIniText, semanticInputContent, stripInlineComment, validateValue } from '../src/features/editor/rustLint'
 import type { ValueTypeInfo } from '../src/services/codeData'
 
 /** 测试用最小数据源 */
@@ -33,12 +33,21 @@ const data = {
       canBuild_1_name: { type: 'key' },
       // 中文模式：名称 → name（string）
       name: { type: 'string' },
+      isBuilder: { type: 'boolean' },
     }
-    return map[k]
+    return map[k] ?? map[Object.keys(map).find((name) => name.toLowerCase() === k.toLowerCase()) ?? '']
   },
   findType: (t: string) => TYPE_RULES[t],
   zhToEn: (k: string) => (k === '名称' ? 'name' : k === '是' ? 'true' : k === '真' ? 'true' : k === '假' ? 'false' : k === '生命值' ? 'maxHp' : undefined),
 }
+
+describe('语义检查输入', () => {
+  it('中文显示层逻辑函数使用 tracker 恢复英文，普通中文值不被改写', () => {
+    const tracker = new Map([['血量', 'hp'], ['自动触发', 'autoTrigger']])
+    const input = '自动触发: if self.血量(lessThan=120)\ndescription: 血量不足时治疗'
+    expect(semanticInputContent(input, tracker)).toBe('autoTrigger: if self.hp(lessThan=120)\ndescription: 血量不足时治疗')
+  })
+})
 
 describe('值合法性检查（validateValue）', () => {
   it('合法值通过', () => {
@@ -74,6 +83,11 @@ describe('值合法性检查（validateValue）', () => {
   it('变量引用 ${...} 放行', () => {
     expect(validateValue('maxHp', '${self.maxHp}', data)).toBeNull()
     expect(validateValue('life', '${self.life}', data)).toBeNull()
+  })
+
+  it('isBuilder 大小写不敏感：isbuilder 与 isBuilder 都通过布尔校验', () => {
+    expect(validateValue('isbuilder', 'true', data)).toBeNull()
+    expect(validateValue('isBuilder', 'false', data)).toBeNull()
   })
 
   it('中文模式兼容：中文键/中文布尔值', () => {

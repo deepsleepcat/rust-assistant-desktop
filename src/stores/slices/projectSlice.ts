@@ -15,8 +15,9 @@ import { getBridge } from '../../services/bridge'
 import { sanitizeSettings } from '../../utils/settings'
 import { findTreeNode, updateTreeNode } from '../../utils/tree'
 import { basename, isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
-import { getEnToZhDict, getKeyZhToEnDict, getSectionZhToEnDict, getZhToEnDict, loadCodeData } from '../../services/codeData'
+import { getAllCodes, getAllSections, getEnToZhDict, getKeyZhToEnDict, getSectionZhToEnDict, getZhToEnDict, loadCodeData } from '../../services/codeData'
 import { enToZh, makeDict, zhToEn } from '../../services/translation'
+import { repairIniContent } from '../../services/translationRepair'
 import { invalidateResourceCache } from '../../features/editor/completion'
 import { normalizeOpenPath } from '../../utils/projectPath'
 import { generateModReport as generateModReportFn } from '../../features/modTools/modReport'
@@ -35,6 +36,13 @@ const dirLoadSeqs = new Map<string, number>()
  * 时按字符串比较会变成两个标签，这里统一规范化后比较 */
 function sameTabPath(a: string, b: string): boolean {
   return a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase()
+}
+
+function repairDictionary() {
+  return {
+    sections: getAllSections(),
+    codes: getAllCodes().map((code) => ({ code: code.code, translate: code.translate, type: code.type })),
+  }
 }
 
 /** 路径归一化（分隔符 → /，小写）：用于前缀匹配与替换定位（\\/ 与大小写均为 1:1 映射，
@@ -452,7 +460,11 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             return
           }
           const translationEnabled = get().settings.translateMode
-          const original = result.content
+          const source = result.content
+          // 只在内存中修复已经写成中文的已知节名/字段名；这里不触碰磁盘。
+          // 用户明确保存时，pendingRepair 会让规范化后的英文键一起写回。
+          const repaired = /\.(ini|template)$/i.test(absPath) ? repairIniContent(source, repairDictionary()) : { content: source, changes: [] }
+          const original = repaired.content
           // 翻译追踪表：记录「中文显示串 → 原始英文串」，保存时精确还原（含大小写），
           // 未追踪的中文（文件里原有的中文数据/用户手写）保留不动，防止保存改写数据
           const dict = makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict(), getSectionZhToEnDict())
@@ -466,6 +478,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             original,
             hasBom: result.hasBom,
             dirty: false,
+            pendingRepair: repaired.changes.length > 0,
             translationEnabled,
             translationMap: translationEnabled ? tracker : undefined,
             size: result.size,
@@ -521,6 +534,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
                 ...t,
                 original: toWrite,
                 dirty: currentDisk !== toWrite,
+                pendingRepair: false,
                 size: savedMeta.size,
                 mtimeMs: savedMeta.mtimeMs,
                 externalChanged: false,
@@ -528,7 +542,8 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             }),
           })
           invalidateResourceCache()
-          get().notify(`已保存 ${tab.name}`)
+          const hadPending = tab.pendingRepair
+          get().notify(hadPending ? `已保存 ${tab.name}（中文键已写回英文）` : `已保存 ${tab.name}`)
           return true
         } catch (err) {
           get().notify(`保存失败：${err instanceof Error ? err.message : String(err)}`)
@@ -542,9 +557,11 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         const tab = get().openTabs.find((t) => t.id === id)
         if (!project || !tab) return
         try {
+          await loadCodeData()
           const result = await deps.bridge.project.readFile(project.rootPath, tab.path)
           const translationEnabled = tab.translationEnabled
-          const original = result.content
+          const repaired = /\.(ini|template)$/i.test(tab.path) ? repairIniContent(result.content, repairDictionary()) : { content: result.content, changes: [] }
+          const original = repaired.content
           const dict = makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict(), getSectionZhToEnDict())
           const tracker = new Map<string, string>()
           const view = translationEnabled ? enToZh(original, dict, tracker) : original
@@ -558,6 +575,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
                     hasBom: result.hasBom, // 外部修改可能增删 BOM：一并刷新
                     translationMap: translationEnabled ? tracker : undefined,
                     dirty: false,
+                    pendingRepair: repaired.changes.length > 0,
                     externalChanged: false,
                     size: result.size,
                     mtimeMs: result.mtimeMs,

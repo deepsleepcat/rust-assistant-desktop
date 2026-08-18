@@ -7,6 +7,7 @@ import {
   commitText,
   computeRustCompletions,
   localVariableCompletions,
+  logicCompletionText,
   rustCompletionSource,
   setCompletionChineseMode,
   withTimeout,
@@ -45,8 +46,8 @@ const fakeData: CompletionDataSource = {
     return map[code]
   },
   findValueType: (type) => {
-    const map: Record<string, { external?: string; list?: string }> = {
-      string: { external: ':' },
+    const map: Record<string, { name?: string; external?: string; list?: string; describe?: string }> = {
+      string: { name: '文本', external: ':' },
       resource: { external: ':', list: 'NONE,AUTO,@file(png)' },
       int: { external: ':' },
       baseImage: { list: 'NONE,AUTO,@file(png),@file(jpg)' },
@@ -248,12 +249,25 @@ describe('补全候选计算（注入假数据源）', () => {
   })
 })
 
+describe('逻辑函数补全', () => {
+  it('逻辑函数候选始终提交英文引擎语法', () => {
+    expect(logicCompletionText('hp')).toBe('self.hp()')
+  })
+})
+
 describe('值类型 list 解析', () => {
   it('解析逗号分隔并过滤特殊指令', () => {
     expect(parseValueList('true,false')).toEqual(['true', 'false'])
     expect(parseValueList('NONE,AUTO,@file(png),ROOT:')).toEqual(['NONE', 'AUTO', 'ROOT:'])
     expect(parseValueList('')).toEqual([])
     expect(parseValueList(undefined)).toEqual([])
+  })
+
+  it('参数化枚举中的逗号不拆开成员', () => {
+    expect(parseValueList('queueItemAdded(withActionTag="#",other="x"),move')).toEqual([
+      'queueItemAdded(withActionTag="#",other="x")',
+      'move',
+    ])
   })
 })
 

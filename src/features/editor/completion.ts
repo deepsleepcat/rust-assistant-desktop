@@ -37,9 +37,9 @@ export interface CompletionDataSource {
   findSectionsByQuery(query: string, limit?: number): Array<{ code: string; translate: string; needName?: boolean }>
   findCodesBySection(section: string, query: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string; section?: string }>
   findCodeByCode(code: string): { code: string; translate: string; description: string; type: string } | undefined
-  findValueType(type: string): { external?: string; list?: string; describe?: string } | undefined
+  findValueType(type: string): { name?: string; type?: string; external?: string; list?: string; describe?: string } | undefined
   /** M31：多值类型合并查询（float,logicBoolean → 全部命中段；未提供时回退 findValueType 单条） */
-  findValueTypes?(type: string): Array<{ external?: string; list?: string; describe?: string }>
+  findValueTypes?(type: string): Array<{ name?: string; type?: string; external?: string; list?: string; describe?: string }>
   findCodesByQuery(query: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string }>
   /** 按值类型查代码（@type(类型) 关联联想） */
   findCodesByType(type: string, query?: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string }>
@@ -319,7 +319,7 @@ function withThumbnail(c: Completion, projectId: string | null): Completion {
 }
 
 /** 多值类型合并：data 提供 findValueTypes 用合并结果，否则回退单条（测试注入数据） */
-function valueTypeInfos(data: CompletionDataSource, type: string): Array<{ external?: string; list?: string; describe?: string }> {
+function valueTypeInfos(data: CompletionDataSource, type: string): Array<{ name?: string; type?: string; external?: string; list?: string; describe?: string }> {
   if (data.findValueTypes) return data.findValueTypes(type)
   const single = data.findValueType(type)
   return single ? [single] : []
@@ -346,6 +346,11 @@ function parseFileExts(spec: string): string[] {
     }
   }
   return [inner]
+}
+
+/** 逻辑函数补全提交的引擎语法（显示层不应将中文函数名写入文件）。 */
+export function logicCompletionText(name: string): string {
+  return `self.${name}()`
 }
 
 /** 值补全：key 查类型 → 类型 list → 候选（中文模式下键是中文，先回译成英文再查） */
@@ -375,16 +380,27 @@ async function valueCompletions(key: string, query: string, data: CompletionData
       for (const v of parseValueList(vt.list)) {
         if (!items.includes(v)) items.push(v)
       }
-      for (const d of (vt.list ?? '').split(',').map((s) => s.trim()).filter((s) => s.startsWith('@'))) {
+      for (const d of (vt.list ?? '').split(/,(?=@)/).map((s) => s.trim()).filter((s) => s.startsWith('@'))) {
         if (!directives.includes(d)) directives.push(d)
       }
     }
-    // 枚举值候选（M34：命中 value_zh 词典时 detail 显示中文解释，如 own→己方；
-    // 词典外未知枚举仍可补全，只是没有中文说明）
+    // 枚举值候选：中文解释进入主标签，输入中文解释同样可检索；
+    // apply 始终保留英文引擎值，避免中文显示层把枚举值错误写回磁盘。
     const valueZh = getValueZhDict()
-    for (const v of items.filter((v) => !q || v.toLowerCase().includes(q))) {
-      const zhDesc = valueZh.get(v.toLowerCase())
-      result.push(zhDesc ? { label: v, detail: zhDesc, type: 'value', apply: v } : { label: v, type: 'value', apply: v })
+    const typeHint = vts
+      .map((vt) => [vt.name, vt.describe].filter(Boolean).join('：'))
+      .filter(Boolean)
+      .join(' · ')
+    for (const v of items) {
+      const base = v.slice(0, v.indexOf('(') >= 0 ? v.indexOf('(') : v.length)
+      const zhDesc = valueZh.get(v.toLowerCase()) ?? valueZh.get(base.toLowerCase())
+      if (q && !v.toLowerCase().includes(q) && !zhDesc?.includes(query.trim())) continue
+      result.push({
+        label: zhDesc ? `${v} · ${zhDesc}` : v,
+        detail: typeHint || undefined,
+        type: 'value',
+        apply: v,
+      })
     }
 
     // @file(类型)：扫描项目内资源文件（png/jpg/ogg/ini…）
@@ -430,7 +446,7 @@ async function valueCompletions(key: string, query: string, data: CompletionData
   if (/^self\./.test(query)) {
     const names = searchLogicBooleans(query.slice(5), 30)
     for (const n of names) {
-      const text = `self.${n.name}()`
+      const text = logicCompletionText(n.name.replace(/^self\./i, '').replace(/\(\)$/, ''))
       result.push({
         label: text,
         detail: n.description || undefined,

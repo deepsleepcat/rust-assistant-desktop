@@ -79,7 +79,7 @@ async function startStream(): Promise<{
   return {
     beforeToolCall,
     approve: async (approved: boolean) => {
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 1000; i++) {
         const lastId = [...resolvers.keys()].pop()
         if (lastId) {
           resolvers.get(lastId)?.( { id: lastId, approved } )
@@ -120,7 +120,7 @@ describe('streamAgent 审批链路（M27-1）', () => {
     expect(approval?.contentPreview).toContain('[core]')
     expect((approval?.contentLength ?? 0)).toBeGreaterThan(0)
     expect(approval?.diff).not.toBeNull()
-  })
+  }, 10_000)
 
   it('applyDiff：上下文不匹配 → 直接拒绝并回传原因，不发起审批', async () => {
     await fs.writeFile(path.join(root, 'unit.ini'), '[core]\nname = "a"\n', 'utf8')

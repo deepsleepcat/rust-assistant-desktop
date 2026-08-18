@@ -346,6 +346,29 @@ async function cachedProjectRules(rootPath?: string): Promise<CustomRule[] | und
   return rules
 }
 
+/**
+ * 为语义检查构造英文输入：键名直接由 tracker 恢复，逻辑值只在出现 self. 时
+ * 恢复已追踪的逻辑关键字和 self 标识符。普通中文值不进入替换范围。
+ */
+export function semanticInputContent(content: string, tracker?: Map<string, string> | null): string {
+  if (!tracker || tracker.size === 0) return content
+  return content.split('\n').map((line) => {
+    const kv = /^(\s*)([^:=]*?)(\s*)([:=])(.*)$/.exec(line)
+    if (!kv) return line
+    const [, indent, keyRaw, ws, separator, value] = kv
+    const trimmedKey = keyRaw.trim()
+    const key = tracker.get(trimmedKey) ? keyRaw.replace(trimmedKey, tracker.get(trimmedKey)!) : keyRaw
+    if (!value.includes('self.')) return indent + key + ws + separator + value
+    const logical = value
+      .replace(/self\.([一-鿿][一-鿿0-9_]*)/g, (full, name: string) => {
+        const restored = tracker.get(name)
+        return restored ? `self.${restored}` : full
+      })
+      .replace(/^\s*([^\s]+)/, (token) => tracker.get(token.trim()) ?? token)
+    return indent + key + ws + separator + logical
+  }).join('\n')
+}
+
 export interface RustLintOptions {
   /** 项目根（提供时语义引用检查可拿到单位名列表） */
   rootPath?: string
@@ -355,6 +378,8 @@ export interface RustLintOptions {
   targetVersionName?: string
   /** 当前文件名（checkFile 区分 .template 模板文件用；缺省按单位文件处理） */
   file?: string
+  /** 中文显示层追踪表：语义检查前恢复英文键和逻辑标识符。 */
+  translationMap?: Map<string, string> | null
 }
 
 /** 编辑器语义 lint 的内容上限：超过时只跑基础 lint（单趟 O(n)），
@@ -369,6 +394,7 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
       const zhToEnDict = getZhToEnDict()
       const keyZhToEnDict = getKeyZhToEnDict()
       const content = view.state.doc.toString()
+      const semanticContent = semanticInputContent(content, opts.translationMap)
       const data = {
         findCode: (k: string) => findCodeByCode(k),
         findType: (t: string) => findValueType(t),
@@ -386,7 +412,7 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
         const customRules = await cachedProjectRules(opts.rootPath)
         // M11：目标版本名 → 版本号（空 = 最新版本，由检查器兜底）
         const targetVersionNumber = opts.targetVersionName ? versionNameToNumber(opts.targetVersionName) : undefined
-        const issues = runSemanticChecks(content, {
+        const issues = runSemanticChecks(semanticContent, {
           ruleIds,
           ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames, targetVersionNumber, file: opts.file },
           customRules,

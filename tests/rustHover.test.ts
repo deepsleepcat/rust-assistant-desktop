@@ -6,8 +6,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveKeyEn } from '../src/features/editor/rustHover'
-import { loadCodeData } from '../src/services/codeData'
+import { resolveKeyEn, resolveLogicFunctionEn } from '../src/features/editor/rustHover'
+import { findLogicBoolean, loadCodeData } from '../src/services/codeData'
 
 describe('resolveKeyEn（hover 键位置中文回译）', () => {
   const DATA_DIR = path.resolve(__dirname, '../public/data')
@@ -53,5 +53,19 @@ describe('resolveKeyEn（hover 键位置中文回译）', () => {
 
   it('首尾空白修剪', () => {
     expect(resolveKeyEn(' 名称 ')).toBe('name')
+  })
+})
+
+describe('resolveLogicFunctionEn（逻辑表达式中文显示层回译）', () => {
+  it('self 后的中文逻辑函数回译为英文函数名', () => {
+    expect(resolveLogicFunctionEn('血量')).toBe('hp')
+  })
+
+  it('未知中文逻辑函数保持原样，避免猜测用户数据', () => {
+    expect(resolveLogicFunctionEn('自定义函数')).toBe('自定义函数')
+  })
+
+  it('英文短函数名能命中 logicboolean 数据中的 self.hp()', () => {
+    expect(findLogicBoolean('hp')?.name).toBe('self.hp()')
   })
 })

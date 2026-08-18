@@ -6315,7 +6315,7 @@
       "code": "addWaypoint_target_nearestUnit_team",
       "translate": "添加路径点靠近队伍",
       "description": "添加的路径点目标需要的所属方：己方，中立，盟友，任何，own，neutral，ally，enemy，any",
-      "type": "unknown",
+      "type": "addWaypoint_target_nearestUnit_team",
       "addVersion": 2,
       "removeVersion": -1,
       "section": "action,hiddenAction",

@@ -617,7 +617,7 @@ interface OptimizeItem {
 }
 
 /**
- * M38 中文翻译损坏修复弹窗：扫描项目中被错误翻译成中文的节名、字段名和布尔值，
+ * M38 中文翻译损坏修复弹窗：扫描项目中被错误翻译成中文的节名、字段名、布尔值和已知逻辑标识符，
  * 预览后用户确认才写回。不接受自定义替换文本——只能勾选扫描器已经列出的文件。
  */
 function TranslationRepairModal({ onClose }: { onClose: () => void }) {
@@ -669,8 +669,8 @@ function TranslationRepairModal({ onClose }: { onClose: () => void }) {
             <>
               <p className="mod-tip">
                 共发现 {items!.length} 个文件中有 {totalChanges} 处可恢复的翻译损坏。
-                工具只会恢复引擎节名前缀（如 [行动_...] → [action_...]）、字段名和明确布尔值，
-                不会修改自定义中文单位名、资源名、说明和图片文件名。
+                工具只会恢复引擎节名前缀（如 [行动_...] → [action_...]）、字段名、明确布尔值和已知 self 逻辑标识符，
+                不会修改自定义中文单位名、资源名、说明、图片文件名或未知逻辑函数。
               </p>
               <ul className="optimize-list">
                 {items!.map((item) => (

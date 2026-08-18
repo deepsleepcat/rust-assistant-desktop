@@ -195,7 +195,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         drawSelection(),
         history(),
         rustConfigLanguageSupport(),
-        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
+        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName, translationMap: chineseMode ? translationMap : null })),
         rustHoverExtension,
         // aboveCursor：补全框显示在光标上方——中文输入时系统输入法候选窗
         // 在光标正下方，框在下方会被完全挡住（表现为「中文补全不可用」；
@@ -303,9 +303,9 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
+      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName, translationMap: chineseMode ? translationMap : null })),
     })
-  }, [rootPath, semanticCheckers, targetVersionName, fileName])
+  }, [rootPath, semanticCheckers, targetVersionName, fileName, translationMap, chineseMode])
 
   // 外部 value 变化（切换标签、恢复文档）→ 同步进编辑器
   useEffect(() => {

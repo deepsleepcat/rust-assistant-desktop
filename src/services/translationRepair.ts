@@ -17,7 +17,7 @@ export interface TranslationRepairDictionary {
   codes: RepairCodeInfo[]
 }
 
-export type TranslationRepairChangeKind = 'section' | 'key' | 'boolean'
+export type TranslationRepairChangeKind = 'section' | 'key' | 'boolean' | 'logic'
 
 export interface TranslationRepairChange {
   line: number
@@ -81,6 +81,9 @@ function restoreKey(raw: string, keys: Map<string, string>): string {
   const direct = keys.get(trimmed)
   if (direct) return replaceTrimmed(raw, direct)
   if (!trimmed.includes('_')) return raw
+
+  // 已损坏文件可能是「英文前缀_中文片段_英文后缀」：按下划线分段，
+  // 只恢复完整的已知译名片段，不触碰用户自定义 ID 中包含的中文。
   let changed = false
   const restored = trimmed.split('_').map((part) => {
     const code = keys.get(part)
@@ -103,6 +106,21 @@ function restoreBoolean(raw: string, field: string, booleanFields: Set<string>):
   return restored ? replaceTrimmed(raw, restored) : raw
 }
 
+/**
+ * 只恢复损坏逻辑表达式中的 self.中文标识符。映射必须是明确的引擎标识符；
+ * 未知 self.中文函数、参数和值区普通中文一律保留，避免猜测用户数据。
+ */
+function restoreKnownLogicIdentifiers(raw: string): string {
+  const known = new Map<string, string>([
+    ['血量', 'hp'],
+    ['生命值', 'hp'],
+  ])
+  return raw.replace(/self\.([一-鿿][一-鿿0-9_]*)/g, (full, name: string) => {
+    const restored = known.get(name)
+    return restored ? `self.${restored}` : full
+  })
+}
+
 /** 对单个 INI 文本生成恢复结果，保留 BOM、换行、空白和注释。 */
 export function repairIniContent(source: string, dict: TranslationRepairDictionary): TranslationRepairResult {
   const bom = source.startsWith('\uFEFF')
@@ -113,6 +131,11 @@ export function repairIniContent(source: string, dict: TranslationRepairDictiona
   const booleanFields = new Set(
     dict.codes
       .filter((entry) => entry.type?.toLowerCase() === 'boolean' || entry.type?.toLowerCase() === 'logicboolean')
+      .map((entry) => entry.code.toLowerCase()),
+  )
+  const logicFields = new Set(
+    dict.codes
+      .filter((entry) => entry.type?.split(',').some((type) => type.trim().toLowerCase().includes('logic')))
       .map((entry) => entry.code.toLowerCase()),
   )
   const changes: TranslationRepairChange[] = []
@@ -133,7 +156,9 @@ export function repairIniContent(source: string, dict: TranslationRepairDictiona
     const keyValue = /^(\s*)([^:=]+?)(\s*)([:=])(.*)$/.exec(before)
     if (!keyValue) continue
     const key = restoreKey(keyValue[2], keys)
-    const value = restoreBoolean(keyValue[5], key.trim(), booleanFields)
+    const field = key.trim().toLowerCase()
+    const booleanValue = restoreBoolean(keyValue[5], key.trim(), booleanFields)
+    const value = logicFields.has(field) ? restoreKnownLogicIdentifiers(booleanValue) : booleanValue
     if (key === keyValue[2] && value === keyValue[5]) continue
     let after = replaceRange(before, keyValue[1].length, keyValue[2].length, key)
     if (value !== keyValue[5]) {
@@ -141,7 +166,8 @@ export function repairIniContent(source: string, dict: TranslationRepairDictiona
       after = replaceRange(after, valueStart, keyValue[5].length, value)
     }
     lines[index] = after
-    changes.push({ line: index + 1, kind: value === keyValue[5] ? 'key' : 'boolean', before, after })
+    const kind: TranslationRepairChangeKind = value !== booleanValue ? 'logic' : booleanValue !== keyValue[5] ? 'boolean' : 'key'
+    changes.push({ line: index + 1, kind, before, after })
   }
 
   const content = lines.join(newline)

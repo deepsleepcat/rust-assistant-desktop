@@ -90,6 +90,7 @@ interface RawDataset {
 }
 
 let loaded: Promise<void> | null = null
+let loadGeneration = 0
 let codes: CodeInfo[] = []
 let sections: SectionInfo[] = []
 let valueTypes: ValueTypeInfo[] = []
@@ -124,28 +125,79 @@ export function dataReady(): boolean {
   return loaded !== null
 }
 
+const CORE_CODE_KEYS = new Set([
+  'autotrigger',
+  'allowmultipleinqueue',
+  'addwaypoint_type',
+  'addwaypoint_target_nearestunit_tagged',
+  'addwaypoint_target_nearestunit_team',
+  'addwaypoint_target_nearestunit_maxrange',
+])
+const CORE_SECTION_KEYS = new Set(['hiddenaction', 'action', 'turret', 'projectile', 'effect'])
+const CORE_VALUE_TYPES = new Set(['addwaypoint_type', 'addwaypoint_target_nearestunit_team'])
+const CORE_VALUE_ZH = new Set(['move', 'attackmove', 'guard', 'loadinto', 'setpassivetarget'])
+
+function parsedData(content: unknown): unknown[] | null {
+  if (!content || typeof content !== 'object') return null
+  const data = (content as { data?: unknown }).data
+  return Array.isArray(data) ? data : null
+}
+
+function hasCoreCodeData(content: unknown, keys: Set<string>, field: 'code' | 'type'): boolean {
+  const data = parsedData(content)
+  if (!data) return false
+  const label = field === 'code' ? 'translate' : 'name'
+  const found = new Set(
+    data
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+      .filter((item) => typeof item[field] === 'string' && typeof item[label] === 'string' && item[label].trim())
+      .map((item) => (item[field] as string).toLowerCase()),
+  )
+  return [...keys].every((key) => found.has(key))
+}
+
+function hasCoreValueZh(content: unknown): boolean {
+  if (!content || typeof content !== 'object') return false
+  const data = (content as { data?: unknown }).data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false
+  const found = new Set(Object.keys(data as Record<string, unknown>).map((key) => key.toLowerCase()))
+  return [...CORE_VALUE_ZH].every((key) => found.has(key))
+}
+
+function usableData(name: string, parsed: unknown): boolean {
+  if (name === 'code.json') return hasCoreCodeData(parsed, CORE_CODE_KEYS, 'code')
+  if (name === 'section.json') return hasCoreCodeData(parsed, CORE_SECTION_KEYS, 'code')
+  if (name === 'value_type.json') return hasCoreCodeData(parsed, CORE_VALUE_TYPES, 'type')
+  if (name === 'value_zh.json') return hasCoreValueZh(parsed)
+  return true
+}
+
 async function fetchJson<T>(name: string): Promise<T> {
-  // M18：Electron 环境优先读「知识包」数据（已更新 → 更新版，否则内置 public/data）；
-  // 浏览器预览/测试环境没有 knowledge 桥 → 回退 fetch 内置资源
+  // M18：Electron 环境优先读「知识包」数据；知识包已在主进程做核心字段门禁，
+  // 这里再做一次 schema 门禁，防 mock/旧 preload 直接返回裁剪数据。
   try {
     const { getBridge } = await import('./bridge')
     const kp = getBridge().knowledge
     if (kp) {
       const res = await kp.readDataFile(name)
-      return JSON.parse(res.content) as T
+      const parsed = JSON.parse(res.content) as unknown
+      if (usableData(name, parsed)) return parsed as T
     }
   } catch {
-    // 读失败（更新包损坏等）回退内置 fetch，不阻塞编辑器
+    // 读失败或数据不完整，回退内置 fetch
   }
   const base = import.meta.env.BASE_URL || '/'
   const res = await fetch(`${base}data/${name}`)
   if (!res.ok) throw new Error(`加载数据失败：${name} (${res.status})`)
-  return (await res.json()) as T
+  const parsed = (await res.json()) as unknown
+  if (!usableData(name, parsed)) throw new Error(`数据文件不完整：${name}`)
+  return parsed as T
 }
 
 /** 重载全部数据（值类型管理保存自定义类型后调用：清缓存重新加载，补全/lint 立即生效）。
  * 旧索引一并清空：重载失败时不残留「新旧混合」的半加载状态（下次成功加载前查询返回空）。 */
 export function reloadCodeData(): void {
+  loadGeneration++
   loaded = null
   codes = []
   sections = []
@@ -194,6 +246,7 @@ async function loadCustomValueTypes(): Promise<ValueTypeInfo[]> {
 /** 加载全部数据并构建索引（幂等，内存缓存；失败时降级为空词典，不阻塞编辑器） */
 export function loadCodeData(): Promise<void> {
   if (!loaded) {
+    const generation = loadGeneration
     loaded = (async () => {
       try {
         const [codeRaw, sectionRaw, valueRaw, valueZhRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw, dialectRaw, aliasesRaw] = await Promise.all([
@@ -209,13 +262,18 @@ export function loadCodeData(): Promise<void> {
           fetchJson<RawDataset>('dialect.json').catch(() => ({ words: [] }) as RawDataset),
           fetchJson<RawDataset>('aliases.json').catch(() => ({ data: [] })),
         ])
+        // reloadCodeData() 可能在请求期间发生；旧代次不得再写入全局索引。
+        if (generation !== loadGeneration) return
 
-        codes = (codeRaw.data ?? []) as CodeInfo[]
-        sections = (sectionRaw.data ?? []) as SectionInfo[]
-        valueTypes = (valueRaw.data ?? []) as ValueTypeInfo[]
+        const nextCodes = (codeRaw.data ?? []) as CodeInfo[]
+        const nextSections = (sectionRaw.data ?? []) as SectionInfo[]
+        const nextValueTypes = (valueRaw.data ?? []) as ValueTypeInfo[]
         // M8：合并用户自定义值类型（内置优先；自定义类型驱动补全/lint 规则）
         const customTypes = await loadCustomValueTypes()
-        if (customTypes.length > 0) valueTypes = [...valueTypes, ...customTypes]
+        if (generation !== loadGeneration) return
+        codes = nextCodes
+        sections = nextSections
+        valueTypes = customTypes.length > 0 ? [...nextValueTypes, ...customTypes] : nextValueTypes
         // translations/vocabulary 的顶层键是 words（不是 data），两边都兼容
         const translations = (transRaw.words ?? transRaw.data ?? []) as Array<{ en?: string; zh?: string }>
         const vocab = (vocabRaw.words ?? vocabRaw.data ?? []) as VocabularyItem[]
@@ -258,7 +316,10 @@ export function loadCodeData(): Promise<void> {
           if (s.code && s.translate) {
             enToZhDict.set(s.code.toLowerCase(), s.translate)
             zhToEnDict.set(s.translate, s.code.toLowerCase())
-            sectionZhToEnDict.set(s.translate, s.code.toLowerCase())
+            sectionZhToEnDict.set(s.translate, s.code)
+            // 中文损坏文件可能未经过 enToZh tracker：节头回译需要识别
+            // 「隐藏行动_用户自定义名」这类已知前缀，并保留后缀。
+            if (s.needName) sectionZhToEnDict.set(`${s.translate}_`, `${s.code}_`)
           }
         }
         vocabulary = vocab
@@ -298,9 +359,11 @@ export function loadCodeData(): Promise<void> {
         }
       } catch (err) {
         // 数据不可用（如离线/测试环境）时降级：编辑器仍可用，只是没有补全和翻译。
-        // 失败后置回 null，允许下次 loadCodeData 重试（避免一次抖动导致整个会话失去补全/翻译）
-        loaded = null
-        console.warn('[codeData] 数据加载失败，补全与翻译不可用（下次调用会重试）', err)
+        // 旧代次失败不能清掉新代次的 Promise，否则会让新加载被错误地重复发起。
+        if (generation === loadGeneration) {
+          loaded = null
+          console.warn('[codeData] 数据加载失败，补全与翻译不可用（下次调用会重试）', err)
+        }
       }
     })()
   }
@@ -554,18 +617,36 @@ export function findValueTypes(type: string): ValueTypeInfo[] {
   return hits
 }
 
-/** 值类型合法值列表（解析逗号分隔，含特殊指令 @xxx） */
+/** 值类型合法值列表（解析顶层逗号分隔，含特殊指令 @xxx）。 */
 export function parseValueList(list: string | undefined): string[] {
   if (!list) return []
-  return list
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !s.startsWith('@'))
+  const result: string[] = []
+  let depth = 0
+  let current = ''
+  for (const ch of list) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth = Math.max(0, depth - 1)
+    if (ch === ',' && depth === 0) {
+      const item = current.trim()
+      if (item && !item.startsWith('@')) result.push(item)
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  const item = current.trim()
+  if (item && !item.startsWith('@')) result.push(item)
+  return result
 }
 
-/** 逻辑布尔函数：按名精确查（self.xxx() 悬停/补全用） */
+/** 逻辑布尔函数：按名精确查（兼容 self.xxx() 数据与 xxx 调用形式）。 */
 export function findLogicBoolean(name: string): LogicBooleanInfo | undefined {
-  return logicBooleans.find((l) => l.name === name)
+  const raw = name.trim()
+  const normalized = raw.replace(/^self\./i, '').replace(/\(\)$/, '').toLowerCase()
+  return logicBooleans.find((l) => {
+    const candidate = l.name.trim().replace(/^self\./i, '').replace(/\(\)$/, '').toLowerCase()
+    return candidate === normalized
+  })
 }
 
 /** 逻辑布尔函数：前缀模糊查（self. 补全候选） */
