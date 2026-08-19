@@ -25,6 +25,7 @@ const dict: TranslationRepairDictionary = {
     { code: 'false', translate: '假', type: 'constant' },
     { code: 'projectile', translate: '抛射体', type: 'string' },
   ],
+  logicIdentifiers: new Map([['血量', 'hp']]),
 }
 
 describe('已翻译 INI 恢复器', () => {

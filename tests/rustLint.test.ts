@@ -371,3 +371,65 @@ describe('M28 审查修正回归（引擎语义实证）', () => {
     expect(diags[0].message).toContain('maxHp')
   })
 })
+
+describe('M38 中文枚举值回译（lint 不误报）', () => {
+  const enumData = {
+    findCode: (k: string) => {
+      const map: Record<string, { type: string }> = {
+        addWaypoint_target_nearestUnit_team: { type: 'addWaypoint_target_nearestUnit_team' },
+        addWaypoint_target_nearestUnit_tagged: { type: 'string' },
+        displayText: { type: 'string' },
+      }
+      return map[k]
+    },
+    findType: (t: string) => {
+      const types: Record<string, ValueTypeInfo> = {
+        addWaypoint_target_nearestUnit_team: {
+          name: '路径点靠近队伍', type: 'addWaypoint_target_nearestUnit_team', rule: '',
+          list: 'own,neutral,allyNotOwn,ally,enemy,any,notOwn',
+        },
+        string: { name: '字符串', type: 'string', rule: '.+' },
+      }
+      return types[t]
+    },
+    zhToEn: (_k: string) => undefined,
+    valueZhToEn: (v: string) => {
+      const map: Record<string, string> = {
+        '己方': 'own', '中立': 'neutral', '友军': 'ally',
+        '敌军': 'enemy', '任意': 'any', '非己方': 'notOwn',
+        '友军（非己方）': 'allyNotOwn',
+      }
+      return map[v]
+    },
+  }
+
+  it('中文枚举值回译后不报错（己方→own）', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '己方', enumData)).toBeNull()
+  })
+
+  it('其他中文枚举值同样不报错', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '中立', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '敌军', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '任意', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '友军（非己方）', enumData)).toBeNull()
+  })
+
+  it('逗号分隔多值中文枚举逐段回译', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '己方,友军', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '己方,中立,友军', enumData)).toBeNull()
+  })
+
+  it('英文枚举值仍然正常', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', 'own', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', 'enemy', enumData)).toBeNull()
+  })
+
+  it('未知中文值仍报错', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '不存在的中文', enumData)).not.toBeNull()
+  })
+
+  it('无 valueZhToEn 时不报错（向后兼容）', () => {
+    const noValueZh = { ...enumData, valueZhToEn: undefined }
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '己方', noValueZh)).not.toBeNull()
+  })
+})

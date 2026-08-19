@@ -7,7 +7,7 @@
  */
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, findValueTypes, getKeyZhToEnDict, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, parseValueList, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, findValueTypes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, parseValueList, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
 function stripComment(line: string): string {
@@ -27,11 +27,29 @@ export function resolveKeyEn(key: string): string {
 
 /** 逻辑表达式 self.xxx 中的函数名回译：只查已知词典，未知中文保持原样。 */
 export function resolveLogicFunctionEn(name: string): string {
-  return getKeyZhToEnDict().get(name) ?? getZhToEnDict().get(name) ?? name
+  return getLogicIdentifierZhToEnDict().get(name) ?? getKeyZhToEnDict().get(name) ?? getZhToEnDict().get(name) ?? name
 }
 
 const COLOR_RE = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/
 const SECTION_RE = /^\s*\[(.+?)\]\s*(?:#.*)?$/
+
+function topLevelSegmentAt(value: string, offset: number): { start: number; end: number; text: string } {
+  let depth = 0
+  let start = 0
+  for (let i = 0; i <= value.length; i++) {
+    const ch = value[i]
+    if (ch === '(') depth++
+    else if (ch === ')') depth = Math.max(0, depth - 1)
+    if ((ch === ',' && depth === 0) || i === value.length) {
+      if (offset <= i || i === value.length) {
+        const text = value.slice(start, i)
+        return { start, end: i, text }
+      }
+      start = i + 1
+    }
+  }
+  return { start: 0, end: value.length, text: value }
+}
 
 function colorCard(hex: string): string {
   const c = hex.replace('#', '')
@@ -142,6 +160,10 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       const code = findCodeByCode(key)
       const types = code ? findValueTypes(code.type) : []
       const allowed = new Set(types.flatMap((type) => parseValueList(type.list)).map((value) => value.toLowerCase()))
+      const allowedBases = new Set([...allowed].map((value) => {
+        const open = value.indexOf('(')
+        return (open >= 0 ? value.slice(0, open) : value).trim()
+      }))
       const typeHint = types
         .map((type) => [type.name, type.describe].filter(Boolean).join('：'))
         .filter(Boolean)
@@ -151,7 +173,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       const enumTooltip = (raw: string, start: number, end: number) => {
         const base = raw.slice(0, raw.indexOf('(') >= 0 ? raw.indexOf('(') : raw.length)
         const zh = valueZh.get(raw.toLowerCase()) ?? valueZh.get(base.toLowerCase())
-        if (!zh || (!allowed.has(raw.toLowerCase()) && !allowed.has(base.toLowerCase()))) return null
+        if (!zh || (!allowed.has(raw.toLowerCase()) && !allowedBases.has(base.trim().toLowerCase()))) return null
         return {
           pos: start,
           end,
@@ -166,15 +188,12 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       }
       const whole = enumTooltip(fullValue, valStart, lineText.length)
       if (whole) return whole
-      // 逗号分隔的多枚举值：光标所在分段整段命中时显示该值中文。
-      const segStart = valStart + fullValue.lastIndexOf(',', inLine - valStart) + 1
-      const nextComma = fullValue.indexOf(',', inLine - valStart)
-      const segEnd = nextComma >= 0 ? valStart + nextComma : valStart + fullValue.length
-      if (inLine >= segStart && inLine <= segEnd) {
-        const seg = lineText.slice(segStart, segEnd).trim()
-        const segment = enumTooltip(seg, segStart, segEnd)
-        if (segment) return segment
-      }
+      // 逗号分隔的多枚举值：括号内逗号属于参数，不切断当前枚举项。
+      const segmentRange = topLevelSegmentAt(fullValue, Math.max(0, inLine - valStart))
+      const segStart = valStart + segmentRange.start
+      const segEnd = valStart + segmentRange.end
+      const segment = enumTooltip(segmentRange.text.trim(), segStart, segEnd)
+      if (segment && inLine >= segStart && inLine <= segEnd) return segment
     }
 
     // 键区间（含中文回译）：中文模式下键是中文译名（名称/主体图像），

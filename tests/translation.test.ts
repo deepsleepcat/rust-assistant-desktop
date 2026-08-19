@@ -354,4 +354,34 @@ describe('M32 保存回译修复（E1/E2/E3）', () => {
     const back = zhToEn(zh, d, tracker)
     expect(back).toBe(original)
   })
+
+  it('中文手输的布尔/枚举值保存前规范化，自由值保持原样', () => {
+    const d = makeDict(
+      new Map([
+        ['isBio', '生物单位'],
+        ['movementType', '移动类型'],
+        ['name', '名称'],
+      ]),
+      new Map([
+        ['生物单位', 'isBio'],
+        ['移动类型', 'movementType'],
+        ['名称', 'name'],
+      ]),
+      new Map([
+        ['生物单位', 'isBio'],
+        ['移动类型', 'movementType'],
+        ['名称', 'name'],
+      ]),
+      undefined,
+      undefined,
+      undefined,
+      new Set(['name']),
+      undefined,
+      (key) => key === 'name',
+      (key, value) => key === 'isBio' ? (value.trim() === '是' ? 'true' : value) : key === 'movementType' && value.trim() === '空中' ? 'AIR' : value,
+    )
+    const tracker = new Map<string, string>()
+    const view = '[core]\n生物单位: 是\n移动类型: 空中\n名称: 攻击'
+    expect(zhToEn(view, d, tracker)).toBe('[core]\nisBio:true\nmovementType:AIR\nname: 攻击')
+  })
 })

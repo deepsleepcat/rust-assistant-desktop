@@ -8,9 +8,10 @@
  */
 import type { AiLintItem } from '../../types/ai'
 import { runSemanticChecks, type SemanticIssue } from '../editor/semanticChecks'
+import { semanticInputContent } from '../editor/rustLint'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
 import { loadProjectRuleSets } from '../editor/semanticChecks/customRules'
-import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhToEnDict, getZhToEnDict, loadCodeData, resolveValueZhToEn, versionNameToNumber } from '../../services/codeData'
 import { joinProjectPath } from '../../utils/projectPath'
 
 /** 报告中的单条问题（file 为相对项目根的 posix 路径，脱敏） */
@@ -97,12 +98,16 @@ export async function generateModReport(
   await loadCodeData()
   const zhToEnDict = getZhToEnDict()
   const keyZhToEnDict = getKeyZhToEnDict()
+  const valueZhToEnDict = getValueZhToEnDict()
+  const logicIdentifierZhToEnDict = getLogicIdentifierZhToEnDict()
   const data = {
     findCode: (k: string) => findCodeByCode(k),
     findType: (t: string) => findValueType(t),
     // 键位置回译先查键名表（键译名不被节名覆盖，如「价格」→price）
     zhToEn: (k: string) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
+    valueZhToEn: (v: string, list?: string | string[]) => resolveValueZhToEn(v, list) ?? valueZhToEnDict.get(v),
   }
+  const semanticContentFor = (content: string) => semanticInputContent(content, undefined, logicIdentifierZhToEnDict)
   const ruleIds = enabledRuleIds(options.semanticCheckers ?? defaultSemanticCheckerConfig())
   const targetVersionNumber = options.targetVersionName ? versionNameToNumber(options.targetVersionName) : undefined
   // M21：项目自定义规则（rules/*.json；测试注入的桥没有 readDir 时跳过）
@@ -149,7 +154,7 @@ export async function generateModReport(
         suggestion: '',
       })
     }
-    const semantic = runSemanticChecks(content, {
+    const semantic = runSemanticChecks(semanticContentFor(content), {
       ruleIds,
       ctx: { ...data, codes, unitNames, targetVersionNumber, file, projectProjectiles },
       customRules,

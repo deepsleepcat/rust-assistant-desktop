@@ -10,8 +10,8 @@
  * 清单上限 200 条，其余折叠为一条汇总（UI 一次性渲染数万条会卡死）。
  */
 import type { AiLintItem } from '../../types/ai'
-import { lintIniText } from '../editor/rustLint'
-import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber } from '../../services/codeData'
+import { lintIniText, semanticInputContent } from '../editor/rustLint'
+import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhToEnDict, getZhToEnDict, loadCodeData, resolveValueZhToEn, versionNameToNumber } from '../../services/codeData'
 import { runSemanticChecks, type CustomRule } from '../editor/semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from '../editor/semanticChecks/registry'
 import { loadProjectRuleSets } from '../editor/semanticChecks/customRules'
@@ -106,20 +106,24 @@ export async function qualityCheckContent(content: string, options: QualityCheck
   await loadCodeData()
   const zhToEnDict = getZhToEnDict()
   const keyZhToEnDict = getKeyZhToEnDict()
+  const valueZhToEnDict = getValueZhToEnDict()
+  const logicIdentifierZhToEnDict = getLogicIdentifierZhToEnDict()
   const data = {
     findCode: (k: string) => findCodeByCode(k),
     findType: (t: string) => findValueType(t),
     // 键位置回译先查键名表（键译名不被节名覆盖，如「价格」→price）
     zhToEn: (k: string) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
+    valueZhToEn: (v: string, list?: string | string[]) => resolveValueZhToEn(v, list) ?? valueZhToEnDict.get(v),
   }
   const diagnostics = lintIniText(content, data)
+  const semanticContent = semanticInputContent(content, undefined, logicIdentifierZhToEnDict)
   // 基础 lint 不预折叠：语义条目合并后统一折叠一次（否则旧汇总条目被二次计数，剩余数失真）
   const items = toLintItems(content, diagnostics, false)
 
   // M10：语义检查器（与编辑器波浪线同一套规则；info 降级为 warning 展示）
   const ruleIds = enabledRuleIds(options.semanticCheckers ?? defaultSemanticCheckerConfig())
   const targetVersionNumber = options.targetVersionName ? versionNameToNumber(options.targetVersionName) : undefined
-  const issues = runSemanticChecks(content, {
+  const issues = runSemanticChecks(semanticContent, {
     ruleIds,
     ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames: options.unitNames, targetVersionNumber, file: options.file },
     customRules: options.customRules,

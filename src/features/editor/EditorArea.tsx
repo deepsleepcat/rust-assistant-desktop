@@ -6,7 +6,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { getEnToZhDict, getKeyZhToEnDict, getSectionZhToEnDict, getZhToEnDict } from '../../services/codeData'
+import { getEnToZhDict, getKeyZhToEnDict, getLogicIdentifierEnToZhDict, getLogicIdentifierZhToEnDict, getLogicValueKeys, getPreserveValueKeys, getSectionZhToEnDict, getZhToEnDict, isPreserveValueKey, normalizeValueForEngine } from '../../services/codeData'
 import { makeDict, zhToEn } from '../../services/translation'
 import { TurretEditorModal } from '../modTools/TurretEditorModal'
 import { formatRelativeTime } from '../../utils/conversation'
@@ -159,7 +159,7 @@ function EditorTabChip({ tabId, active, onActivate }: { tabId: string; active: b
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (tab.dirty) {
+    if (tab.dirty || tab.pendingRepair) {
       setPendingClose(true)
       return
     }
@@ -198,8 +198,8 @@ function EditorTabChip({ tabId, active, onActivate }: { tabId: string; active: b
       </div>
       {pendingClose && (
         <ConfirmBox
-          title="有未保存的修改"
-          message={`「${tab.name}」的修改尚未保存。`}
+          title={tab.pendingRepair && !tab.dirty ? '有待写回的翻译修复' : '有未保存的修改'}
+          message={`「${tab.name}」${tab.pendingRepair && !tab.dirty ? '包含尚未写回磁盘的中文键修复。' : '的修改尚未保存。'}`}
           danger
           confirmText="直接关闭"
           cancelText="取消"
@@ -345,7 +345,18 @@ function EditorPane({
   // 这里用 tracker 精确回译，既保留未保存修改也不会把用户原有中文数据误改为英文。
   const mapContent = useMemo(() => {
     if (!tab || !tab.translationEnabled) return tabContent
-    return zhToEn(tabContent, makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict(), getSectionZhToEnDict()), tab.translationMap)
+    return zhToEn(tabContent, makeDict(
+      getEnToZhDict(),
+      getZhToEnDict(),
+      getKeyZhToEnDict(),
+      getSectionZhToEnDict(),
+      getLogicIdentifierZhToEnDict(),
+      getLogicIdentifierEnToZhDict(),
+      getPreserveValueKeys(),
+      getLogicValueKeys(),
+      isPreserveValueKey,
+      normalizeValueForEngine,
+    ), tab.translationMap)
   }, [tab, tabContent])
 
   // M29：第二行操作行动作。useMemo 保持数组引用稳定——OverflowToolbar 的 useLayoutEffect

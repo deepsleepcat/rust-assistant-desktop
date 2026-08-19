@@ -18,6 +18,18 @@ export interface TranslationDict {
    * 节名译名与代码表键译名可能撞车（炮塔→节 turret vs 键 c_turret_t1）——
    * 节位置必须得到节名，与键位置的 keyZhToEn 分开，互不覆盖。 */
   sectionZhToEn?: Map<string, string>
+  /** 已确认的 self 标识符中文别名 → 英文标识符。 */
+  logicIdentifierZhToEn?: Map<string, string>
+  /** 已确认的 self 标识符英文 → 中文显示别名。 */
+  logicIdentifierEnToZh?: Map<string, string>
+  /** 值区自由字段的规范英文键：值保持用户原文，不走通用回译。 */
+  preserveValueKeys?: ReadonlySet<string>
+  /** 允许 self.xxx 翻译的逻辑字段键。 */
+  logicValueKeys?: ReadonlySet<string>
+  /** 动态模板键的自由值保护判断。 */
+  isPreserveValueKey?: (key: string) => boolean
+  /** 中文手输的布尔/有限枚举值保存前规范化为引擎值。 */
+  normalizeValue?: (key: string, value: string) => string
 }
 
 const EN_WORD_RE = /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g
@@ -40,6 +52,74 @@ export type TranslationTracker = Map<string, string>
  * tracker 可选：开启时记录「中文显示串 → 原始英文串」，供保存时精确回译。
  */
 export function enToZh(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
+  const translateLine = (line: string): string => {
+    const kv = /^(\s*)([^:=]*?)(\s*)([:=])(.*)$/.exec(line)
+    if (!kv) return translateSelfIdentifiers(translateWords(line, dict, tracker), dict, tracker)
+    const [, indent, keyRaw, ws, separator, rawValue] = kv
+    const key = keyRaw.trim().toLowerCase()
+    const translatedKey = translateWords(keyRaw, dict, tracker)
+    if (dict.preserveValueKeys?.has(key) || dict.isPreserveValueKey?.(keyRaw.trim())) {
+      return indent + translatedKey + ws + separator + rawValue
+    }
+    const value = dict.logicValueKeys?.has(key)
+      ? translateLogicValue(rawValue, dict, tracker)
+      : translateWords(rawValue, dict, tracker)
+    return indent + translatedKey + ws + separator + value
+  }
+  return text.split('\n').map(translateLine).join('\n')
+}
+
+function translateLogicValue(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
+  const withSelf = translateSelfIdentifiers(text, dict, tracker)
+  // 逻辑值中的布尔常量允许中文显示，但只翻译完整 token，参数名和 if/
+  // 普通英文函数保持引擎原文，保存时由 tracker 精确恢复。
+  return withSelf.replace(/(^|[^a-zA-Z0-9_])(true|false)(?=$|[^a-zA-Z0-9_])/gi, (full, prefix: string, token: string) => {
+    const zh = dict.enToZh.get(token.toLowerCase())
+    if (!zh) return full
+    const shown = `${prefix}${zh}`
+    if (!tracker) return shown
+    const existing = tracker.get(zh)
+    if (existing === undefined) tracker.set(zh, token)
+    return existing === undefined || existing === token ? shown : full
+  })
+}
+
+function translateSelfIdentifiers(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
+  const map = dict.logicIdentifierEnToZh
+  if (!map || map.size === 0) return text
+  return text.replace(/self\.([a-zA-Z_][a-zA-Z0-9_]*)/g, (full, name: string) => {
+    const zh = map.get(name)
+    if (!zh) return full
+    const shown = `self.${zh}`
+    if (tracker) {
+      const existing = tracker.get(shown)
+      if (existing === undefined) tracker.set(shown, `self.${name}`)
+      else if (existing !== `self.${name}`) return full
+    }
+    return shown
+  })
+}
+
+function restoreSelfIdentifiers(text: string, dict: TranslationDict, tracker: TranslationTracker): string {
+  return text.replace(/self\.([a-zA-Z_一-鿿][a-zA-Z0-9_一-鿿]*)/g, (full, name: string) => {
+    const tracked = tracker.get(full)
+    if (tracked) return tracked
+    const restored = dict.logicIdentifierZhToEn?.get(name)
+    return restored ? `self.${restored}` : full
+  })
+}
+
+function restoreLogicBooleanTokens(text: string, tracker: TranslationTracker): string {
+  const entries = [...tracker.entries()]
+    .filter(([, original]) => /^(?:true|false)$/i.test(original))
+    .sort(([a], [b]) => b.length - a.length)
+  if (entries.length === 0) return text
+  const pattern = entries.map(([shown]) => escapeRegExp(shown)).join('|')
+  const re = new RegExp(`(?<![\\u4e00-\\u9fffA-Za-z0-9_])(${pattern})(?![\\u4e00-\\u9fffA-Za-z0-9_])`, 'g')
+  return text.replace(re, (shown) => tracker.get(shown) ?? shown)
+}
+
+function translateWords(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
   return text.replace(EN_WORD_RE, (word) => {
     // 全大写且长度 > 1：视为常量/引用标识符，不翻译，避免保存时信息丢失
     if (word.length > 1 && word === word.toUpperCase()) return word
@@ -153,8 +233,23 @@ function zhToEnLine(line: string, dict: TranslationDict, tracker: TranslationTra
   }
   const [, indent, keyRaw, ws, sep, rest] = kv
   const keyEn = restoreKeyText(keyRaw, dict, tracker)
-  const valEn = tracedReplace(rest, tracker, false)
-  return indent + keyEn + ws + sep + valEn
+  const keyLookup = keyEn.trim().toLowerCase()
+  const inlineComment = /([ \t]+#.*)$/.exec(rest)
+  const valuePart = inlineComment ? rest.slice(0, inlineComment.index) : rest
+  const commentPart = inlineComment?.[1] ?? ''
+  let valEn: string
+  if (dict.logicValueKeys?.has(keyLookup)) {
+    // 逻辑显示层只额外翻译 self.xxx 和完整布尔 token；两者均由 tracker
+    // 精确恢复，if/lessThan 等引擎语法保持原文。
+    valEn = restoreLogicBooleanTokens(restoreSelfIdentifiers(valuePart, dict, tracker), tracker)
+    if (dict.normalizeValue) valEn = dict.normalizeValue(keyEn.trim(), valEn)
+  } else if (!dict.preserveValueKeys?.has(keyLookup) && !dict.isPreserveValueKey?.(keyEn.trim())) {
+    valEn = tracedReplace(valuePart, tracker, false)
+    if (dict.normalizeValue) valEn = dict.normalizeValue(keyEn.trim(), valEn)
+  } else {
+    valEn = valuePart
+  }
+  return indent + keyEn + ws + sep + valEn + commentPart
 }
 
 /**
@@ -242,7 +337,18 @@ function escapeRegExp(s: string): string {
   return out
 }
 
-/** 构造词典对象（从快照 Map；keyZhToEn 可选：键位置词典兜底优先表） */
-export function makeDict(enToZh: Map<string, string>, zhToEn: Map<string, string>, keyZhToEn?: Map<string, string>, sectionZhToEn?: Map<string, string>): TranslationDict {
-  return { enToZh, zhToEn, keyZhToEn, sectionZhToEn }
+/** 构造词典对象（从快照 Map；keyZhToEn 可选：键位置词典兜底优先表）。 */
+export function makeDict(
+  enToZh: Map<string, string>,
+  zhToEn: Map<string, string>,
+  keyZhToEn?: Map<string, string>,
+  sectionZhToEn?: Map<string, string>,
+  logicIdentifierZhToEn?: Map<string, string>,
+  logicIdentifierEnToZh?: Map<string, string>,
+  preserveValueKeys?: ReadonlySet<string>,
+  logicValueKeys?: ReadonlySet<string>,
+  isPreserveValueKey?: (key: string) => boolean,
+  normalizeValue?: (key: string, value: string) => string,
+): TranslationDict {
+  return { enToZh, zhToEn, keyZhToEn, sectionZhToEn, logicIdentifierZhToEn, logicIdentifierEnToZh, preserveValueKeys, logicValueKeys, isPreserveValueKey, normalizeValue }
 }

@@ -190,7 +190,7 @@ export function ProjectPanel() {
             <input
               ref={searchInputRef}
               className="project-search"
-              type="search"
+              type="text"
               value={searchQuery}
               onChange={(e) => runSearch(e.target.value)}
               onKeyDown={(e) => {
@@ -204,11 +204,15 @@ export function ProjectPanel() {
             />
             {searchQuery && (
               <button
+                type="button"
                 className="icon-btn project-search-clear"
                 title="清空搜索"
                 aria-label="清空搜索"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => runSearch('')}
+                onClick={() => {
+                  runSearch('')
+                  searchInputRef.current?.focus()
+                }}
               >
                 <AppIcon name="close" size={12} />
               </button>

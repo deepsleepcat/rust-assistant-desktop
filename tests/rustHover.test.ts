@@ -43,8 +43,8 @@ describe('resolveKeyEn（hover 键位置中文回译）', () => {
     expect(resolveKeyEn('主体图像')).toBe('image')
   })
 
-  it('分段宏字段回译（建造自_1_名称 → builtfrom_1_name，小写；findCodeByCode 大小写不敏感可命中）', () => {
-    expect(resolveKeyEn('建造自_1_名称')).toBe('builtfrom_1_name')
+  it('分段宏字段回译（建造自_1_名称 → builtFrom_1_name，保留规范驼峰）', () => {
+    expect(resolveKeyEn('建造自_1_名称')).toBe('builtFrom_1_name')
   })
 
   it('未知中文保持原样（词典没有的词不猜）', () => {

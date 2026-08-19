@@ -87,7 +87,10 @@ export function UnitFormPanel({ tab, rootPath, onOpenPreview }: UnitFormPanelPro
         parseUnitForm(tab.content, {
           zhToEn: tab.translationEnabled ? (k) => getKeyZhToEnDict().get(k) : undefined,
           zhToEnSection: tab.translationEnabled ? (k) => getSectionZhToEnDict().get(k) : undefined,
-          zhToEnValue: tab.translationEnabled ? (k) => getZhToEnDict().get(k) : undefined,
+          zhToEnValue: tab.translationEnabled ? (value, field) => {
+            if (!field || (field.type !== 'enum' && field.type !== 'boolean')) return undefined
+            return getZhToEnDict().get(value)
+          } : undefined,
         }),
       ),
     [tab.content, tab.translationEnabled],

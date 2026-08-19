@@ -175,6 +175,7 @@ const MOCK_REPAIR_DICT: TranslationRepairDictionary = {
     { code: 'invisible', translate: '隐藏图像', type: 'boolean' },
     { code: 'canAttackFlyingUnits', translate: '可攻击空中单位', type: 'logicBoolean' },
   ],
+  logicIdentifiers: new Map([['血量', 'hp']]),
 }
 
 function mockDigest(content: string): string {

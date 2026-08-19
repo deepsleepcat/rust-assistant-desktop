@@ -133,10 +133,10 @@ describe('dialect 并入 codeData', () => {
     const enDict = getEnToZhDict()
     const zhDict = getZhToEnDict()
     // 「有标签」属于 withTag（code.json 既有）——不得被 dialect 的 hasTags 改写
-    expect(zhDict.get('有标签')).toBe('withtag')
+    expect(zhDict.get('有标签')).toBe('withTag')
     expect(enDict.get('withtag')).toBe('有标签')
     // 「存活时间」属于 self.timeAlive（code.json 覆盖 translations 的带括号写法）——不得被 timeAlive 改写
-    expect(zhDict.get('存活时间')).toBe('self.timealive')
+    expect(zhDict.get('存活时间')).toBe('self.timeAlive')
     expect(enDict.get('self.timealive')).toBeTruthy() // code.json 的 self.timeAlive 键仍在
     expect(enDict.get('timealive')).toBeUndefined() // dialect 的 timeAlive 被 zhToEn 守卫挡住
     // dialect 侧 hasTags 因「有标签」已被 withTag 占用而被双侧守卫挡住
@@ -156,7 +156,7 @@ describe('dialect 并入 codeData', () => {
     // maxHp 在 code.json 中已有翻译（dialect.json 不含它——缺失清单校验过）
     expect(dict.get('maxhp')).toBeTruthy()
     // 中文回译仍指向原英文键
-    expect(getZhToEnDict().get(dict.get('maxhp')!)).toBe('maxhp')
+    expect(getZhToEnDict().get(dict.get('maxhp')!)).toBe('maxHp')
   })
 
   it('「价格」回译得到 price：虚构节 prices 不覆盖键译名（键名回译表兜底）', async () => {

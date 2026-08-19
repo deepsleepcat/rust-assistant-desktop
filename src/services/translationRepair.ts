@@ -15,9 +15,49 @@ export interface RepairCodeInfo {
 export interface TranslationRepairDictionary {
   sections: RepairSectionInfo[]
   codes: RepairCodeInfo[]
+  /** 已验证的 self 中文标识符 → 英文标识符；缺省时不猜测逻辑函数。 */
+  logicIdentifiers?: Map<string, string>
 }
 
 export type TranslationRepairChangeKind = 'section' | 'key' | 'boolean' | 'logic'
+
+/** 从代码表与逻辑函数表构建唯一的 self 中文标识符映射。
+ * 短字段（maxHp）和完整 self 条目都可提供别名；冲突项删除，不猜测。
+ */
+export function buildLogicIdentifierMap(codes: RepairCodeInfo[], logicNames: Iterable<string>, translations: Array<{ en: string; zh: string }> = []): Map<string, string> {
+  const known = new Set([...logicNames].map((name) => name.trim().replace(/^self\./i, '').replace(/\(\)$/, '').toLowerCase()).filter(Boolean))
+  const candidates = new Map<string, string>()
+  const ambiguous = new Set<string>()
+  const add = (alias: string, identifier: string) => {
+    const key = alias.trim()
+    if (!/^[\u4e00-\u9fffA-Za-z_][\u4e00-\u9fffA-Za-z0-9_]*$/.test(key) || !identifier || !known.has(identifier.toLowerCase())) return
+    const previous = candidates.get(key)
+    if (previous && previous !== identifier) ambiguous.add(key)
+    else if (!ambiguous.has(key)) candidates.set(key, identifier)
+  }
+  for (const code of codes) {
+    const raw = code.code.trim()
+    const identifier = raw.replace(/^self\./i, '').replace(/\(\)$/, '')
+    if (!known.has(identifier.toLowerCase())) continue
+    if (raw.toLowerCase().startsWith('self.')) {
+      add(code.translate, identifier)
+      if (code.translate.startsWith('自身')) {
+        const short = code.translate.slice(2).trim()
+        if (short && !/^[.。]/.test(short)) add(short, identifier)
+      }
+    } else {
+      add(code.translate, identifier)
+    }
+  }
+  for (const translation of translations) {
+    if (!translation.en.startsWith('self.') || !translation.zh) continue
+    const identifier = translation.en.replace(/^self\./i, '').replace(/\(\)$/, '')
+    add(translation.zh, identifier)
+    if (translation.zh.startsWith('自身')) add(translation.zh.slice(2), identifier)
+  }
+  for (const alias of ambiguous) candidates.delete(alias)
+  return candidates
+}
 
 export interface TranslationRepairChange {
   line: number
@@ -110,13 +150,10 @@ function restoreBoolean(raw: string, field: string, booleanFields: Set<string>):
  * 只恢复损坏逻辑表达式中的 self.中文标识符。映射必须是明确的引擎标识符；
  * 未知 self.中文函数、参数和值区普通中文一律保留，避免猜测用户数据。
  */
-function restoreKnownLogicIdentifiers(raw: string): string {
-  const known = new Map<string, string>([
-    ['血量', 'hp'],
-    ['生命值', 'hp'],
-  ])
+function restoreKnownLogicIdentifiers(raw: string, logicIdentifiers?: Map<string, string>): string {
+  if (!logicIdentifiers || logicIdentifiers.size === 0) return raw
   return raw.replace(/self\.([一-鿿][一-鿿0-9_]*)/g, (full, name: string) => {
-    const restored = known.get(name)
+    const restored = logicIdentifiers.get(name)
     return restored ? `self.${restored}` : full
   })
 }
@@ -158,7 +195,7 @@ export function repairIniContent(source: string, dict: TranslationRepairDictiona
     const key = restoreKey(keyValue[2], keys)
     const field = key.trim().toLowerCase()
     const booleanValue = restoreBoolean(keyValue[5], key.trim(), booleanFields)
-    const value = logicFields.has(field) ? restoreKnownLogicIdentifiers(booleanValue) : booleanValue
+    const value = logicFields.has(field) ? restoreKnownLogicIdentifiers(booleanValue, dict.logicIdentifiers) : booleanValue
     if (key === keyValue[2] && value === keyValue[5]) continue
     let after = replaceRange(before, keyValue[1].length, keyValue[2].length, key)
     if (value !== keyValue[5]) {

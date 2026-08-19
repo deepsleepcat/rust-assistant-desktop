@@ -25,6 +25,7 @@ import {
 import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck, readGameAssetImage } from './game'
 import { conflictFiles, diffBetween, logHistory, repoInfo, restoreFile, statusFiles } from './gitTools'
 import type { AiApprovalResponse, AiChatParams, AiSettings } from '../src/types/ai'
+import { buildLogicIdentifierMap } from '../src/services/translationRepair'
 
 /** IPC 注册函数：main.ts 传 ipcMain.handle 的真实绑定；测试传记录用假实现 */
 export type RegisterHandler = (channel: string, handler: (...args: never[]) => unknown) => void
@@ -772,19 +773,34 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   })
 
   const translationRepairDictionary = async () => {
-    const [codeRaw, sectionRaw] = await Promise.all([
+    const [codeRaw, sectionRaw, logicRaw, translationsRaw] = await Promise.all([
       ctx.knowledgePack.readDataFile('code.json'),
       ctx.knowledgePack.readDataFile('section.json'),
+      ctx.knowledgePack.readDataFile('logicboolean.json'),
+      ctx.knowledgePack.readDataFile('translations.json'),
     ])
     const code = JSON.parse(codeRaw.content) as { data?: unknown }
     const section = JSON.parse(sectionRaw.content) as { data?: unknown }
-    if (!Array.isArray(code.data) || !Array.isArray(section.data)) throw new Error('翻译恢复数据格式无效')
+    const logic = JSON.parse(logicRaw.content) as { data?: unknown }
+    const translations = JSON.parse(translationsRaw.content) as { words?: unknown[]; data?: unknown[] }
+    if (!Array.isArray(code.data) || !Array.isArray(section.data) || !Array.isArray(logic.data)) throw new Error('翻译恢复数据格式无效')
+    const codes = code.data.filter((entry): entry is { code: string; translate: string; type?: string } =>
+      !!entry && typeof entry === 'object' && typeof (entry as { code?: unknown }).code === 'string' && typeof (entry as { translate?: unknown }).translate === 'string',
+    )
+    const logicNames = logic.data
+      .filter((entry): entry is { name: string } => !!entry && typeof entry === 'object' && typeof (entry as { name?: unknown }).name === 'string')
+      .map((entry) => entry.name)
     return {
-      codes: code.data.filter((entry): entry is { code: string; translate: string; type?: string } =>
-        !!entry && typeof entry === 'object' && typeof (entry as { code?: unknown }).code === 'string' && typeof (entry as { translate?: unknown }).translate === 'string',
-      ),
+      codes,
       sections: section.data.filter((entry): entry is { code: string; translate: string; needName?: boolean } =>
         !!entry && typeof entry === 'object' && typeof (entry as { code?: unknown }).code === 'string' && typeof (entry as { translate?: unknown }).translate === 'string',
+      ),
+      logicIdentifiers: buildLogicIdentifierMap(
+        codes,
+        logicNames,
+        (translations.words ?? translations.data ?? []).filter((entry): entry is { en: string; zh: string } =>
+          !!entry && typeof entry === 'object' && typeof (entry as { en?: unknown }).en === 'string' && typeof (entry as { zh?: unknown }).zh === 'string',
+        ),
       ),
     }
   }
