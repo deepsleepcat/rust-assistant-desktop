@@ -1,11 +1,6 @@
 /**
- * TMX 地图轻量解析与检查（M15，P1 任务 5 地图轻量闭环）：
- * - parseSimpleXml：TMX 子集 XML 解析器（元素/属性/文本，无 DOM 依赖——
- *   测试与渲染层均可运行）；
- * - parseTmx：解析 → 元数据/图层/对象层/图块集；
- * - checkTmx：Ground 铺满 / Triggers 对象层缺失 / 图块集引用 / gzip base64 兼容；
- * - gzip base64 数据解压校验（DecompressionStream，Chromium/Node 均有）。
- * 不做完整地图编辑器——只做识别、预览、检查、打包桥接。
+ * TMX 地图轻量解析与检查：纯数据解析、图块 gid 解码、引用路径与安全总览规划。
+ * 解析器不依赖 DOM，供测试与渲染层共同使用。
  */
 
 export interface SimpleXmlNode {
@@ -15,8 +10,6 @@ export interface SimpleXmlNode {
   text: string
 }
 
-/** XML 实体解码（&amp; &lt; &gt; &quot; &apos; + 数字实体；单趟替换防二次解码）。
- * M24 双向桥接需要：属性/文本里含实体的地图导出后必须原样往返，不解码会双转义。 */
 const ENTITY_RE = /&(?:#(\d+)|#x([0-9a-fA-F]+)|(amp|lt|gt|quot|apos));/g
 function decodeEntities(s: string): string {
   if (!s.includes('&')) return s
@@ -27,15 +20,34 @@ function decodeEntities(s: string): string {
   })
 }
 
-/** 轻量 XML 解析（TMX 子集）：元素/属性/文本/注释/自闭合。
- * 不做完整 XML 规范（无 CDATA/实体展开——TMX 数据区是纯文本，够用）。 */
+/** 轻量 XML 解析（TMX 子集）：元素/属性/文本/注释/CDATA/自闭合。 */
 export function parseSimpleXml(xml: string): SimpleXmlNode | null {
+  if (!xml || xml.length > MAX_XML_BYTES) return null
   let pos = 0
+  let nodeCount = 0
   const root = parseElement(0)
-  return root
+  if (!root) return null
+  // 根元素后只能有空白、注释或处理指令；不能悄悄吞掉第二个根/普通尾随文本。
+  for (;;) {
+    pos += /^\s*/.exec(xml.slice(pos))?.[0].length ?? 0
+    if (pos >= xml.length) return root
+    if (xml.startsWith('<!--', pos)) {
+      const end = xml.indexOf('-->', pos)
+      if (end < 0) return null
+      pos = end + 3
+      continue
+    }
+    if (xml.startsWith('<?', pos)) {
+      const end = xml.indexOf('?>', pos)
+      if (end < 0) return null
+      pos = end + 2
+      continue
+    }
+    return null
+  }
+
   function parseElement(depth: number): SimpleXmlNode | null {
-    if (depth > 200) return null // 递归深度上限（防对抗性嵌套卡 UI）
-    // 跳过空白/注释/声明
+    if (depth > 200 || ++nodeCount > MAX_XML_NODES) return null
     for (;;) {
       const ws = /^\s*/.exec(xml.slice(pos))?.[0].length ?? 0
       pos += ws
@@ -71,28 +83,28 @@ export function parseSimpleXml(xml: string): SimpleXmlNode | null {
       const ws = /^\s*/.exec(xml.slice(pos))?.[0].length ?? 0
       pos += ws
       if (xml[pos] === '>' || xml.startsWith('/>', pos)) break
-      const nameMatch = /^([a-zA-Z_][a-zA-Z0-9_.-]*)\s*=\s*"([^"]*)"/.exec(xml.slice(pos))
-      if (!nameMatch) return null
-      attrs[nameMatch[1]] = decodeEntities(nameMatch[2])
+      // Tiled/TSX 通常用双引号，但 XML 合法的单引号也应解析（第三方地图常见）。
+      const nameMatch = /^([a-zA-Z_][a-zA-Z0-9_.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(xml.slice(pos))
+      if (!nameMatch || nameMatch[1] in attrs) return null
+      attrs[nameMatch[1]] = decodeEntities(nameMatch[2] ?? nameMatch[3] ?? '')
       pos += nameMatch[0].length
     }
     if (xml.startsWith('/>', pos)) {
       pos += 2
       return { tag, attrs, children: [], text: '' }
     }
-    pos++ // 跳过 '>'
+    pos++
 
     const node: SimpleXmlNode = { tag, attrs, children: [], text: '' }
-    // 文本与子元素
     for (;;) {
       const lt = xml.indexOf('<', pos)
       if (lt < 0) return null
       if (lt > pos) node.text += decodeEntities(xml.slice(pos, lt))
       pos = lt
       if (xml.startsWith('</', pos)) {
-        const end = xml.indexOf('>', pos)
-        if (end < 0) return null
-        pos = end + 1
+        const close = /^<\/([a-zA-Z0-9_:.-]+)\s*>/.exec(xml.slice(pos))
+        if (!close || close[1] !== tag) return null
+        pos += close[0].length
         return node
       }
       if (xml.startsWith('<!--', pos)) {
@@ -101,7 +113,6 @@ export function parseSimpleXml(xml: string): SimpleXmlNode | null {
         pos = end + 3
         continue
       }
-      // CDATA：作为文本并入（TMX 第三方工具可能用 CDATA 包裹 base64 数据）
       if (xml.startsWith('<![CDATA[', pos)) {
         const end = xml.indexOf(']]>', pos)
         if (end < 0) return null
@@ -118,22 +129,43 @@ export function parseSimpleXml(xml: string): SimpleXmlNode | null {
 
 export interface TmxLayer {
   name: string
-  /** 图层类型：tile（瓦片层）/ objectgroup（对象层） */
   kind: 'tile' | 'objectgroup'
-  /** 瓦片层数据（CSV 或 gzip base64，未解码） */
+  /** CSV/base64 原始数据；XML 编码的 gid 存在 xmlGids。 */
   data?: string
-  /** data 编码方式 */
   encoding?: string
   compression?: string
-  /** 对象层对象数（objectgroup） */
+  /** XML <tile gid="..."/> 的原始 uint32 gid，保留翻转标记。 */
+  xmlGids?: Uint32Array
+  /** XML tile gid 存在非法整数或超出安全上限；解码时必须拒绝而不是静默改成 0。 */
+  xmlDataInvalid?: boolean
+  /** 以下四项由 parseTmx 填充；可选以兼容旧调用方构造的最小 layer。 */
+  visible?: boolean
+  opacity?: number
+  x?: number
+  y?: number
+  offsetX?: number
+  offsetY?: number
   objectCount?: number
 }
 
 export interface TmxTileset {
   firstGid: number
   name?: string
-  /** 外部图块集引用（.tsx 文件） */
+  /** 外部图块集引用（.tsx 文件）。 */
   source?: string
+  tileWidth?: number
+  tileHeight?: number
+  tileCount?: number
+  columns?: number
+  spacing?: number
+  margin?: number
+  imageSource?: string
+  imageWidth?: number
+  imageHeight?: number
+  /** collection-of-images tileset：每个 <tile> 自带 image，本期只提示、不伪装成图集支持。 */
+  collectionOfImages?: boolean
+  /** embedded_png 属性的原始 base64 字符串，不在数据层解码。 */
+  embeddedPng?: string
 }
 
 export interface TmxMap {
@@ -142,9 +174,10 @@ export interface TmxMap {
   tileWidth: number
   tileHeight: number
   orientation: string
+  /** Tiled infinite="1" 使用 chunk 数据，本期保留检查信息但不做真实瓦片渲染。 */
+  infinite: boolean
   layers: TmxLayer[]
   tilesets: TmxTileset[]
-  /** 原始 XML（缩略图/预览用） */
   raw: string
 }
 
@@ -153,121 +186,222 @@ export interface TmxCheckIssue {
   message: string
 }
 
-/** 检查结果：ok + 问题清单 */
 export interface TmxCheckResult {
   ok: boolean
   issues: TmxCheckIssue[]
 }
 
-/** 解析 TMX：返回 null 表示不是合法地图 XML */
+const TILE_FLIP_H = 0x80000000
+const TILE_FLIP_V = 0x40000000
+const TILE_FLIP_D = 0x20000000
+/** Tiled 在 hexagonal 地图使用的 120° 旋转标志；正交渲染不应用它，但必须从 gid 剥离。 */
+const TILE_ROTATED_HEX120 = 0x10000000
+const TILE_GID_MASK = 0x0fffffff
+/** 单个图层安全解码上限：8M gid = 32MB Uint32Array，避免压缩炸弹/超大图耗尽 renderer。 */
+const MAX_DECODED_GIDS = 8_000_000
+const MAX_DECODED_TILE_BYTES = MAX_DECODED_GIDS * 4
+const MAX_BASE64_CHARS = Math.ceil(MAX_DECODED_TILE_BYTES * 4 / 3) + 4096
+const MAX_XML_BYTES = 64 * 1024 * 1024
+const MAX_XML_NODES = 100_000
+
+function numberAttr(attrs: Record<string, string>, key: string, fallback = 0): number {
+  const value = Number(attrs[key])
+  return Number.isFinite(value) ? value : fallback
+}
+
+function booleanAttr(attrs: Record<string, string>, key: string, fallback: boolean): boolean {
+  const value = attrs[key]
+  return value === undefined ? fallback : value !== '0' && value.toLowerCase() !== 'false'
+}
+
+function parseUint32(value: string | undefined): number | null {
+  if (!value || !/^\d+$/.test(value)) return null
+  const number = Number(value)
+  return Number.isSafeInteger(number) && number >= 0 && number <= 0xffffffff ? number : null
+}
+
+/** TMX map 尺寸必须是正整数；限制到可被 UI/Canvas 安全表示的范围。 */
+function positiveMapInteger(attrs: Record<string, string>, key: string): number {
+  const value = Number(attrs[key])
+  return Number.isSafeInteger(value) && value > 0 && value <= 10_000_000 ? value : 0
+}
+
+function parseTilesetNode(node: SimpleXmlNode, fallbackFirstGid = 1): TmxTileset {
+  const image = node.children.find((child) => child.tag.toLowerCase() === 'image')
+  // Rusted Warfare 导出的 TMX 把大块 base64 放在 <properties><property
+  // name="embedded_png">...</property></properties>，不是标准 <image> 属性。
+  const property = node.children
+    .find((child) => child.tag.toLowerCase() === 'properties')
+    ?.children.find((child) => child.tag.toLowerCase() === 'property' && child.attrs['name'] === 'embedded_png')
+  const embeddedPng = image?.attrs['embedded_png'] ?? node.attrs['embedded_png'] ?? property?.attrs['value'] ?? property?.text.trim()
+  const collectionOfImages = !image && node.children.some((child) => child.tag.toLowerCase() === 'tile' && child.children.some((nested) => nested.tag.toLowerCase() === 'image'))
+  return {
+    firstGid: numberAttr(node.attrs, 'firstgid', fallbackFirstGid),
+    name: node.attrs['name'],
+    source: node.attrs['source'],
+    tileWidth: node.attrs['tilewidth'] === undefined ? undefined : numberAttr(node.attrs, 'tilewidth'),
+    tileHeight: node.attrs['tileheight'] === undefined ? undefined : numberAttr(node.attrs, 'tileheight'),
+    tileCount: node.attrs['tilecount'] === undefined ? undefined : numberAttr(node.attrs, 'tilecount'),
+    columns: node.attrs['columns'] === undefined ? undefined : numberAttr(node.attrs, 'columns'),
+    spacing: numberAttr(node.attrs, 'spacing'),
+    margin: numberAttr(node.attrs, 'margin'),
+    imageSource: image?.attrs['source'],
+    imageWidth: image ? numberAttr(image.attrs, 'width') || undefined : undefined,
+    imageHeight: image ? numberAttr(image.attrs, 'height') || undefined : undefined,
+    collectionOfImages,
+    embeddedPng,
+  }
+}
+
+/** 解析外部 TSX；参数 firstGid 来自 TMX 中引用它的 <tileset>。 */
+export function parseTsx(xml: string, firstGid = 1): TmxTileset | null {
+  const root = parseSimpleXml(xml)
+  if (!root || root.tag.toLowerCase() !== 'tileset') return null
+  return { ...parseTilesetNode(root, firstGid), firstGid }
+}
+
+/** 解析 TMX：返回 null 表示不是合法地图 XML。 */
 export function parseTmx(xml: string): TmxMap | null {
-  if (!xml || xml.length === 0) return null
+  if (!xml) return null
   const root = parseSimpleXml(xml)
   if (!root || root.tag.toLowerCase() !== 'map') return null
-  const num = (v: string | undefined, def = 0): number => {
-    const n = Number(v)
-    return Number.isFinite(n) ? n : def
-  }
 
   const layers: TmxLayer[] = []
   const tilesets: TmxTileset[] = []
-
   for (const child of root.children) {
     const tag = child.tag.toLowerCase()
     if (tag === 'layer') {
-      const dataEl = child.children.find((c) => c.tag.toLowerCase() === 'data')
+      if (layers.length >= 128) return null
+      const dataEl = child.children.find((candidate) => candidate.tag.toLowerCase() === 'data')
+      const xmlTiles = dataEl?.children.filter((candidate) => candidate.tag.toLowerCase() === 'tile') ?? []
+      const xmlValues = !dataEl?.attrs['encoding'] && xmlTiles.length > 0
+        ? xmlTiles.map((tile) => parseUint32(tile.attrs['gid']))
+        : undefined
+      const xmlDataInvalid = xmlValues?.some((gid) => gid === null) ?? false
+      const xmlGids = xmlValues && !xmlDataInvalid && xmlValues.length <= MAX_DECODED_GIDS
+        ? Uint32Array.from(xmlValues as number[])
+        : undefined
       layers.push({
         name: child.attrs['name'] ?? '',
         kind: 'tile',
         data: dataEl?.text ?? undefined,
         encoding: dataEl?.attrs['encoding'],
         compression: dataEl?.attrs['compression'],
+        xmlGids,
+        xmlDataInvalid: xmlDataInvalid || (xmlValues?.length ?? 0) > MAX_DECODED_GIDS,
+        visible: booleanAttr(child.attrs, 'visible', true),
+        opacity: numberAttr(child.attrs, 'opacity', 1),
+        x: numberAttr(child.attrs, 'x'),
+        y: numberAttr(child.attrs, 'y'),
+        offsetX: numberAttr(child.attrs, 'offsetx'),
+        offsetY: numberAttr(child.attrs, 'offsety'),
       })
     } else if (tag === 'objectgroup') {
+      if (layers.length >= 128) return null
       layers.push({
         name: child.attrs['name'] ?? '',
         kind: 'objectgroup',
-        objectCount: child.children.filter((c) => c.tag.toLowerCase() === 'object').length,
+        objectCount: child.children.filter((candidate) => candidate.tag.toLowerCase() === 'object').length,
+        visible: booleanAttr(child.attrs, 'visible', true),
+        opacity: numberAttr(child.attrs, 'opacity', 1),
+        x: numberAttr(child.attrs, 'x'),
+        y: numberAttr(child.attrs, 'y'),
+        offsetX: numberAttr(child.attrs, 'offsetx'),
+        offsetY: numberAttr(child.attrs, 'offsety'),
       })
     } else if (tag === 'tileset') {
-      tilesets.push({
-        firstGid: num(child.attrs['firstgid'], 1),
-        name: child.attrs['name'],
-        source: child.attrs['source'],
-      })
+      if (tilesets.length >= 256) return null
+      tilesets.push(parseTilesetNode(child))
     }
   }
 
   return {
-    width: num(root.attrs['width']),
-    height: num(root.attrs['height']),
-    tileWidth: num(root.attrs['tilewidth']),
-    tileHeight: num(root.attrs['tileheight']),
+    width: positiveMapInteger(root.attrs, 'width'),
+    height: positiveMapInteger(root.attrs, 'height'),
+    tileWidth: positiveMapInteger(root.attrs, 'tilewidth'),
+    tileHeight: positiveMapInteger(root.attrs, 'tileheight'),
     orientation: root.attrs['orientation'] ?? 'orthogonal',
+    infinite: booleanAttr(root.attrs, 'infinite', false),
     layers,
     tilesets,
     raw: xml,
   }
 }
 
-/** XML 文本/属性转义（base64/CSV 数据不受影响） */
+/** XML 文本/属性转义（base64/CSV 数据不受影响）。 */
 function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-/** 把解析树重新序列化为整洁 XML（M24 双向桥接：规范化导出，Tiled 可打开）。
- * 保留全部元素/属性/文本（含 CDATA 并入的 data 文本）；丢弃注释与 XML 声明。 */
+/** 把解析树重新序列化为整洁 XML。 */
 export function serializeSimpleXml(node: SimpleXmlNode): string {
   const attrStr = Object.entries(node.attrs)
-    .map(([k, v]) => ` ${k}="${escapeXml(v)}"`)
+    .map(([key, value]) => ` ${key}="${escapeXml(value)}"`)
     .join('')
   if (node.children.length === 0 && !node.text) return `<${node.tag}${attrStr}/>`
-  const inner = node.children.map((c) => serializeSimpleXml(c)).join('') + (node.text ? escapeXml(node.text) : '')
+  const inner = node.children.map((child) => serializeSimpleXml(child)).join('') + (node.text ? escapeXml(node.text) : '')
   return `<${node.tag}${attrStr}>${inner}</${node.tag}>`
 }
 
-/** 规范化 TMX：解析 → 重新序列化（补齐 XML 声明；图层/对象/图块集/数据完整保留）。
- * 返回 null 表示不是合法地图 XML。round-trip 保证：parseTmx(normalizeTmx(x)) 与
- * parseTmx(x) 的图层/对象/图块集一致（双向桥接「导出不丢数据」的测试依据）。 */
+/** 规范化 TMX；返回 null 表示不是合法地图 XML。 */
 export function normalizeTmx(xml: string): string | null {
   const root = parseSimpleXml(xml)
   if (!root || root.tag.toLowerCase() !== 'map') return null
   return `<?xml version="1.0" encoding="UTF-8"?>\n${serializeSimpleXml(root)}`
 }
 
-/** 检查地图（文件级；tileset source 存在性需要项目文件列表——由调用方传入）。
- * mapDir：地图文件所在目录（相对项目根，如 maps/）——图块集 source 是相对
- * 地图文件目录的引用，必须拼上目录再比较，否则标准 maps/ 布局必误报 */
+/**
+ * 规范化项目内相对路径。拒绝绝对路径、盘符路径及任何越过项目根的 ..。
+ * 空路径不是可引用的项目文件，返回 null。
+ */
+export function normalizeProjectRelativePath(ref: string): string | null {
+  if (!ref || /^[\\/]/.test(ref) || /^[a-zA-Z]:/.test(ref)) return null
+  const parts: string[] = []
+  for (const segment of ref.replace(/\\/g, '/').split('/')) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') {
+      if (parts.length === 0) return null
+      parts.pop()
+    } else {
+      // 交给主进程做最终 realpath 校验前，先拒绝不可见控制字符和 Windows 设备名。
+      // eslint-disable-next-line no-control-regex -- 文件引用中的控制字符不可见且会破坏路径语义，必须拒绝。
+      if (/[\x00-\x1f]/.test(segment) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(segment)) return null
+      parts.push(segment)
+    }
+  }
+  return parts.length > 0 ? parts.join('/') : null
+}
+
+/** 将地图目录与引用拼接后规范化，允许 ref 在地图目录范围内使用 ../。 */
+export function resolveProjectReference(baseDir: string, ref: string): string | null {
+  if (!ref || /^[\\/]/.test(ref) || /^[a-zA-Z]:/.test(ref)) return null
+  const normalizedBase = baseDir ? normalizeProjectRelativePath(baseDir) : ''
+  if (baseDir && !normalizedBase) return null
+  return normalizeProjectRelativePath(normalizedBase ? `${normalizedBase}/${ref}` : ref)
+}
+
+/** 检查地图（tileset source 的存在性由 projectFiles 提供）。 */
 export async function checkTmx(
   map: TmxMap,
   options: { projectFiles?: ReadonlySet<string>; mapDir?: string } = {},
 ): Promise<TmxCheckResult> {
   const issues: TmxCheckIssue[] = []
-  const projectFiles = options.projectFiles
-
-  // 1) 尺寸合法性
-  if (map.width <= 0 || map.height <= 0) {
-    issues.push({ severity: 'error', message: '地图尺寸无效（width/height 必须为正）' })
+  if (map.width <= 0 || map.height <= 0 || map.tileWidth <= 0 || map.tileHeight <= 0) {
+    issues.push({ severity: 'error', message: '地图尺寸无效（width/height/tilewidth/tileheight 必须为正整数）' })
+  }
+  if (map.infinite) {
+    issues.push({ severity: 'warning', message: '无限地图（chunk）当前仅保留检查信息，真实瓦片预览暂不支持' })
   }
 
-  // 2) Ground 铺满：找 Ground 瓦片层（大小写不敏感），检查 data 瓦片数 = width*height
-  const groundLayer = map.layers.find((l) => l.kind === 'tile' && l.name.toLowerCase() === 'ground')
+  const groundLayer = map.layers.find((layer) => layer.kind === 'tile' && layer.name.toLowerCase() === 'ground')
   if (!groundLayer) {
     issues.push({ severity: 'warning', message: '缺少 Ground 瓦片层（游戏可能无法识别地形）' })
   } else if (map.width > 0 && map.height > 0) {
-    // XML 编码 data（<data><tile gid=.../></data>）：无 encoding 属性时按子元素计数
-    let xmlTileCount: number | undefined
-    if (!groundLayer.encoding) {
-      // 粗略取 Ground 层 data 内 <tile 出现次数（Tiled XML 编码地图）
-      const re = /<layer\b[^>]*name\s*=\s*"Ground"[^>]*>[\s\S]*?<data\b[^>]*>([\s\S]*?)<\/data>/i
-      const m = re.exec(map.raw)
-      if (m) xmlTileCount = (m[1].match(/<tile\b/g) ?? []).length
-    }
-    const tileCount = await decodedTileCount(groundLayer, xmlTileCount)
+    const tileCount = await decodedTileCount(groundLayer)
     if (tileCount === null) {
       issues.push({
         severity: 'error',
-        message: `Ground 层数据无法解码（encoding=${groundLayer.encoding ?? 'csv'} compression=${groundLayer.compression ?? '无'}），游戏可能无法加载`,
+        message: `Ground 层数据无法解码（encoding=${groundLayer.encoding ?? 'xml'} compression=${groundLayer.compression ?? '无'}），游戏可能无法加载`,
       })
     } else if (tileCount !== map.width * map.height) {
       issues.push({
@@ -277,80 +411,273 @@ export async function checkTmx(
     }
   }
 
-  // 3) Triggers 对象层缺失
-  const hasTriggers = map.layers.some((l) => l.kind === 'objectgroup' && l.name.toLowerCase() === 'triggers')
-  if (!hasTriggers) {
-    issues.push({ severity: 'warning', message: '缺少 Triggers 对象层（触发器/出生点等对象放这里）' })
-  }
+  const hasTriggers = map.layers.some((layer) => layer.kind === 'objectgroup' && layer.name.toLowerCase() === 'triggers')
+  if (!hasTriggers) issues.push({ severity: 'warning', message: '缺少 Triggers 对象层（触发器/出生点等对象放这里）' })
 
-  // 4) 图块集引用有效性（source 相对地图文件目录；mapDir 空 = 地图在项目根）
-  if (projectFiles) {
-    const dir = options.mapDir ? options.mapDir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') : ''
-    for (const ts of map.tilesets) {
-      if (ts.source) {
-        const ref = dir ? `${dir}/${ts.source.replace(/^\/+/, '')}` : ts.source.replace(/^\/+/, '')
-        if (!projectFiles.has(ref)) {
-          issues.push({ severity: 'error', message: `图块集引用文件不存在：${ref}` })
-        }
+  if (options.projectFiles) {
+    const projectFiles = new Set<string>()
+    for (const file of options.projectFiles) {
+      const normalized = normalizeProjectRelativePath(file)
+      if (normalized) projectFiles.add(normalized.toLowerCase())
+    }
+    for (const tileset of map.tilesets) {
+      if (!tileset.source) continue
+      const ref = resolveProjectReference(options.mapDir ?? '', tileset.source)
+      if (!ref) {
+        issues.push({ severity: 'error', message: `图块集引用路径无效：${tileset.source}` })
+      } else if (!projectFiles.has(ref.toLowerCase())) {
+        issues.push({ severity: 'error', message: `图块集引用文件不存在：${ref}` })
       }
     }
   }
-
-  return { ok: issues.every((i) => i.severity !== 'error'), issues }
+  return { ok: issues.every((issue) => issue.severity !== 'error'), issues }
 }
 
-/** 解码瓦片层数据并返回瓦片数；无法解码返回 null。
- * 支持 CSV 与 gzip/zlib base64（DecompressionStream 解压）；未知格式返回 null。 */
-export async function decodedTileCount(layer: TmxLayer, xmlTileCount?: number): Promise<number | null> {
-  // XML 内嵌瓦片（<data><tile gid=.../></data>，无 encoding）：按子元素计数
-  if (!layer.data && xmlTileCount !== undefined) return xmlTileCount
-  if (!layer.data) return 0
-  const encoding = layer.encoding ?? 'csv'
-  if (encoding === 'csv') {
-    return layer.data.split(',').map((s) => s.trim()).filter(Boolean).length
-  }
-  if (encoding === 'base64') {
-    try {
-      const binary = atob(layer.data.replace(/\s+/g, ''))
-      if (!layer.compression || layer.compression === 'none') {
-        return Math.floor(binary.length / 4)
-      }
-      if (layer.compression === 'gzip' || layer.compression === 'zlib') {
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-        const out = await inflateBytes(bytes)
-        return out === null ? null : Math.floor(out.length / 4)
-      }
-      return null
-    } catch {
-      return null
-    }
-  }
-  return null
-}
-
-/** gzip/zlib 解压（DecompressionStream；Chromium 与 Node 18+ 均有） */
-export async function inflateBytes(bytes: Uint8Array): Promise<Uint8Array | null> {
-  if (typeof DecompressionStream === 'undefined') return null
+function base64Bytes(data: string): Uint8Array | null {
   try {
-    // 先按 gzip 试（TMX 标准是 gzip）；失败再试 deflate（zlib 头部）
-    for (const fmt of ['gzip', 'deflate'] as const) {
-      try {
-        const ds = new DecompressionStream(fmt)
-        const stream = new Blob([bytes.buffer as ArrayBuffer]).stream().pipeThrough(ds)
-        const buf = await new Response(stream).arrayBuffer()
-        return new Uint8Array(buf)
-      } catch {
-        // 尝试下一种格式
-      }
-    }
-    return null
+    const clean = data.replace(/\s+/g, '')
+    if (!clean || clean.length > MAX_BASE64_CHARS) return null
+    const binary = atob(clean)
+    if (binary.length > MAX_DECODED_TILE_BYTES) return null
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
+    return bytes
   } catch {
     return null
   }
 }
 
-/** 地图可安全预览（尺寸合理 + 层数有限，防超大地图卡渲染） */
+function uint32LittleEndian(bytes: Uint8Array): Uint32Array | null {
+  if (bytes.byteLength % 4 !== 0 || bytes.byteLength > MAX_DECODED_TILE_BYTES) return null
+  const result = new Uint32Array(bytes.byteLength / 4)
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  for (let index = 0; index < result.length; index++) result[index] = view.getUint32(index * 4, true)
+  return result
+}
+
+/**
+ * CSV gid 流式解析：不使用 split/map，避免大型地图产生海量临时字符串。
+ * 仅允许数字、逗号和空白；最后一个逗号可省略/保留，中间空 gid 一律拒绝。
+ */
+function scanCsvGids(data: string, target?: Uint32Array): number | null {
+  let count = 0
+  let value = 0
+  let digits = 0
+  let sawComma = false
+  let whitespaceAfterDigits = false
+  const finish = (): boolean => {
+    if (digits === 0 || count >= MAX_DECODED_GIDS) return false
+    if (target) target[count] = value
+    count++
+    return true
+  }
+  for (let index = 0; index < data.length; index++) {
+    const code = data.charCodeAt(index)
+    if (code >= 48 && code <= 57) {
+      if (digits > 0 && whitespaceAfterDigits) return null
+      value = value * 10 + code - 48
+      if (value > 0xffffffff) return null
+      digits++
+      sawComma = false
+      whitespaceAfterDigits = false
+      continue
+    }
+    if (code === 44) {
+      if (!finish()) return null
+      value = 0
+      digits = 0
+      sawComma = true
+      whitespaceAfterDigits = false
+      continue
+    }
+    // 空白只允许出现在 token 前后，不能把 1 2 静默拼接为 12。
+    if (code === 9 || code === 10 || code === 13 || code === 32) {
+      if (digits > 0) whitespaceAfterDigits = true
+      continue
+    }
+    return null
+  }
+  if (digits > 0) {
+    if (!finish()) return null
+  } else if (!sawComma || count === 0) {
+    return null
+  }
+  return count
+}
+
+function decodeCsvGids(data: string): Uint32Array | null {
+  // 两遍字符扫描：第一遍计数、第二遍写入 Uint32Array，不为大型地图额外保留 number[]。
+  const count = scanCsvGids(data)
+  if (!count) return null
+  const gids = new Uint32Array(count)
+  return scanCsvGids(data, gids) === count ? gids : null
+}
+
+/** 解码瓦片层 gid；未知编码、缺失数据或损坏数据返回 null。 */
+export async function decodeLayerGids(layer: TmxLayer): Promise<Uint32Array | null> {
+  if (layer.xmlDataInvalid) return null
+  if (layer.xmlGids) return layer.xmlGids
+  if (layer.encoding === undefined) return null
+  if (layer.encoding === 'csv') {
+    if (layer.data === undefined) return null
+    return decodeCsvGids(layer.data)
+  }
+  if (layer.encoding !== 'base64' || layer.data === undefined) return null
+  let bytes = base64Bytes(layer.data)
+  if (!bytes) return null
+  if (layer.compression && layer.compression !== 'none') {
+    if (layer.compression !== 'gzip' && layer.compression !== 'zlib') return null
+    bytes = await inflateBytes(bytes)
+    if (!bytes) return null
+  }
+  return uint32LittleEndian(bytes)
+}
+
+/** 解码瓦片层数据并返回瓦片数；检查阶段不额外分配 Uint32Array。
+ * 保留旧 xmlTileCount 参数兼容旧调用方。 */
+export async function decodedTileCount(layer: TmxLayer, xmlTileCount?: number): Promise<number | null> {
+  if (layer.xmlDataInvalid) return null
+  if (layer.xmlGids) return layer.xmlGids.length
+  if (layer.encoding === undefined) return xmlTileCount ?? null
+  if (layer.data === undefined) return null
+  if (layer.encoding === 'csv') return scanCsvGids(layer.data)
+  if (layer.encoding !== 'base64') return null
+  let bytes = base64Bytes(layer.data)
+  if (!bytes) return null
+  if (layer.compression && layer.compression !== 'none') {
+    if (layer.compression !== 'gzip' && layer.compression !== 'zlib') return null
+    bytes = await inflateBytes(bytes)
+    if (!bytes) return null
+  }
+  return bytes.byteLength % 4 === 0 && bytes.byteLength <= MAX_DECODED_TILE_BYTES ? bytes.byteLength / 4 : null
+}
+
+/** gzip/zlib 解压（DecompressionStream；Chromium 与 Node 18+ 均有）。
+ * 使用 reader 累积并限制输出，防小型压缩输入膨胀为超大 Uint32Array。 */
+export async function inflateBytes(bytes: Uint8Array, maxBytes = MAX_DECODED_TILE_BYTES): Promise<Uint8Array | null> {
+  if (typeof DecompressionStream === 'undefined' || bytes.byteLength > maxBytes || maxBytes <= 0) return null
+  try {
+    for (const format of ['gzip', 'deflate'] as const) {
+      try {
+        const stream = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer]).stream()
+          .pipeThrough(new DecompressionStream(format))
+        const reader = stream.getReader()
+        const chunks: Uint8Array[] = []
+        let total = 0
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          total += value.byteLength
+          if (total > maxBytes) {
+            await reader.cancel().catch(() => undefined)
+            return null
+          }
+          chunks.push(value)
+        }
+        const output = new Uint8Array(total)
+        let offset = 0
+        for (const chunk of chunks) {
+          output.set(chunk, offset)
+          offset += chunk.byteLength
+        }
+        return output
+      } catch {
+        // 尝试另一种压缩包装格式。
+      }
+    }
+  } catch {
+    // 浏览器不支持流式解压时按无法解码处理。
+  }
+  return null
+}
+
+/** 从 Tiled raw gid 分离翻转标记与清理后的全局 gid。 */
+export function decodeTiledGid(raw: number): { gid: number; flipH: boolean; flipV: boolean; flipD: boolean; rotateHex120: boolean } {
+  const value = raw >>> 0
+  return {
+    gid: value & TILE_GID_MASK,
+    flipH: (value & TILE_FLIP_H) !== 0,
+    flipV: (value & TILE_FLIP_V) !== 0,
+    flipD: (value & TILE_FLIP_D) !== 0,
+    rotateHex120: (value & TILE_ROTATED_HEX120) !== 0,
+  }
+}
+
+/**
+ * 正交 Tiled H/V/D flag 的单位方格仿射矩阵。
+ * Tiled 的 D 是沿反对角线翻转；其后依次施加 H/V。返回值可直接用于
+ * ctx.transform(a,b,c,d,e,f)，再在 0..1 目标方格内绘制图块，因此非正方 tile
+ * 不会被 90° 旋转时的宽高交换拉伸。
+ */
+export function tiledGidTransform(raw: number): { a: number; b: number; c: number; d: number; e: number; f: number } {
+  const { flipH, flipV, flipD } = decodeTiledGid(raw)
+  const h = flipH ? -1 : 1
+  const v = flipV ? -1 : 1
+  if (!flipD) return { a: h, b: 0, c: 0, d: v, e: flipH ? 1 : 0, f: flipV ? 1 : 0 }
+  // D alone: x'=1-y, y'=1-x。H/V 按 Tiled 规则在 D 之后作用。
+  return {
+    a: 0,
+    b: flipV ? 1 : -1,
+    c: flipH ? 1 : -1,
+    d: 0,
+    e: flipH ? 0 : 1,
+    f: flipV ? 0 : 1,
+  }
+}
+
+/** 按最大的 firstGid <= 清理后 gid 查找图块集。 */
+export function resolveTilesetForGid(rawGid: number, tilesets: readonly TmxTileset[]): { tileset: TmxTileset; localId: number } | null {
+  const gid = decodeTiledGid(rawGid).gid
+  if (gid === 0) return null
+  let selected: TmxTileset | null = null
+  for (const tileset of tilesets) {
+    if (Number.isInteger(tileset.firstGid) && tileset.firstGid > 0 && tileset.firstGid <= gid
+      && (!selected || tileset.firstGid > selected.firstGid)) selected = tileset
+  }
+  if (!selected) return null
+  const localId = gid - selected.firstGid
+  // 有 tileCount 时，两个 tileset firstgid 之间的空洞不是前一个图块集的有效图块。
+  if (selected.tileCount !== undefined && localId >= selected.tileCount) return null
+  return { tileset: selected, localId }
+}
+
+/** 返回图块在 tileset 图像中的源矩形；元数据不足或 localId 非法时返回 null。 */
+export function tileSourceRect(tileset: TmxTileset, localId: number): { sx: number; sy: number; sw: number; sh: number } | null {
+  const tileWidth = tileset.tileWidth ?? 0
+  const tileHeight = tileset.tileHeight ?? 0
+  const spacing = tileset.spacing ?? 0
+  const margin = tileset.margin ?? 0
+  if (!Number.isInteger(localId) || localId < 0 || tileWidth <= 0 || tileHeight <= 0 || spacing < 0 || margin < 0) return null
+  if (tileset.tileCount !== undefined && (!Number.isInteger(tileset.tileCount) || tileset.tileCount < 0 || localId >= tileset.tileCount)) return null
+
+  let columns = tileset.columns ?? 0
+  if (!Number.isInteger(columns) || columns <= 0) {
+    if (!tileset.imageWidth || tileset.imageWidth <= 0) return null
+    columns = Math.floor((tileset.imageWidth - margin * 2 + spacing) / (tileWidth + spacing))
+  }
+  if (columns <= 0) return null
+
+  const sx = margin + (localId % columns) * (tileWidth + spacing)
+  const sy = margin + Math.floor(localId / columns) * (tileHeight + spacing)
+  if (tileset.imageWidth !== undefined && sx + tileWidth > tileset.imageWidth - margin) return null
+  if (tileset.imageHeight !== undefined && sy + tileHeight > tileset.imageHeight - margin) return null
+  return { sx, sy, sw: tileWidth, sh: tileHeight }
+}
+
+/** 为固定总览画布规划按地图单元采样的尺寸，避免极端长宽比触发画布尺寸上限。 */
+export function planMapOverview(width: number, height: number, maxWidth = 1024, maxHeight = 1024): { width: number; height: number; stepX: number; stepY: number } {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return { width: 0, height: 0, stepX: 0, stepY: 0 }
+  const sourceWidth = Math.floor(width)
+  const sourceHeight = Math.floor(height)
+  const limitWidth = Math.max(1, Math.floor(Number.isFinite(maxWidth) ? maxWidth : 1024))
+  const limitHeight = Math.max(1, Math.floor(Number.isFinite(maxHeight) ? maxHeight : 1024))
+  const scale = Math.min(1, limitWidth / sourceWidth, limitHeight / sourceHeight)
+  const overviewWidth = Math.min(limitWidth, Math.max(1, Math.floor(sourceWidth * scale)))
+  const overviewHeight = Math.min(limitHeight, Math.max(1, Math.floor(sourceHeight * scale)))
+  return { width: overviewWidth, height: overviewHeight, stepX: sourceWidth / overviewWidth, stepY: sourceHeight / overviewHeight }
+}
+
+/** 地图可安全预览（尺寸合理 + 层数有限，防超大地图卡渲染）。 */
 export function canPreviewSafely(map: TmxMap): boolean {
   return map.width > 0 && map.height > 0 && map.width * map.height <= 100_000 && map.layers.length <= 64
 }

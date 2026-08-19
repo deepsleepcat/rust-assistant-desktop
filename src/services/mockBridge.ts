@@ -71,6 +71,31 @@ image: rifle.png
 image_turret: NONE
 ` },
   { path: `${MOCK_PROJECT_ROOT}\\units\\rifle\\rifle.png`, content: 'mock-png' },
+  // M36：浏览器预览用最小真实 tileset TMX（MapViewer 需实际走 drawImage，而非 gid 色块）
+  { path: `${MOCK_PROJECT_ROOT}\\maps\\demo.tmx`, content: `<?xml version="1.0"?>
+<map orientation="orthogonal" width="8" height="6" tilewidth="16" tileheight="16">
+  <tileset firstgid="1" name="mock" tilewidth="16" tileheight="16" tilecount="300" columns="25">
+    <image source="tiles.png" width="400" height="250"/>
+  </tileset>
+  <layer name="Ground" width="8" height="6"><data encoding="csv">
+1,2,3,4,5,6,7,8,
+9,10,11,12,13,14,15,16,
+17,18,19,20,21,22,23,24,
+25,26,27,28,29,30,31,32,
+33,34,35,36,37,38,39,40,
+41,42,43,44,45,46,47,48
+  </data></layer>
+  <objectgroup name="Triggers"/>
+</map>` },
+  { path: `${MOCK_PROJECT_ROOT}\\maps\\tiles.png`, content: 'mock-png' },
+  // 外部 TSX：覆盖 Windows 绝对 TMX 路径下「TMX → TSX → PNG」的真实 bridge 路径。
+  { path: `${MOCK_PROJECT_ROOT}\\maps\\tiles.tsx`, content: `<tileset name="mock-external" tilewidth="16" tileheight="16" tilecount="300" columns="25"><image source="tiles.png" width="400" height="250"/></tileset>` },
+  { path: `${MOCK_PROJECT_ROOT}\\maps\\external.tmx`, content: `<?xml version="1.0"?>
+<map orientation="orthogonal" width="4" height="4" tilewidth="16" tileheight="16">
+  <tileset firstgid="1" source="tiles.tsx"/>
+  <layer name="Ground" width="4" height="4"><data encoding="csv">1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16</data></layer>
+  <objectgroup name="Triggers"/>
+</map>` },
   { path: `${MOCK_PROJECT_ROOT}\\README.md`, content: `# 我的第一个模组
 
 在浏览器预览模式下创建的示例模组。
@@ -307,7 +332,10 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       readModInfo: async () => ({ title: '我的模组', musicFiles: [], musicExclusive: false, mapsFiles: [], mapsExtra: false }),
       writeModInfo: async () => ({ ok: true }),
       scanResources: async () => ({
-        files: ['units/tank/tank.png', 'units/tank/tank_wreck.png', 'units/rifle/rifle.png', 'music/bgm.ogg', 'maps/test.tmx'],
+        files: [
+          'units/tank/tank.png', 'units/tank/tank_wreck.png', 'units/rifle/rifle.png', 'music/bgm.ogg',
+          'maps/test.tmx', 'maps/demo.tmx', 'maps/external.tmx', 'maps/tiles.tsx', 'maps/tiles.png',
+        ],
         unitNames: ['重型坦克', '步枪兵', '侦察车'],
       }),
       scanUnits: async () => [
