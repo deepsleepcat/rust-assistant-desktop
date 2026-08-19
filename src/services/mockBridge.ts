@@ -225,6 +225,39 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     return { mtimeMs: node.content.length, size: new TextEncoder().encode(node.content).length }
   }
 
+  /** M37：浏览器预览同样全树搜索文件名/相对路径（不依赖当前目录是否展开）。
+   * 上限与主进程保持一致，且用迭代栈避免 mock 深树导致 JS 调用栈溢出。 */
+  function searchFiles(query: string, showHidden = false): { entries: Array<{ path: string; relativePath: string; name: string }>; truncated: boolean } {
+    const needle = query.trim().replace(/\\/g, '/').toLowerCase()
+    if (!needle) return { entries: [], truncated: false }
+    const entries: Array<{ path: string; relativePath: string; name: string }> = []
+    const stack: Array<{ dir: MockDir; prefix: string; depth: number }> = [{ dir: tree, prefix: '', depth: 0 }]
+    let scanned = 0
+    let truncated = false
+    while (stack.length > 0) {
+      const current = stack.pop()!
+      if (current.depth > 64) {
+        truncated = true
+        continue
+      }
+      for (const [name, node] of Object.entries(current.dir.children)) {
+        if (++scanned > 50_000) return { entries: entries.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN')), truncated: true }
+        if (!showHidden && name.startsWith('.')) continue
+        const relativePath = current.prefix ? `${current.prefix}/${name}` : name
+        if (node.kind === 'dir') {
+          stack.push({ dir: node, prefix: relativePath, depth: current.depth + 1 })
+          continue
+        }
+        if (name.toLowerCase().includes(needle) || relativePath.toLowerCase().includes(needle)) {
+          entries.push({ path: `${MOCK_PROJECT_ROOT}\\${relativePath.replace(/\//g, '\\')}`, relativePath, name })
+          if (entries.length >= 2000) return { entries: entries.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN')), truncated: true }
+        }
+      }
+    }
+    entries.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN'))
+    return { entries, truncated }
+  }
+
   function writeFile(filePath: string, content: string, opts: { hasBom: boolean }): void {
     const parts = relToRoot(filePath)
     const dir = findNode(tree, parts.slice(0, -1))
@@ -268,6 +301,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       saveText: async () => ({ ok: false, message: '模拟环境：无法保存' }),
       registerRoots: async () => undefined,
       readDir: async (_root, dirPath) => listDir(dirPath),
+      searchFiles: async (_root, query, showHidden) => searchFiles(query, showHidden),
       stat: async (_root, filePath) => statFile(filePath),
       readFile: async (_root, filePath) => readFile(filePath),
       writeFile: async (_root, filePath, content, opts) => {

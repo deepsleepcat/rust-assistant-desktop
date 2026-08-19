@@ -85,7 +85,13 @@ body {
 .panel-header .grow { flex: 1; }
 /* 文件面板标题：模组名可收缩省略，右侧固定控件不被动挤压 */
 .project-panel-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-search-wrap { flex: 1; min-width: 64px; height: 26px; display: flex; align-items: center; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface-input); }
+.project-search-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.project-search { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text-primary); padding: 0 6px; font: 12px var(--font-ui); }
+.project-search::placeholder { color: var(--text-muted); }
+.project-search-clear { width: 22px; height: 22px; margin-right: 1px; }
 .panel-header > .sort-select, .panel-header > .icon-btn, .panel-header > .mod-tools-wrap { flex-shrink: 0; }
+.panel-header > .icon-btn.active { color: var(--accent); background: var(--accent-soft); }
 .icon-btn { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-muted); cursor: pointer; }
 .icon-btn:hover { color: var(--text-primary); background: var(--surface-hover); }
 .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
@@ -141,6 +147,11 @@ body {
 .tree-error { margin: 6px; padding: 8px; border-radius: var(--radius-xs); color: var(--danger); background: var(--danger-bg); font-size: 12px; }
 .tree-error-inline { color: var(--danger); background: var(--danger-bg); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-row > .tree-name { flex: 1; }
+.project-search-results { padding-top: 2px; }
+.project-search-row { padding-right: 7px; }
+.project-search-path { max-width: 52%; color: var(--text-muted); font: 11px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-search-truncated { margin: 2px 2px 6px; padding: 5px 7px; border: 1px solid var(--warning); border-radius: var(--radius-xs); background: var(--warning-bg); color: var(--warning); font-size: 11px; }
+@media (max-width: 899px) { .project-search-path { display: none; } .project-search-wrap { min-width: 54px; } }
 
 /* 编辑器 */
 .editor-panel { background: var(--editor); }

@@ -101,7 +101,7 @@ afterEach(async () => {
 })
 
 describe('IPC 通道完整性', () => {
-  it('九个域注册函数覆盖全部 72 个通道，无遗漏无重复', () => {
+  it('九个域注册函数覆盖全部 73 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerKnowledgeIpc(ctx, ipc)
@@ -123,7 +123,7 @@ describe('IPC 通道完整性', () => {
       // dialog + project
       'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots',
       // fs + media
-      'fs:readDir', 'fs:readFile', 'fs:stat', 'fs:writeFile', 'fs:createFile', 'fs:createFolder', 'fs:rename', 'fs:delete',
+      'fs:readDir', 'project:searchFiles', 'fs:readFile', 'fs:stat', 'fs:writeFile', 'fs:createFile', 'fs:createFolder', 'fs:rename', 'fs:delete',
       'image:readAsDataUrl', 'media:readAsDataUrl',
       // mod + template
       'mod:create', 'mod:createUnit', 'mod:listTemplates', 'mod:saveFileAsTemplate', 'mod:createUnitFromTemplate',
@@ -139,7 +139,7 @@ describe('IPC 通道完整性', () => {
       'ai:check', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(72)
+    expect(channels.size).toBe(73)
   })
 })
 
@@ -182,6 +182,19 @@ describe('fs 通道（路径安全边界）', () => {
     const { channels, ipc } = createFakeIpc()
     registerFsIpc(ctx, ipc)
     await expect(invoke(channels, 'fs:readDir', path.join(tmp, 'units'), path.join(tmp, 'units'))).rejects.toThrow('未登记的项目目录')
+  })
+
+  it('project:searchFiles：递归命中文件，且未登记根/类型参数拒绝', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerFsIpc(ctx, ipc)
+    ctx.roots.add(normalizePath(tmp))
+    await fs.mkdir(path.join(tmp, 'units', 'tank'), { recursive: true })
+    await fs.writeFile(path.join(tmp, 'units', 'tank', 'HeavyTank.ini'), 'x', 'utf8')
+    const result = await invoke<{ entries: Array<{ relativePath: string }>; truncated: boolean }>(channels, 'project:searchFiles', tmp, 'heavytank', false)
+    expect(result.entries.map((entry) => entry.relativePath)).toEqual(['units/tank/HeavyTank.ini'])
+    expect(result.truncated).toBe(false)
+    await expect(invoke(channels, 'project:searchFiles', path.join(tmp, 'other'), 'x', false)).rejects.toThrow('未登记的项目目录')
+    await expect(invoke(channels, 'project:searchFiles', tmp, 123, false)).rejects.toThrow('搜索关键词无效')
   })
 
   it('越界路径拒绝（.. 穿越与根外绝对路径）', async () => {

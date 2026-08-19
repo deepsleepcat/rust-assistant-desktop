@@ -47,6 +47,8 @@ describe('preload 桥契约', () => {
     const p = api().project as Record<string, (...a: unknown[]) => Promise<unknown>>
     await p.readDir('r', 'd', true)
     expect(mocks.invoke).toHaveBeenLastCalledWith('fs:readDir', 'r', 'd', true)
+    await p.searchFiles('r', 'tank', false)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('project:searchFiles', 'r', 'tank', false)
     await p.readFile('r', 'f')
     expect(mocks.invoke).toHaveBeenLastCalledWith('fs:readFile', 'r', 'f')
     await p.writeFile('r', 'f', 'c', { hasBom: true })
