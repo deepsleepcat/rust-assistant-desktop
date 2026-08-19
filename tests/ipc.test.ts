@@ -127,7 +127,7 @@ describe('IPC 通道完整性', () => {
       'image:readAsDataUrl', 'media:readAsDataUrl',
       // mod + template
       'mod:create', 'mod:createUnit', 'mod:listTemplates', 'mod:saveFileAsTemplate', 'mod:createUnitFromTemplate',
-      'mod:pack', 'mod:check', 'mod:readModInfo', 'mod:writeModInfo', 'mod:scanResources', 'mod:scanUnits',
+      'mod:pack', 'mod:check', 'mod:readModInfo', 'mod:writeModInfo', 'mod:scanResources', 'mod:scanUnits', 'mod:copyUnit',
       'mod:optimizeScan', 'mod:optimizeApply', 'mod:globalOp', 'mod:chooseMusic', 'mod:import', 'mod:discardImport',
       'template:import', 'template:deleteUser', 'template:listUserKeys',
       // game
@@ -139,7 +139,7 @@ describe('IPC 通道完整性', () => {
       'ai:check', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(70)
+    expect(channels.size).toBe(71)
   })
 })
 
@@ -419,6 +419,47 @@ describe('mod / game / app 通道', () => {
     registerModIpc(ctx, ipc)
     ctx.packing.active = true
     await expect(invoke(channels, 'mod:pack', tmp)).rejects.toThrow('已有打包任务')
+  })
+
+  it('mod:copyUnit：两端项目根都须登记，成功时写入目标', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerModIpc(ctx, ipc)
+    const src = tmp
+    const dst = path.join(tmp, 'dst')
+    await fs.mkdir(dst)
+    ctx.roots.add(normalizePath(src))
+    ctx.roots.add(normalizePath(dst))
+    await fs.mkdir(path.join(src, 'units'))
+    await fs.writeFile(path.join(src, 'units', 'tank.ini'), '[core]\nname: tank\n', 'utf8')
+
+    // 未登记源项目根拒绝
+    await expect(
+      invoke(channels, 'mod:copyUnit', { sourceRoot: path.join(tmp, 'unregistered'), sourceFilePath: 'units/tank.ini', targetRoot: dst, targetName: 'b' }),
+    ).rejects.toThrow('未登记的项目目录')
+    // 未登记目标项目根拒绝
+    await expect(
+      invoke(channels, 'mod:copyUnit', { sourceRoot: src, sourceFilePath: 'units/tank.ini', targetRoot: path.join(tmp, 'unregistered2'), targetName: 'b' }),
+    ).rejects.toThrow('未登记的项目目录')
+
+    // 成功：写入目标项目 <name>/<name>.ini
+    const result = await invoke<{ path: string }>(channels, 'mod:copyUnit', {
+      sourceRoot: src,
+      sourceFilePath: 'units/tank.ini',
+      targetRoot: dst,
+      targetName: 'copiedTank',
+    })
+    expect(result.path).toBe('copiedTank/copiedTank.ini')
+    expect(await fs.readFile(path.join(dst, 'copiedTank', 'copiedTank.ini'), 'utf8')).toContain('name: tank')
+
+    // 参数校验：缺项目目录拒绝
+    await expect(invoke(channels, 'mod:copyUnit', { sourceRoot: src })).rejects.toThrow('复制参数')
+    // 非字符串参数拒绝（防 TypeError 泄露内部细节）
+    await expect(
+      invoke(channels, 'mod:copyUnit', { sourceRoot: src, sourceFilePath: 123, targetRoot: dst, targetName: 'b' }),
+    ).rejects.toThrow('复制参数')
+    await expect(
+      invoke(channels, 'mod:copyUnit', { sourceRoot: src, sourceFilePath: 'units/tank.ini', targetRoot: dst, targetName: 'b', targetFolder: 7 }),
+    ).rejects.toThrow('目标文件夹无效')
   })
 
   it('mod:discardImport：只清理本次会话导入的目录', async () => {

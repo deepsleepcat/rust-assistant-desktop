@@ -36,6 +36,8 @@ export const DATA_FILE_NAMES: readonly string[] = [
   'code.json',
   'section.json',
   'value_type.json',
+  // M34：枚举值中文词典（与 value_type.json 配套，随知识包更新/回滚同步）
+  'value_zh.json',
   'translations.json',
   'vocabulary.json',
   'logicboolean.json',

@@ -7,7 +7,7 @@
  */
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, getKeyZhToEnDict, getZhToEnDict, loadCodeData, normalizeSectionName, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, getKeyZhToEnDict, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
 function stripComment(line: string): string {
@@ -123,6 +123,48 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
               if (lb.description && lb.description !== fn) parts.push(`<div style="margin-top:3px">${escapeHtml(lb.description)}</div>`)
               if (lb.example) parts.push(`<pre class="cm-hover-demo">${escapeHtml(lb.example)}</pre>`)
               dom.innerHTML = parts.join('')
+              return { dom }
+            },
+          }
+        }
+      }
+      // 枚举值中文解释（M34）：值位置是引擎枚举（own/BUILDING/true…）且命中
+      // value_zh 词典时显示中文——引擎值本身必须保留原写法，只做解释。
+      // 保守策略：整值完全等于词典键才触发（image: units/air/tank.png 悬停
+      // air 这类「路径里的普通英文词」不会误显示成枚举）；多枚举值行
+      // （own,neutral 逗号分隔）按逗号分段后整段匹配。
+      // 放在颜色/self 逻辑之后，避免拦截上面已经处理过的内容。
+      const fullValue = valueText.trim()
+      const valueZh = getValueZhDict()
+      const zhOfValue = valueZh.get(fullValue.toLowerCase())
+      if (zhOfValue) {
+        return {
+          pos: valStart,
+          end: lineText.length,
+          create: () => {
+            const dom = document.createElement('div')
+            dom.className = 'cm-hover-doc'
+            dom.innerHTML = `<b>${escapeHtml(fullValue)}</b> · ${escapeHtml(zhOfValue)}<div class="cm-hover-muted">枚举值（引擎保留原写法）</div>`
+            return { dom }
+          },
+        }
+      }
+      // 逗号分隔的多枚举值（如 takeResources_includeUnitsWithinRange_team: own,neutral）：
+      // 光标所在分段整段命中时显示该值的中文
+      const segStart = valStart + fullValue.lastIndexOf(',', inLine - valStart) + 1
+      const nextComma = fullValue.indexOf(',', inLine - valStart)
+      const segEnd = nextComma >= 0 ? valStart + nextComma : valStart + fullValue.length
+      if (inLine >= segStart && inLine <= segEnd) {
+        const seg = lineText.slice(segStart, segEnd).trim()
+        const zhSeg = valueZh.get(seg.toLowerCase())
+        if (zhSeg) {
+          return {
+            pos: segStart,
+            end: segEnd,
+            create: () => {
+              const dom = document.createElement('div')
+              dom.className = 'cm-hover-doc'
+              dom.innerHTML = `<b>${escapeHtml(seg)}</b> · ${escapeHtml(zhSeg)}<div class="cm-hover-muted">枚举值（引擎保留原写法）</div>`
               return { dom }
             },
           }

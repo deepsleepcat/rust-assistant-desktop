@@ -23,6 +23,7 @@ import {
   findValueTypes,
   getDialectWords,
   getKeyZhToEnDict,
+  getValueZhDict,
   getZhToEnDict,
   loadCodeData,
   parseValueList,
@@ -378,8 +379,12 @@ async function valueCompletions(key: string, query: string, data: CompletionData
         if (!directives.includes(d)) directives.push(d)
       }
     }
+    // 枚举值候选（M34：命中 value_zh 词典时 detail 显示中文解释，如 own→己方；
+    // 词典外未知枚举仍可补全，只是没有中文说明）
+    const valueZh = getValueZhDict()
     for (const v of items.filter((v) => !q || v.toLowerCase().includes(q))) {
-      result.push({ label: v, type: 'value', apply: v })
+      const zhDesc = valueZh.get(v.toLowerCase())
+      result.push(zhDesc ? { label: v, detail: zhDesc, type: 'value', apply: v } : { label: v, type: 'value', apply: v })
     }
 
     // @file(类型)：扫描项目内资源文件（png/jpg/ogg/ini…）

@@ -11,6 +11,7 @@
     {
       "name": "aaBeamGunship_afterburn",
       "displayKey": "aaBeamGunship_afterburn",
+      "zhName": "AA激光射束战机·加力",
       "icon": "aa_beam_gunship/base3.png"
     },
     {
@@ -37,111 +38,133 @@
     {
       "name": "bugBee",
       "displayKey": "bugBee",
+      "zhName": "蜂虫",
       "icon": "classic_bugs/bug_bee/bug_bee.png"
     },
     {
       "name": "bugExtractor",
       "displayKey": "bugExtractor",
+      "zhName": "虫族采集器",
       "icon": "classic_bugs/bug_extractor/bug_extractor.png"
     },
     {
       "name": "bugExtractorT2",
       "displayKey": "bugExtractorT2",
+      "zhName": "虫族采集器T2",
       "icon": "classic_bugs/bug_extractor/bug_extractor.png"
     },
     {
       "name": "bugFly",
       "displayKey": "bugFly",
+      "zhName": "飞行虫",
       "icon": "classic_bugs/bug_fly/bug_fly.png"
     },
     {
       "name": "bugGenerator",
       "displayKey": "bugGenerator",
+      "zhName": "虫族发电机",
       "icon": "classic_bugs/bug_generator/bug_generator.png"
     },
     {
       "name": "bugGeneratorN",
       "displayKey": "bugGeneratorN",
+      "zhName": "虫族发电机N",
       "icon": "bug_base/bug_generator/bug_generator.png"
     },
     {
       "name": "bugGeneratorNT2",
       "displayKey": "bugGeneratorNT2",
+      "zhName": "虫族发电机NT2",
       "icon": "bug_base/bug_generator/bug_generator.png"
     },
     {
       "name": "bugGeneratorT2",
       "displayKey": "bugGeneratorT2",
+      "zhName": "虫族发电机T2",
       "icon": "classic_bugs/bug_generator/bug_generator.png"
     },
     {
       "name": "bugMelee",
       "displayKey": "bugMelee",
+      "zhName": "近战虫",
       "icon": "classic_bugs/bug_melee/bug_melee.png"
     },
     {
       "name": "bugMeleeLarge",
       "displayKey": "bugMeleeLarge",
+      "zhName": "大型近战虫",
       "icon": "classic_bugs/bug_melee/bug_melee.png"
     },
     {
       "name": "bugMeleeSmall",
       "displayKey": "bugMeleeSmall",
+      "zhName": "小型近战虫",
       "icon": "classic_bugs/bug_melee/bug_melee.png"
     },
     {
       "name": "bugMeleeT31",
       "displayKey": "bugMeleeT31",
+      "zhName": "近战虫T31",
       "icon": "bug_melee/bug_meleet31.png"
     },
     {
       "name": "bugNest",
       "displayKey": "bugNest",
+      "zhName": "虫巢",
       "icon": "classic_bugs/bug_nest/bug_nest_back.png"
     },
     {
       "name": "bugPickup",
       "displayKey": "bugPickup",
+      "zhName": "搬运虫",
       "icon": "classic_bugs/bugs/bug_pickup.png"
     },
     {
       "name": "bugRanged",
       "displayKey": "bugRanged",
+      "zhName": "远程虫",
       "icon": "classic_bugs/bug_ranged/bug_ranged.png"
     },
     {
       "name": "bugRangedT2",
       "displayKey": "bugRangedT2",
+      "zhName": "远程虫T2",
       "icon": "classic_bugs/bugs_t2/bug_ranged_t2.png"
     },
     {
       "name": "bugSpore",
       "displayKey": "bugSpore",
+      "zhName": "孢子虫",
       "icon": "classic_bugs/bug_spore/bug_spore.png"
     },
     {
       "name": "bugTurret",
       "displayKey": "bugTurret",
+      "zhName": "虫族炮塔",
       "icon": "classic_bugs/bug_turret/bug_turret.png"
     },
     {
       "name": "bugWasp",
       "displayKey": "bugWasp",
+      "zhName": "黄蜂虫",
       "icon": "classic_bugs/bugs/bug_pickup.png"
     },
     {
       "name": "c_amphibiousJet",
       "displayKey": "c_amphibiousJet",
+      "zhName": "两栖喷气机",
       "icon": "amphibious_jet/amphibious_jet.png"
     },
     {
       "name": "c_amphibiousJet_transition",
       "displayKey": "c_amphibiousJet_transition",
+      "zhName": "两栖喷气机·变形中",
       "icon": "amphibious_jet/amphibious_jet.png"
     },
     {
       "name": "c_amphibiousJet_underwater",
       "displayKey": "c_amphibiousJet_underwater",
+      "zhName": "两栖喷气机·水下",
       "icon": "amphibious_jet/amphibious_jet.png"
     },
     {
@@ -287,16 +310,19 @@
     {
       "name": "crystal_mid",
       "displayKey": "crystal_mid",
+      "zhName": "中型水晶",
       "icon": "resource_deposits/creditsCrate.png"
     },
     {
       "name": "custom_tank",
       "displayKey": "custom_tank",
+      "zhName": "自定义坦克",
       "icon": "test_tank/tank.png"
     },
     {
       "name": "example_faction_picker",
       "displayKey": "example_faction_picker",
+      "zhName": "示例阵营选择器",
       "icon": "miscellaneous/picker.png"
     },
     {
@@ -400,6 +426,7 @@
     {
       "name": "flare_10s",
       "displayKey": "flare_10s",
+      "zhName": "信号弹（10秒）",
       "icon": "miscellaneous/picker.png"
     },
     {
@@ -447,6 +474,7 @@
     {
       "name": "laboratory",
       "displayKey": "laboratory",
+      "zhName": "实验室",
       "icon": "laboratory/base.png"
     },
     {
@@ -515,11 +543,13 @@
     {
       "name": "mechFlyingLanded",
       "displayKey": "mechFlyingLanded",
+      "zhName": "飞行机甲·着陆",
       "icon": "mechs_large/ArtilleryTurret.png"
     },
     {
       "name": "mechFlyingTakeoff",
       "displayKey": "mechFlyingTakeoff",
+      "zhName": "飞行机甲·起飞",
       "icon": "mechs_large/ArtilleryTurret.png"
     },
     {
@@ -581,6 +611,7 @@
     {
       "name": "missing",
       "displayKey": "missing",
+      "zhName": "缺失占位",
       "icon": "missing_unit/missing.png"
     },
     {
@@ -684,6 +715,7 @@
     {
       "name": "modularSpider_nonEmpty",
       "displayKey": "modularSpider_nonEmpty",
+      "zhName": "模块化蜘蛛·非空",
       "icon": "modular_spider/antinuke.png"
     },
     {
@@ -731,11 +763,13 @@
     {
       "name": "nautilusSubmarineLand",
       "displayKey": "nautilusSubmarineLand",
+      "zhName": "鹦鹉螺潜艇·陆地",
       "icon": "nautilus/body.png"
     },
     {
       "name": "nautilusSubmarineSurface",
       "displayKey": "nautilusSubmarineSurface",
+      "zhName": "鹦鹉螺潜艇·水面",
       "icon": "nautilus/body.png"
     },
     {
@@ -748,6 +782,7 @@
     {
       "name": "NULL",
       "displayKey": "NULL",
+      "zhName": "空占位",
       "icon": "mechs_large/ArtilleryTurret.png"
     },
     {
@@ -774,11 +809,13 @@
     {
       "name": "robotCrab",
       "displayKey": "robotCrab",
+      "zhName": "机器蟹",
       "icon": "nautilus/robotCrab/base.png"
     },
     {
       "name": "robotCrabWater",
       "displayKey": "robotCrabWater",
+      "zhName": "水中机器蟹",
       "icon": "nautilus/robotCrab/base.png"
     },
     {

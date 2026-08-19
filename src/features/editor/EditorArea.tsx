@@ -4,7 +4,7 @@
  * - 无标签时显示欢迎页（最近项目 + 快捷操作）
  * - 有标签时显示简易代码编辑区（行号 + 文本编辑 + 保存）
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { getZhToEnDict } from '../../services/codeData'
 import { TurretEditorModal } from '../modTools/TurretEditorModal'
@@ -41,7 +41,7 @@ export function EditorArea() {
       {turretEditorOpen && <TurretEditorModal onClose={() => useWorkspaceStore.getState().setTurretEditorOpen(false)} />}
       {tabs.length > 0 && (
         <div
-          className="tabbar"
+          className={`tabbar${tabs.length > 12 ? ' tabbar-many' : ''}`}
           role="tablist"
           aria-label="打开的文件"
           onKeyDown={(e) => {
@@ -107,6 +107,15 @@ function EditorTabChip({ tabId, active, onActivate }: { tabId: string; active: b
   const closeTab = useWorkspaceStore((s) => s.closeTab)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
   const [pendingClose, setPendingClose] = useState(false)
+  const chipRef = useRef<HTMLDivElement>(null)
+
+  // M34：活动标签变化时自动滚入可视区（标签多到横向溢出时，键盘切换/
+  // 打开文件/切换项目后活动标签不再藏在意料外的位置）
+  useEffect(() => {
+    if (active && chipRef.current) {
+      chipRef.current.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  }, [active])
 
   if (!tab) return null
 
@@ -124,6 +133,7 @@ function EditorTabChip({ tabId, active, onActivate }: { tabId: string; active: b
       {/* div+role=tab（不是 button 嵌 button）：关闭按钮是独立 button，
           键盘可聚焦、读屏可识别——此前 button 内嵌 span role=button 属非法嵌套 */}
       <div
+        ref={chipRef}
         className={`tab${active ? ' active' : ''}`}
         role="tab"
         aria-selected={active}

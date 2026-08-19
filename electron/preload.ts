@@ -92,6 +92,8 @@ const api: BridgeApi = {
     deleteUserTemplate: (key: string) => ipcRenderer.invoke('template:deleteUser', key),
     listUserTemplateKeys: () => ipcRenderer.invoke('template:listUserKeys'),
     createUnitFromTemplate: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnitFromTemplate', rootPath, params),
+    /** M34 单位复制：从其它/同模组复制单位配置（两侧项目根都须已登记） */
+    copyUnit: (params: unknown) => ipcRenderer.invoke('mod:copyUnit', params),
   },
   git: {
     info: (rootPath: string) => ipcRenderer.invoke('git:info', rootPath),
