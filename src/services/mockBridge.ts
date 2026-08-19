@@ -6,7 +6,8 @@
  *
  * 文件系统是内存中的一棵假目录树，存储（设置/工作区）走 localStorage。
  */
-import type { BridgeApi, DirEntry, ReadFileResult } from '../types/bridge'
+import type { BridgeApi, DirEntry, ReadFileResult, TranslationRepairApplyResult, TranslationRepairScanResult } from '../types/bridge'
+import { repairIniContent, type TranslationRepairDictionary } from './translationRepair'
 import { DEFAULT_SETTINGS, sanitizeSettings } from '../utils/settings'
 
 interface MockFile {
@@ -145,6 +146,45 @@ function relToRoot(fullPath: string): string[] {
   }
   if (norm === MOCK_PROJECT_ROOT) return []
   return norm.slice(prefix.length).split('\\')
+}
+
+const MOCK_REPAIR_DICT: TranslationRepairDictionary = {
+  sections: [
+    { code: 'core', translate: '核心' },
+    { code: 'graphics', translate: '图像' },
+    { code: 'attack', translate: '攻击' },
+    { code: 'movement', translate: '运动' },
+    { code: 'action', translate: '行动', needName: true },
+    { code: 'hiddenAction', translate: '隐藏行动', needName: true },
+    { code: 'turret', translate: '炮塔', needName: true },
+    { code: 'projectile', translate: '抛射体', needName: true },
+    { code: 'effect', translate: '效果', needName: true },
+  ],
+  codes: [
+    { code: 'name', translate: '名称', type: 'string' },
+    { code: 'autoTrigger', translate: '自动触发', type: 'logicBoolean' },
+    { code: 'allowMultipleInQueue', translate: '允许多个队列', type: 'boolean' },
+    { code: 'addWaypoint_type', translate: '添加路径点动作类型', type: 'string' },
+    { code: 'addWaypoint_maxTime', translate: '添加路径点检索时间', type: 'time' },
+    { code: 'addWaypoint_target_nearestUnit_tagged', translate: '添加路径点检索标签', type: 'tags' },
+    { code: 'addWaypoint_target_nearestUnit_team', translate: '添加路径点靠近队伍', type: 'addWaypoint_target_nearestUnit_team' },
+    { code: 'addWaypoint_target_nearestUnit_maxRange', translate: '添加路径点检索范围', type: 'float' },
+    { code: 'addWaypoint_target_mapMustBeReachable', translate: '添加路径点路径可达', type: 'boolean' },
+    { code: 'takeResources_includeUnitsWithinRange', translate: '提取资源范围', type: 'float' },
+    { code: 'takeResources_excludeUnitsWithoutTags', translate: '提取资源标签', type: 'tags' },
+    { code: 'invisible', translate: '隐藏图像', type: 'boolean' },
+    { code: 'canAttackFlyingUnits', translate: '可攻击空中单位', type: 'logicBoolean' },
+  ],
+  logicIdentifiers: new Map([['血量', 'hp']]),
+}
+
+function mockDigest(content: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < content.length; i++) {
+    hash ^= content.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
 const MOCK_IMAGE_DATA_URL =
@@ -396,6 +436,42 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       importTemplate: async () => null,
       deleteUserTemplate: async () => ({ ok: false, message: '模拟环境：无法删除模板' }),
       listUserTemplateKeys: async () => [],
+      translationRepairScan: async (_rootPath: string): Promise<TranslationRepairScanResult> => {
+        const previews: TranslationRepairScanResult['files'] = []
+        const candidates = files.filter((entry) => /\.(ini|template)$/i.test(entry.path))
+        let skipped = 0
+        for (const entry of candidates) {
+          const node = findNode(tree, relToRoot(entry.path))
+          if (!node || node.kind !== 'file') { skipped++; continue }
+          const repaired = repairIniContent(node.content, MOCK_REPAIR_DICT)
+          if (repaired.changes.length === 0) continue
+          const rel = entry.path.replace(MOCK_PROJECT_ROOT + '\\', '').replace(/\\/g, '/')
+          previews.push({ path: rel, digest: mockDigest(node.content), changeCount: repaired.changes.length, changes: repaired.changes })
+        }
+        return { files: previews, scanned: candidates.length, skipped, truncated: false }
+      },
+      translationRepairApply: async (_rootPath: string, selections: Array<{ path: string; digest: string }>): Promise<TranslationRepairApplyResult> => {
+        let done = 0
+        let skipped = 0
+        let failed = 0
+        const changedPaths: string[] = []
+        for (const selection of selections) {
+          const spec = files.find((entry) => entry.path.replace(MOCK_PROJECT_ROOT + '\\', '').replace(/\\/g, '/') === selection.path)
+          if (!spec) { skipped++; continue }
+          const node = findNode(tree, relToRoot(spec.path))
+          if (!node || node.kind !== 'file' || mockDigest(node.content) !== selection.digest) { skipped++; continue }
+          const repaired = repairIniContent(node.content, MOCK_REPAIR_DICT)
+          if (repaired.changes.length === 0) { skipped++; continue }
+          try {
+            writeFile(spec.path, repaired.content, { hasBom: node.hasBom })
+            done++
+            changedPaths.push(selection.path)
+          } catch {
+            failed++
+          }
+        }
+        return { done, skipped, failed, changedPaths }
+      },
     },
     git: {
     info: async () => ({ available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [], message: '模拟环境：无 git' }),

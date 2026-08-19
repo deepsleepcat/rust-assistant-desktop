@@ -284,7 +284,7 @@
     {
       "name": "添加路径点动作类型",
       "type": "addWaypoint_type",
-      "rule": "move|attackMove|guard|loadInto|loadUp|attack|reclaim|repair|touchTarget|build|follow",
+      "rule": "move|attackMove|guard|loadInto|loadUp|attack|reclaim|repair|touchTarget|build|follow|setPassiveTarget",
       "external": ":",
       "offset": "",
       "list": "move,attackMove,guard,loadInto,loadUp,attack,reclaim,repair,touchTarget,build,follow,setPassiveTarget",
@@ -594,7 +594,7 @@
     {
       "name": "提取资源队伍",
       "type": "takeResources_includeUnitsWithinRange_team",
-      "rule": "own|neutral|ally|enemy|any|allyNotOwn",
+      "rule": "own|neutral|ally|enemy|any|allyNotOwn|notOwn",
       "external": ":",
       "offset": "",
       "list": "own,neutral,ally,enemy,any,allyNotOwn,notOwn",

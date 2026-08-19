@@ -18,13 +18,14 @@ import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } f
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import {
   applyOptimization, checkMod, copyUnit, createMod, createUnit, createUnitFromTemplate, deleteUserTemplate,
-  deployMod, globalOp, importModBuffer, importTemplateFile, listTemplates, listUserTemplateKeys,
+  applyTranslationRepair, deployMod, globalOp, importModBuffer, importTemplateFile, listTemplates, listUserTemplateKeys,
   packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources,
-  scanUnits, writeModInfo,
+  scanTranslationRepair, scanUnits, writeModInfo,
 } from './modTools'
 import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck, readGameAssetImage } from './game'
 import { conflictFiles, diffBetween, logHistory, repoInfo, restoreFile, statusFiles } from './gitTools'
 import type { AiApprovalResponse, AiChatParams, AiSettings } from '../src/types/ai'
+import { buildLogicIdentifierMap } from '../src/services/translationRepair'
 
 /** IPC 注册函数：main.ts 传 ipcMain.handle 的真实绑定；测试传记录用假实现 */
 export type RegisterHandler = (channel: string, handler: (...args: never[]) => unknown) => void
@@ -769,6 +770,64 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   ipc('mod:scanUnits', async (_event, rootPath: string) => {
     requireInsideRoot(ctx, rootPath, rootPath)
     return scanUnits(rootPath)
+  })
+
+  const translationRepairDictionary = async () => {
+    const [codeRaw, sectionRaw, logicRaw, translationsRaw] = await Promise.all([
+      ctx.knowledgePack.readDataFile('code.json'),
+      ctx.knowledgePack.readDataFile('section.json'),
+      ctx.knowledgePack.readDataFile('logicboolean.json'),
+      ctx.knowledgePack.readDataFile('translations.json'),
+    ])
+    const code = JSON.parse(codeRaw.content) as { data?: unknown }
+    const section = JSON.parse(sectionRaw.content) as { data?: unknown }
+    const logic = JSON.parse(logicRaw.content) as { data?: unknown }
+    const translations = JSON.parse(translationsRaw.content) as { words?: unknown[]; data?: unknown[] }
+    if (!Array.isArray(code.data) || !Array.isArray(section.data) || !Array.isArray(logic.data)) throw new Error('翻译恢复数据格式无效')
+    const codes = code.data.filter((entry): entry is { code: string; translate: string; type?: string } =>
+      !!entry && typeof entry === 'object' && typeof (entry as { code?: unknown }).code === 'string' && typeof (entry as { translate?: unknown }).translate === 'string',
+    )
+    const logicNames = logic.data
+      .filter((entry): entry is { name: string } => !!entry && typeof entry === 'object' && typeof (entry as { name?: unknown }).name === 'string')
+      .map((entry) => entry.name)
+    return {
+      codes,
+      sections: section.data.filter((entry): entry is { code: string; translate: string; needName?: boolean } =>
+        !!entry && typeof entry === 'object' && typeof (entry as { code?: unknown }).code === 'string' && typeof (entry as { translate?: unknown }).translate === 'string',
+      ),
+      logicIdentifiers: buildLogicIdentifierMap(
+        codes,
+        logicNames,
+        (translations.words ?? translations.data ?? []).filter((entry): entry is { en: string; zh: string } =>
+          !!entry && typeof entry === 'object' && typeof (entry as { en?: unknown }).en === 'string' && typeof (entry as { zh?: unknown }).zh === 'string',
+        ),
+      ),
+    }
+  }
+
+  // M38：扫描仅返回保守、可确定的译名恢复预览；不写入任何文件。
+  ipc('mod:translationRepairScan', async (_event, rootPath: unknown) => {
+    if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
+    await requireRealInsideRoot(ctx, rootPath, rootPath)
+    return scanTranslationRepair(rootPath, await translationRepairDictionary())
+  })
+
+  // M38：写回只接受扫描结果中的相对路径与摘要；同批量 IO 互斥，防与打包/优化交叉覆盖。
+  ipc('mod:translationRepairApply', async (_event, rootPath: unknown, selections: unknown) => {
+    if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
+    if (!Array.isArray(selections)) throw new Error('修复选择无效')
+    if (ctx.packing.active) throw new Error('已有打包/全局操作正在进行，请稍候')
+    ctx.packing.active = true
+    try {
+      await requireRealInsideRoot(ctx, rootPath, rootPath)
+      return applyTranslationRepair(
+        rootPath,
+        await translationRepairDictionary(),
+        selections as Array<{ path: string; digest: string }>,
+      )
+    } finally {
+      ctx.packing.active = false
+    }
   })
 
   // M34 单位复制：从其它/同模组复制单位配置到当前项目。

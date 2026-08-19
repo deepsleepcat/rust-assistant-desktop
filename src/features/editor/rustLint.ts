@@ -11,7 +11,7 @@
 import { linter } from '@codemirror/lint'
 import type { EditorView } from '@codemirror/view'
 import type { ValueTypeInfo } from '../../services/codeData'
-import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhToEnDict, getZhToEnDict, loadCodeData, resolveValueZhToEn, versionNameToNumber, zhToEnKeySegments } from '../../services/codeData'
 import { classifyLine } from './rustLanguage'
 import { runSemanticChecks, semanticIssuesToDiagnostics, type CustomRule } from './semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from './semanticChecks/registry'
@@ -96,8 +96,17 @@ function validateSpawnUnits(value: string): string | null {
  * list 为逗号分隔字符串或数组，两形态兼容）。
  * 返回 null 表示合法；否则返回错误消息。
  */
+function isFiniteEnumList(list: string[] | string, rule?: string): boolean {
+  const items = typeof list === 'string' ? splitTopLevel(list) : list
+  if (items.length === 0 || items.some((item) => item.trim().startsWith('@'))) return false
+  if (!rule?.trim()) return true
+  // 只有纯字面量 alternation 才与 list 形成同一枚举约束；路径/通配规则
+  // （.+\.png、if.* 等）仍由 rule 校验，不能被 list 截断。
+  return rule.split('|').every((part) => /^[A-Za-z0-9_:-]+$/.test(part.trim()))
+}
+
 function validateEnumList(value: string, list: string[] | string, key: string, type: string): string | null {
-  const items = typeof list === 'string' ? list.split(',') : list
+  const items = typeof list === 'string' ? splitTopLevel(list) : list
   // 每条目取括号前的基础名（示例参数不影响枚举成员判定）
   const listLower = new Set(
     items.map((s) => {
@@ -135,6 +144,8 @@ export function validateValue(
     findCode: (k: string) => { type: string } | undefined
     findType: (t: string) => ValueTypeInfo | undefined
     zhToEn?: (k: string) => string | undefined
+    /** 枚举值中文→英文回译；可传当前 list 供 any/X 等歧义值消歧 */
+    valueZhToEn?: (v: string, list?: string | string[]) => string | undefined
   },
 ): string | null {
   const trimmed = stripInlineComment(value)
@@ -187,20 +198,29 @@ export function validateValue(
   // 任一类型规则命中即合法
   let hasConstrainingRule = false
   for (const vt of vts) {
-    // 枚举类类型：rule 为空但 list 非空（autoTriggerOnEvent/drawType 等）——
-    // 数据在 list 里（补全用），校验也用它（此前只读 rule 导致整类误报）
-    if (!vt?.rule && vt.list) {
-      if (vts.some((x) => x.type === 'spawnUnits')) {
-        const err = validateSpawnUnits(trimmed)
-        if (err) {
-          return `「${key}」的值「${trimmed}」不符合类型 ${code.type}（${err}）`
-        }
-        return null
-      }
-      const enumErr = validateEnumList(trimmed, vt.list, key, code.type)
-      if (enumErr) return enumErr
+    if (vts.some((x) => x.type === 'spawnUnits') && !vt.rule && vt.list) {
+      const err = validateSpawnUnits(trimmed)
+      if (err) return `「${key}」的值「${trimmed}」不符合类型 ${code.type}（${err}）`
       return null
     }
+
+    // 所有带 list 的值类型都先做字段受限的中文枚举回译，包括 addWaypoint_type
+    // 这类同时声明 rule 和 list 的类型。只替换括号前的基础名，参数原文保留。
+    if (vt.list && isFiniteEnumList(vt.list, vt.rule)) {
+      const enumValue = splitTopLevel(trimmed).map((raw) => {
+        const segment = raw.trim()
+        const open = segment.indexOf('(')
+        const base = (open >= 0 ? segment.slice(0, open) : segment).trim()
+        const translated = data.valueZhToEn?.(base, vt.list)
+        return translated ? `${translated}${open >= 0 ? segment.slice(open) : ''}` : segment
+      }).join(',')
+      const enumErr = validateEnumList(enumValue, vt.list, key, code.type)
+      if (!enumErr) return null
+      // list 是枚举约束时，错误应由 list 给出完整候选；不能继续让英文 rule
+      // 把中文别名误判成无效值。
+      if (!vt.rule) return enumErr
+    }
+
     if (!vt?.rule) continue
     hasConstrainingRule = true
     const rule = vt.rule.trim()
@@ -250,6 +270,7 @@ export function lintIniText(
     findCode: (k: string) => { type: string } | undefined
     findType: (t: string) => ValueTypeInfo | undefined
     zhToEn?: (k: string) => string | undefined
+    valueZhToEn?: (v: string, list?: string | string[]) => string | undefined
   },
 ): Array<{ from: number; to: number; message: string; severity: 'error' | 'warning' }> {
   const diagnostics: Array<{ from: number; to: number; message: string; severity: 'error' | 'warning' }> = []
@@ -346,6 +367,34 @@ async function cachedProjectRules(rootPath?: string): Promise<CustomRule[] | und
   return rules
 }
 
+/**
+ * 为语义检查构造英文输入：键名直接由 tracker 恢复，逻辑值只在出现 self. 时
+ * 恢复已追踪的逻辑关键字和 self 标识符。普通中文值不进入替换范围。
+ */
+export function semanticInputContent(
+  content: string,
+  tracker?: Map<string, string> | null,
+  logicIdentifiers?: Map<string, string>,
+): string {
+  if ((!tracker || tracker.size === 0) && (!logicIdentifiers || logicIdentifiers.size === 0)) return content
+  return content.split('\n').map((line) => {
+    const kv = /^(\s*)([^:=]*?)(\s*)([:=])(.*)$/.exec(line)
+    if (!kv) return line
+    const [, indent, keyRaw, ws, separator, value] = kv
+    const trimmedKey = keyRaw.trim()
+    const trackedKey = tracker?.get(trimmedKey)
+    const key = trackedKey ? keyRaw.replace(trimmedKey, trackedKey) : keyRaw
+    if (!value.includes('self.')) return indent + key + ws + separator + value
+    const logical = value
+      .replace(/self\.([一-鿿][一-鿿0-9_]*)/g, (full, name: string) => {
+        const restored = tracker?.get(full) ?? tracker?.get(name) ?? logicIdentifiers?.get(name)
+        return restored ? (restored.startsWith('self.') ? restored : `self.${restored}`) : full
+      })
+      .replace(/^\s*([^\s]+)/, (token) => tracker?.get(token.trim()) ?? token)
+    return indent + key + ws + separator + logical
+  }).join('\n')
+}
+
 export interface RustLintOptions {
   /** 项目根（提供时语义引用检查可拿到单位名列表） */
   rootPath?: string
@@ -355,6 +404,8 @@ export interface RustLintOptions {
   targetVersionName?: string
   /** 当前文件名（checkFile 区分 .template 模板文件用；缺省按单位文件处理） */
   file?: string
+  /** 中文显示层追踪表：语义检查前恢复英文键和逻辑标识符。 */
+  translationMap?: Map<string, string> | null
 }
 
 /** 编辑器语义 lint 的内容上限：超过时只跑基础 lint（单趟 O(n)），
@@ -369,11 +420,16 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
       const zhToEnDict = getZhToEnDict()
       const keyZhToEnDict = getKeyZhToEnDict()
       const content = view.state.doc.toString()
+      const valueZhToEnDict = getValueZhToEnDict()
+      const logicIdentifierZhToEnDict = getLogicIdentifierZhToEnDict()
+      const semanticContent = semanticInputContent(content, opts.translationMap, logicIdentifierZhToEnDict)
       const data = {
         findCode: (k: string) => findCodeByCode(k),
         findType: (t: string) => findValueType(t),
         // 键位置回译先查键名表（键译名不被节名覆盖，如「价格」→price），回落通用词典
         zhToEn: (k: string) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
+        // M38：枚举值中文→英文回译（己方→own），按当前 list 消歧 any/X
+        valueZhToEn: (v: string, list?: string | string[]) => resolveValueZhToEn(v, list) ?? valueZhToEnDict.get(v),
       }
       const diagnostics = lintIniText(content, data)
 
@@ -386,7 +442,7 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
         const customRules = await cachedProjectRules(opts.rootPath)
         // M11：目标版本名 → 版本号（空 = 最新版本，由检查器兜底）
         const targetVersionNumber = opts.targetVersionName ? versionNameToNumber(opts.targetVersionName) : undefined
-        const issues = runSemanticChecks(content, {
+        const issues = runSemanticChecks(semanticContent, {
           ruleIds,
           ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames, targetVersionNumber, file: opts.file },
           customRules,

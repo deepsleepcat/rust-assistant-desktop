@@ -82,9 +82,10 @@ export function createUiSlice() {
     },
 
     /** M5：模组工具弹窗开关 */
-    setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | null) {
+    setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | 'translationRepair' | null) {
       // 优化弹窗：每次打开都清掉旧扫描结果，由弹窗重新扫描（避免显示过期列表）
       if (kind === 'optimize') set({ optimizeItems: null, optimizeError: null })
+      if (kind === 'translationRepair') set({ translationRepairItems: null, translationRepairError: null })
       set({ modDialog: kind })
     },
 

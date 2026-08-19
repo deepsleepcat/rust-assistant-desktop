@@ -18,6 +18,7 @@ export interface UnitFormValue {
 export type UnitFormState = Record<string, UnitFormValue[]>
 
 type ZhToEn = (s: string) => string | undefined
+type ZhToEnValue = (s: string, field?: UnitFieldDef) => string | undefined
 type EnToZh = (s: string) => string | undefined
 
 /** 键名回译（中文显示层 x坐标 → x） */
@@ -36,11 +37,15 @@ function toEnSection(section: string, zhToEn?: ZhToEn, zhToEnSection?: ZhToEn): 
   return toEnKey(section, zhToEnSection ?? zhToEn)
 }
 
-/** 值回译（中文显示层 是/真 → true） */
-function toEnValue(value: string, zhToEn?: ZhToEn): string {
-  if (!zhToEn || !value) return value
-  const en = zhToEn(value.trim())
-  return en && en !== value.trim() ? en : value
+/** 值回译：只处理表单自身声明的 enum/boolean 选项，text/resource 等自由值原样保留。 */
+function toEnValue(value: string, field: UnitFieldDef, zhToEn?: (value: string, field: UnitFieldDef) => string | undefined): string {
+  if (!value || (field.type !== 'enum' && field.type !== 'boolean')) return value
+  const raw = value.trim()
+  const options = Object.entries(field.options ?? {})
+  const option = options.find(([key, label]) => key.toLowerCase() === raw.toLowerCase() || label === raw)
+  if (option) return option[0]
+  const translated = zhToEn?.(raw, field)
+  return translated && translated !== raw ? translated : value
 }
 
 const SECTION_RE = /^\s*\[(.+?)\]\s*(?:#.*)?$/
@@ -49,7 +54,7 @@ const KV_RE = /^([^:#][^:]*?)\s*:\s*(.*)$/
 export interface ParseUnitFormOptions {
   zhToEn?: ZhToEn
   zhToEnSection?: ZhToEn
-  zhToEnValue?: ZhToEn
+  zhToEnValue?: ZhToEnValue
 }
 
 /**
@@ -80,7 +85,7 @@ export function parseUnitForm(content: string, options: ParseUnitFormOptions = {
     const list = state[group.section] ?? []
     // 同键重复（多炮塔节 [turret_1]/[turret_2]）：只取第一个（表单管理主炮塔）
     if (!list.some((v) => v.key.toLowerCase() === field.key.toLowerCase())) {
-      list.push({ key: field.key, value: toEnValue(kv[2].replace(/[ \t]+#.*$/, '').trim(), zhToEnValue), present: true })
+      list.push({ key: field.key, value: toEnValue(kv[2].replace(/[ \t]+#.*$/, '').trim(), field, zhToEnValue), present: true })
     }
     state[group.section] = list
   }
@@ -176,14 +181,15 @@ export function applyUnitFormValue(content: string, groupSection: string, key: s
     const displayKey = enToZh ? enToZh(key) ?? key : key
     lines.splice(insertAt, 0, `${displayKey}: ${value}`)
   } else {
-    // 节不存在：追加新节到文件尾（前面补空行分隔）
+    // 节不存在：追加新节到文件尾（前面补空行分隔）；中文模式用中文键
     const displayKey = enToZh ? enToZh(key) ?? key : key
-    const displayValue = enToZh && /^(true|false)$/i.test(value) ? (enToZh(value) ?? value) : value
+    // M38：新建节时布尔值保持英文原值，不翻译为真/假——
+    // 新建的中文键/值未登记 tracker，保存后真/假无法还原，游戏不识别。
     if (lines.length > 0 && lines[lines.length - 1] !== '') lines.push('')
     // 炮塔组新建节用官方编号节名 [turret_1]（裸 [turret] 游戏不识别）
     const newSection = isTurretGroup ? 'turret_1' : groupSection
     lines.push(`[${newSection}]`)
-    lines.push(`${displayKey}: ${displayValue}`)
+    lines.push(`${displayKey}: ${value}`)
   }
   return crlf ? lines.join('\r\n') : lines.join('\n')
 }

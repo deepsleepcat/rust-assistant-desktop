@@ -190,7 +190,7 @@ export function ProjectPanel() {
             <input
               ref={searchInputRef}
               className="project-search"
-              type="search"
+              type="text"
               value={searchQuery}
               onChange={(e) => runSearch(e.target.value)}
               onKeyDown={(e) => {
@@ -204,11 +204,15 @@ export function ProjectPanel() {
             />
             {searchQuery && (
               <button
+                type="button"
                 className="icon-btn project-search-clear"
                 title="清空搜索"
                 aria-label="清空搜索"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => runSearch('')}
+                onClick={() => {
+                  runSearch('')
+                  searchInputRef.current?.focus()
+                }}
               >
                 <AppIcon name="close" size={12} />
               </button>
@@ -270,6 +274,7 @@ export function ProjectPanel() {
                 <button onClick={() => { setModMenu(false); void checkModProject() }}>检查模组</button>
                 <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setModReportOpen(true) }}>质量报告</button>
                 <button onClick={() => { setModMenu(false); setModDialog('optimize') }}>优化模组</button>
+                <button onClick={() => { setModMenu(false); setModDialog('translationRepair') }}>修复中文翻译</button>
                 <button onClick={() => { setModMenu(false); setModDialog('globalOp') }}>全局操作</button>
                 <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setCodeTableOpen(true) }}>浏览代码表</button>
               </div>

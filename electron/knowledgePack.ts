@@ -290,15 +290,89 @@ export function createKnowledgePack(packDir: string, builtinDir: string): Knowle
     }
   }
 
+  const CORE_CODE_KEYS = [
+    'autoTrigger',
+    'allowMultipleInQueue',
+    'addWaypoint_type',
+    'addWaypoint_target_nearestUnit_tagged',
+    'addWaypoint_target_nearestUnit_team',
+    'addWaypoint_target_nearestUnit_maxRange',
+  ]
+  const CORE_SECTION_KEYS = ['hiddenAction', 'action', 'turret', 'projectile', 'effect']
+  const CORE_VALUE_TYPES = ['addWaypoint_type', 'addWaypoint_target_nearestUnit_team']
+  const CORE_VALUE_ZH = ['move', 'attackMove', 'guard', 'loadInto', 'setPassiveTarget']
+
+  function readDataArray(content: string): unknown[] | null {
+    try {
+      const parsed = JSON.parse(content) as { data?: unknown }
+      return Array.isArray(parsed.data) ? parsed.data : null
+    } catch {
+      return null
+    }
+  }
+
+  function hasCodeKeys(content: string, keys: string[]): boolean {
+    const data = readDataArray(content)
+    if (!data) return false
+    const found = new Set(
+      data
+        .filter((item): item is { code?: unknown; translate?: unknown } => Boolean(item && typeof item === 'object'))
+        .filter((item) => typeof item.code === 'string' && typeof item.translate === 'string' && item.translate.trim())
+        .map((item) => String(item.code).toLowerCase()),
+    )
+    return keys.every((key) => found.has(key.toLowerCase()))
+  }
+
+  function hasSectionKeys(content: string, keys: string[]): boolean {
+    return hasCodeKeys(content, keys)
+  }
+
+  function hasValueTypes(content: string, types: string[]): boolean {
+    const data = readDataArray(content)
+    if (!data) return false
+    const found = new Set(
+      data
+        .filter((item): item is { type?: unknown; name?: unknown } => Boolean(item && typeof item === 'object'))
+        .filter((item) => typeof item.type === 'string' && typeof item.name === 'string' && item.name.trim())
+        .map((item) => String(item.type).toLowerCase()),
+    )
+    return types.every((type) => found.has(type.toLowerCase()))
+  }
+
+  function hasValueZh(content: string, values: string[]): boolean {
+    try {
+      const parsed = JSON.parse(content) as { data?: unknown }
+      if (!parsed.data || typeof parsed.data !== 'object' || Array.isArray(parsed.data)) return false
+      const found = new Set(Object.keys(parsed.data as Record<string, unknown>).map((key) => key.toLowerCase()))
+      return values.every((value) => found.has(value.toLowerCase()))
+    } catch {
+      return false
+    }
+  }
+
+  /** 更新知识包必须至少保留内置包已有的关键翻译数据，避免旧快照静默遮蔽新字段。 */
+  async function isUpdatedDataUsable(name: string, content: string): Promise<boolean> {
+    const builtin = await fs.readFile(path.join(builtinDir, name), 'utf8').catch(() => '')
+    if (!builtin) return true
+    if (name === 'code.json') return !hasCodeKeys(builtin, CORE_CODE_KEYS) || hasCodeKeys(content, CORE_CODE_KEYS)
+    if (name === 'section.json') return !hasSectionKeys(builtin, CORE_SECTION_KEYS) || hasSectionKeys(content, CORE_SECTION_KEYS)
+    if (name === 'value_type.json') return !hasValueTypes(builtin, CORE_VALUE_TYPES) || hasValueTypes(content, CORE_VALUE_TYPES)
+    if (name === 'value_zh.json') return !hasValueZh(builtin, CORE_VALUE_ZH) || hasValueZh(content, CORE_VALUE_ZH)
+    return true
+  }
+
   async function readDataFile(name: string): Promise<{ content: string; source: 'builtin' | 'updated'; version: string | null }> {
     if (!DATA_FILE_NAMES.includes(name)) throw new Error(`未知的数据文件名：${name}`)
     // 当前版本目录是全量快照（增量更新会复制上一版本未变更文件）：
-    // 找到文件直接返回；找不到（异常情况）回退内置包
+    // 找到文件直接返回；找不到或内容缺少核心字段时回退内置包。
     const current = await readCurrent()
     if (current) {
       try {
         const buf = await fs.readFile(path.join(versionDir(current.version), name))
-        return { content: buf.toString('utf8'), source: 'updated', version: current.version }
+        const content = buf.toString('utf8')
+        if (await isUpdatedDataUsable(name, content)) {
+          return { content, source: 'updated', version: current.version }
+        }
       } catch {
         // 该文件不在当前快照（磁盘异常）→ 落到内置包
       }

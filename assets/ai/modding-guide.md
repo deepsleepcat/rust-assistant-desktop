@@ -8,15 +8,19 @@
 
 ## 一、模组最小可理解结构（AI 必须先懂这个）
 
-### 1. 一个模组 = 一个文件夹
+### 1. 一个模组 = 一个目录或 `.rwmod` ZIP
 
 ```
 模组根目录/
 ├─ mod-info.txt        ← 入口文件，游戏靠它识别模组
 ├─ xxx.png             ← 模组缩略图（thumbnail 引用）
-├─ all-units.template  ← 全局配置（可选）
+├─ all-units.template  ← 自动继承给该目录及下级单位的默认配置（可选）
 └─ 任意子目录/          ← 单位文件夹，任意层级
 ```
+
+- `.rwmod` 本质是 ZIP，游戏通过虚拟文件系统直接读取，通常不需要解压；一个外层包装目录可以兼容，但发布包应只保留一个明确的模组根；
+- `all-units.template` 不是普通候选模板：加载器会自动合并同目录及下级单位，较近的模板上下文会覆盖较远的上下文；
+- 单位 `.ini` 递归加载，模板文件主要通过自动模板或 `copyFrom` 参与继承；不要把 `.template` 当作独立单位文件来写。
 
 ### 2. 一个单位 = 一个文件夹 + 一个 .ini + 同目录 .png
 
@@ -58,9 +62,10 @@ moveSpeed: 50
 ### 4. 引用规则（最容易出错，务必遵守）
 
 - **单位名（name:）全模组唯一**，跨文件引用靠它：`canBuild_1_name:建造者`、`builtFrom_1_name:0级星球`、`unitsSpawnedOnDeath:迷你爆炸`；
-- **路径**：同目录直接写文件名；模组根用 `ROOT:素材/dg.png`；原版素材用 `SHARED:light_50.png`；
+- **路径**：同目录直接写文件名；模组根用 `ROOT:素材/dg.png`；原版素材用 `SHARED:light_50.png`；字段不支持前缀时不能凭经验套用；
 - **节名关联**：`[turret_1]`、`[projectile_1]`、`[effect_xjqbz]`、`[resource_矿]` 靠节名前缀与名称关联；
-- **模板继承**：`copyFrom:ROOT:模板/单位衰变.template,ROOT:模板/指挥舰.template`（逗号分隔多重继承）；
+- **模板继承**：`copyFrom:ROOT:模板/单位衰变.template,ROOT:模板/指挥舰.template`（逗号分隔多重继承）。子文件已有键优先；列表反向合并；禁止 `..`，嵌套最多 10 层；
+- **节级复制**：`@copyFromSection` 与文件 `copyFrom` 是不同机制，审查时要同时追踪；
 - **一切皆单位**：爆炸、特效、天体、判定器都是隐形单位（`isUnselectable:true`、`disableDeathOnZeroHp:true`）。
 
 ### 5. 语法规范（来自完整参考）
@@ -82,7 +87,7 @@ moveSpeed: 50
 
 ```ini
 [mod]
-title: 我的模组
+title: 我的模组       # 实际显示字段；不要写成 name
 description: 模组介绍第一行\n第二行（\n 换行）
 thumbnail: 深渊星辰.png
 minVersion: 1.15p9
@@ -152,6 +157,13 @@ addExtraMapsForPath: true
 | `examples/黄矮星2.ini` | 复杂单位 | decal 光效/map 表达式/spawnUnits |
 
 **AI 遇到问题时**：先看 examples/ 里有没有相似范例，模仿其结构再写，不要凭空造。
+
+### 范例与发行边界
+
+- `AbyssStars`、`ASEU`、`模组实例/**`（包括 `模组实例/特殊/**`）和内部加载器只可作为只读研究来源；不能复制第三方单位、地图、音频、贴图或反编译内容；
+- 这些外部样本不是桌面应用资源。不能把它们复制到 `public/`、`dist/`、`dist-electron/`、`extraResources` 或 `extraFiles`；
+- 这不限制用户主动选择自己的项目根后生成 `.rwmod`。但发布模组仍必须从干净 staging 根打包，不能把研究样本目录作为发布输入；
+- 静态样本分析只能提出兼容性问题；字段和运行时行为仍以目标版本加载器与实机验证为准。
 
 ---
 

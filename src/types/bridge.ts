@@ -25,6 +25,41 @@ export interface ProjectSearchResult {
   truncated: boolean
 }
 
+/** M38：翻译损坏恢复预览中的单行变更。 */
+export interface TranslationRepairChange {
+  line: number
+  kind: 'section' | 'key' | 'boolean' | 'logic'
+  before: string
+  after: string
+}
+
+/** M38：单个文件的翻译损坏恢复预览。 */
+export interface TranslationRepairPreview {
+  path: string
+  digest: string
+  changeCount: number
+  changes: TranslationRepairChange[]
+}
+
+export interface TranslationRepairScanResult {
+  files: TranslationRepairPreview[]
+  scanned: number
+  skipped: number
+  truncated: boolean
+}
+
+export interface TranslationRepairSelection {
+  path: string
+  digest: string
+}
+
+export interface TranslationRepairApplyResult {
+  done: number
+  skipped: number
+  failed: number
+  changedPaths: string[]
+}
+
 export interface OpenedProject {
   rootPath: string
   name: string
@@ -148,6 +183,10 @@ export interface BridgeApi {
       targetName: string
       targetFolder?: string
     }): Promise<{ path: string }>
+    /** M38：扫描项目中可确定的翻译损坏预览（只读） */
+    translationRepairScan(rootPath: string): Promise<TranslationRepairScanResult>
+    /** M38：对选定的扫描结果执行恢复（写前重新读取并比对摘要，外部修改会跳过） */
+    translationRepairApply(rootPath: string, selections: TranslationRepairSelection[]): Promise<TranslationRepairApplyResult>
   }
   /** M8 游戏集成：铁锈战争安装目录检测 / 官方单位示例 / 游戏内模组导入 */
   game: {

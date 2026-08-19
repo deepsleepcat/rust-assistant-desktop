@@ -122,6 +122,27 @@ describe('readDataFile（内置回退）', () => {
     expect(JSON.parse(after.content).data[0].code).toBe('updatedField')
   })
 
+  it('更新包缺核心字段或译名为空时回退真实内置数据', async () => {
+    const coreCodes = [
+      'autoTrigger',
+      'allowMultipleInQueue',
+      'addWaypoint_type',
+      'addWaypoint_target_nearestUnit_tagged',
+      'addWaypoint_target_nearestUnit_team',
+      'addWaypoint_target_nearestUnit_maxRange',
+    ].map((code) => ({ code, translate: `${code}-中文`, type: 'string', section: 'core' }))
+    fs.writeFileSync(path.join(builtinDir, 'code.json'), JSON.stringify({ data: coreCodes }))
+    writeSource({
+      'code.json': JSON.stringify({ data: [{ code: 'autoTrigger', translate: '', type: 'string' }] }),
+    }, 'incomplete')
+    const kp = createKnowledgePack(packDir, builtinDir)
+    expect((await kp.update(baseUrl)).ok).toBe(true)
+    const result = await kp.readDataFile('code.json')
+    expect(result.source).toBe('builtin')
+    expect(JSON.parse(result.content).data).toHaveLength(coreCodes.length)
+    expect(JSON.parse(result.content).data.some((item: { code: string }) => item.code === 'addWaypoint_type')).toBe(true)
+  })
+
   it('未知文件名拒绝（白名单）', async () => {
     const kp = createKnowledgePack(packDir, builtinDir)
     await expect(kp.readDataFile('../evil.json')).rejects.toThrow(/未知的数据文件名/)

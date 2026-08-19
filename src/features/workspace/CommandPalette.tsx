@@ -68,6 +68,7 @@ export function CommandPalette() {
       { id: 'mod-pack', title: '模组：打包（.rwmod）', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); void packModProject() } },
       { id: 'mod-check', title: '模组：检查单位', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); void checkModProject() } },
       { id: 'mod-optimize', title: '模组：优化（清理垃圾）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); setModDialog('optimize') } },
+      { id: 'mod-translation-repair', title: '模组：修复中文翻译损坏', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); setModDialog('translationRepair') } },
       { id: 'template-library', title: '模板库管理（本地浏览/导入/删除）', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setTemplateLibraryOpen(true) } },
       { id: 'git-info', title: 'Git 历史与回滚（本地）', icon: <AppIcon name="clock" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setGitInfoOpen(true) } },
       { id: 'code-table', title: '浏览代码表', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setCodeTableOpen(true) } },

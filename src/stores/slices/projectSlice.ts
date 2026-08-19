@@ -15,11 +15,27 @@ import { getBridge } from '../../services/bridge'
 import { sanitizeSettings } from '../../utils/settings'
 import { findTreeNode, updateTreeNode } from '../../utils/tree'
 import { basename, isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
-import { getEnToZhDict, getKeyZhToEnDict, getZhToEnDict, loadCodeData } from '../../services/codeData'
+import { getAllCodes, getAllSections, getEnToZhDict, getKeyZhToEnDict, getLogicIdentifierEnToZhDict, getLogicIdentifierZhToEnDict, getLogicValueKeys, getPreserveValueKeys, getSectionZhToEnDict, getZhToEnDict, isPreserveValueKey, loadCodeData, normalizeValueForEngine } from '../../services/codeData'
 import { enToZh, makeDict, zhToEn } from '../../services/translation'
+import { repairIniContent } from '../../services/translationRepair'
 import { invalidateResourceCache } from '../../features/editor/completion'
 import { normalizeOpenPath } from '../../utils/projectPath'
 import { generateModReport as generateModReportFn } from '../../features/modTools/modReport'
+
+function projectTranslationDict() {
+  return makeDict(
+    getEnToZhDict(),
+    getZhToEnDict(),
+    getKeyZhToEnDict(),
+    getSectionZhToEnDict(),
+    getLogicIdentifierZhToEnDict(),
+    getLogicIdentifierEnToZhDict(),
+    getPreserveValueKeys(),
+    getLogicValueKeys(),
+    isPreserveValueKey,
+    normalizeValueForEngine,
+  )
+}
 
 export interface ProjectSliceDeps {
   bridge: BridgeApi
@@ -35,6 +51,14 @@ const dirLoadSeqs = new Map<string, number>()
  * 时按字符串比较会变成两个标签，这里统一规范化后比较 */
 function sameTabPath(a: string, b: string): boolean {
   return a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase()
+}
+
+function repairDictionary() {
+  return {
+    sections: getAllSections(),
+    codes: getAllCodes().map((code) => ({ code: code.code, translate: code.translate, type: code.type })),
+    logicIdentifiers: getLogicIdentifierZhToEnDict(),
+  }
 }
 
 /** 路径归一化（分隔符 → /，小写）：用于前缀匹配与替换定位（\\/ 与大小写均为 1:1 映射，
@@ -113,6 +137,8 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             modCheckResult: null,
             optimizeItems: null,
             optimizeError: null,
+            translationRepairItems: null,
+            translationRepairError: null,
             modDialog: null,
             // M32：切换/导入项目时清空上个项目的报告弹窗（与 selectProject 一致，防串数据）
             modReport: null,
@@ -272,6 +298,8 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             modCheckResult: null,
             optimizeItems: null,
             optimizeError: null,
+            translationRepairItems: null,
+            translationRepairError: null,
             modDialog: null,
             modReport: null,
             modReportOpen: false,
@@ -448,10 +476,14 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             return
           }
           const translationEnabled = get().settings.translateMode
-          const original = result.content
+          const source = result.content
+          // 只在内存中修复已经写成中文的已知节名/字段名；这里不触碰磁盘。
+          // 用户明确保存时，pendingRepair 会让规范化后的英文键一起写回。
+          const repaired = /\.(ini|template)$/i.test(absPath) ? repairIniContent(source, repairDictionary()) : { content: source, changes: [] }
+          const original = repaired.content
           // 翻译追踪表：记录「中文显示串 → 原始英文串」，保存时精确还原（含大小写），
           // 未追踪的中文（文件里原有的中文数据/用户手写）保留不动，防止保存改写数据
-          const dict = makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict())
+          const dict = projectTranslationDict()
           const tracker = new Map<string, string>()
           const view = translationEnabled ? enToZh(original, dict, tracker) : original
           const tab: EditorTab = {
@@ -462,6 +494,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             original,
             hasBom: result.hasBom,
             dirty: false,
+            pendingRepair: repaired.changes.length > 0,
             translationEnabled,
             translationMap: translationEnabled ? tracker : undefined,
             size: result.size,
@@ -481,7 +514,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             // 脏标记按「回译后是否等于磁盘原文」计算：
             // 切换翻译模式只是换视图，不产生未保存修改；中文数据写回后仍是中文，不误标脏
             // 快速路径：英文模式直接字符串比较（O(n) 无正则开销），翻译模式才做全量回译
-            const toDisk = t.translationEnabled ? zhToEn(content, makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict()), t.translationMap) : content
+            const toDisk = t.translationEnabled ? zhToEn(content, projectTranslationDict(), t.translationMap) : content
             return { ...t, content, dirty: toDisk !== t.original }
           }),
         })
@@ -502,7 +535,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             }
           }
           // 翻译模式下：先把显示内容转回英文再写盘（追踪表精确还原；未追踪中文保留），并更新快照
-          const dict = makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict())
+          const dict = projectTranslationDict()
           const toWrite = tab.translationEnabled ? zhToEn(tab.content, dict, tab.translationMap) : tab.content
           await deps.bridge.project.writeFile(project.rootPath, tab.path, toWrite, { hasBom: tab.hasBom })
           const savedMeta = await deps.bridge.project.readFile(project.rootPath, tab.path)
@@ -511,12 +544,13 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
               if (t.id !== id) return t
               // L1：保存期间用户可能已继续输入——比较「当前内容的回译」与「写盘内容」，
               // 在途编辑仍保持脏标记（否则会被误标为已保存、关闭时静默丢失）
-              const dict2 = makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict())
+              const dict2 = projectTranslationDict()
               const currentDisk = t.translationEnabled ? zhToEn(t.content, dict2, t.translationMap) : t.content
               return {
                 ...t,
                 original: toWrite,
                 dirty: currentDisk !== toWrite,
+                pendingRepair: false,
                 size: savedMeta.size,
                 mtimeMs: savedMeta.mtimeMs,
                 externalChanged: false,
@@ -524,7 +558,8 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             }),
           })
           invalidateResourceCache()
-          get().notify(`已保存 ${tab.name}`)
+          const hadPending = tab.pendingRepair
+          get().notify(hadPending ? `已保存 ${tab.name}（中文键已写回英文）` : `已保存 ${tab.name}`)
           return true
         } catch (err) {
           get().notify(`保存失败：${err instanceof Error ? err.message : String(err)}`)
@@ -538,10 +573,12 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         const tab = get().openTabs.find((t) => t.id === id)
         if (!project || !tab) return
         try {
+          await loadCodeData()
           const result = await deps.bridge.project.readFile(project.rootPath, tab.path)
           const translationEnabled = tab.translationEnabled
-          const original = result.content
-          const dict = makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict())
+          const repaired = /\.(ini|template)$/i.test(tab.path) ? repairIniContent(result.content, repairDictionary()) : { content: result.content, changes: [] }
+          const original = repaired.content
+          const dict = projectTranslationDict()
           const tracker = new Map<string, string>()
           const view = translationEnabled ? enToZh(original, dict, tracker) : original
           set({
@@ -554,6 +591,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
                     hasBom: result.hasBom, // 外部修改可能增删 BOM：一并刷新
                     translationMap: translationEnabled ? tracker : undefined,
                     dirty: false,
+                    pendingRepair: repaired.changes.length > 0,
                     externalChanged: false,
                     size: result.size,
                     mtimeMs: result.mtimeMs,
@@ -593,7 +631,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
       toggleTranslation(id: string) {
         const tab = get().openTabs.find((t) => t.id === id)
         if (!tab) return
-        const dict = makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict())
+        const dict = projectTranslationDict()
         const tracker = tab.translationMap ?? new Map<string, string>()
         const content = tab.translationEnabled ? zhToEn(tab.content, dict, tracker) : enToZh(tab.content, dict, tracker)
         // 脏标记按切换后「回译是否等于磁盘原文」计算（切换视图本身不是编辑）
@@ -620,13 +658,13 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
       closeTabChecked(id: string) {
         const tab = get().openTabs.find((t) => t.id === id)
         if (!tab) return
-        if (!tab.dirty) {
+        if (!tab.dirty && !tab.pendingRepair) {
           get().closeTab(id)
           return
         }
         get().requestConfirm({
-          title: '有未保存的修改',
-          message: `「${tab.name}」的修改尚未保存，关闭后将丢失。`,
+          title: tab.pendingRepair && !tab.dirty ? '有待写回的翻译修复' : '有未保存的修改',
+          message: `「${tab.name}」${tab.pendingRepair && !tab.dirty ? '包含尚未写回磁盘的中文键修复。' : '的修改尚未保存，关闭后将丢失。'}`,
           danger: true,
           confirmText: '直接关闭',
           cancelText: '取消',
@@ -849,7 +887,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         if (!project || !tab) return
         try {
           // 保存模板 = 保存当前编辑内容（中文显示层需先回译成英文，与 saveTab 一致；追踪表精确还原）
-          const dict = makeDict(getEnToZhDict(), getZhToEnDict(), getKeyZhToEnDict())
+          const dict = projectTranslationDict()
           const content = tab.translationEnabled ? zhToEn(tab.content, dict, tab.translationMap) : tab.content
           const { key } = await deps.bridge.mod.saveFileAsTemplate(project.rootPath, tab.path, name, content)
           get().notify(`已保存为模板：${name}（${key}），可在「新建单位」中选择`)
@@ -1082,6 +1120,50 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
           // 返回 null：弹窗显示错误状态（不显示误导的「0 个文件」成功文案）
           get().notify(`全局操作失败：${err instanceof Error ? err.message : String(err)}`)
           return null
+        }
+      },
+
+      // M38：翻译损坏修复（扫描 → 预览 → 确认写回）
+      async scanTranslationRepairProject() {
+        const project = activeProject()
+        if (!project) {
+          set({ translationRepairError: '请先打开一个模组项目，再使用修复工具' })
+          return
+        }
+        const pid = project.id
+        set({ translationRepairError: null })
+        try {
+          const result = await deps.bridge.mod.translationRepairScan(project.rootPath)
+          if (get().activeProjectId !== pid) return
+          set((s) => ({ translationRepairItems: result.files, translationRepairError: null, modDialog: s.modDialog }))
+        } catch (err) {
+          if (get().activeProjectId !== pid) return
+          set({ translationRepairError: err instanceof Error ? err.message : String(err) })
+        }
+      },
+
+      async applyTranslationRepairProject(selections: Array<{ path: string; digest: string }>) {
+        const project = activeProject()
+        if (!project) return
+        try {
+          const result = await deps.bridge.mod.translationRepairApply(project.rootPath, selections)
+          get().notify(
+            result.failed > 0
+              ? `修复完成：${result.done} 个文件成功，${result.skipped} 个跳过，${result.failed} 个失败`
+              : `修复完成：${result.done} 个文件已恢复，${result.skipped} 个跳过`,
+          )
+          set((s) => ({
+            translationRepairItems: null,
+            translationRepairError: null,
+            modDialog: s.modDialog === 'translationRepair' ? null : s.modDialog,
+          }))
+          if (result.changedPaths.length > 0) {
+            invalidateResourceCache()
+            await get().refreshTree()
+            get().notify('部分文件已被修复，已打开的受影响标签请重新加载')
+          }
+        } catch (err) {
+          get().notify(`修复失败：${err instanceof Error ? err.message : String(err)}`)
         }
       },
 
