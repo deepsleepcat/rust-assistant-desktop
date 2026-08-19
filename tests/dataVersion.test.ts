@@ -5,9 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
+  findCodeByCode,
+  findCodesByQuery,
   findCodesBySection,
   findSectionsByQuery,
   findValueTypes,
+  getAliasDict,
   getDataVersionInfo,
   loadCodeData,
   normalizeSectionName,
@@ -119,5 +122,48 @@ describe('M31 补全数据查询（真实数据）', () => {
     expect(named.some((s) => s.code === 'turret')).toBe(true)
     const zh = findSectionsByQuery('炮塔_主炮')
     expect(zh.some((s) => s.code === 'turret')).toBe(true)
+  })
+})
+
+describe('M35 字段别名（aliases.json：旧名也能搜到/悬停）', () => {
+  beforeEach(() => {
+    stubFetchFromDisk()
+  })
+
+  it('按旧名 turretlimitingAngle 模糊搜索命中现行字段 limitingAngle', async () => {
+    await loadCodeData()
+    const hits = findCodesByQuery('turretlimitingAngle')
+    expect(hits.some((c) => c.code === 'limitingAngle')).toBe(true)
+  })
+
+  it('别名搜索大小写不敏感（TurretLimitingAngle 同样命中）', async () => {
+    await loadCodeData()
+    const hits = findCodesByQuery('TurretLimitingAngle')
+    expect(hits.some((c) => c.code === 'limitingAngle')).toBe(true)
+  })
+
+  it('findCodesBySection 内别名同样命中（炮塔节过滤不丢）', async () => {
+    await loadCodeData()
+    const hits = findCodesBySection('turret', 'turretlimiting')
+    expect(hits.some((c) => c.code === 'limitingAngle')).toBe(true)
+  })
+
+  it('findCodeByCode 精确查不到时解析旧名别名（悬停/lint 用）', async () => {
+    await loadCodeData()
+    expect(findCodeByCode('turretlimitingAngle')?.code).toBe('limitingAngle')
+    expect(findCodeByCode('limitingAngle')?.code).toBe('limitingAngle')
+  })
+
+  it('别名表可查询：getAliasDict 键为小写别名，值为现行 code', async () => {
+    await loadCodeData()
+    const dict = getAliasDict()
+    expect(dict.get('turretlimitingangle')).toBe('limitingAngle')
+  })
+
+  it('无别名时行为不变（不存在的旧名仍搜不到）', async () => {
+    await loadCodeData()
+    const hits = findCodesByQuery('noSuchAlias_xyz')
+    expect(hits).toEqual([])
+    expect(findCodeByCode('noSuchAlias_xyz')).toBeUndefined()
   })
 })

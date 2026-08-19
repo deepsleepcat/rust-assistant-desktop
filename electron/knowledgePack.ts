@@ -45,6 +45,8 @@ export const DATA_FILE_NAMES: readonly string[] = [
   'game_version.json',
   // M26-2：逻辑语法 token 词库（独立文件：并入 vocabulary.json 会被知识包更新整文件覆盖）
   'dialect.json',
+  // M35：字段别名（旧字段名 → 现行字段名，随知识包同步）
+  'aliases.json',
   'migrate.json',
 ]
 

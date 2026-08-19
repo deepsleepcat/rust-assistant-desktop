@@ -724,6 +724,7 @@ function GlobalOpModal({ onClose }: { onClose: () => void }) {
  */
 function PackModal({ onClose }: { onClose: () => void }) {
   const packModWithOptions = useWorkspaceStore((s) => s.packModWithOptions)
+  const gamePath = useWorkspaceStore((s) => s.settings.gamePath)
   const [options, setOptions] = useState({
     removeEmptyFiles: false,
     removeEmptyFolders: false,
@@ -731,6 +732,7 @@ function PackModal({ onClose }: { onClose: () => void }) {
     removeComments: false,
     formatCode: false,
   })
+  const [deployToGame, setDeployToGame] = useState(false)
   const [packing, setPacking] = useState(false)
 
   useEscapeHandler(onClose)
@@ -747,7 +749,7 @@ function PackModal({ onClose }: { onClose: () => void }) {
 
   const run = () => {
     setPacking(true)
-    void packModWithOptions(options).finally(() => setPacking(false))
+    void packModWithOptions(options, deployToGame).finally(() => setPacking(false))
   }
 
   return (
@@ -764,6 +766,21 @@ function PackModal({ onClose }: { onClose: () => void }) {
                 <span className="pack-desc">{it.desc}</span>
               </label>
             ))}
+            {/* M35 F3：一键验证——打包后自动部署到游戏 mods/units 并启动游戏 */}
+            <label className={`pack-option${gamePath ? '' : ' disabled'}`}>
+              <input
+                type="checkbox"
+                checked={deployToGame}
+                disabled={!gamePath}
+                onChange={(e) => setDeployToGame(e.target.checked)}
+              />
+              <span className="pack-label">打包后部署到游戏并启动（一键验证）</span>
+              <span className="pack-desc">
+                {gamePath
+                  ? '写入游戏 mods/units 目录并自动启动游戏（同名模组会先询问是否覆盖）'
+                  : '未配置游戏安装目录，请先到 设置 → 游戏 中配置'}
+              </span>
+            </label>
           </div>
         </div>
         <div className="modal-footer">

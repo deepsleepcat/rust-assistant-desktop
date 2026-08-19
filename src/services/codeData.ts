@@ -7,6 +7,7 @@
  * - section.json    32 个节
  * - value_type.json 87 种值类型（补全规则、合法值列表）
  * - value_zh.json   枚举值中文词典（补全/悬浮时给英文枚举值配中文解释）
+ * - aliases.json    字段别名（M35：旧字段名 → 现行字段名，按旧名也能搜到/悬停）
  * - translations.json 旧版 832 条 en↔zh 翻译对
  * - vocabulary.json 旧版 1759 条 词库（word+explanation）
  */
@@ -75,6 +76,12 @@ interface RawValueZh {
   data?: Record<string, string>
 }
 
+/** 字段别名（aliases.json）：旧字段名 → 现行字段名（搜索/悬停按旧名也能命中） */
+interface AliasInfo {
+  alias: string
+  code: string
+}
+
 interface RawDataset {
   name?: string
   data?: unknown[]
@@ -107,6 +114,10 @@ const sectionZhToEnDict = new Map<string, string>()
 /** M34：枚举值中文词典（value_zh.json：own→己方、BUILDING→建筑…）：
  * 补全值候选与悬浮提示给英文枚举值配中文解释（引擎值本身不可改） */
 const valueZhDict = new Map<string, string>()
+/** M35：字段别名表（aliases.json：alias 小写 → 现行 code）。
+ * 官方数据用 limitingAngle，旧代码表/教程用 turretlimitingAngle——
+ * 按旧名搜索、悬停、补全都能解析到现行字段。 */
+const aliasDict = new Map<string, string>()
 
 /** 已初始化的数据（未加载前为空） */
 export function dataReady(): boolean {
@@ -149,6 +160,7 @@ export function reloadCodeData(): void {
   officialUnits = []
   gameVersions = []
   valueZhDict.clear()
+  aliasDict.clear()
 }
 
 /** 从本地存储读取用户自定义值类型（M8 值类型管理 UI 保存，store key: customValueTypes） */
@@ -184,7 +196,7 @@ export function loadCodeData(): Promise<void> {
   if (!loaded) {
     loaded = (async () => {
       try {
-        const [codeRaw, sectionRaw, valueRaw, valueZhRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw, dialectRaw] = await Promise.all([
+        const [codeRaw, sectionRaw, valueRaw, valueZhRaw, transRaw, vocabRaw, logicRaw, unitsRaw, versionRaw, dialectRaw, aliasesRaw] = await Promise.all([
           fetchJson<RawDataset>('code.json'),
           fetchJson<RawDataset>('section.json'),
           fetchJson<RawDataset>('value_type.json'),
@@ -195,6 +207,7 @@ export function loadCodeData(): Promise<void> {
           fetchJson<RawDataset>('units.json').catch(() => ({ data: [] })),
           fetchJson<RawDataset>('game_version.json').catch(() => ({ data: [] })),
           fetchJson<RawDataset>('dialect.json').catch(() => ({ words: [] }) as RawDataset),
+          fetchJson<RawDataset>('aliases.json').catch(() => ({ data: [] })),
         ])
 
         codes = (codeRaw.data ?? []) as CodeInfo[]
@@ -278,6 +291,11 @@ export function loadCodeData(): Promise<void> {
         logicBooleans = (logicRaw.data ?? []) as LogicBooleanInfo[]
         officialUnits = (unitsRaw.data ?? []) as OfficialUnitInfo[]
         gameVersions = ((versionRaw.data ?? []) as GameVersionInfo[]).sort((a, b) => a.versionNumber - b.versionNumber)
+        // 字段别名表（M35）：重载时重建（知识包更新/回滚同理清旧数据）
+        aliasDict.clear()
+        for (const a of (aliasesRaw.data ?? []) as AliasInfo[]) {
+          if (a.alias && a.code) aliasDict.set(a.alias.toLowerCase(), a.code)
+        }
       } catch (err) {
         // 数据不可用（如离线/测试环境）时降级：编辑器仍可用，只是没有补全和翻译。
         // 失败后置回 null，允许下次 loadCodeData 重试（避免一次抖动导致整个会话失去补全/翻译）
@@ -314,6 +332,23 @@ export function getValueZhDict(): Map<string, string> {
   return valueZhDict
 }
 
+/** 获取字段别名表快照（M35：旧字段名小写 → 现行 code） */
+export function getAliasDict(): Map<string, string> {
+  return aliasDict
+}
+
+/** 字段 code 是否有别名命中查询词（搜索过滤用：code/translate/别名 任一命中）。
+ * 大小写不敏感；别名以子串方式匹配（与 code 匹配语义一致）。 */
+export function aliasMatches(code: string, query: string): boolean {
+  if (!query) return false
+  const q = query.toLowerCase()
+  const target = code.toLowerCase()
+  for (const [alias, resolved] of aliasDict) {
+    if (resolved.toLowerCase() === target && alias.includes(q)) return true
+  }
+  return false
+}
+
 /** 中文键分段回译（建造自_1_名称 → builtFrom_1_name）：
  * 中文显示层的宏字段键是分段翻译结果，查代码表/值类型前先按 _ 分段回译。 */
 export function zhToEnKeySegments(key: string): string {
@@ -342,22 +377,28 @@ export function findCodesBySection(section: string, query: string, limit = 40): 
   const q = query.trim().toLowerCase()
   const enSection = normalizeSectionName(section)
   const matchSection = (c: CodeInfo) => c.section === 'all' || (c.section ?? '').split(',').includes(enSection)
-  const list = codes.filter((c) => matchSection(c) && (c.code.toLowerCase().includes(q) || c.translate.includes(query.trim())))
+  const list = codes.filter(
+    (c) => matchSection(c) && (c.code.toLowerCase().includes(q) || c.translate.includes(query.trim()) || aliasMatches(c.code, q)),
+  )
   return list.slice(0, limit)
 }
 
-/** 按英文键或中文译名模糊查代码 */
+/** 按英文键或中文译名模糊查代码（M35：别名旧名同样命中） */
 export function findCodesByQuery(query: string, limit = 40): CodeInfo[] {
   const q = query.trim().toLowerCase()
   if (!q) return codes.slice(0, limit)
-  const list = codes.filter((c) => c.code.toLowerCase().includes(q) || c.translate.includes(query.trim()))
+  const list = codes.filter((c) => c.code.toLowerCase().includes(q) || c.translate.includes(query.trim()) || aliasMatches(c.code, q))
   return list.slice(0, limit)
 }
 
-/** 按 code 精确查（用于值类型解析） */
+/** 按 code 精确查（用于值类型解析；M35：查不到时解析旧名别名） */
 export function findCodeByCode(code: string): CodeInfo | undefined {
   const lower = code.toLowerCase()
-  return codes.find((c) => c.code.toLowerCase() === lower)
+  const hit = codes.find((c) => c.code.toLowerCase() === lower)
+  if (hit) return hit
+  const resolved = aliasDict.get(lower)
+  if (!resolved) return undefined
+  return codes.find((c) => c.code.toLowerCase() === resolved.toLowerCase())
 }
 
 /** 按值类型查代码（@type(x) 关联联想用，对齐手机版 findCodeByCodeInType）：

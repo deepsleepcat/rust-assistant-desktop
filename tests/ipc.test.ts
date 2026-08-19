@@ -101,7 +101,7 @@ afterEach(async () => {
 })
 
 describe('IPC 通道完整性', () => {
-  it('九个域注册函数覆盖全部 69 个通道，无遗漏无重复', () => {
+  it('九个域注册函数覆盖全部 72 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerKnowledgeIpc(ctx, ipc)
@@ -127,7 +127,7 @@ describe('IPC 通道完整性', () => {
       'image:readAsDataUrl', 'media:readAsDataUrl',
       // mod + template
       'mod:create', 'mod:createUnit', 'mod:listTemplates', 'mod:saveFileAsTemplate', 'mod:createUnitFromTemplate',
-      'mod:pack', 'mod:check', 'mod:readModInfo', 'mod:writeModInfo', 'mod:scanResources', 'mod:scanUnits', 'mod:copyUnit',
+      'mod:pack', 'mod:packAndDeploy', 'mod:check', 'mod:readModInfo', 'mod:writeModInfo', 'mod:scanResources', 'mod:scanUnits', 'mod:copyUnit',
       'mod:optimizeScan', 'mod:optimizeApply', 'mod:globalOp', 'mod:chooseMusic', 'mod:import', 'mod:discardImport',
       'template:import', 'template:deleteUser', 'template:listUserKeys',
       // game
@@ -139,7 +139,7 @@ describe('IPC 通道完整性', () => {
       'ai:check', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(71)
+    expect(channels.size).toBe(72)
   })
 })
 
@@ -419,6 +419,55 @@ describe('mod / game / app 通道', () => {
     registerModIpc(ctx, ipc)
     ctx.packing.active = true
     await expect(invoke(channels, 'mod:pack', tmp)).rejects.toThrow('已有打包任务')
+  })
+
+  it('mod:packAndDeploy：未配置游戏路径返回提示；未登记根/参数类型拒绝；成功写入游戏 mods/units', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerModIpc(ctx, ipc)
+    // 项目根 + 假游戏目录（assets/units 存在，mods/units 不存在——部署时自动创建）
+    ctx.roots.add(normalizePath(tmp))
+    await fs.writeFile(path.join(tmp, 'mod-info.txt'), '[mod]\ntitle: 测试\n', 'utf8')
+    const gameDir = path.join(tmp, 'game')
+    await fs.mkdir(path.join(gameDir, 'assets', 'units'), { recursive: true })
+
+    // 未配置游戏路径
+    const noPath = await invoke(channels, 'mod:packAndDeploy', tmp, {}, '', false)
+    expect(noPath).toMatchObject({ ok: false, message: expect.stringContaining('配置游戏安装目录') })
+
+    // 未登记项目根拒绝
+    await expect(
+      invoke(channels, 'mod:packAndDeploy', path.join(tmp, 'unregistered'), {}, gameDir, false),
+    ).rejects.toThrow('项目目录未登记')
+
+    // 参数类型校验
+    await expect(invoke(channels, 'mod:packAndDeploy', 123, {}, gameDir, false)).rejects.toThrow('项目目录为空')
+    await expect(invoke(channels, 'mod:packAndDeploy', tmp, {}, gameDir, 'yes')).rejects.toThrow('overwrite 参数')
+
+    // 成功：写入 <gameDir>/mods/units/<项目名>.rwmod（mods/units 自动创建；
+    // 执行传原始 rootPath——项目名大小写保留，游戏内模组名与项目一致）
+    const result = await invoke<{ ok: boolean; filePath: string }>(channels, 'mod:packAndDeploy', tmp, {}, gameDir, false)
+    expect(result.ok).toBe(true)
+    expect(result.filePath).toBe(path.join(gameDir, 'mods', 'units', `${path.basename(tmp)}.rwmod`))
+    const buf = await fs.readFile(result.filePath)
+    expect(buf.byteLength).toBeGreaterThan(0)
+
+    // 同名已存在且未 overwrite → EXISTS（不覆盖）
+    const exists = await invoke<{ ok: boolean; code?: string }>(channels, 'mod:packAndDeploy', tmp, {}, gameDir, false)
+    expect(exists.ok).toBe(false)
+    expect(exists.code).toBe('EXISTS')
+
+    // overwrite=true 覆盖成功
+    const overwritten = await invoke<{ ok: boolean; overwritten: boolean }>(channels, 'mod:packAndDeploy', tmp, {}, gameDir, true)
+    expect(overwritten.ok).toBe(true)
+    expect(overwritten.overwritten).toBe(true)
+  })
+
+  it('mod:packAndDeploy：与 mod:pack 共用互斥（打包进行中拒绝部署）', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerModIpc(ctx, ipc)
+    ctx.roots.add(normalizePath(tmp))
+    ctx.packing.active = true
+    await expect(invoke(channels, 'mod:packAndDeploy', tmp, {}, path.join(tmp, 'game'), false)).rejects.toThrow('已有打包任务')
   })
 
   it('mod:copyUnit：两端项目根都须登记，成功时写入目标', async () => {

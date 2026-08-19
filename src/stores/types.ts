@@ -203,7 +203,8 @@ export interface WorkspaceStoreActions {
   saveActiveFileAsTemplate(name: string): Promise<void>
   createUnitFile(params: { name: string; templateKey: string; values: Record<string, string> }): Promise<void>
   packModProject(): Promise<void>
-  packModWithOptions(options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }): Promise<void>
+  /** deployToGame=true（M35 F3）：打包后部署到游戏 mods/units 并自动启动游戏 */
+  packModWithOptions(options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }, deployToGame?: boolean): Promise<void>
   checkModProject(): Promise<void>
   /** M13：生成模组质量报告 */
   generateModReport(): Promise<void>

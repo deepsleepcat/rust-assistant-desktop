@@ -96,6 +96,14 @@ export interface BridgeApi {
     discardImport(rootPath: string): Promise<{ ok: boolean }>
     createUnit(rootPath: string, params: { name: string; displayName?: string; folder?: string }): Promise<{ path: string }>
     pack(rootPath: string, options?: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number; files: number; skippedLinks?: number }>
+    /** M35 F3：打包并部署到游戏 mods/units 目录（跳过另存为对话框）。
+     * 同名已存在且未 overwrite 时返回 code:'EXISTS'，UI 确认后带 overwrite 重试。 */
+    packAndDeploy(
+      rootPath: string,
+      options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean },
+      gamePath: string,
+      overwrite: boolean,
+    ): Promise<{ ok: true; filePath: string; size: number; files: number; skippedLinks: number; overwritten: boolean } | { ok: false; code?: 'EXISTS'; filePath?: string; message: string }>
     check(rootPath: string): Promise<{ issues: Array<{ file: string; level: 'error' | 'warning' | 'info'; message: string }>; unitCount: number; fileCount: number }>
     /** 读取模组自述文件（不存在返回 null） */
     readModInfo(rootPath: string): Promise<{ title: string; description?: string; author?: string; version?: string; thumbnail?: string; minVersion?: string; musicFiles: string[]; musicExclusive: boolean; mapsFiles: string[]; mapsExtra: boolean; musicSourceFolder?: string; mapsSourceFolder?: string; updateUrl?: string } | null>

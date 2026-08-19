@@ -78,6 +78,8 @@ const api: BridgeApi = {
     discardImport: (rootPath: string) => ipcRenderer.invoke('mod:discardImport', rootPath),
     createUnit: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnit', rootPath, params),
     pack: (rootPath: string, options?: unknown) => ipcRenderer.invoke('mod:pack', rootPath, options),
+    packAndDeploy: (rootPath: string, options: unknown, gamePath: string, overwrite: boolean) =>
+      ipcRenderer.invoke('mod:packAndDeploy', rootPath, options, gamePath, overwrite),
     check: (rootPath: string) => ipcRenderer.invoke('mod:check', rootPath),
     readModInfo: (rootPath: string) => ipcRenderer.invoke('mod:readModInfo', rootPath),
     writeModInfo: (rootPath: string, data: unknown) => ipcRenderer.invoke('mod:writeModInfo', rootPath, data),

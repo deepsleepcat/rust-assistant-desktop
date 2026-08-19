@@ -1318,6 +1318,79 @@ export async function packModBufferWithCount(projectRoot: string, options?: Pack
   return { buffer: Buffer.from(content), files: fileCount, skippedLinks }
 }
 
+/** M35 F3：打包并部署到游戏 mods/units 目录（一键验证闭环的「部署」环节）。
+ * 设计：游戏目录不是项目根（不登记），写游戏目录是本功能唯一的例外——
+ * 目录判定与 game.ts looksLikeGameDir 同标准（gamePath/assets/units 是目录），
+ * 文件名取项目根 basename 并清洗非法字符/路径穿越/保留设备名/结尾点；
+ * 同名已存在且未确认覆盖时返回 EXISTS 不写盘（防误删游戏内已有模组）；
+ * overwrite=false 用 'wx' 原子创建（防并发覆盖）；拒绝写入符号链接目标
+ * （防 mods/units/<name>.rwmod 被做成指向游戏目录外的链接）；写盘失败
+ * （权限不足/文件被占用）抛错由上层提示。 */
+export async function deployMod(
+  projectRoot: string,
+  gamePath: string,
+  options: PackOptions,
+  overwrite: boolean,
+): Promise<
+  | { ok: true; filePath: string; size: number; files: number; skippedLinks: number; overwritten: boolean }
+  | { ok: false; code?: 'EXISTS'; filePath?: string; message: string }
+> {
+  const root = resolveInside(projectRoot, '.')
+  // 先校验游戏目录（fail fast：配置错误不浪费打包时间与互斥占用）
+  if (!path.isAbsolute(gamePath)) {
+    return { ok: false, message: '游戏目录必须是绝对路径，请检查设置中的游戏安装路径' }
+  }
+  try {
+    const st = await fs.stat(path.join(gamePath, 'assets', 'units'))
+    if (!st.isDirectory()) {
+      return { ok: false, message: '游戏目录校验失败（未找到 assets/units），请检查设置中的游戏安装路径' }
+    }
+  } catch {
+    return { ok: false, message: '游戏目录校验失败（未找到 assets/units），请检查设置中的游戏安装路径' }
+  }
+  const { buffer, files, skippedLinks } = await packModBufferWithCount(root, options)
+  const rawName = path.basename(path.resolve(root)).trim() || 'mod'
+  // 清洗 Windows 文件名非法字符 + 路径穿越 + 结尾点/空格 + 保留设备名（CON/NUL/COM1…）
+  let safeName = rawName.replace(/[\\/:*?"<>|]/g, '_').replace(/\.\./g, '_').replace(/[. ]+$/, '') || 'mod'
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(safeName)) safeName = `_${safeName}`
+  const modsDir = path.join(gamePath, 'mods', 'units')
+  const target = path.join(modsDir, `${safeName}.rwmod`)
+  // 拒绝符号链接目标（防写入被链接重定向到游戏目录外）
+  let existed = false
+  try {
+    const st = await fs.lstat(target)
+    if (st.isSymbolicLink()) {
+      return { ok: false, message: `部署目标存在符号链接，拒绝写入：${target}` }
+    }
+    existed = true
+  } catch {
+    // 目标不存在
+  }
+  if (existed && !overwrite) {
+    return { ok: false, code: 'EXISTS', filePath: target, message: `游戏模组目录已存在同名模组：${safeName}.rwmod（确认覆盖后重试）` }
+  }
+  try {
+    await fs.mkdir(modsDir, { recursive: true })
+    if (overwrite) {
+      await fs.writeFile(target, buffer)
+    } else {
+      // 'wx' 原子创建：并发下不覆盖刚出现的同名文件（EXISTS 检查与写入合一）
+      const handle = await fs.open(target, 'wx')
+      try {
+        await handle.writeFile(buffer)
+      } finally {
+        await handle.close()
+      }
+    }
+  } catch (err) {
+    if (!overwrite && (err as NodeJS.ErrnoException).code === 'EEXIST') {
+      return { ok: false, code: 'EXISTS', filePath: target, message: `游戏模组目录已存在同名模组：${safeName}.rwmod（确认覆盖后重试）` }
+    }
+    throw new Error(`部署到游戏目录失败（权限不足或文件被占用，游戏可能正在运行）：${target}`, { cause: err })
+  }
+  return { ok: true, filePath: target, size: buffer.byteLength, files, skippedLinks, overwritten: existed && overwrite }
+}
+
 /** 单位检查：name 缺失 / [core] 缺失 / name 全局重复 */
 export interface ModCheckIssue {
   file: string
