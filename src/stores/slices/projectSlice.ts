@@ -17,6 +17,7 @@ import { findTreeNode, updateTreeNode } from '../../utils/tree'
 import { basename, isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
 import { getAllCodes, getAllSections, getEnToZhDict, getKeyZhToEnDict, getLogicIdentifierEnToZhDict, getLogicIdentifierZhToEnDict, getLogicValueKeys, getPreserveValueKeys, getSectionZhToEnDict, getZhToEnDict, isPreserveValueKey, loadCodeData, normalizeValueForEngine } from '../../services/codeData'
 import { enToZh, makeDict, zhToEn } from '../../services/translation'
+import { normalizeKeyValueSeparators } from '../../services/configSyntax'
 import { repairIniContent } from '../../services/translationRepair'
 import { invalidateResourceCache } from '../../features/editor/completion'
 import { normalizeOpenPath } from '../../utils/projectPath'
@@ -35,6 +36,11 @@ function projectTranslationDict() {
     isPreserveValueKey,
     normalizeValueForEngine,
   )
+}
+
+function contentForDisk(content: string, tab: EditorTab): string {
+  const translated = tab.translationEnabled ? zhToEn(content, projectTranslationDict(), tab.translationMap) : content
+  return /\.(ini|template)$/i.test(tab.path) ? normalizeKeyValueSeparators(translated) : translated
 }
 
 export interface ProjectSliceDeps {
@@ -82,6 +88,10 @@ export function replacePathPrefix(path: string, target: string, replacement: str
 
 export function createProjectSlice(deps: ProjectSliceDeps) {
   return (set: StoreApi<WorkspaceStore>['setState'], get: () => WorkspaceStore) => {
+    type TabHistory = { undo: string[]; redo: string[] }
+    const historyByTab = new Map<string, TabHistory>()
+    const MAX_TAB_HISTORY = 100
+
     const activeProject = (): ProjectInfo | null =>
       get().projects.find((p) => p.id === get().activeProjectId) ?? null
 
@@ -125,6 +135,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         }
         // 有未保存编辑时先确认（防止静默丢弃）
         await get().confirmDirtySwitch(async () => {
+          historyByTab.clear()
           const others = get().projects.filter((p) => p.rootPath !== opened.rootPath)
           set({
             projects: [project, ...others],
@@ -172,6 +183,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
           // 有未保存编辑时先确认（防止静默丢弃）；确认回调里的失败仍走统一 notify。
           // 返回 false = 用户取消或 action 失败：刚解压的目录未被使用，清理掉不留残留
           const ok = await get().confirmDirtySwitch(async () => {
+            historyByTab.clear()
             const others = get().projects.filter((p) => p.rootPath !== imported.rootPath)
             set({
               projects: [project, ...others],
@@ -238,6 +250,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         }
         return get().confirmDirtySwitch(async () => {
           try {
+            historyByTab.clear()
             const others = get().projects.filter((p) => p.rootPath !== rootPath)
             set({
               projects: [project, ...others],
@@ -287,6 +300,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         if (!project) return
         // 有未保存编辑时先确认（防止静默丢弃）
         await get().confirmDirtySwitch(async () => {
+          historyByTab.clear()
           set({
             activeProjectId: id,
             openTabs: [],
@@ -312,6 +326,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
       },
 
       removeProject(id: string) {
+        historyByTab.clear()
         const s = get()
         // 同步清理该项目的“最后活跃对话”记录，避免残留占用
         const lastActive = { ...s.lastActiveConversationByProject }
@@ -500,24 +515,62 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             size: result.size,
             mtimeMs: result.mtimeMs,
           }
+          historyByTab.delete(tab.id)
           set({ openTabs: [...get().openTabs, tab], activeTabId: tab.id, activeSurface: 'editor' })
         } catch (err) {
           get().notify(`无法打开文件：${err instanceof Error ? err.message : String(err)}`)
         }
       },
 
-      updateTabContent(id: string, content: string) {
+      updateTabContent(id: string, content: string, options?: { history?: boolean }) {
+        const shouldRecord = options?.history !== false
+        const current = get().openTabs.find((tab) => tab.id === id)
+        if (!current || current.content === content) return
+        if (shouldRecord) {
+          const history = historyByTab.get(id) ?? { undo: [], redo: [] }
+          history.undo.push(current.content)
+          if (history.undo.length > MAX_TAB_HISTORY) history.undo.shift()
+          history.redo = []
+          historyByTab.set(id, history)
+        }
         set({
           openTabs: get().openTabs.map((t) => {
             if (t.id !== id) return t
-            if (t.content === content) return t // 内容未变：跳过回译与脏标记计算
-            // 脏标记按「回译后是否等于磁盘原文」计算：
-            // 切换翻译模式只是换视图，不产生未保存修改；中文数据写回后仍是中文，不误标脏
-            // 快速路径：英文模式直接字符串比较（O(n) 无正则开销），翻译模式才做全量回译
-            const toDisk = t.translationEnabled ? zhToEn(content, projectTranslationDict(), t.translationMap) : content
+            // 脏标记按「回译后是否等于磁盘原文」计算；程序同步和用户编辑共用同一比较规则。
+            const toDisk = contentForDisk(content, t)
             return { ...t, content, dirty: toDisk !== t.original }
           }),
         })
+      },
+
+      undoTab(id: string) {
+        const history = historyByTab.get(id)
+        const tab = get().openTabs.find((item) => item.id === id)
+        if (!history || !tab || history.undo.length === 0) return
+        const previous = history.undo.pop()!
+        history.redo.push(tab.content)
+        historyByTab.set(id, history)
+        const toDisk = contentForDisk(previous, tab)
+        set({ openTabs: get().openTabs.map((item) => item.id === id ? { ...item, content: previous, dirty: toDisk !== item.original } : item) })
+      },
+
+      redoTab(id: string) {
+        const history = historyByTab.get(id)
+        const tab = get().openTabs.find((item) => item.id === id)
+        if (!history || !tab || history.redo.length === 0) return
+        const next = history.redo.pop()!
+        history.undo.push(tab.content)
+        historyByTab.set(id, history)
+        const toDisk = contentForDisk(next, tab)
+        set({ openTabs: get().openTabs.map((item) => item.id === id ? { ...item, content: next, dirty: toDisk !== item.original } : item) })
+      },
+
+      canUndoTab(id: string) {
+        return (historyByTab.get(id)?.undo.length ?? 0) > 0
+      },
+
+      canRedoTab(id: string) {
+        return (historyByTab.get(id)?.redo.length ?? 0) > 0
       },
 
       async saveTab(id: string, opts?: { force?: boolean }): Promise<boolean> {
@@ -535,8 +588,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
             }
           }
           // 翻译模式下：先把显示内容转回英文再写盘（追踪表精确还原；未追踪中文保留），并更新快照
-          const dict = projectTranslationDict()
-          const toWrite = tab.translationEnabled ? zhToEn(tab.content, dict, tab.translationMap) : tab.content
+          const toWrite = contentForDisk(tab.content, tab)
           await deps.bridge.project.writeFile(project.rootPath, tab.path, toWrite, { hasBom: tab.hasBom })
           const savedMeta = await deps.bridge.project.readFile(project.rootPath, tab.path)
           set({
@@ -544,8 +596,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
               if (t.id !== id) return t
               // L1：保存期间用户可能已继续输入——比较「当前内容的回译」与「写盘内容」，
               // 在途编辑仍保持脏标记（否则会被误标为已保存、关闭时静默丢失）
-              const dict2 = projectTranslationDict()
-              const currentDisk = t.translationEnabled ? zhToEn(t.content, dict2, t.translationMap) : t.content
+              const currentDisk = contentForDisk(t.content, t)
               return {
                 ...t,
                 original: toWrite,
@@ -581,6 +632,8 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
           const dict = projectTranslationDict()
           const tracker = new Map<string, string>()
           const view = translationEnabled ? enToZh(original, dict, tracker) : original
+          // reload 是磁盘同步边界，不能把被丢弃的旧内容留在即时撤销栈。
+          historyByTab.delete(id)
           set({
             openTabs: get().openTabs.map((t) =>
               t.id === id
@@ -631,11 +684,13 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
       toggleTranslation(id: string) {
         const tab = get().openTabs.find((t) => t.id === id)
         if (!tab) return
+        // 翻译显示层切换是程序同步边界；旧显示文本不应被撤销回灌到新模式。
+        historyByTab.delete(id)
         const dict = projectTranslationDict()
         const tracker = tab.translationMap ?? new Map<string, string>()
         const content = tab.translationEnabled ? zhToEn(tab.content, dict, tracker) : enToZh(tab.content, dict, tracker)
         // 脏标记按切换后「回译是否等于磁盘原文」计算（切换视图本身不是编辑）
-        const toDisk = tab.translationEnabled ? content : zhToEn(content, dict, tracker)
+        const toDisk = normalizeKeyValueSeparators(tab.translationEnabled ? content : zhToEn(content, dict, tracker))
         set({
           openTabs: get().openTabs.map((t) =>
             t.id === id ? { ...t, translationEnabled: !t.translationEnabled, content, translationMap: tracker, dirty: toDisk !== t.original } : t,
@@ -644,6 +699,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
       },
 
       closeTab(id: string) {
+        historyByTab.delete(id)
         const tabs = get().openTabs
         const index = tabs.findIndex((t) => t.id === id)
         const next = tabs.filter((t) => t.id !== id)
@@ -760,6 +816,8 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         try {
           await deps.bridge.project.delete(project.rootPath, targetPath)
           // 删除文件夹时其内部文件的标签一并关闭（前缀匹配，与收藏清理一致）
+          const removedIds = get().openTabs.filter((t) => pathStartsWith(t.path, targetPath)).map((t) => t.id)
+          for (const id of removedIds) historyByTab.delete(id)
           const remaining = get().openTabs.filter((t) => !pathStartsWith(t.path, targetPath))
           set({
             openTabs: remaining,
@@ -887,8 +945,7 @@ export function createProjectSlice(deps: ProjectSliceDeps) {
         if (!project || !tab) return
         try {
           // 保存模板 = 保存当前编辑内容（中文显示层需先回译成英文，与 saveTab 一致；追踪表精确还原）
-          const dict = projectTranslationDict()
-          const content = tab.translationEnabled ? zhToEn(tab.content, dict, tab.translationMap) : tab.content
+          const content = contentForDisk(tab.content, tab)
           const { key } = await deps.bridge.mod.saveFileAsTemplate(project.rootPath, tab.path, name, content)
           get().notify(`已保存为模板：${name}（${key}），可在「新建单位」中选择`)
         } catch (err) {

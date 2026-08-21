@@ -15,8 +15,10 @@ import { AppIcon } from '../../../components/AppIcon'
 import { useEscapeHandler } from '../../../utils/modalStack'
 import {
   animationFrameNumber,
+  computeDrawGeometry,
   computeDrawLayout,
   computeFrames,
+  computeSightGeometry,
   directionCount,
   directionSourceRect,
   framePath,
@@ -141,6 +143,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const [images, setImages] = useState<Map<string, HTMLImageElement | null>>(new Map())
   const [frame, setFrame] = useState(0)
   const [showWreck, setShowWreck] = useState(false)
+  const [showSight, setShowSight] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [failed, setFailed] = useState<Array<{ image: string; reason: FailReason }>>([])
   // M34 动画播放：播放中 / 当前动画状态（待机/移动/攻击）/ 多向动画朝向
@@ -261,6 +264,22 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     const cy = canvas.height / 2
     const items = computeDrawLayout(recipe, turrets).filter((i) => (i.kind === 'wreck' ? showWreck : true))
     const teamMode = recipe.teamColoringMode
+    if (showSight) {
+      const sight = computeSightGeometry(recipe, canvas.width, canvas.height, zoom)
+      if (sight) {
+        ctx.save()
+        ctx.globalAlpha = 0.18
+        ctx.fillStyle = '#3b82f6'
+        ctx.strokeStyle = '#2563eb'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.arc(sight.cx, sight.cy, sight.radius, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 0.65
+        ctx.stroke()
+        ctx.restore()
+      }
+    }
     for (const item of items) {
       // 多帧引用（a.png;b.png）：主体按帧号切换整图；其余（阴影/炮塔）用首帧或原引用
       let imgKey = item.image
@@ -272,23 +291,15 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
         continue
       }
-      // 源矩形：多向动画按方向块截取（strideX×strideY 横排）；否则横向帧切片
-      const f = item.kind === 'turret' ? 0 : clampedFrame
-      let sx: number, sy: number, sw: number, sh: number
-      if (isDirectional && item.kind !== 'turret') {
-        const r = directionSourceRect(recipe.direction!, directionIdx, img.naturalWidth, img.naturalHeight)
-        sx = r.sx
-        sy = r.sy
-        sw = r.sw
-        sh = r.sh
-      } else {
-        sx = fi.multiFile ? 0 : f * fi.frameW
-        sy = 0
-        sw = fi.frameW
-        sh = fi.frameH
-      }
-      const dw = sw * item.scale * scale
-      const dh = sh * item.scale * scale
+      // 源矩形：方向块只作用于主体/自动阴影；炮塔始终使用自身整图。
+      const directionRect = isDirectional && item.sourceMode === 'bodyFrames'
+        ? directionSourceRect(recipe.direction!, directionIdx, img.naturalWidth, img.naturalHeight)
+        : undefined
+      const geometry = computeDrawGeometry(item, img.naturalWidth, img.naturalHeight, fi, clampedFrame, scale, directionRect)
+      const { sx, sy, sw, sh } = geometry.source
+      const { dx, dy, dw, dh } = geometry.destination
+      const drawX = cx + dx
+      const drawY = cy + dy
       ctx.save()
       ctx.globalAlpha = item.alpha
       if (item.kind === 'shadow' && recipe.imageShadow && /^AUTO/i.test(recipe.imageShadow)) {
@@ -297,16 +308,16 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       } else if (item.kind !== 'shadow' && teamMode !== 'disabled') {
         applyTeamColor(ctx, teamMode)
       }
-      ctx.drawImage(img, sx, sy, sw, sh, cx + item.cx * scale - dw / 2, cy + item.cy * scale - dh / 2, dw, dh)
+      ctx.drawImage(img, sx, sy, sw, sh, drawX, drawY, dw, dh)
       // hueAdd：'color' 混合模式叠加队伍绿（保留亮度，近似官方色相叠加）
       if (item.kind !== 'shadow' && teamMode === 'hueAdd') {
         ctx.globalCompositeOperation = 'color'
         ctx.fillStyle = '#00c800'
-        ctx.fillRect(cx + item.cx * scale - dw / 2, cy + item.cy * scale - dh / 2, dw, dh)
+        ctx.fillRect(drawX, drawY, dw, dh)
       }
       ctx.restore()
     }
-  }, [images, frameInfo, clampedFrame, showWreck, zoom, recipe, turrets, mainImgOrNull, isDirectional, directionIdx])
+  }, [images, frameInfo, clampedFrame, showWreck, showSight, zoom, recipe, turrets, mainImgOrNull, isDirectional, directionIdx])
 
   const noGamePath = failed.filter((f) => f.reason === 'no-game-path')
   const gameMissing = failed.filter((f) => f.reason === 'game-missing')
@@ -324,6 +335,15 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
           <div className="unitprev-toolbar">
             <span className="vdiff-hint">按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染</span>
             <span className="grow" />
+            <button
+              className={`btn${showSight ? ' primary' : ''}`}
+              style={{ padding: '2px 10px', fontSize: 11.5 }}
+              title="显示/隐藏战争迷雾视野（地块数；不代表攻击范围）"
+              aria-label="显示或隐藏战争迷雾视野"
+              onClick={() => setShowSight((v) => !v)}
+            >
+              <AppIcon name="eye" size={12} /> 视野
+            </button>
             {animFrameCount > 1 && (
               <>
                 <button className="icon-btn" title={playing ? '暂停' : '播放'} onClick={() => setPlaying((p) => !p)}>
@@ -398,7 +418,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
           {failed.length === 0 && <div className="lint-suggestion">预览正常：{recipe.image ? `${recipe.image}（${totalFrames} 帧）` : '未配置主体图像'}{turrets.length > 0 ? ` · ${turrets.length} 个炮塔` : ''}{recipe.teamColoringMode !== 'disabled' ? ` · 队伍着色：${recipe.teamColoringMode === 'pureGreen' ? '纯绿' : recipe.teamColoringMode === 'hueAdd' ? '色相叠加' : '色相偏移'}（Canvas 近似，游戏内为 GPU 着色）` : ''}</div>}
         </div>
         <div className="modal-footer">
-          <span className="vdiff-hint">单位中心为原点；图像相对单位文件目录或项目根</span>
+          <span className="vdiff-hint">单位中心为原点；视野 = 战争迷雾地块数 × 20 像素；不模拟建造视野/攻击范围</span>
           <span className="grow" />
           <button className="btn primary" onClick={onClose}>关闭</button>
         </div>

@@ -10,6 +10,7 @@
  * 行号约定：对外一律 1 基（与 AI 质检清单一致）；内部索引 0 基。
  */
 import type { SemanticCheckContext, SemanticIssue } from './types'
+import { splitTopLevelConfigValue } from '../../../services/configSyntax'
 import { getSectionZhToEnDict } from '../../../services/codeData'
 
 /** 已解析的节：name 为节名（原始大小写），startLine/endLine 为 1 基行号（endLine 不含）；
@@ -45,7 +46,7 @@ const SECTION_RE = /^\s*\[(.+?)\]\s*(?:#.*)?$/
 /** 键值行解析：key: value 或 key = value（引擎两种写法都认；取先出现的分隔符）。
  * 值后允许行内注释；# 颜色值不剥离。键不允许含 :（否则 ROOT:units/x.png 这类
  * 值里的冒号会把键截断）。 */
-const KV_RE = /^([^:#][^:]*?)\s*(?::|=)\s*(.*)$/
+const KV_RE = /^([^:#：][^:：]*?)\s*(?::|：|=)\s*(.*)$/
 
 /** 剥离行内注释（与 rustLint.stripInlineComment 同规则） */
 export function stripInlineComment(value: string): string {
@@ -169,20 +170,7 @@ export function toTimeNumber(value: string): number | null {
 export function parseUnitListValue(value: string): string[] {
   const out: string[] = []
   // 括号感知分段：括号深度 > 0 时的逗号属于参数段，不算分隔
-  const segs: string[] = []
-  let depth = 0
-  let cur = ''
-  for (const ch of value) {
-    if (ch === '(') depth++
-    else if (ch === ')') depth = Math.max(0, depth - 1)
-    if (ch === ',' && depth === 0) {
-      segs.push(cur)
-      cur = ''
-      continue
-    }
-    cur += ch
-  }
-  segs.push(cur)
+  const segs = splitTopLevelConfigValue(value)
   for (const raw of segs) {
     let seg = raw.trim()
     if (!seg) continue

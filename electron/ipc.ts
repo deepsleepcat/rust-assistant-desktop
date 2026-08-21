@@ -17,14 +17,15 @@ import { searchProjectFiles } from './projectSearch'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import {
-  applyOptimization, checkMod, copyUnit, createMod, createUnit, createUnitFromTemplate, deleteUserTemplate,
-  applyTranslationRepair, deployMod, globalOp, importModBuffer, importTemplateFile, listTemplates, listUserTemplateKeys,
-  packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources,
-  scanTranslationRepair, scanUnits, writeModInfo,
+  applyOptimization, applyTranslationRepairSafe, checkMod, copyUnit, createMod, createUnit, createUnitFromTemplate,
+  deleteUserTemplate, deployMod, globalOp, importModBuffer, importTemplateFile, isRepairSourceFile,
+  listTemplates, listUserTemplateKeys, normalizeRepairRelativePath, packModBufferWithCount, readModInfo,
+  saveFileAsTemplate, scanOptimization, scanResources, scanTranslationRepair, scanUnits, writeModInfo,
 } from './modTools'
 import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck, readGameAssetImage } from './game'
 import { conflictFiles, diffBetween, logHistory, repoInfo, restoreFile, statusFiles } from './gitTools'
 import type { AiApprovalResponse, AiChatParams, AiSettings } from '../src/types/ai'
+import type { CommunityRequest, CommunityResponse } from '../src/types/bridge'
 import { buildLogicIdentifierMap } from '../src/services/translationRepair'
 
 /** IPC 注册函数：main.ts 传 ipcMain.handle 的真实绑定；测试传记录用假实现 */
@@ -361,6 +362,85 @@ export function registerKnowledgeIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     return ctx.knowledgePack.update(sourceUrl)
   })
   ipc('knowledge:rollback', () => ctx.knowledgePack.rollback())
+}
+
+/**
+ * 社区网络代理：桌面端用于绕开部署端缺失 CORS 响应头的限制。
+ * 渲染层不能任选主机、方法或路径，避免把主进程暴露为通用 HTTP/SSRF 代理。
+ */
+export function registerCommunityIpc(ipc: RegisterHandler): void {
+  // 只代理产品内置社区服务器；自定义 endpoint 仍由 renderer 直接请求，避免该通道成为 SSRF 代理。
+  const trustedOrigin = 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+  const allowedMethods = new Set(['GET', 'POST', 'PUT', 'DELETE'])
+  const allowedPaths = [
+    /^\/health$/,
+    /^\/api\/auth\/(register|login)$/,
+    /^\/api\/me$/,
+    /^\/api\/community\/(boards|tags|rankings|posts)$/,
+    /^\/api\/community\/posts\/following$/,
+    /^\/api\/community\/posts\/\d+$/,
+    /^\/api\/community\/posts\/\d+\/comments$/,
+    /^\/api\/community\/posts\/\d+\/resources$/,
+    /^\/api\/community\/posts\/\d+\/like$/,
+    /^\/api\/community\/authors\/\d+\/follow$/,
+    /^\/api\/community\/comments\/\d+$/,
+    /^\/api\/community\/resources\/\d+(?:\/download)?$/,
+  ]
+  const maxJsonBytes = 2 * 1024 * 1024
+  const maxUploadBytes = 50 * 1024 * 1024
+
+  ipc('community:request', async (_event, input: unknown): Promise<CommunityResponse> => {
+    if (!input || typeof input !== 'object') throw new Error('社区请求参数无效')
+    const request = input as CommunityRequest
+    if (!allowedMethods.has(request.method)) throw new Error('社区请求方法不允许')
+    if (typeof request.url !== 'string' || request.url.length > 600) throw new Error('社区服务器地址无效')
+    let url: URL
+    try {
+      url = new URL(request.url)
+    } catch {
+      throw new Error('社区服务器地址无效')
+    }
+    if (url.origin !== trustedOrigin) throw new Error('社区服务器地址不受信任')
+    if (!allowedPaths.some((pattern) => pattern.test(url.pathname))) throw new Error('社区请求路径不允许')
+    if (url.search.length > 600) throw new Error('社区查询参数过长')
+    if (typeof request.body === 'string' && Buffer.byteLength(request.body, 'utf8') > maxJsonBytes) throw new Error('社区请求体过大')
+    if (request.upload && request.upload.bytes.byteLength > maxUploadBytes) throw new Error('社区附件超过 50 MiB 限制')
+
+    const headers = new Headers()
+    for (const [key, value] of Object.entries(request.headers ?? {})) {
+      if (!/^(accept|authorization|content-type)$/i.test(key) || typeof value !== 'string' || value.length > 600) continue
+      headers.set(key, value)
+    }
+    let body: string | FormData | undefined = request.body
+    if (request.upload) {
+      if (!/^[^\\/\0\r\n]{1,180}$/.test(request.upload.name)) throw new Error('附件名称无效')
+      const form = new FormData()
+      form.append('file', new Blob([request.upload.bytes], { type: request.upload.type || 'application/octet-stream' }), request.upload.name)
+      body = form
+      headers.delete('content-type')
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 60_000)
+    try {
+      const response = await fetch(url, { method: request.method, headers, body, signal: controller.signal })
+      const contentLength = Number(response.headers.get('content-length') ?? '')
+      const limit = url.pathname.endsWith('/download') ? maxUploadBytes : maxJsonBytes
+      if (Number.isFinite(contentLength) && contentLength > limit) throw new Error('社区服务器响应过大')
+      const data = await response.arrayBuffer()
+      if (data.byteLength > limit) throw new Error('社区服务器响应过大')
+      const safeHeaders: Record<string, string> = {}
+      for (const name of ['content-type', 'content-disposition', 'content-length', 'x-oneapi-request-id']) {
+        const value = response.headers.get(name)
+        if (value) safeHeaders[name] = value
+      }
+      return { status: response.status, headers: safeHeaders, body: data }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw new Error('社区服务器请求超时', { cause: error })
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
+  })
 }
 
 /** 本地 git 辅助：历史/状态/冲突/差异/回滚（路径与哈希在主进程严格校验）。
@@ -772,12 +852,20 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     return scanUnits(rootPath)
   })
 
+  // 翻译恢复词典只允许读取内置知识包的白名单文件（与 knowledgePack 内部 DATA_FILE_NAMES 一致，
+  // 在调用点显式约束，防止将来误传外部文件名）。
+  const DICTIONARY_FILE_NAMES = new Set(['code.json', 'section.json', 'logicboolean.json', 'translations.json'])
+  const readDictionaryFile = async (name: string) => {
+    if (!DICTIONARY_FILE_NAMES.has(name)) throw new Error('不允许的数据文件')
+    return ctx.knowledgePack.readDataFile(name)
+  }
+
   const translationRepairDictionary = async () => {
     const [codeRaw, sectionRaw, logicRaw, translationsRaw] = await Promise.all([
-      ctx.knowledgePack.readDataFile('code.json'),
-      ctx.knowledgePack.readDataFile('section.json'),
-      ctx.knowledgePack.readDataFile('logicboolean.json'),
-      ctx.knowledgePack.readDataFile('translations.json'),
+      readDictionaryFile('code.json'),
+      readDictionaryFile('section.json'),
+      readDictionaryFile('logicboolean.json'),
+      readDictionaryFile('translations.json'),
     ])
     const code = JSON.parse(codeRaw.content) as { data?: unknown }
     const section = JSON.parse(sectionRaw.content) as { data?: unknown }
@@ -816,14 +904,24 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   ipc('mod:translationRepairApply', async (_event, rootPath: unknown, selections: unknown) => {
     if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
     if (!Array.isArray(selections)) throw new Error('修复选择无效')
+    // 入口显式防御：与 modTools 内部的校验函数保持一致（单一事实来源）——
+    // 只接受项目内的相对路径，拒绝绝对路径、空段、`.`/`..`、NUL 与超长路径；
+    // 校验后重建规范化对象数组，避免把原始输入直接传入写文件流程。
+    const verifiedSelections: Array<{ path: string; digest: string }> = []
+    for (const selection of selections as Array<{ path?: unknown; digest?: unknown }>) {
+      if (!selection || typeof selection.path !== 'string' || typeof selection.digest !== 'string') throw new Error('修复选择无效')
+      const rel = normalizeRepairRelativePath(selection.path)
+      if (!isRepairSourceFile(rel)) throw new Error('修复文件类型无效')
+      verifiedSelections.push({ path: rel, digest: selection.digest })
+    }
     if (ctx.packing.active) throw new Error('已有打包/全局操作正在进行，请稍候')
     ctx.packing.active = true
     try {
       await requireRealInsideRoot(ctx, rootPath, rootPath)
-      return applyTranslationRepair(
+      return applyTranslationRepairSafe(
         rootPath,
         await translationRepairDictionary(),
-        selections as Array<{ path: string; digest: string }>,
+        verifiedSelections,
       )
     } finally {
       ctx.packing.active = false
@@ -1337,6 +1435,7 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
 /** 注册全部 IPC 通道（按域拆分，便于测试与维护） */
 export function registerIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   registerStoreIpc(ctx, ipc)
+  registerCommunityIpc(ipc)
   registerKnowledgeIpc(ctx, ipc)
   registerGitIpc(ctx, ipc)
   registerDialogIpc(ctx, ipc)

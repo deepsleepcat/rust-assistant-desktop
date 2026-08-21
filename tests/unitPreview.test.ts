@@ -9,8 +9,10 @@ import { describe, expect, it } from 'vitest'
 import {
   animationFrameNumber,
   cleanImageValue,
+  computeDrawGeometry,
   computeDrawLayout,
   computeFrames,
+  computeSightGeometry,
   directionCount,
   directionSourceRect,
   framePath,
@@ -76,6 +78,30 @@ describe('parseGraphicsRecipe', () => {
     expect(r.imageScale).toBe(1)
     expect(r.shadowOffsetX).toBe(0)
   })
+
+  it('解析官方 image_offsetX/image_offsetY，并保留 camelCase 兼容', () => {
+    const official = parseGraphicsRecipe('[core]\nfogOfWarSightRange: 15\n[graphics]\nimage_offsetX: 7\nimage_offsetY: -3\n')
+    expect(official.imageOffsetX).toBe(7)
+    expect(official.imageOffsetY).toBe(-3)
+    const compatible = parseGraphicsRecipe('[graphics]\nimageOffsetX: 4\nimageOffsetY: 5\n')
+    expect(compatible.imageOffsetX).toBe(4)
+    expect(compatible.imageOffsetY).toBe(5)
+  })
+
+  it('解析视野字段：缺省使用 15，中文键可识别，非法/小数值返回不可绘制', () => {
+    expect(parseGraphicsRecipe('[core]\n[graphics]\n').fogOfWarSightRange).toBe(15)
+    expect(parseGraphicsRecipe('[core]\nfogOfWarSightRange: 22\n[graphics]\n').fogOfWarSightRange).toBe(22)
+    const zhToEn = (key: string) => ({ 视野: 'fogOfWarSightRange', 核心: 'core', 图像组: 'graphics' })[key]
+    expect(parseGraphicsRecipe('[核心]\n视野: 18\n[图像组]\n', zhToEn).fogOfWarSightRange).toBe(18)
+    // 非法文本
+    expect(parseGraphicsRecipe('[core]\nfogOfWarSightRange: dynamic\n[graphics]\n').fogOfWarSightRange).toBeNull()
+    // 小数：游戏按整数读取，预览不绘制
+    expect(parseGraphicsRecipe('[core]\nfogOfWarSightRange: 15.5\n[graphics]\n').fogOfWarSightRange).toBeNull()
+    // 科学计数且结果为整数则允许（如 1.5e2=150）
+    expect(parseGraphicsRecipe('[core]\nfogOfWarSightRange: 1.5e2\n[graphics]\n').fogOfWarSightRange).toBe(150)
+    // 负数
+    expect(parseGraphicsRecipe('[core]\nfogOfWarSightRange: -5\n[graphics]\n').fogOfWarSightRange).toBeNull()
+  })
 })
 
 describe('computeFrames（帧切片）', () => {
@@ -134,7 +160,7 @@ describe('computeDrawLayout（合成布局）', () => {
     const r = parseGraphicsRecipe(content)
     const turrets = parsePreviewTurrets(content)
     expect(turrets.length).toBe(2)
-    expect(turrets[0]).toEqual({ index: 1, x: 10, y: -20, image: undefined })
+    expect(turrets[0]).toMatchObject({ index: 1, id: 'turret_1', sourceOrder: 1, x: 10, y: -20 })
     expect(turrets[1].image).toBe('turret2.png')
     const items = computeDrawLayout(r, turrets)
     const t1 = items.find((i) => i.kind === 'turret' && i.cx === 10)
@@ -145,12 +171,75 @@ describe('computeDrawLayout（合成布局）', () => {
     expect(t2?.image).toBe('turret2.png')
   })
 
+  it('命名与数字炮塔混合解析：数字按数值，命名按源顺序且保留 id', () => {
+    const content = '[graphics]\nimage: body.png\nimage_turret: turret.png\n' +
+      '[turret_cannon1]\nx: 2\ny: 3\n' +
+      '[turret_10]\nx: 10\ny: 0\n' +
+      '[turret_2]\nx: 2\ny: 0\n' +
+      '[turret_nanoTurret]\nx: -4\ny: 5\n'
+    const turrets = parsePreviewTurrets(content)
+    expect(turrets.map((t) => t.id)).toEqual(['turret_2', 'turret_10', 'turret_cannon1', 'turret_nanoturret'])
+    expect(turrets.find((t) => t.id === 'turret_cannon1')).toMatchObject({ index: -1, name: 'cannon1', x: 2, y: 3 })
+  })
+
+  it('中文/连字符等合法命名炮塔不被过滤', () => {
+    const content = '[graphics]\nimage: body.png\nimage_turret: turret.png\n' +
+      '[turret_小激光炮]\nx: 5\ny: -3\n' +
+      '[turret_3-2]\nx: -5\ny: 3\n' +
+      '[turret_main_turret]\nx: 0\ny: 0\n'
+    const turrets = parsePreviewTurrets(content)
+    expect(turrets.length).toBe(3)
+    expect(turrets.map((t) => t.id)).toEqual(['turret_小激光炮', 'turret_3-2', 'turret_main_turret'])
+    expect(turrets.find((t) => t.id === 'turret_小激光炮')).toMatchObject({ x: 5, y: -3 })
+    expect(turrets.find((t) => t.id === 'turret_3-2')).toMatchObject({ x: -5, y: 3 })
+  })
+
   it('残骸按配方输出（调用方决定是否展示）', () => {
     const r = parseGraphicsRecipe('[graphics]\nimage: a.png\nimage_wreak: dead.png\n')
     const items = computeDrawLayout(r, [])
     const wreck = items.find((i) => i.kind === 'wreck')
     expect(wreck?.image).toBe('dead.png')
     expect(wreck?.cx).toBe(0)
+  })
+})
+
+describe('DrawGeometry 与视野几何', () => {
+  it('炮塔使用自身整图源矩形，不复用主体多帧尺寸', () => {
+    const recipe = parseGraphicsRecipe('[graphics]\nimage: body.png\ntotal_frames: 3\nimage_turret: turret.png\n')
+    const body = computeDrawLayout(recipe, [parsePreviewTurrets('[turret_1]\nx: 5\ny: -2\n')[0]])
+    const turret = body.find((item) => item.kind === 'turret')!
+    const geometry = computeDrawGeometry(turret, 64, 48, { count: 3, frameW: 64, frameH: 48 }, 2, 2)
+    expect(geometry.source).toEqual({ sx: 0, sy: 0, sw: 64, sh: 48 })
+    const bodyGeometry = computeDrawGeometry({ ...turret, kind: 'body', sourceMode: 'bodyFrames', cx: 0, cy: 0 }, 192, 64, { count: 3, frameW: 64, frameH: 64 }, 2, 2)
+    expect(bodyGeometry.source).toEqual({ sx: 128, sy: 0, sw: 64, sh: 64 })
+  })
+
+  it('炮塔目标尺寸按自身自然尺寸、turretImageScale 和 zoom', () => {
+    const recipe = parseGraphicsRecipe('[graphics]\nimage: body.png\nimage_turret: turret.png\nturretImageScale: 1.5\n')
+    const turret = computeDrawLayout(recipe, [{ index: 1, id: 'turret_1', sourceOrder: 0, x: 10, y: -20 }]).find((item) => item.kind === 'turret')!
+    const geometry = computeDrawGeometry(turret, 32, 48, { count: 1, frameW: 32, frameH: 48 }, 0, 2)
+    expect(geometry.destination.dw).toBe(96)
+    expect(geometry.destination.dh).toBe(144)
+    expect(geometry.destination.dx).toBe(-28)
+    expect(geometry.destination.dy).toBe(-112)
+  })
+
+  it('视野半径按地块 × 20 × 预览缩放，圆心始终在 Canvas 单位原点（不随精灵偏移）', () => {
+    const recipe = parseGraphicsRecipe('[core]\nfogOfWarSightRange: 15\n[graphics]\nimageScale: .5\nimage_offsetX: 4\nimage_offsetY: -2\n')
+    const sight = computeSightGeometry(recipe, 560, 420, 1)!
+    expect(sight.radius).toBe(600)
+    expect(sight.cx).toBe(280)
+    expect(sight.cy).toBe(210)
+    expect(sight.tileCount).toBe(15)
+  })
+
+  it('视野非法值不绘制，超大值安全钳制且不产生 NaN', () => {
+    const invalid = parseGraphicsRecipe('[core]\nfogOfWarSightRange: self.foo()\n[graphics]\n')
+    expect(computeSightGeometry(invalid, 560, 420, 1)).toBeNull()
+    const huge = parseGraphicsRecipe('[core]\nfogOfWarSightRange: 999999\n[graphics]\n')
+    const sight = computeSightGeometry(huge, 560, 420, 1)!
+    expect(Number.isFinite(sight.radius)).toBe(true)
+    expect(sight.clipped).toBe(true)
   })
 })
 

@@ -13,6 +13,7 @@ import type { EditorView } from '@codemirror/view'
 import type { ValueTypeInfo } from '../../services/codeData'
 import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhToEnDict, getZhToEnDict, loadCodeData, resolveValueZhToEn, versionNameToNumber, zhToEnKeySegments } from '../../services/codeData'
 import { classifyLine } from './rustLanguage'
+import { findKeyValueSeparator, splitTopLevelConfigValue } from '../../services/configSyntax'
 import { runSemanticChecks, semanticIssuesToDiagnostics, type CustomRule } from './semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from './semanticChecks/registry'
 import { loadProjectRuleSets } from './semanticChecks/customRules'
@@ -31,24 +32,8 @@ const SPAWN_UNITS_PARAMS = new Set([
   'offsetheight', 'offsetrandomdir', 'offsetdir', 'addresources', 'spawnsource', 'copywaypointsfrom',
 ])
 
-/** 按逗号分段（括号深度内的逗号不算分隔；spawnUnits 参数值可含函数调用嵌套） */
-function splitTopLevel(value: string): string[] {
-  const segs: string[] = []
-  let depth = 0
-  let cur = ''
-  for (const ch of value) {
-    if (ch === '(') depth++
-    else if (ch === ')') depth = Math.max(0, depth - 1)
-    if (ch === ',' && depth === 0) {
-      segs.push(cur)
-      cur = ''
-      continue
-    }
-    cur += ch
-  }
-  segs.push(cur)
-  return segs
-}
+/** 按顶层逗号分段；括号内逗号不算分隔。 */
+const splitTopLevel = splitTopLevelConfigValue
 
 /**
  * spawnUnits 值结构校验（引擎 ci.java:55-80）：
@@ -249,8 +234,8 @@ export function validateValue(
     // 逗号/竖线分隔的多值列表（如 explodeEffect: a, CUSTOM:b；price: 500|100）：
     // 引擎列表读取器按逗号或竖线分段（d.b.a: str.split(",|\\|")），
     // 任一元素合法即放行
-    if (/[,|]/.test(trimmed)) {
-      const parts = trimmed.split(/[,|]/).map((s) => s.trim()).filter(Boolean)
+    if (/[,|，]/.test(trimmed)) {
+      const parts = splitTopLevelConfigValue(trimmed).flatMap((part) => part.split('|')).map((s) => s.trim()).filter(Boolean)
       if (parts.length > 1 && parts.some((p) => re.test(p) || (reCI?.test(p) ?? false))) return null
     }
   }
@@ -317,11 +302,8 @@ export function lintIniText(
       // 值合法性
       const err = validateValue(classified.key, classified.value, data)
       if (err) {
-        // 定位值起始（: 与 = 都认，与 classifyLine 的键值判定一致；取先出现的分隔符，
-        // 否则 = 分隔行 colon=-1 会把整个键名划上波浪线）
-        const colon = line.indexOf(':')
-        const eq = line.indexOf('=')
-        const sep = colon < 0 ? eq : eq < 0 ? colon : Math.min(colon, eq)
+        // 定位值起始，与 classifyLine 的 ASCII/中文冒号和等号判定一致。
+        const sep = findKeyValueSeparator(line)
         const from = lineStart + sep + 1
         diagnostics.push({ from, to: lineStart + line.length, message: err, severity: 'error' })
       }
@@ -378,7 +360,7 @@ export function semanticInputContent(
 ): string {
   if ((!tracker || tracker.size === 0) && (!logicIdentifiers || logicIdentifiers.size === 0)) return content
   return content.split('\n').map((line) => {
-    const kv = /^(\s*)([^:=]*?)(\s*)([:=])(.*)$/.exec(line)
+    const kv = /^(\s*)([^:=：]*?)(\s*)([:=：])(.*?)$/.exec(line)
     if (!kv) return line
     const [, indent, keyRaw, ws, separator, value] = kv
     const trimmedKey = keyRaw.trim()

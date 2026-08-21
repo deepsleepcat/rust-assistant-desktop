@@ -7,6 +7,7 @@ import fs from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { assertNoLinkEscape, isPathInside, normalizePath } from './paths'
+import { splitTopLevelConfigValue } from '../src/services/configSyntax'
 import { checkMod, escapeIniComment, isExcluded } from './modTools'
 
 const execFileAsync = promisify(execFile)
@@ -374,11 +375,11 @@ export async function preflightCheck(projectRoot: string): Promise<PreflightResu
     const rel = path.relative(root, file).replace(/\\/g, '/')
     // 键名排除冒号/换行/#（m 标志下 [^:] 会跨行吞掉节名行，导致键名错乱）；
     // 分隔符 : 与 = 都认（引擎两种写法，真实模组混用）
-    const kvRe = /^([^:\n#][^:\n]*?)\s*(?::|=)\s*(.*)$/gm
+    const kvRe = /^([^:\n#：][^:\n：]*?)\s*(?::|：|=)\s*(.*?)$/gm
     for (const m of content.matchAll(kvRe)) {
       const key = m[1].trim().toLowerCase()
       if (!RESOURCE_REF_KEYS.has(key)) continue
-      for (const raw of m[2].split(',')) {
+      for (const raw of splitTopLevelConfigValue(m[2])) {
         // 值清洗（与编辑器 imagePathFromLine 对齐）：行内注释/引号/CUSTOM:/ROOT: 前缀
         let ref = raw.trim().replace(/[ \t]+#.*$/, '').replace(/^["']|["']$/g, '')
         if (!ref) continue

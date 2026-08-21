@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, clamp, sanitizeSettings } from '../src/utils/settings'
+import { DEFAULT_COMMUNITY_ENDPOINT } from '../src/services/communityApi'
 import type { AppSettings } from '../src/types/domain'
 
 describe('设置清洗', () => {
@@ -111,5 +112,14 @@ describe('设置清洗', () => {
     expect(sanitizeSettings({ layout: 'oops' }).layout).toEqual(DEFAULT_SETTINGS.layout)
     expect(sanitizeSettings({ layout: [1, 2] }).layout).toEqual(DEFAULT_SETTINGS.layout)
     expect(sanitizeSettings({ layout: 42 }).layout).toEqual(DEFAULT_SETTINGS.layout)
+  })
+
+  it('社区服务器设置保留合法地址并清洗令牌，非法地址回退默认', () => {
+    expect(DEFAULT_SETTINGS.ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
+    const valid = sanitizeSettings({ ai: { communityEndpoint: `${DEFAULT_COMMUNITY_ENDPOINT}///`, communityToken: '  sk-test  ' } })
+    expect(valid.ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
+    expect(valid.ai.communityToken).toBe('sk-test')
+    expect(sanitizeSettings({ ai: { communityEndpoint: 'file:///secret', communityToken: 123 } }).ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
+    expect(sanitizeSettings({ ai: { communityToken: 'x'.repeat(600) } }).ai.communityToken).toHaveLength(500)
   })
 })

@@ -7,6 +7,7 @@
  * - 翻译开关切换基于 original 重新生成，不覆盖用户编辑；
  * - 纯函数实现，词典由调用方注入，方便测试。
  */
+import { KEY_VALUE_RE, findKeyValueSeparator, normalizeKeyValueSeparators } from './configSyntax'
 
 export interface TranslationDict {
   enToZh: Map<string, string>
@@ -53,20 +54,33 @@ export type TranslationTracker = Map<string, string>
  */
 export function enToZh(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
   const translateLine = (line: string): string => {
-    const kv = /^(\s*)([^:=]*?)(\s*)([:=])(.*)$/.exec(line)
-    if (!kv) return translateSelfIdentifiers(translateWords(line, dict, tracker), dict, tracker)
-    const [, indent, keyRaw, ws, separator, rawValue] = kv
+    const trimmed = line.trimStart()
+    if (trimmed.startsWith('#')) return line
+    if (trimmed.startsWith('[')) {
+      const close = line.indexOf(']')
+      if (close >= 0) return translateWords(line.slice(0, close + 1), dict, tracker) + line.slice(close + 1)
+    }
+    const sepIndex = findKeyValueSeparator(line)
+    if (sepIndex < 0) return translateSelfIdentifiers(translateWords(line, dict, tracker), dict, tracker)
+    const prefix = line.slice(0, sepIndex)
+    const keyParts = /^(\s*)(.*?)(\s*)$/.exec(prefix)!
+    const [, indent, keyRaw, ws] = keyParts
+    const separator = line[sepIndex]
+    const rawValue = line.slice(sepIndex + 1)
+    const inlineComment = /([ \t]+#.*?)(\r?)$/.exec(rawValue)
+    const valuePart = inlineComment ? rawValue.slice(0, inlineComment.index) : rawValue
+    const commentPart = inlineComment ? inlineComment[1] + inlineComment[2] : ''
     const key = keyRaw.trim().toLowerCase()
     const translatedKey = translateWords(keyRaw, dict, tracker)
     if (dict.preserveValueKeys?.has(key) || dict.isPreserveValueKey?.(keyRaw.trim())) {
-      return indent + translatedKey + ws + separator + rawValue
+      return indent + translatedKey + ws + separator + valuePart + commentPart
     }
     const value = dict.logicValueKeys?.has(key)
-      ? translateLogicValue(rawValue, dict, tracker)
-      : translateWords(rawValue, dict, tracker)
-    return indent + translatedKey + ws + separator + value
+      ? translateLogicValue(valuePart, dict, tracker)
+      : translateWords(valuePart, dict, tracker)
+    return indent + translatedKey + ws + separator + value + commentPart
   }
-  return text.split('\n').map(translateLine).join('\n')
+  return text.split(/(\r?\n)/).map((part) => part === '\n' || part === '\r\n' ? part : translateLine(part)).join('')
 }
 
 function translateLogicValue(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
@@ -88,7 +102,8 @@ function translateSelfIdentifiers(text: string, dict: TranslationDict, tracker?:
   const map = dict.logicIdentifierEnToZh
   if (!map || map.size === 0) return text
   return text.replace(/self\.([a-zA-Z_][a-zA-Z0-9_]*)/g, (full, name: string) => {
-    const zh = map.get(name)
+    // 大小写不敏感查找：用户可能写 self.HP / self.hp / self.Hp
+    const zh = map.get(name) ?? map.get(name.toLowerCase()) ?? [...map.entries()].find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1]
     if (!zh) return full
     const shown = `self.${zh}`
     if (tracker) {
@@ -199,15 +214,15 @@ function lookupBase(base: string, dict: TranslationDict): string {
 export function zhToEn(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
   if (!tracker) {
     // 非追踪模式：纯词典回译（lint/表单回译查询用）
-    return dictFallback(text, dict, dict.zhToEn)
+    return normalizeKeyValueSeparators(dictFallback(text, dict, dict.zhToEn))
   }
   // 追踪模式：按行处理（键位置与值位置的回译规则不同）；
   // 空 tracker（本次打开没翻译出任何词）也要走追踪语义——值位置全保留，
   // 不能回落词典回译（会把用户中文数据改写成英文）
-  return text
-    .split('\n')
-    .map((line) => zhToEnLine(line, dict, tracker))
-    .join('\n')
+  return normalizeKeyValueSeparators(text
+    .split(/(\r?\n)/)
+    .map((part) => part === '\n' || part === '\r\n' ? part : zhToEnLine(part, dict, tracker))
+    .join(''))
 }
 
 /** 追踪模式单行回译：认 : 与 = 分隔符（与引擎解析一致）；
@@ -225,7 +240,10 @@ function restoreSectionLine(line: string, dict: TranslationDict, tracker: Transl
 }
 
 function zhToEnLine(line: string, dict: TranslationDict, tracker: TranslationTracker): string {
-  const kv = /^(\s*)([^:=]*?)(\s*)([:=])(.*)$/.exec(line)
+  const trimmed = line.trimStart()
+  if (trimmed.startsWith('#')) return line
+  if (trimmed.startsWith('[')) return restoreSectionLine(line, dict, tracker)
+  const kv = KEY_VALUE_RE.exec(line)
   if (!kv) {
     // 节头使用独立节名词典兜底；普通文本仍只按 tracker 精确回译。
     if (line.trimStart().startsWith('[')) return restoreSectionLine(line, dict, tracker)

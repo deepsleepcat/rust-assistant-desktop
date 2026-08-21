@@ -49,6 +49,8 @@ export interface GraphicsRecipe {
   animations: { idle: AnimationStateConfig; moving: AnimationStateConfig; attack: AnimationStateConfig }
   /** 多向动画（animation_direction_*；无配置时不启用） */
   direction?: DirectionConfig
+  /** 战争迷雾视野地块数；缺省 15，动态/非法值为 null（不绘制） */
+  fogOfWarSightRange: number | null
 }
 
 /** 队伍着色模式（官方 teamColoringMode：pureGreen=纯绿、hueAdd=色相叠加、hueShift=色相偏移） */
@@ -83,9 +85,16 @@ export interface DirectionConfig {
   starting: number
 }
 
-/** 炮塔信息（位置/图像覆盖），来自 [turret_N] 节 */
+/** 炮塔信息（位置/图像覆盖），来自 [turret_N]/[turret_NAME] 节 */
 export interface PreviewTurret {
+  /** 数字节的数值后缀；命名节为 -1，避免 NaN 参与排序 */
   index: number
+  /** 稳定诊断/未来 copyFrom 与 anchor 支持用的节标识 */
+  id: string
+  /** 命名节的名称（数字节为空） */
+  name?: string
+  /** 原文出现顺序，仅用于命名节稳定排序 */
+  sourceOrder: number
   x: number
   y: number
   /** 节内 image 覆盖（可选） */
@@ -112,9 +121,29 @@ export interface DrawItem {
   scale: number
   /** 透明度（阴影 AUTO 用） */
   alpha: number
+  /** 源矩形策略：主体/自动阴影切帧，其余默认按各自整图绘制 */
+  sourceMode?: 'bodyFrames' | 'full'
   /** 缺图时显示占位 */
   placeholder: string
 }
+
+export interface DrawGeometry {
+  source: { sx: number; sy: number; sw: number; sh: number }
+  destination: { dx: number; dy: number; dw: number; dh: number }
+}
+
+export interface SightGeometry {
+  cx: number
+  cy: number
+  /** 已按画布上限钳制的半径（Canvas 像素） */
+  radius: number
+  /** 原始半径是否超出安全绘制上限/画布可视范围 */
+  clipped: boolean
+  tileCount: number
+}
+
+const SIGHT_TILE_PIXELS = 20
+const PREVIEW_BASE_SCALE = 2
 
 /** 图像引用命名空间（与运行前检查/官方文档一致） */
 export type ImageNamespace = 'local' | 'root' | 'custom' | 'core' | 'shared'
@@ -198,6 +227,7 @@ export function parseGraphicsRecipe(content: string, zhToEn?: (s: string) => str
     shadowOffsetX: 0,
     shadowOffsetY: 0,
     teamColoringMode: 'disabled',
+    fogOfWarSightRange: 15,
     animations: {
       idle: { speed: 1, pingPong: false },
       moving: { speed: 1, pingPong: false },
@@ -205,6 +235,15 @@ export function parseGraphicsRecipe(content: string, zhToEn?: (s: string) => str
     },
   }
   const ini = parseIni(content)
+  // 视野属于 [core]，不能因为 graphics 节缺失或字段顺序而静默丢失。
+  const core = ini.sections.find((s) => sectionEnName(s, zhToEn) === 'core')
+  if (core) {
+    const sight = core.kvs.find((kv) => toEnKey(kv.key, zhToEn).toLowerCase() === 'fogofwarsightrange')
+    if (sight) {
+      const parsed = toNumber(sight.value.trim())
+      recipe.fogOfWarSightRange = parsed !== null && Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+    }
+  }
   const section = ini.sections.find((s) => sectionEnName(s, zhToEn) === 'graphics')
   if (!section) return recipe
   // 动画状态解析 helper：animation_idle_start → (idle, start)；animation_TYPE_* 同构
@@ -234,9 +273,11 @@ export function parseGraphicsRecipe(content: string, zhToEn?: (s: string) => str
         setNum((n) => (recipe.imageScale = n))
         break
       case 'imageoffsetx':
+      case 'image_offsetx':
         setNum((n) => (recipe.imageOffsetX = n))
         break
       case 'imageoffsety':
+      case 'image_offsety':
         setNum((n) => (recipe.imageOffsetY = n))
         break
       case 'total_frames':
@@ -313,11 +354,22 @@ export function parseGraphicsRecipe(content: string, zhToEn?: (s: string) => str
 export function parsePreviewTurrets(content: string, zhToEn?: (s: string) => string | undefined): PreviewTurret[] {
   const ini = parseIni(content)
   const turrets: PreviewTurret[] = []
-  for (const section of ini.sections) {
+  for (const [sourceOrder, section] of ini.sections.entries()) {
     const secLower = sectionEnName(section, zhToEn)
-    const m = /^turret_(\d+)$/.exec(secLower)
-    if (!m) continue
-    const t: PreviewTurret = { index: Number(m[1]), x: 0, y: 0 }
+    const match = /^turret_(.+)$/.exec(secLower)
+    if (!match) continue
+    const suffix = match[1]
+    // sectionEnName 已完成节名回译；只需判断后缀非空——引擎不限制命名后缀字符集
+    if (!suffix) continue
+    const numeric = /^\d+$/.test(suffix)
+    const t: PreviewTurret = {
+      index: numeric ? Number(suffix) : -1,
+      id: `turret_${suffix}`,
+      ...(numeric ? {} : { name: suffix }),
+      sourceOrder,
+      x: 0,
+      y: 0,
+    }
     for (const kv of section.kvs) {
       const key = toEnKey(kv.key, zhToEn).toLowerCase()
       const num = toNumber(kv.value.trim())
@@ -327,7 +379,12 @@ export function parsePreviewTurrets(content: string, zhToEn?: (s: string) => str
     }
     turrets.push(t)
   }
-  return turrets.sort((a, b) => a.index - b.index)
+  return turrets.sort((a, b) => {
+    if (a.index >= 0 && b.index >= 0) return a.index - b.index
+    if (a.index >= 0) return -1
+    if (b.index >= 0) return 1
+    return a.sourceOrder - b.sourceOrder
+  })
 }
 
 /** 帧切片：frame_width 优先，否则 total_frames；非法值防御为单帧。
@@ -450,6 +507,7 @@ export function computeDrawLayout(recipe: GraphicsRecipe, turrets: PreviewTurret
       cy: recipe.shadowOffsetY * bodyScale,
       scale: bodyScale,
       alpha: 0.5,
+      sourceMode: isAuto ? 'bodyFrames' : 'full',
       placeholder: '阴影图像',
     })
   }
@@ -462,6 +520,7 @@ export function computeDrawLayout(recipe: GraphicsRecipe, turrets: PreviewTurret
     cy: recipe.imageOffsetY * bodyScale,
     scale: bodyScale,
     alpha: 1,
+    sourceMode: 'bodyFrames',
     placeholder: recipe.image && isLocalImageRef(recipe.image) ? recipe.image : '主体图像',
   })
 
@@ -478,6 +537,7 @@ export function computeDrawLayout(recipe: GraphicsRecipe, turrets: PreviewTurret
       cy: t.y,
       scale: recipe.turretImageScale,
       alpha: 1,
+      sourceMode: 'full',
       placeholder: image,
     })
   }
@@ -496,4 +556,75 @@ export function computeDrawLayout(recipe: GraphicsRecipe, turrets: PreviewTurret
   }
 
   return items
+}
+
+/**
+ * 计算单个绘制项的源矩形与目标矩形。
+ * 主体/自动阴影使用主体帧信息；炮塔、独立阴影和残骸始终使用自身整图，
+ * 防止把主体图集的 frameW/frameH 套到尺寸不同的炮塔上。
+ */
+export function computeDrawGeometry(
+  item: DrawItem,
+  imageW: number,
+  imageH: number,
+  frameInfo: FrameInfo,
+  frameIndex: number,
+  globalScale: number,
+  sourceRect?: { sx: number; sy: number; sw: number; sh: number },
+): DrawGeometry {
+  const safeW = imageW > 0 && Number.isFinite(imageW) ? imageW : 1
+  const safeH = imageH > 0 && Number.isFinite(imageH) ? imageH : 1
+  const source = sourceRect ?? (() => {
+    if (item.sourceMode !== 'bodyFrames') return { sx: 0, sy: 0, sw: safeW, sh: safeH }
+    if (frameInfo.multiFile) return { sx: 0, sy: 0, sw: safeW, sh: safeH }
+    const sw = frameInfo.frameW > 0 && Number.isFinite(frameInfo.frameW) ? frameInfo.frameW : safeW
+    const sh = frameInfo.frameH > 0 && Number.isFinite(frameInfo.frameH) ? frameInfo.frameH : safeH
+    const count = Math.max(1, frameInfo.count)
+    const f = Math.max(0, Math.min(Math.floor(frameIndex), count - 1))
+    return { sx: f * sw, sy: 0, sw, sh }
+  })()
+  const sx = Math.max(0, Math.min(source.sx, safeW))
+  const sy = Math.max(0, Math.min(source.sy, safeH))
+  const sw = Math.max(0, Math.min(source.sw, safeW - sx))
+  const sh = Math.max(0, Math.min(source.sh, safeH - sy))
+  const multiplier = Number.isFinite(globalScale) && globalScale > 0 ? globalScale : 1
+  const dw = sw * item.scale * multiplier
+  const dh = sh * item.scale * multiplier
+  return {
+    source: { sx, sy, sw, sh },
+    destination: {
+      dx: item.cx * multiplier - dw / 2,
+      dy: item.cy * multiplier - dh / 2,
+      dw,
+      dh,
+    },
+  }
+}
+
+/**
+ * 视野圆几何：字段单位是地块，仓库资料确认 1 地块 = 20 游戏像素。
+ * 视野使用与单位图像相同的预览原点（含 image offset），超大半径只做安全钳制，
+ * Canvas 自身仍会裁剪画布外部分；不读取 maxAttackRange/limitingRange/radius。
+ */
+export function computeSightGeometry(
+  recipe: GraphicsRecipe,
+  canvasW: number,
+  canvasH: number,
+  zoom: number,
+): SightGeometry | null {
+  const tiles = recipe.fogOfWarSightRange
+  if (tiles === null || !Number.isFinite(tiles) || tiles < 0) return null
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1
+  const scale = PREVIEW_BASE_SCALE * safeZoom
+  const rawRadius = tiles * SIGHT_TILE_PIXELS * scale
+  const maxRadius = Math.hypot(Math.max(0, canvasW), Math.max(0, canvasH))
+  const radius = Math.min(rawRadius, maxRadius)
+  return {
+    // 视野以单位世界原点为中心，不随精灵偏移
+    cx: canvasW / 2,
+    cy: canvasH / 2,
+    radius,
+    clipped: radius !== rawRadius,
+    tileCount: tiles,
+  }
 }

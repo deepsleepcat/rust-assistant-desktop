@@ -24,6 +24,7 @@ import { ALL_SEMANTIC_CHECKERS } from '../editor/semanticChecks/registry'
 import { loadProjectRuleSets, type ProjectRuleSet } from '../editor/semanticChecks/customRules'
 import { parseStoredUsage, summarizeUsage, type AiUsageSummary } from '../ai/usageStats'
 import { getDataVersionInfo, getGameVersions, loadCodeData, reloadCodeData, type DataVersionInfo } from '../../services/codeData'
+import { createCommunityApi, type CommunityUser } from '../../services/communityApi'
 
 const GRADIENT_PRESETS = [
   { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
@@ -44,6 +45,13 @@ export function SettingsModal() {
   const [tab, setTab] = useState<'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'avatar' | 'game' | 'coming' | 'about'>('appearance')
   const [aiCheck, setAiCheck] = useState<string | null>(null)
   const [aiChecking, setAiChecking] = useState(false)
+  const [communityCheck, setCommunityCheck] = useState<string | null>(null)
+  const [communityChecking, setCommunityChecking] = useState(false)
+  const [communityUser, setCommunityUser] = useState<CommunityUser | null>(null)
+  const [communityAuthBusy, setCommunityAuthBusy] = useState(false)
+  const [communityAuthMode, setCommunityAuthMode] = useState<'login' | 'register'>('login')
+  const [communityUsername, setCommunityUsername] = useState('')
+  const [communityPassword, setCommunityPassword] = useState('')
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   // M8 头像裁切：待裁剪的原图 data URL（null = 未在裁切）
   const [cropSource, setCropSource] = useState<string | null>(null)
@@ -832,15 +840,19 @@ export function SettingsModal() {
               <div className="setting-row">
                 <span className="label">
                   AI 提供者
-                  <div className="desc">M23：客户端只内置 DeepSeek；其他模型由未来的社区后端提供（服务未上线）</div>
+                  <div className="desc">AI 对话当前仅支持 DeepSeek；社区服务器用于帖子和账号，不会自动作为 AI 提供者</div>
                 </span>
                 <div className="seg-group">
                   <button className={settings.ai.provider === 'deepseek' ? 'active' : ''} onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
                     DeepSeek
                   </button>
-                  {/* M23：切换入口禁用——多模型走服务器社区后端，不在客户端接入 */}
-                  <button className="btn" disabled title="社区后端服务未上线（本地客户端不接入其他模型供应商）">
-                    社区后端（服务未上线）
+                  <button
+                    className={settings.ai.provider === 'community' ? 'btn primary' : 'btn'}
+                    disabled={settings.ai.provider !== 'community'}
+                    title="社区服务器当前只提供社区内容 API，AI 对话尚未接入"
+                    onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}
+                  >
+                    {settings.ai.provider === 'community' ? '切换回 DeepSeek' : '社区后端（AI 未接入）'}
                   </button>
                 </div>
               </div>
@@ -898,18 +910,93 @@ export function SettingsModal() {
                 </>
               )}
 
-              {/* M23：社区 AI 入口占位——可见但明确「服务未上线」，不报错不假死 */}
-              {settings.ai.provider === 'community' && (
-                <div className="setting-row">
-                  <span className="label">
-                    社区后端
-                    <div className="desc">社区 AI 服务未上线；届时自动接入（本地无需配置 API Key）。当前请切换回 DeepSeek 使用</div>
-                  </span>
-                  <button className="btn primary" onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
-                    切换回 DeepSeek
-                  </button>
-                </div>
-              )}
+              <div className="setting-divider" />
+              <div className="setting-title">社区服务器</div>
+              <div className="setting-row">
+                <span className="label">
+                  服务器地址
+                  <div className="desc">社区帖子、账号和互动服务；只接受 http:// 或 https:// 地址</div>
+                </span>
+                <input
+                  type="url"
+                  value={settings.ai.communityEndpoint}
+                  onChange={(e) => updateSettings({ ai: { ...settings.ai, communityEndpoint: e.target.value } })}
+                  style={{ width: 320 }}
+                  spellCheck={false}
+                />
+              </div>
+              <div className="setting-row">
+                <span className="label">
+                  Bearer 令牌
+                  <div className="desc">登录后自动保存；仅保存在本机，不会显示完整令牌</div>
+                </span>
+                <input
+                  type="password"
+                  value={settings.ai.communityToken}
+                  onChange={(e) => updateSettings({ ai: { ...settings.ai, communityToken: e.target.value } })}
+                  style={{ width: 220 }}
+                  placeholder="sk-..."
+                  autoComplete="off"
+                />
+              </div>
+              <div className="setting-row">
+                <span className="label">服务器连接</span>
+                <button
+                  className="btn"
+                  disabled={communityChecking}
+                  onClick={async () => {
+                    setCommunityChecking(true)
+                    setCommunityCheck(null)
+                    try {
+                      const result = await createCommunityApi(settings.ai.communityEndpoint).health()
+                      setCommunityCheck(`✓ 在线 · ${result.version ?? '未知版本'}`)
+                    } catch (err) {
+                      setCommunityCheck(`✗ ${err instanceof Error ? err.message : String(err)}`)
+                    } finally {
+                      setCommunityChecking(false)
+                    }
+                  }}
+                >
+                  {communityChecking ? '测试中…' : '测试连接'}
+                </button>
+                {communityCheck && <span style={{ fontSize: 12, color: communityCheck.startsWith('✓') ? 'var(--text-secondary)' : 'var(--danger)' }}>{communityCheck}</span>}
+              </div>
+              <div className="setting-row">
+                <span className="label">
+                  {communityAuthMode === 'login' ? '登录社区账号' : '注册社区账号'}
+                  <div className="desc">密码只用于本次请求，不会写入设置</div>
+                </span>
+                <input aria-label="社区用户名" value={communityUsername} onChange={(e) => setCommunityUsername(e.target.value)} placeholder="用户名" style={{ width: 120 }} />
+                <input aria-label="社区密码" type="password" value={communityPassword} onChange={(e) => setCommunityPassword(e.target.value)} placeholder="密码" autoComplete="off" style={{ width: 120 }} />
+                <button
+                  className="btn primary"
+                  disabled={communityAuthBusy || !communityUsername.trim() || !communityPassword}
+                  onClick={async () => {
+                    setCommunityAuthBusy(true)
+                    setCommunityCheck(null)
+                    try {
+                      const api = createCommunityApi(settings.ai.communityEndpoint)
+                      const result = communityAuthMode === 'login'
+                        ? await api.login(communityUsername.trim(), communityPassword)
+                        : await api.register(communityUsername.trim(), communityPassword)
+                      updateSettings({ ai: { ...settings.ai, communityToken: result.token } })
+                      setCommunityUser(result.user)
+                      setCommunityPassword('')
+                      setCommunityCheck(`✓ 已${communityAuthMode === 'login' ? '登录' : '注册'}：${result.user.display_name ?? result.user.username}`)
+                    } catch (err) {
+                      setCommunityCheck(`✗ ${err instanceof Error ? err.message : String(err)}`)
+                    } finally {
+                      setCommunityAuthBusy(false)
+                    }
+                  }}
+                >
+                  {communityAuthBusy ? '处理中…' : communityAuthMode === 'login' ? '登录' : '注册'}
+                </button>
+                <button className="btn" onClick={() => setCommunityAuthMode((m) => m === 'login' ? 'register' : 'login')}>
+                  切换为{communityAuthMode === 'login' ? '注册' : '登录'}
+                </button>
+              </div>
+              {communityUser && <div className="local-note">当前账号：{communityUser.display_name ?? communityUser.username} · 令牌已保存</div>}
 
               <div className="setting-divider" />
               <div className="setting-title">本地 AI 用量统计（M23）</div>

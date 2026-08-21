@@ -73,6 +73,21 @@ export interface StoreApi {
   set(key: string, value: unknown): Promise<void>
 }
 
+/** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */
+export interface CommunityRequest {
+  url: string
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  headers?: Record<string, string>
+  body?: string
+  upload?: { name: string; type: string; bytes: ArrayBuffer }
+}
+
+export interface CommunityResponse {
+  status: number
+  headers: Record<string, string>
+  body: ArrayBuffer
+}
+
 export interface BridgeApi {
   platform: string
   version: string
@@ -89,6 +104,9 @@ export interface BridgeApi {
     confirmClose(): Promise<boolean>
   }
   store: StoreApi
+  community?: {
+    request(request: CommunityRequest): Promise<CommunityResponse>
+  }
   project: {
     openFolderDialog(): Promise<OpenedProject | null>
     openImageDialog(): Promise<string | null>

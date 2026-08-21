@@ -4,6 +4,7 @@
  */
 import type { AppSettings, BackgroundKind, FileSort, ThemeMode, WorkbenchLayoutSettings } from '../types/domain'
 import type { AiProviderType } from '../types/ai'
+import { DEFAULT_COMMUNITY_ENDPOINT } from '../services/communityApi'
 import { defaultSemanticCheckerConfig, sanitizeCheckerConfig } from '../features/editor/semanticChecks/registry'
 import { INNER_RATIO_MAX, INNER_RATIO_MIN, WORKBENCH_CONSTRAINTS } from './layout'
 
@@ -75,7 +76,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     provider: 'deepseek',
     deepseekApiKey: '',
     deepseekModel: 'deepseek-v4-flash',
-    communityEndpoint: '',
+    communityEndpoint: DEFAULT_COMMUNITY_ENDPOINT,
     communityToken: '',
     communityModel: '',
   },
@@ -190,9 +191,12 @@ function sanitizeAi(raw: unknown): AppSettings['ai'] {
     provider: AI_PROVIDERS.includes(input.provider as AiProviderType) ? (input.provider as AiProviderType) : DEFAULT_SETTINGS.ai.provider,
     deepseekApiKey: typeof input.deepseekApiKey === 'string' ? input.deepseekApiKey : '',
     deepseekModel: typeof input.deepseekModel === 'string' && input.deepseekModel ? migrateModel(input.deepseekModel) : DEFAULT_SETTINGS.ai.deepseekModel,
-    communityEndpoint: typeof input.communityEndpoint === 'string' ? input.communityEndpoint : '',
-    communityToken: typeof input.communityToken === 'string' ? input.communityToken : '',
-    communityModel: typeof input.communityModel === 'string' ? input.communityModel : '',
+    communityEndpoint:
+      typeof input.communityEndpoint === 'string' && /^https?:\/\//i.test(input.communityEndpoint.trim())
+        ? input.communityEndpoint.trim().replace(/\/+$/, '').slice(0, 500)
+        : DEFAULT_SETTINGS.ai.communityEndpoint,
+    communityToken: typeof input.communityToken === 'string' ? input.communityToken.trim().slice(0, 500) : '',
+    communityModel: typeof input.communityModel === 'string' ? input.communityModel.trim().slice(0, 120) : '',
   }
 }
 

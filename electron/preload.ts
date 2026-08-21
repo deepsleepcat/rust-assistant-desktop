@@ -29,6 +29,9 @@ const api: BridgeApi = {
     get: (key: string) => ipcRenderer.invoke('store:get', key),
     set: (key: string, value: unknown) => ipcRenderer.invoke('store:set', key, value),
   },
+  community: {
+    request: (request) => ipcRenderer.invoke('community:request', request),
+  },
   project: {
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
     openImageDialog: () => ipcRenderer.invoke('dialog:openImage'),

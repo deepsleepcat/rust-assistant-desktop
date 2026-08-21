@@ -96,6 +96,21 @@ describe('翻译服务', () => {
     expect(zhToEn('价格 = 300', dict())).toBe('price = 300')
   })
 
+  it('全角冒号按键值分隔解析并在回写时规范为 ASCII 冒号', () => {
+    const tracker = new Map<string, string>()
+    const shown = enToZh('name：rifleman', dict(), tracker)
+    expect(shown).toBe('名称：步枪兵')
+    expect(zhToEn(shown, dict(), tracker)).toBe('name:rifleman')
+  })
+
+  it('注释和 CRLF 回译保持结构与行尾不变', () => {
+    const tracker = new Map<string, string>()
+    const source = '# name: rifleman\r\nname：rifleman # health: 100\r\n[core] # note：keep\r\n'
+    const shown = enToZh(source, dict(), tracker)
+    expect(shown).toBe('# name: rifleman\r\n名称：步枪兵 # health: 100\r\n[core] # note：keep\r\n')
+    expect(zhToEn(shown, dict(), tracker)).toBe('# name: rifleman\r\nname:rifleman # health: 100\r\n[core] # note：keep\r\n')
+  })
+
   it('未收录的中文保持原样', () => {
     expect(zhToEn('自定义内容 = 1', dict())).toBe('自定义内容 = 1')
   })

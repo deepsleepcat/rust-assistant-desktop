@@ -9,6 +9,15 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    // 本地预览通过同源代理访问已部署社区服务，避免部署端临时缺失 CORS 响应头时
+    // 误把真实社区降级成示例数据；生产 Electron 使用受限 IPC 代理。
+    proxy: {
+      '/community-api': {
+        target: 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/community-api/, ''),
+      },
+    },
   },
   build: {
     outDir: 'dist',

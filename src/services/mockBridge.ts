@@ -337,7 +337,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     },
     project: {
       openFolderDialog: async () => ({ rootPath: MOCK_PROJECT_ROOT, name: '我的第一个模组' }),
-      openImageDialog: async () => MOCK_IMAGE_DATA_URL,
+      openImageDialog: async () => `${MOCK_PROJECT_ROOT}\\units\\tank\\tank.png`,
       saveText: async () => ({ ok: false, message: '模拟环境：无法保存' }),
       registerRoots: async () => undefined,
       readDir: async (_root, dirPath) => listDir(dirPath),
@@ -374,7 +374,13 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         if (!dir || dir.kind !== 'dir') throw new Error('找不到要删除的项目')
         delete dir.children[parts[parts.length - 1]]
       },
-      readImageAsDataUrl: async (_root, _imagePath) => MOCK_IMAGE_DATA_URL,
+      readImageAsDataUrl: async (_root, imagePath) => {
+        const node = findNode(tree, relToRoot(imagePath))
+        if (!node || node.kind !== 'file') throw new Error('图片不存在：' + imagePath)
+        const ext = imagePath.split('.').pop()?.toLowerCase()
+        if (!['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext ?? '')) throw new Error('不是受支持的图片文件：' + imagePath)
+        return MOCK_IMAGE_DATA_URL
+      },
       readAudioAsDataUrl: async (_root, _audioPath) => 'data:audio/ogg;base64,T2dnUw==',
     },
     avatar: {

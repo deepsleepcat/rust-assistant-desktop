@@ -133,7 +133,12 @@ export interface WorkspaceStoreActions {
   reloadDirNode(path: string): Promise<void>
   toggleDir(path: string): void
   openFile(path: string): Promise<void>
-  updateTabContent(id: string, content: string): void
+  updateTabContent(id: string, content: string, options?: { history?: boolean }): void
+  /** 编辑器即时撤销/重做（每个标签独立，非持久化；只改变内存内容，不写盘） */
+  undoTab(id: string): void
+  redoTab(id: string): void
+  canUndoTab(id: string): boolean
+  canRedoTab(id: string): boolean
   /** 保存标签页：返回是否保存成功（外部修改拦截/失败时返回 false，调用方据此决定是否关闭标签）；
    * force=true 跳过外部修改检查（用户明确「覆盖保存」） */
   saveTab(id: string, opts?: { force?: boolean }): Promise<boolean>
