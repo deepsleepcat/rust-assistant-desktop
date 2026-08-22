@@ -38,6 +38,10 @@ jobs:
             exit 1
           fi
 
+      - name: 安装测试工具
+        shell: bash
+        run: python -m pip install openpyxl
+
       - name: 测试（单元测试全绿才出包）
         run: npx vitest run
 
