@@ -67,16 +67,22 @@ describe('getVersionDiff（真实数据）', () => {
     expect(diff.added.some((c) => c.code === 'updateUnitMemory')).toBe(false)
   })
 
-  it('1.12 → 1.15：新增 659 个字段（addVersion 2/3/4）', async () => {
+  it('1.12 → 1.15：新增 687 个字段（addVersion 2/3/4；M35 补齐 127 条无版本号后 +28）', async () => {
     await import('../src/services/codeData').then((m) => m.loadCodeData())
     const diff = getVersionDiff('1.12', '1.15')
-    expect(diff.added.length).toBe(659)
+    expect(diff.added.length).toBe(687)
   })
 
-  it('当前数据没有弃用字段（removeVersion 全部 -1）→ removed 为空', async () => {
+  it('M35 弃用标记：1.12 → 1.15-p10 移除 19 个官方废弃字段（turretSize/end 等）', async () => {
     await import('../src/services/codeData').then((m) => m.loadCodeData())
     const diff = getVersionDiff('1.12', '1.15-p10')
-    expect(diff.removed.length).toBe(0)
+    // 23 个标记中 start/scale_start/scale_end/animation_TYPE_pingPong 的 add>=2（1.13+ 引入）
+    // 不满足 add<=from（1.12=1），不计入；其余 19 个计入
+    expect(diff.removed.length).toBe(19)
+    expect(diff.removed.some((r) => r.code === 'turretSize')).toBe(true)
+    expect(diff.removed.some((r) => r.code === 'action_#_convertTo')).toBe(true)
+    expect(diff.removed.some((r) => r.code === 'end')).toBe(true)
+    expect(diff.removed.every((r) => r.version === 9)).toBe(true)
   })
 
   it('改版替代：outpostT1 → laserDefence（官方描述声明）', async () => {

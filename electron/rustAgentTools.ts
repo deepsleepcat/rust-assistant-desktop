@@ -481,7 +481,13 @@ interface CodeTableEntry {
   type: string
   section: string
 }
+interface AliasEntry {
+  alias: string
+  code: string
+}
 let codeTableCache: CodeTableEntry[] | null = null
+/** M35：字段别名缓存（旧字段名 → 现行 code；查询时把别名命中映射到目标字段） */
+let aliasTableCache: AliasEntry[] | null = null
 
 async function loadCodeTable(): Promise<CodeTableEntry[]> {
   if (codeTableCache) return codeTableCache
@@ -489,6 +495,24 @@ async function loadCodeTable(): Promise<CodeTableEntry[]> {
   const parsed = JSON.parse(raw.toString('utf8')) as { data?: CodeTableEntry[] }
   codeTableCache = parsed.data ?? []
   return codeTableCache
+}
+
+async function loadAliasTable(): Promise<AliasEntry[]> {
+  if (aliasTableCache) return aliasTableCache
+  const raw = await readPublicDataFile('aliases.json')
+  const parsed = JSON.parse(raw.toString('utf8')) as { data?: AliasEntry[] }
+  aliasTableCache = parsed.data ?? []
+  return aliasTableCache
+}
+
+/** 字段是否命中查询（code/translate/别名 任一命中；别名大小写不敏感） */
+async function codeEntryMatches(e: CodeTableEntry, q: string, rawQuery: string): Promise<boolean> {
+  if (e.code.toLowerCase().includes(q) || e.translate.includes(rawQuery)) return true
+  const target = e.code.toLowerCase()
+  for (const a of await loadAliasTable()) {
+    if (a.code.toLowerCase() === target && a.alias.toLowerCase().includes(q)) return true
+  }
+  return false
 }
 
 export function createCodeTableTool(): AgentTool {
@@ -502,7 +526,10 @@ export function createCodeTableTool(): AgentTool {
       try {
         const entries = await loadCodeTable()
         const q = String(p.query).trim().toLowerCase()
-        const matches = entries.filter((e) => e.code.toLowerCase().includes(q) || e.translate.includes(String(p.query).trim()))
+        const matches: CodeTableEntry[] = []
+        for (const e of entries) {
+          if (await codeEntryMatches(e, q, String(p.query).trim())) matches.push(e)
+        }
         const top = matches.slice(0, 10)
         return {
           content: [{
@@ -598,7 +625,7 @@ export function createQueryReferenceTool(): AgentTool {
       if (domain === 'all' || domain === 'code') {
         let count = 0
         for (const e of data.code) {
-          if (e.code.toLowerCase().includes(q) || e.translate.includes(p.query.trim())) {
+          if (await codeEntryMatches(e, q, p.query.trim())) {
             push(`[代码表] ${e.code}（${e.translate}）\n  类型: ${e.type} | 节: ${e.section}\n  ${e.description ?? ''}`)
             if (++count >= perSourceCap) break
           }

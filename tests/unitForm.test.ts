@@ -41,7 +41,7 @@ describe('parseUnitForm', () => {
       zhToEnSection: (k) => (k === '核心' ? 'core' : undefined),
       zhToEnValue: (k) => (k === '是' ? 'true' : undefined),
     })
-    expect(state['core']?.find((v) => v.key === 'name')?.value).toBe('true')
+    expect(state['core']?.find((v) => v.key === 'name')?.value).toBe('是')
     expect(state['core']?.find((v) => v.key === 'maxHp')?.value).toBe('800')
   })
 

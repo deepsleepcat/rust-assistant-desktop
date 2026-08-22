@@ -4,6 +4,7 @@
 输出分三类：①mod-info 专有字段 ②官方有中文可补 ③官方无中文（宏字段）。
 """
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,6 +18,25 @@ existing = {c["code"] for c in code["data"]}
 existing |= {w["en"] for w in trans["words"]}
 existing |= {s["code"] for s in sections["data"]}
 
+
+def is_covered(name: str) -> bool:
+    """判断官方具体语言/编号字段是否已被项目模板字段覆盖。"""
+    if name in existing:
+        return True
+    # 官方数据有时把语言后缀直接附在项目的模板键后面，
+    # 例如 displayText_{LANG} / builtFrom_{NUM}_tooltip → *_es。
+    base, separator, suffix = name.rpartition("_")
+    if separator and re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*", suffix) and base in existing:
+        return True
+    # 对真实编号字段（builtFrom_1_tooltip）按项目 {NUM} 模板覆盖。
+    for template in existing:
+        if "{" not in template:
+            continue
+        pattern = template.replace("{LANG}", r"[A-Za-z][A-Za-z0-9_-]*").replace("{NUM}", r"[0-9]+")
+        if re.fullmatch(pattern, name):
+            return True
+    return False
+
 # 官方字段 → 中文
 missing_with_zh = []
 missing_no_zh = []
@@ -29,7 +49,7 @@ for sec_file in sorted((OFFICIAL / "data" / "sections").glob("*.json")):
     sec_data = json.load(open(sec_file, encoding="utf-8"))
     for item in sec_data.get("data", []):
         name = item.get("name")
-        if not name or not isinstance(name, str) or name in existing:
+        if not name or not isinstance(name, str) or is_covered(name):
             continue
         zh = zh_map.get(f"data.sections.{section}.{name}")
         if zh and isinstance(zh, str) and zh.strip():

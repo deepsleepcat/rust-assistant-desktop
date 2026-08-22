@@ -1,0 +1,9 @@
+{
+  "name": "字段别名",
+  "data": [
+    {
+      "alias": "turretlimitingAngle",
+      "code": "limitingAngle"
+    }
+  ]
+}

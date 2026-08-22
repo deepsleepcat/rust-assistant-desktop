@@ -126,6 +126,14 @@
 .unitlib-desc { font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .unitlib-path { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── M7 单位库（M34 来源项目选择 + 复制） ──────────── */
+.unitlib-source-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); flex-wrap: wrap; }
+.unitlib-source-row select { padding: 3px 8px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface-0); color: var(--text-primary); font-size: 12.5px; max-width: 240px; }
+.unitlib-source-hint { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+.unitlib-row { display: flex; align-items: stretch; gap: 4px; }
+.unitlib-row .unitlib-item { flex: 1; min-width: 0; }
+.unitlib-copy-btn { flex-shrink: 0; align-self: center; padding: 4px 8px; font-size: 11.5px; }
+
 /* ── M7 收藏列表（文件树下方） ───────────────────────── */
 .favorites { border-top: 1px solid var(--divider); padding: 6px 8px 4px; display: flex; flex-direction: column; gap: 4px; }
 .favorites-head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
@@ -324,14 +332,18 @@
 .report-actions { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
 /* M14：单位表单模式 */
 .unit-form { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.unit-form-head { display: flex; align-items: baseline; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
+.unit-form-head { display: flex; align-items: baseline; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; min-width: 0; }
+/* M34：窄窗下文件名/说明收缩省略，预览按钮不被挤出 */
+.unit-form-head > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unit-form-head .unit-form-hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
+.unit-form-head .btn { flex-shrink: 0; }
 .unit-form-hint { font-size: 11.5px; font-weight: 400; color: var(--text-muted); }
 .unit-form-body { flex: 1; overflow-y: auto; padding: 10px 14px 40px; display: flex; flex-direction: column; gap: 14px; }
 .unit-form-group { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
 .unit-form-group-title { font-size: 12.5px; font-weight: 700; color: var(--text-1); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
 .unit-form-field { display: flex; flex-direction: column; gap: 3px; }
-.unit-form-label { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; }
-.unit-form-label code { font-size: 10.5px; color: var(--text-muted); }
+.unit-form-label { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; min-width: 0; }
+.unit-form-label code { font-size: 10.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; flex-shrink: 1; }
 .unit-form-required { font-style: normal; font-size: 10px; color: var(--danger); border: 1px solid var(--danger); border-radius: 4px; padding: 0 4px; }
 .unit-form-recommended { font-style: normal; font-size: 10px; color: var(--warning); border: 1px solid var(--warning); border-radius: 4px; padding: 0 4px; }
 .unit-form-input-row { display: flex; gap: 6px; align-items: center; }
@@ -340,7 +352,7 @@
 .unit-form-error { color: var(--danger); font-size: 11.5px; }
 .unit-form-desc { color: var(--text-muted); font-size: 11.5px; }
 .unit-form-picker { display: flex; flex-direction: column; gap: 3px; max-height: 160px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 4px; }
-.unit-form-picker-item { text-align: left; padding: 3px 6px; border-radius: var(--radius-xs); font-size: 11.5px; font-family: var(--font-mono); color: var(--text-1); background: transparent; cursor: pointer; }
+.unit-form-picker-item { text-align: left; padding: 3px 6px; border-radius: var(--radius-xs); font-size: 11.5px; font-family: var(--font-mono); color: var(--text-1); background: transparent; cursor: pointer; overflow-wrap: anywhere; word-break: break-all; }
 .unit-form-picker-item:hover { background: var(--surface-hover); }
 .unit-form-picker-empty { color: var(--text-muted); font-size: 11.5px; padding: 4px; }
 .unit-form-missing { margin: 8px 14px 0; padding: 6px 10px; border: 1px solid var(--danger); border-radius: var(--radius-xs); background: var(--danger-bg); color: var(--danger); font-size: 12px; }
@@ -363,7 +375,15 @@
 .map-viewer-issue { display: flex; gap: 6px; align-items: flex-start; padding: 3px 8px; border-radius: var(--radius-xs); background: var(--surface-0); }
 .map-viewer-issue-error { color: var(--danger); }
 .map-viewer-issue-warning { color: var(--warning); }
-.map-viewer-canvas { image-rendering: pixelated; border: 1px solid var(--border); border-radius: var(--radius-xs); max-width: 100%; }
+.map-viewer-render-toolbar { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.map-viewer-render-mode { font-size: 11.5px; font-weight: 600; color: var(--success); background: var(--success-bg); border-radius: 10px; padding: 2px 8px; }
+.map-viewer-render-mode.overview { color: var(--info); background: var(--info-bg); }
+.map-render-viewport { position: relative; height: clamp(300px, 58vh, 760px); min-height: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-xs); background: #181c22; touch-action: none; }
+.map-viewer-canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; cursor: grab; }
+.map-viewer-canvas:active { cursor: grabbing; }
+.map-render-overlay { position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px); padding: 4px 8px; border-radius: var(--radius-xs); background: color-mix(in srgb, var(--surface-0) 88%, transparent); color: var(--text-2); font-size: 11.5px; pointer-events: none; }
+.map-viewer-warning { border: 1px solid var(--warning); border-radius: var(--radius-xs); background: var(--warning-bg); color: var(--warning); padding: 6px 10px; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 899px) { .map-render-viewport { height: clamp(260px, 48vh, 560px); } .map-viewer-head { flex-wrap: wrap; } }
 /* M16：离线知识包数据版本 */
 .data-version-list { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); padding: 8px 10px; font-size: 12.5px; margin-bottom: 10px; }
 .data-version-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }

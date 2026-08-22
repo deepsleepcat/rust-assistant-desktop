@@ -11,6 +11,8 @@
     {
       "name": "aaBeamGunship_afterburn",
       "displayKey": "aaBeamGunship_afterburn",
+      "zhName": "AA激光射束战机·加力",
+      "zhDesc": "[[拥有对空的激光粒子束武器]] [[激光粒子束可直接破盾破甲]] [[不能攻击陆地]] [[可使用加速装置获得一段时间的加速]]",
       "icon": "aa_beam_gunship/base3.png"
     },
     {
@@ -37,111 +39,155 @@
     {
       "name": "bugBee",
       "displayKey": "bugBee",
+      "zhName": "蜂虫",
+      "zhDesc": "[[虫族空中单位]] [[飞行速度快，擅长骚扰]] [[生命值较低]]",
       "icon": "classic_bugs/bug_bee/bug_bee.png"
     },
     {
       "name": "bugExtractor",
       "displayKey": "bugExtractor",
+      "zhName": "虫族采集器",
+      "zhDesc": "[[虫族经济建筑]] [[生成资金]] [[只能建造在资源池上]] [[可升级至T2]]",
       "icon": "classic_bugs/bug_extractor/bug_extractor.png"
     },
     {
       "name": "bugExtractorT2",
       "displayKey": "bugExtractorT2",
+      "zhName": "虫族采集器T2",
+      "zhDesc": "[[虫族经济建筑]] [[生成资金]] [[只能建造在资源池上]]",
       "icon": "classic_bugs/bug_extractor/bug_extractor.png"
     },
     {
       "name": "bugFly",
       "displayKey": "bugFly",
+      "zhName": "飞行虫",
+      "zhDesc": "[[虫族空中单位]] [[快速移动]] [[攻击力较弱]]",
       "icon": "classic_bugs/bug_fly/bug_fly.png"
     },
     {
       "name": "bugGenerator",
       "displayKey": "bugGenerator",
+      "zhName": "虫族发电机",
+      "zhDesc": "[[虫族能量建筑]] [[持续产生能量]] [[可升级至T2]]",
       "icon": "classic_bugs/bug_generator/bug_generator.png"
     },
     {
       "name": "bugGeneratorN",
       "displayKey": "bugGeneratorN",
+      "zhName": "虫族发电机N",
+      "zhDesc": "[[虫族能量建筑]] [[持续产生能量]] [[可升级至T2]]",
       "icon": "bug_base/bug_generator/bug_generator.png"
     },
     {
       "name": "bugGeneratorNT2",
       "displayKey": "bugGeneratorNT2",
+      "zhName": "虫族发电机NT2",
+      "zhDesc": "[[虫族能量建筑]] [[持续产生能量]]",
       "icon": "bug_base/bug_generator/bug_generator.png"
     },
     {
       "name": "bugGeneratorT2",
       "displayKey": "bugGeneratorT2",
+      "zhName": "虫族发电机T2",
+      "zhDesc": "[[虫族能量建筑]] [[持续产生能量]]",
       "icon": "classic_bugs/bug_generator/bug_generator.png"
     },
     {
       "name": "bugMelee",
       "displayKey": "bugMelee",
+      "zhName": "近战虫",
+      "zhDesc": "[[虫族近战单位]] [[近身攻击]] [[移动速度较快]]",
       "icon": "classic_bugs/bug_melee/bug_melee.png"
     },
     {
       "name": "bugMeleeLarge",
       "displayKey": "bugMeleeLarge",
+      "zhName": "大型近战虫",
+      "zhDesc": "[[大型近战虫]] [[重型装甲]] [[近身攻击伤害高]] [[移动缓慢]]",
       "icon": "classic_bugs/bug_melee/bug_melee.png"
     },
     {
       "name": "bugMeleeSmall",
       "displayKey": "bugMeleeSmall",
+      "zhName": "小型近战虫",
+      "zhDesc": "[[小型近战虫]] [[移动灵活]] [[生命值较低]]",
       "icon": "classic_bugs/bug_melee/bug_melee.png"
     },
     {
       "name": "bugMeleeT31",
       "displayKey": "bugMeleeT31",
+      "zhName": "近战虫T31",
+      "zhDesc": "[[强化型近战虫]] [[近身攻击伤害高]] [[生命值较高]]",
       "icon": "bug_melee/bug_meleet31.png"
     },
     {
       "name": "bugNest",
       "displayKey": "bugNest",
+      "zhName": "虫巢",
+      "zhDesc": "[[虫族生产建筑]] [[持续生产虫族单位]]",
       "icon": "classic_bugs/bug_nest/bug_nest_back.png"
     },
     {
       "name": "bugPickup",
       "displayKey": "bugPickup",
+      "zhName": "搬运虫",
+      "zhDesc": "[[搬运虫]] [[可抓起并搬运其他单位]]",
       "icon": "classic_bugs/bugs/bug_pickup.png"
     },
     {
       "name": "bugRanged",
       "displayKey": "bugRanged",
+      "zhName": "远程虫",
+      "zhDesc": "[[虫族远程单位]] [[喷射酸液远程攻击]] [[攻击速度较慢]]",
       "icon": "classic_bugs/bug_ranged/bug_ranged.png"
     },
     {
       "name": "bugRangedT2",
       "displayKey": "bugRangedT2",
+      "zhName": "远程虫T2",
+      "zhDesc": "[[强化型远程虫]] [[远程攻击伤害更高]]",
       "icon": "classic_bugs/bugs_t2/bug_ranged_t2.png"
     },
     {
       "name": "bugSpore",
       "displayKey": "bugSpore",
+      "zhName": "孢子虫",
+      "zhDesc": "[[虫族远程单位]] [[孢子溅射伤害]] [[攻击速度慢]]",
       "icon": "classic_bugs/bug_spore/bug_spore.png"
     },
     {
       "name": "bugTurret",
       "displayKey": "bugTurret",
+      "zhName": "虫族炮塔",
+      "zhDesc": "[[虫族防御建筑]] [[攻击地面单位]]",
       "icon": "classic_bugs/bug_turret/bug_turret.png"
     },
     {
       "name": "bugWasp",
       "displayKey": "bugWasp",
+      "zhName": "黄蜂虫",
+      "zhDesc": "[[虫族空中单位]] [[速度快]] [[攻击力较弱]]",
       "icon": "classic_bugs/bugs/bug_pickup.png"
     },
     {
       "name": "c_amphibiousJet",
       "displayKey": "c_amphibiousJet",
+      "zhName": "两栖喷气机",
+      "zhDesc": "[[可在水上和陆地起降的战斗机]] [[快速移动]] [[对地攻击]]",
       "icon": "amphibious_jet/amphibious_jet.png"
     },
     {
       "name": "c_amphibiousJet_transition",
       "displayKey": "c_amphibiousJet_transition",
+      "zhName": "两栖喷气机·变形中",
+      "zhDesc": "[[变形中]] [[暂时无法攻击]]",
       "icon": "amphibious_jet/amphibious_jet.png"
     },
     {
       "name": "c_amphibiousJet_underwater",
       "displayKey": "c_amphibiousJet_underwater",
+      "zhName": "两栖喷气机·水下",
+      "zhDesc": "[[水下形态]] [[暂时无法攻击]] [[隐蔽移动]]",
       "icon": "amphibious_jet/amphibious_jet.png"
     },
     {
@@ -287,16 +333,22 @@
     {
       "name": "crystal_mid",
       "displayKey": "crystal_mid",
+      "zhName": "中型水晶",
+      "zhDesc": "[[资源沉积物]] [[回收可获得资金]]",
       "icon": "resource_deposits/creditsCrate.png"
     },
     {
       "name": "custom_tank",
       "displayKey": "custom_tank",
+      "zhName": "自定义坦克",
+      "zhDesc": "[[示例单位]] [[用于测试自定义模组的坦克]]",
       "icon": "test_tank/tank.png"
     },
     {
       "name": "example_faction_picker",
       "displayKey": "example_faction_picker",
+      "zhName": "示例阵营选择器",
+      "zhDesc": "[[示例单位]] [[用于阵营选择的示例建筑]]",
       "icon": "miscellaneous/picker.png"
     },
     {
@@ -400,6 +452,8 @@
     {
       "name": "flare_10s",
       "displayKey": "flare_10s",
+      "zhName": "信号弹（10秒）",
+      "zhDesc": "[[信号弹]] [[持续10秒后消失]] [[无攻击能力]]",
       "icon": "miscellaneous/picker.png"
     },
     {
@@ -447,6 +501,8 @@
     {
       "name": "laboratory",
       "displayKey": "laboratory",
+      "zhName": "实验室",
+      "zhDesc": "[[科研建筑]] [[可研究科技升级]]",
       "icon": "laboratory/base.png"
     },
     {
@@ -515,11 +571,15 @@
     {
       "name": "mechFlyingLanded",
       "displayKey": "mechFlyingLanded",
+      "zhName": "飞行机甲·着陆",
+      "zhDesc": "[[飞行机甲]] [[着陆形态]] [[可攻击地面单位]]",
       "icon": "mechs_large/ArtilleryTurret.png"
     },
     {
       "name": "mechFlyingTakeoff",
       "displayKey": "mechFlyingTakeoff",
+      "zhName": "飞行机甲·起飞",
+      "zhDesc": "[[飞行机甲]] [[起飞形态]] [[可在空中移动]]",
       "icon": "mechs_large/ArtilleryTurret.png"
     },
     {
@@ -581,6 +641,8 @@
     {
       "name": "missing",
       "displayKey": "missing",
+      "zhName": "缺失占位",
+      "zhDesc": "[[占位单位]] [[用于缺失资源的替换显示]]",
       "icon": "missing_unit/missing.png"
     },
     {
@@ -684,6 +746,8 @@
     {
       "name": "modularSpider_nonEmpty",
       "displayKey": "modularSpider_nonEmpty",
+      "zhName": "模块化蜘蛛·非空",
+      "zhDesc": "[[顶部已装有模块的模块化蜘蛛]]",
       "icon": "modular_spider/antinuke.png"
     },
     {
@@ -731,11 +795,15 @@
     {
       "name": "nautilusSubmarineLand",
       "displayKey": "nautilusSubmarineLand",
+      "zhName": "鹦鹉螺潜艇·陆地",
+      "zhDesc": "[[鹦鹉螺号陆地形态]] [[可在陆地移动]]",
       "icon": "nautilus/body.png"
     },
     {
       "name": "nautilusSubmarineSurface",
       "displayKey": "nautilusSubmarineSurface",
+      "zhName": "鹦鹉螺潜艇·水面",
+      "zhDesc": "[[鹦鹉螺号水面形态]] [[浮出水面后可攻击陆上和空中单位]]",
       "icon": "nautilus/body.png"
     },
     {
@@ -748,6 +816,8 @@
     {
       "name": "NULL",
       "displayKey": "NULL",
+      "zhName": "空占位",
+      "zhDesc": "[[空占位单位]] [[无实际用途]]",
       "icon": "mechs_large/ArtilleryTurret.png"
     },
     {
@@ -774,11 +844,15 @@
     {
       "name": "robotCrab",
       "displayKey": "robotCrab",
+      "zhName": "机器蟹",
+      "zhDesc": "[[机器蟹]] [[重型装甲]] [[可在水面和陆地移动]]",
       "icon": "nautilus/robotCrab/base.png"
     },
     {
       "name": "robotCrabWater",
       "displayKey": "robotCrabWater",
+      "zhName": "水中机器蟹",
+      "zhDesc": "[[机器蟹水下形态]] [[隐蔽移动]]",
       "icon": "nautilus/robotCrab/base.png"
     },
     {

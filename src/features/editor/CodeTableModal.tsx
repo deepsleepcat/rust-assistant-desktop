@@ -5,7 +5,7 @@
  * 数据来自 codeData（与补全/翻译共用一份数据）。
  */
 import { useEffect, useMemo, useState } from 'react'
-import { getAllCodes, getAllSections, loadCodeData } from '../../services/codeData'
+import { aliasMatches, getAllCodes, getAllSections, loadCodeData } from '../../services/codeData'
 import { AppIcon } from '../../components/AppIcon'
 import { useEscapeHandler } from '../../utils/modalStack'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -40,7 +40,8 @@ export function CodeTableModal({ onClose, onCopy }: Props) {
       if (
         c.code.toLowerCase().includes(q) ||
         c.translate.toLowerCase().includes(q) ||
-        (c.description ?? '').toLowerCase().includes(q)
+        (c.description ?? '').toLowerCase().includes(q) ||
+        aliasMatches(c.code, q)
       ) {
         if (c.section === 'all') continue
         // section 字段可能缺失（脏数据）：空保护，防弹窗崩溃
@@ -60,7 +61,8 @@ export function CodeTableModal({ onClose, onCopy }: Props) {
         (c) =>
           c.code.toLowerCase().includes(q) ||
           c.translate.toLowerCase().includes(q) ||
-          (c.description ?? '').toLowerCase().includes(q),
+          (c.description ?? '').toLowerCase().includes(q) ||
+          aliasMatches(c.code, q),
       )
     }
     const list = getAllCodes().filter((c) => (c.section ?? '').split(',').includes(selected) || c.section === 'all')
@@ -69,7 +71,8 @@ export function CodeTableModal({ onClose, onCopy }: Props) {
       (c) =>
         c.code.toLowerCase().includes(q) ||
         c.translate.toLowerCase().includes(q) ||
-        (c.description ?? '').toLowerCase().includes(q),
+        (c.description ?? '').toLowerCase().includes(q) ||
+        aliasMatches(c.code, q),
     )
   }, [ready, query, selected])
 

@@ -12,8 +12,10 @@
 .image-viewer-loading, .image-viewer-error { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; text-align: center; }
 .image-viewer-error small { max-width: 420px; color: var(--text-muted); }
 
-/* M8 hover 文档（键名/节名/颜色悬停） */
-.cm-tooltip.cm-tooltip-hover { background: var(--bg-panel, #fff); border: 1px solid var(--border, #d8dee4); border-radius: 8px; box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,.12)); padding: 8px 10px; max-width: 420px; }
+/* M8 hover 文档（键名/节名/颜色悬停）
+   M34：增加最大高度与内部滚动——长字段说明/长 demo 不再把卡片撑出视口；
+   z-index 与补全提示统一（见 EditorMirror .cm-tooltip） */
+.cm-tooltip.cm-tooltip-hover { background: var(--bg-panel, #fff); border: 1px solid var(--border, #d8dee4); border-radius: 8px; box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,.12)); padding: 8px 10px; max-width: 420px; max-height: min(420px, 60vh); overflow-y: auto; z-index: 95; }
 .cm-hover-doc { font-size: 12.5px; line-height: 1.6; color: var(--text-1, #1f2328); }
 .cm-hover-doc b { font-size: 13px; }
 .cm-hover-muted { color: var(--text-muted, #8c959f); font-size: 11.5px; }

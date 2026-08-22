@@ -130,11 +130,11 @@ export function TurretEditorModal({ onClose }: { onClose: () => void }) {
                   <thead>
                     <tr>
                       <th>炮塔</th>
-                      <th>x</th>
-                      <th>y</th>
-                      <th>idleDir</th>
-                      <th>projectile</th>
-                      <th>size</th>
+                      <th title="横坐标偏移">x</th>
+                      <th title="纵坐标偏移">y</th>
+                      <th title="待机朝向角度（idleDir）">待机朝向</th>
+                      <th title="炮塔发射的弹体（projectile）">弹体</th>
+                      <th title="炮塔大小（size）">大小</th>
                     </tr>
                   </thead>
                   <tbody>

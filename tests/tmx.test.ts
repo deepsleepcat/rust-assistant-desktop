@@ -55,6 +55,9 @@ describe('parseSimpleXml', () => {
   it('非 XML/损坏输入返回 null', () => {
     expect(parseSimpleXml('')).toBeNull()
     expect(parseSimpleXml('not xml')).toBeNull()
+    expect(parseSimpleXml('<map width="1" width="2"/>')).toBeNull()
+    expect(parseSimpleXml('<map/> trailing')).toBeNull()
+    expect(parseSimpleXml('<map><layer></objectgroup></map>')).toBeNull()
   })
 })
 
@@ -165,9 +168,10 @@ describe('M15 审查修复回归', () => {
     expect(parseSimpleXml(deep)).toBeNull()
   })
 
-  it('属性值含 > 不误截断', () => {
-    const root = parseSimpleXml('<map name="a>b"><layer/></map>')!
+  it('属性值含 > 不误截断，单引号属性同样可解析', () => {
+    const root = parseSimpleXml("<map name='a>b' width='8'><layer/></map>")!
     expect(root.attrs['name']).toBe('a>b')
+    expect(root.attrs['width']).toBe('8')
     expect(root.children.length).toBe(1)
   })
 })
