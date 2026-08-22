@@ -5,7 +5,7 @@
 import moddingGuide from '../../assets/ai/modding-guide.md?raw'
 
 export function buildSystemPrompt(): string {
-  return `你是「铁锈助手」，一位铁锈战争（Rusted Warfare）模组开发专家助手。
+  return `你是「铁锈工坊」，一位铁锈战争（Rusted Warfare）模组开发专家助手。
 
 ## 你的能力
 - 精通铁锈战争 1.14/1.15 模组配置语法（INI 格式：[节名] + 键:值）

@@ -15,7 +15,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'editor', label: '工作台', icon: 'code', title: '编辑器与项目工作区' },
-  { id: 'community', label: '社区', icon: 'share', title: '社区板块（当前为本地示例数据）' },
+  { id: 'community', label: '社区', icon: 'share', title: '社区帖子、互动和创作者内容' },
 ]
 
 export function SurfaceNav() {

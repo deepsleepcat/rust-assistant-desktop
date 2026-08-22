@@ -218,7 +218,7 @@
 
 /* ── 我的 ─────────────────────────────────────────── */
 .me-profile { flex-direction: row; align-items: center; gap: 12px; }
-.me-avatar { width: 44px; height: 44px; font-size: 17px; }
+.me-avatar { width: 44px; height: 44px; font-size: 17px; object-fit: cover; }
 .me-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
@@ -270,3 +270,56 @@ body.ra-compact .community-body { padding: 10px 12px 22px; }
 body.ra-compact .featured-scroll > .mod-card { flex-basis: 220px; }
 body.ra-compact .mod-grid, body.ra-compact .creator-grid { grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); }
 body.ra-compact .activity-meta { display: none; }
+
+/* ── 帖子社区 ───────────────────────────────────────── */
+.community-toolbar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+.community-toolbar .rank-filter { flex: 0 0 100%; }
+.community-toolbar input, .community-toolbar select, .community-form input, .community-form select, .community-form textarea, .comment-compose input {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: 12px var(--font-ui);
+  padding: 0 9px;
+}
+.community-toolbar input, .community-toolbar select { height: 28px; }
+.community-toolbar input { flex: 1 1 150px; }
+.community-toolbar select { flex: 0 1 116px; }
+.community-toolbar .btn-sm { flex: none; }
+.post-card-foot .grow, .community-pagination .grow { flex: 1; min-width: 0; }
+.post-list { display: flex; flex-direction: column; gap: 8px; }
+body.ra-compact .community-toolbar { gap: 6px; padding: 7px 8px; }
+body.ra-compact .community-toolbar input { flex-basis: 120px; }
+body.ra-compact .community-toolbar select { flex-basis: 104px; }
+.post-card { gap: 8px; }
+.post-card-main { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.post-card-main:hover .post-card-title { color: var(--accent); }
+.post-card-title { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 14px; font-weight: 650; }
+.post-card-title > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.post-card-meta { color: var(--text-muted); font-size: 11px; }
+.post-card-main p { margin: 7px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7; white-space: pre-wrap; }
+.post-card-foot { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; }
+.post-body { max-height: 48vh; overflow: auto; }
+.community-pagination { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; padding-top: 4px; }
+.community-warning { border-color: var(--danger); color: var(--danger); }
+.community-toast { position: fixed; right: 20px; bottom: 20px; z-index: 20; max-width: min(420px, calc(100vw - 40px)); padding: 9px 13px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--text-primary); box-shadow: 0 4px 20px rgba(0,0,0,.16); font-size: 12px; cursor: pointer; }
+.resource-row, .comment-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: 12px; }
+.comment-row { display: block; }
+.comment-row strong { color: var(--text-primary); margin-right: 8px; }
+.comment-row p { margin: 5px 0 0; white-space: pre-wrap; line-height: 1.65; }
+.comment-compose { display: flex; gap: 8px; margin-top: 8px; }
+.comment-compose input { flex: 1; }
+.community-form { display: flex; flex-direction: column; gap: 10px; }
+.community-form textarea { resize: vertical; min-height: 180px; line-height: 1.6; }
+.badge.success { color: var(--success, #2e7d32); border-color: currentColor; }

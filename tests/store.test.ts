@@ -59,6 +59,41 @@ describe('工作区 store 业务流', () => {
     expect(importMod).toHaveBeenLastCalledWith('folder')
   })
 
+  it('导入/注册新项目时清空上个项目的检查与修复状态（M39 防串数据回归）', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    // 模拟上个项目遗留的工作区状态（M39 前 addImportedProject/startModImport 漏了 translationRepair 两个字段）
+    store.setState({
+      modCheckResult: { issues: [{ file: 'units/a.ini', level: 'error', message: '旧问题' }], unitCount: 1, fileCount: 1 },
+      optimizeItems: [{ id: '1', kind: 'emptyLine', rel: 'units/a.ini' }],
+      translationRepairItems: [{ path: 'units/a.ini', digest: 'd', changeCount: 1, changes: [{ line: 1, kind: 'key', before: 'a', after: 'b' }] }],
+      translationRepairError: '旧错误',
+      modReportProgress: { done: 1, total: 2 },
+    })
+
+    // 注册已存在目录为新项目：全部工作区状态应重置
+    await store.getState().addImportedProject(MOCK_PROJECT_ROOT, '新项目', '已注册')
+    let s = store.getState()
+    expect(s.modCheckResult).toBeNull()
+    expect(s.optimizeItems).toBeNull()
+    expect(s.translationRepairItems).toBeNull()
+    expect(s.translationRepairError).toBeNull()
+    expect(s.modReportProgress).toBeNull()
+
+    // 再次污染后走 startModImport（文件包/文件夹导入）路径，同样应重置
+    store.setState({
+      translationRepairItems: [{ path: 'units/b.ini', digest: 'd2', changeCount: 1, changes: [{ line: 2, kind: 'boolean', before: '是', after: 'true' }] }],
+      translationRepairError: '又一个旧错误',
+      modCheckResult: { issues: [], unitCount: 0, fileCount: 0 },
+    })
+    bridge.mod.import = vi.fn(async () => ({ name: '导入模组', rootPath: MOCK_PROJECT_ROOT, files: 3 }))
+    await store.getState().startModImport('archive')
+    s = store.getState()
+    expect(s.translationRepairItems).toBeNull()
+    expect(s.translationRepairError).toBeNull()
+    expect(s.modCheckResult).toBeNull()
+  })
+
   it('一个项目可创建多个对话并正确切换', async () => {
     await store.getState().init()
     await store.getState().openProject()
@@ -131,6 +166,49 @@ describe('工作区 store 业务流', () => {
     // 重新读取验证写回成功（用同一个桥实例，内存文件系统保持一致）
     const reloaded = await bridge.project.readFile(MOCK_PROJECT_ROOT, filePath)
     expect(reloaded.content).toContain('中文注释')
+  })
+
+  it('编辑历史：同一标签可撤销/重做，并正确更新 dirty', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    await store.getState().openFile(`${MOCK_PROJECT_ROOT}\\units\\rifle.txt`)
+    const tabId = store.getState().activeTabId!
+    const original = store.getState().openTabs[0].content
+    const first = `${original}\\n# 第一次`
+    const second = `${first}\\n# 第二次`
+    store.getState().updateTabContent(tabId, first)
+    store.getState().updateTabContent(tabId, second)
+    expect(store.getState().canUndoTab(tabId)).toBe(true)
+    store.getState().undoTab(tabId)
+    expect(store.getState().openTabs[0].content).toBe(first)
+    expect(store.getState().openTabs[0].dirty).toBe(true)
+    expect(store.getState().canRedoTab(tabId)).toBe(true)
+    store.getState().undoTab(tabId)
+    expect(store.getState().openTabs[0].content).toBe(original)
+    expect(store.getState().openTabs[0].dirty).toBe(false)
+    store.getState().redoTab(tabId)
+    store.getState().redoTab(tabId)
+    expect(store.getState().openTabs[0].content).toBe(second)
+    expect(store.getState().openTabs[0].dirty).toBe(true)
+  })
+
+  it('编辑历史：撤销后新编辑清空 redo，标签之间历史隔离', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    await store.getState().openFile(`${MOCK_PROJECT_ROOT}\\units\\rifle.txt`)
+    const firstId = store.getState().activeTabId!
+    const firstOriginal = store.getState().openTabs[0].content
+    store.getState().updateTabContent(firstId, `${firstOriginal}\\n# A`)
+    store.getState().undoTab(firstId)
+    store.getState().updateTabContent(firstId, `${firstOriginal}\\n# A2`)
+    expect(store.getState().canRedoTab(firstId)).toBe(false)
+    await store.getState().openFile(`${MOCK_PROJECT_ROOT}\\units\\tank.txt`)
+    const secondId = store.getState().activeTabId!
+    const secondOriginal = store.getState().openTabs.find((tab) => tab.id === secondId)!.content
+    store.getState().updateTabContent(secondId, `${secondOriginal}\\n# B`)
+    store.getState().undoTab(firstId)
+    expect(store.getState().openTabs.find((tab) => tab.id === firstId)!.content).toBe(firstOriginal)
+    expect(store.getState().openTabs.find((tab) => tab.id === secondId)!.content).toContain('# B')
   })
 
   it('多标签：关闭中间标签后当前文档仍正确', async () => {

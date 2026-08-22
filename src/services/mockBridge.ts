@@ -205,6 +205,8 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
   // M10：监听器集合每桥独立（模块级单例会跨测试/跨桥串扰：上个测试的流式事件
   // 会写进下一个测试的 store）
   const mockAiListeners = new Set<(event: import('../types/ai').AiStreamEvent) => void>()
+  // 浏览器预览模式的 DeepSeek Key（仅内存，模拟主进程 safeStorage 保管）
+  let mockDeepSeekKey = ''
 
   const storageKey = 'rust-assistant:mock-state'
   function loadState<T>(key: string, fallback: T): T {
@@ -317,7 +319,6 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
 
   return {
     platform: 'mock',
-    version: '0.1.0',
     appInfo: async () => ({ version: '0.1.0', platform: 'mock' }),
     app: {
       checkUpdate: async () => ({ skipped: true, message: '浏览器预览模式不检查更新' }),
@@ -337,7 +338,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     },
     project: {
       openFolderDialog: async () => ({ rootPath: MOCK_PROJECT_ROOT, name: '我的第一个模组' }),
-      openImageDialog: async () => MOCK_IMAGE_DATA_URL,
+      openImageDialog: async () => `${MOCK_PROJECT_ROOT}\\units\\tank\\tank.png`,
       saveText: async () => ({ ok: false, message: '模拟环境：无法保存' }),
       registerRoots: async () => undefined,
       readDir: async (_root, dirPath) => listDir(dirPath),
@@ -374,13 +375,14 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         if (!dir || dir.kind !== 'dir') throw new Error('找不到要删除的项目')
         delete dir.children[parts[parts.length - 1]]
       },
-      readImageAsDataUrl: async (_root, _imagePath) => MOCK_IMAGE_DATA_URL,
+      readImageAsDataUrl: async (_root, imagePath) => {
+        const node = findNode(tree, relToRoot(imagePath))
+        if (!node || node.kind !== 'file') throw new Error('图片不存在：' + imagePath)
+        const ext = imagePath.split('.').pop()?.toLowerCase()
+        if (!['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext ?? '')) throw new Error('不是受支持的图片文件：' + imagePath)
+        return MOCK_IMAGE_DATA_URL
+      },
       readAudioAsDataUrl: async (_root, _audioPath) => 'data:audio/ogg;base64,T2dnUw==',
-    },
-    avatar: {
-      chooseLocal: async () => null,
-      saveCropped: async () => 'C:\\mock\\avatar.png',
-      uploadCommunity: async () => ({ ok: false, message: '社区头像服务即将上线' }),
     },
     game: {
       detect: async () => ({ found: false, gamePath: null, units: [], mods: [] }),
@@ -484,11 +486,23 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
   ai: {
       check: async (settings) => {
         if (settings.provider === 'deepseek') {
-          return settings.deepseekApiKey
+          return mockDeepSeekKey
             ? { ok: true, message: '连接成功（浏览器预览模式）' }
             : { ok: false, message: '未配置 DeepSeek API Key，请在设置中填写' }
         }
         return { ok: false, message: '社区 AI 服务即将上线（内部预留）' }
+      },
+      deepSeekKey: {
+        save: async (key: string) => {
+          if (typeof key !== 'string' || !key.trim()) throw new Error('API Key 不能为空')
+          mockDeepSeekKey = key.trim()
+          return { ok: true }
+        },
+        status: async () => ({ configured: Boolean(mockDeepSeekKey) }),
+        clear: async () => {
+          mockDeepSeekKey = ''
+          return { ok: true }
+        },
       },
       info: async () => ({
         providers: [

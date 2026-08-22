@@ -19,6 +19,7 @@ import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import JSZip from 'jszip'
 import { assertNoLinkEscape, isPathInside, normalizePath } from './paths'
+import { splitTopLevelConfigValue } from '../src/services/configSyntax'
 import { repairIniContent, type TranslationRepairChange, type TranslationRepairDictionary } from '../src/services/translationRepair'
 import type { TemplateAction, TemplateMeta } from '../src/types/mod'
 
@@ -430,11 +431,11 @@ function sha256(buffer: Buffer): string {
   return createHash('sha256').update(buffer).digest('hex')
 }
 
-function isRepairSourceFile(name: string): boolean {
+export function isRepairSourceFile(name: string): boolean {
   return /\.(ini|template)$/i.test(name)
 }
 
-function normalizeRepairRelativePath(value: string): string {
+export function normalizeRepairRelativePath(value: string): string {
   if (!value || value.length > 1024 || value.includes('\0') || path.isAbsolute(value)) throw new Error('修复文件路径无效')
   const normalized = value.replace(/\\/g, '/')
   const parts = normalized.split('/')
@@ -536,7 +537,7 @@ export async function scanTranslationRepair(projectRoot: string, dict: Translati
  * 对用户从扫描预览中选定的文件执行恢复。每项写入前都重新读取并核对 SHA-256，
  * 扫描后被其它工具修改的文件会跳过，不会覆盖新内容。
  */
-export async function applyTranslationRepair(
+export async function applyVerifiedTranslationRepair(
   projectRoot: string,
   dict: TranslationRepairDictionary,
   selections: TranslationRepairSelection[],
@@ -597,6 +598,9 @@ export async function applyTranslationRepair(
   }
   return { done, skipped, failed, changedPaths }
 }
+
+/** 兼容旧调用方；安全校验由 applyVerifiedTranslationRepair 自身执行。 */
+export const applyTranslationRepair = applyVerifiedTranslationRepair
 
 /** 新建模组的参数 */
 export interface CreateModParams {
@@ -1686,7 +1690,7 @@ export function runChainInspection(content: string, rules: ChainRule[], file: st
   const sectionNames = new Set(sections.map((s) => s.name))
 
   for (const rule of rules) {
-    const list = (rule.list ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const list = splitTopLevelConfigValue(rule.list ?? '').map((s) => s.trim()).filter(Boolean)
     const tips = list.filter((s) => s.startsWith('@tip(')).map((s) => s.replace(/^@tip\((.*)\)$/, '$1'))
     const keys = list.filter((s) => !s.startsWith('@'))
 

@@ -240,7 +240,7 @@ function WelcomeView() {
       <div className="stagger" style={{ display: 'contents' }}>
         <div className="welcome-logo"><LogoR size="welcome" /></div>
         <h1>
-          <span>铁锈助手</span>
+          <span>铁锈工坊</span>
         </h1>
         <p className="subtitle">铁锈战争 · 模组开发工作台</p>
         <div className="welcome-actions">
@@ -292,6 +292,10 @@ function EditorPane({
 }) {
   const tab = useWorkspaceStore((s) => s.openTabs.find((t) => t.id === tabId))
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
+  const undoTab = useWorkspaceStore((s) => s.undoTab)
+  const redoTab = useWorkspaceStore((s) => s.redoTab)
+  const canUndoTab = useWorkspaceStore((s) => s.canUndoTab)
+  const canRedoTab = useWorkspaceStore((s) => s.canRedoTab)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const semanticCheckers = useWorkspaceStore((s) => s.settings.semanticCheckers)
@@ -365,11 +369,27 @@ function EditorPane({
     if (!tab) return []
     const list: ToolbarAction[] = [
       {
+        key: 'undo',
+        label: '撤销',
+        icon: <AppIcon name="undo" size={12} />,
+        title: '撤销（Ctrl+Z）',
+        disabled: !canUndoTab(tab.id),
+        onClick: () => undoTab(tab.id),
+      },
+      {
+        key: 'redo',
+        label: '重做',
+        icon: <AppIcon name="redo" size={12} />,
+        title: '重做（Ctrl+Y 或 Ctrl+Shift+Z）',
+        disabled: !canRedoTab(tab.id),
+        onClick: () => redoTab(tab.id),
+      },
+      {
         key: 'format',
         label: '格式化',
         icon: <AppIcon name="text" size={12} />,
         title: 'Ctrl+Shift+F',
-        onClick: () => useWorkspaceStore.getState().updateTabContent(tab.id, formatted),
+        onClick: () => useWorkspaceStore.getState().updateTabContent(tab.id, formatted, { history: true }),
       },
       {
         key: 'outline',
@@ -399,7 +419,7 @@ function EditorPane({
         onClick: () => setTemplateName(tab.name.replace(/\.(ini|template)$/i, '')),
       })
     }
-    if (/\.ini$/i.test(tab.path) && (/^\s*\[turret_\d+\]\s*(?:#.*)?$/im.test(tab.content) || /^\s*\[炮塔_\d+\]\s*(?:#.*)?$/im.test(tab.content))) {
+    if (/\.ini$/i.test(tab.path) && (/^\s*\[turret_.+\]\s*(?:#.*)?$/im.test(tab.content) || /^\s*\[炮塔_.+\]\s*(?:#.*)?$/im.test(tab.content))) {
       list.push({
         key: 'turret',
         label: '炮塔',
@@ -445,7 +465,7 @@ function EditorPane({
       onClick: () => void saveTab(tab.id),
     })
     return list
-  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onMapEditModeChange, onOpenPreview, saveTab])
+  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onMapEditModeChange, onOpenPreview, saveTab, undoTab, redoTab, canUndoTab, canRedoTab])
 
   if (!tab) return null
   if (isPreviewableImage(tab.path) && project) {
@@ -552,6 +572,8 @@ function EditorPane({
               onChange={(content) => updateTabContent(tab.id, content)}
               onCursor={(line, col) => setEditorPos({ line, col })}
               onSave={() => void saveTab(tab.id)}
+              onUndo={() => undoTab(tab.id)}
+              onRedo={() => redoTab(tab.id)}
               fontFamily={fontFamily}
               fontSize={fontSize}
               chineseMode={tab.translationEnabled}
@@ -574,6 +596,8 @@ function EditorPane({
           onChange={(content) => updateTabContent(tab.id, content)}
           onCursor={(line, col) => setEditorPos({ line, col })}
           onSave={() => void saveTab(tab.id)}
+          onUndo={() => undoTab(tab.id)}
+          onRedo={() => redoTab(tab.id)}
           fontFamily={fontFamily}
           fontSize={fontSize}
           chineseMode={tab.translationEnabled}

@@ -73,9 +73,54 @@ export interface StoreApi {
   set(key: string, value: unknown): Promise<void>
 }
 
+/** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */
+export interface CommunityRequest {
+  url: string
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  headers?: Record<string, string>
+  /** Main process injects its encrypted community credential when true. */
+  authenticated?: boolean
+  body?: string
+  upload?: { name: string; type: string; bytes: ArrayBuffer }
+}
+
+export interface CommunityResponse {
+  status: number
+  headers: Record<string, string>
+  body: ArrayBuffer
+}
+
+export interface CommunityAuthUser {
+  id: number
+  username: string
+  displayName?: string
+  avatarUrl?: string
+}
+
+export type CommunityAuthState = 'unavailable' | 'signed-out' | 'pairing' | 'signed-in'
+
+export interface CommunityAuthStatus {
+  state: CommunityAuthState
+  user?: CommunityAuthUser
+}
+
+export interface CommunityAuthPairing {
+  state: 'pairing'
+  userCode: string
+  expiresAt: number
+  pollAfterMs: number
+}
+
+export interface AuthApi {
+  status(): Promise<CommunityAuthStatus>
+  startPairing(): Promise<CommunityAuthPairing>
+  pollPairing(): Promise<CommunityAuthStatus>
+  cancelPairing(): Promise<CommunityAuthStatus>
+  logout(): Promise<CommunityAuthStatus>
+}
+
 export interface BridgeApi {
   platform: string
-  version: string
   appInfo(): Promise<{ version: string; platform: string }>
   /** M6 自动更新（更新包托管在 GitHub Releases） */
   app: {
@@ -89,6 +134,11 @@ export interface BridgeApi {
     confirmClose(): Promise<boolean>
   }
   store: StoreApi
+  community?: {
+    request(request: CommunityRequest): Promise<CommunityResponse>
+  }
+  /** Optional browser-auth integration; absent in the current Electron build. */
+  auth?: AuthApi
   project: {
     openFolderDialog(): Promise<OpenedProject | null>
     openImageDialog(): Promise<string | null>
@@ -109,12 +159,6 @@ export interface BridgeApi {
     readImageAsDataUrl(rootPath: string, imagePath: string): Promise<string>
     /** M6.5 音频预览：读音频为 data URL（限项目内） */
     readAudioAsDataUrl(rootPath: string, audioPath: string): Promise<string>
-  }
-  avatar: {
-    chooseLocal(): Promise<string | null>
-    /** 保存裁剪后的头像（PNG data URL）→ 返回已登记的文件路径 */
-    saveCropped(dataUrl: string): Promise<string>
-    uploadCommunity(): Promise<{ ok: false; message: string }>
   }
   /** M18 知识包更新器（仅 Electron 真桥提供；浏览器预览回退内置 fetch） */
   knowledge?: {
@@ -216,6 +260,12 @@ export interface BridgeApi {
   ai: {
     /** 健康检查：验证 Key/连接 */
     check(settings: AiSettings): Promise<AiCheckResult>
+    /** DeepSeek API Key 保管：Key 只写主进程 safeStorage，任何响应不回传 Key 本体 */
+    deepSeekKey: {
+      save(key: string): Promise<{ ok: boolean }>
+      status(): Promise<{ configured: boolean }>
+      clear(): Promise<{ ok: boolean }>
+    }
     /** 提供者信息列表（设置面板展示） */
     info(): Promise<{ providers: AiProviderInfo[] }>
     /** 开始流式对话；返回事件通道，通过 onAiEvent 订阅 */

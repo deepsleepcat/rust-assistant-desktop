@@ -12,6 +12,7 @@
  * - vocabulary.json 旧版 1759 条 词库（word+explanation）
  */
 import type { Completion } from '@codemirror/autocomplete'
+import { splitTopLevelConfigValue } from './configSyntax'
 
 export interface CodeInfo {
   code: string
@@ -605,21 +606,7 @@ export function resolveValueZhToEn(value: string, list?: string | string[]): str
   return matched.length === 1 ? matched[0] : undefined
 }
 
-function splitTopLevelValue(value: string): string[] {
-  const parts: string[] = []
-  let depth = 0
-  let start = 0
-  for (let i = 0; i < value.length; i++) {
-    if (value[i] === '(') depth++
-    else if (value[i] === ')') depth = Math.max(0, depth - 1)
-    else if (value[i] === ',' && depth === 0) {
-      parts.push(value.slice(start, i))
-      start = i + 1
-    }
-  }
-  parts.push(value.slice(start))
-  return parts
-}
+const splitTopLevelValue = splitTopLevelConfigValue
 
 /** 保存前把中文手输的受限值规范化为引擎值；自由文本和未知字段原样返回。 */
 export function normalizeValueForEngine(key: string, value: string): string {
@@ -696,7 +683,7 @@ export function normalizeSectionName(section: string): string {
 export function findCodesBySection(section: string, query: string, limit = 40): CodeInfo[] {
   const q = query.trim().toLowerCase()
   const enSection = normalizeSectionName(section)
-  const matchSection = (c: CodeInfo) => c.section === 'all' || (c.section ?? '').split(',').includes(enSection)
+  const matchSection = (c: CodeInfo) => c.section === 'all' || (c.section ?? '').split(',').some((token) => token.trim().toLowerCase() === enSection)
   const list = codes.filter(
     (c) => matchSection(c) && (c.code.toLowerCase().includes(q) || c.translate.includes(query.trim()) || aliasMatches(c.code, q)),
   )
@@ -903,23 +890,9 @@ export function findValueTypes(type: string): ValueTypeInfo[] {
 /** 值类型合法值列表（解析顶层逗号分隔，含特殊指令 @xxx）。 */
 export function parseValueList(list: string | undefined): string[] {
   if (!list) return []
-  const result: string[] = []
-  let depth = 0
-  let current = ''
-  for (const ch of list) {
-    if (ch === '(') depth++
-    else if (ch === ')') depth = Math.max(0, depth - 1)
-    if (ch === ',' && depth === 0) {
-      const item = current.trim()
-      if (item && !item.startsWith('@')) result.push(item)
-      current = ''
-    } else {
-      current += ch
-    }
-  }
-  const item = current.trim()
-  if (item && !item.startsWith('@')) result.push(item)
-  return result
+  return splitTopLevelConfigValue(list)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && !item.startsWith('@'))
 }
 
 /** 逻辑布尔函数：按名精确查（兼容 self.xxx() 数据与 xxx 调用形式）。 */

@@ -6,6 +6,7 @@
 import type { StoreApi } from 'zustand'
 import type { ConfirmRequest, EditorPosition, WorkspaceStore } from '../types'
 import type { CommunityTab } from '../../features/community/communityData'
+import type { SettingsTab } from '../types'
 
 export function createUiSlice() {
   return (set: StoreApi<WorkspaceStore>['setState'], get: () => WorkspaceStore) => ({
@@ -14,7 +15,13 @@ export function createUiSlice() {
     },
 
     setSettingsOpen(open: boolean) {
-      set({ settingsOpen: open })
+      set({ settingsOpen: open, ...(open ? { settingsTab: 'appearance' as SettingsTab } : {}) })
+    },
+    openSettings(tab: SettingsTab = 'appearance') {
+      set({ settingsOpen: true, settingsTab: tab })
+    },
+    setSettingsTab(tab: SettingsTab) {
+      set({ settingsTab: tab })
     },
     setCommandOpen(open: boolean) {
       set({ commandOpen: open })

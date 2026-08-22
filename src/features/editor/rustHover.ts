@@ -7,6 +7,7 @@
  */
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
+import { findKeyValueSeparator, splitTopLevelConfigValue } from '../../services/configSyntax'
 import { findCodeByCode, findLogicBoolean, findSectionsByQuery, findValueTypes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, parseValueList, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
@@ -34,19 +35,14 @@ const COLOR_RE = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/
 const SECTION_RE = /^\s*\[(.+?)\]\s*(?:#.*)?$/
 
 function topLevelSegmentAt(value: string, offset: number): { start: number; end: number; text: string } {
-  let depth = 0
   let start = 0
-  for (let i = 0; i <= value.length; i++) {
-    const ch = value[i]
-    if (ch === '(') depth++
-    else if (ch === ')') depth = Math.max(0, depth - 1)
-    if ((ch === ',' && depth === 0) || i === value.length) {
-      if (offset <= i || i === value.length) {
-        const text = value.slice(start, i)
-        return { start, end: i, text }
-      }
-      start = i + 1
+  const parts = splitTopLevelConfigValue(value)
+  for (const [index, part] of parts.entries()) {
+    const end = start + part.length
+    if (offset <= end || index === parts.length - 1) {
+      return { start, end, text: part }
     }
+    start = end + 1
   }
   return { start: 0, end: value.length, text: value }
 }
@@ -102,9 +98,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
 
   // 2) 键名/值悬停：key: value 行（引擎解析同时认 : 和 =，与 lint/补全一致）。
   // 手动找分隔符（正则含 = 会被安全扫描误报）
-  const colonIdx = lineText.indexOf(':')
-  const eqIdx = lineText.indexOf('=')
-  const sepIdx = colonIdx < 0 ? eqIdx : eqIdx < 0 ? colonIdx : Math.min(colonIdx, eqIdx)
+  const sepIdx = findKeyValueSeparator(lineText)
   const kv = sepIdx > 0 ? [lineText.slice(0, sepIdx), lineText.slice(sepIdx + 1)] : null
   if (kv) {
     const keyStart = 0

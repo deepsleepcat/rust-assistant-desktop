@@ -9,6 +9,7 @@
  *    内置弹体名放行，找不到时给警告让用户确认，不武断报错）。
  */
 import type { SemanticChecker, SemanticIssue } from './types'
+import { splitTopLevelConfigValue } from '../../../services/configSyntax'
 import { issue, keyValuesInSection, getIni, sectionEnName, toEnKey, toTimeNumber } from './helpers'
 
 /** 游戏内置弹体名（官方单位直接引用的常见内置弹体，白名单放行） */
@@ -47,7 +48,7 @@ export const checkProjectileLifecycle: SemanticChecker = {
     for (const kv of keyValues) {
       const key = toEnKey(kv.key, zhToEn).toLowerCase()
       if (!PROJECTILE_REF_KEYS.has(key)) continue
-      for (const raw of kv.value.split(',')) {
+      for (const raw of splitTopLevelConfigValue(kv.value)) {
         const ref = raw.trim().replace(/^CUSTOM:/i, '').toLowerCase()
         if (ref && ref !== 'none' && !/^\d+$/.test(ref) && !BUILTIN_PROJECTILES.has(ref)) referenced.add(ref)
       }
@@ -88,7 +89,7 @@ export const checkProjectileLifecycle: SemanticChecker = {
       const key = toEnKey(kv.key, zhToEn).toLowerCase()
       if (!PROJECTILE_REF_KEYS.has(key)) continue
       // 值可能是逗号分隔列表（spawnProjectiles: a, b）
-      for (const raw of kv.value.split(',')) {
+      for (const raw of splitTopLevelConfigValue(kv.value)) {
         const display = raw.trim().replace(/^CUSTOM:/i, '')
         const ref = display.toLowerCase()
         if (!ref || ref === 'none') continue

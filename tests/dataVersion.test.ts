@@ -165,6 +165,7 @@ describe('M31 补全数据查询（真实数据）', () => {
     expect(normalizeValueForEngine('isBuilder', '是')).toBe('true')
     expect(normalizeValueForEngine('addWaypoint_target_nearestUnit_team', '任何')).toBe('any')
     expect(normalizeValueForEngine('movementType', '空中')).toBe('AIR')
+    expect(normalizeValueForEngine('movementType', '空中，陆地')).toBe('AIR,LAND')
     expect(isPreserveValueKey('builtFrom_1_name')).toBe(true)
     expect(isPreserveValueKey('displayText_zh')).toBe(true)
 
@@ -186,6 +187,33 @@ describe('M31 补全数据查询（真实数据）', () => {
     expect(zhToEn(view, dict, tracker)).toBe(source)
   })
 
+  it('self.xxx 大小写不敏感翻译：self.HP / self.hp 都能显示中文', async () => {
+    await loadCodeData()
+    const dict = makeDict(
+      (await import('../src/services/codeData')).getEnToZhDict(),
+      (await import('../src/services/codeData')).getZhToEnDict(),
+      getKeyZhToEnDict(),
+      (await import('../src/services/codeData')).getSectionZhToEnDict(),
+      getLogicIdentifierZhToEnDict(),
+      (await import('../src/services/codeData')).getLogicIdentifierEnToZhDict(),
+      (await import('../src/services/codeData')).getPreserveValueKeys(),
+      (await import('../src/services/codeData')).getLogicValueKeys(),
+    )
+    const tracker = new Map<string, string>()
+    // self.hp（小写）应翻译为 self.血量
+    const src1 = '[core]\nisVisible:if self.hp(greaterThan=0)'
+    const view1 = enToZh(src1, dict, tracker)
+    expect(view1).toContain('self.血量')
+    expect(zhToEn(view1, dict, tracker)).toBe(src1)
+
+    // self.HP（大写）也应翻译为 self.血量
+    const tracker2 = new Map<string, string>()
+    const src2 = '[core]\nisVisible:if self.HP(greaterThan=0)'
+    const view2 = enToZh(src2, dict, tracker2)
+    expect(view2).toContain('self.血量')
+    expect(zhToEn(view2, dict, tracker2)).toBe(src2)
+  })
+
   it('多值类型 findValueTypes：float,logicBoolean 合并全部命中段（补全不再只取第一段）', async () => {
     await loadCodeData()
     const vts = findValueTypes('float,logicBoolean')
@@ -204,6 +232,12 @@ describe('M31 补全数据查询（真实数据）', () => {
     const numbered = findCodesBySection('turret_1', '')
     expect(numbered.length).toBeGreaterThan(0)
     expect(numbered.map((c) => c.code)).toEqual(base.map((c) => c.code))
+  })
+
+  it('混合大小写节 canBuild 仍能命中「排序」字段', async () => {
+    await loadCodeData()
+    const list = findCodesBySection('canBuild_1', '排序')
+    expect(list.some((c) => c.code === 'pos' && c.type === 'float')).toBe(true)
   })
 
   it('normalizeSectionName：中文编号节和命名节归一化到已知基础节', async () => {

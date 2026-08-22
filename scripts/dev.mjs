@@ -36,7 +36,10 @@ async function waitForServer(url, timeoutMs = 45000) {
   throw new Error(`Vite 开发服务器在 ${timeoutMs}ms 内未就绪：${url}`)
 }
 
-const vite = spawn(process.execPath, [viteBin], { stdio: 'inherit' })
+const vite = spawn(process.execPath, [viteBin], {
+  stdio: 'inherit',
+  env: { ...process.env, VITE_COMMUNITY_ENDPOINT: 'http://localhost:3000' },
+})
 vite.on('exit', (code) => {
   process.exit(code ?? 0)
 })
@@ -55,7 +58,12 @@ waitForServer(devUrl)
   .then(() => {
     const electron = spawn(process.execPath, [electronBin, '.'], {
       stdio: 'inherit',
-      env: { ...process.env, VITE_DEV_SERVER_URL: devUrl },
+      env: {
+        ...process.env,
+        VITE_DEV_SERVER_URL: devUrl,
+        VITE_COMMUNITY_ENDPOINT: 'http://localhost:3000',
+        OHMYTX_COMMUNITY_ORIGIN: 'http://localhost:3000',
+      },
     })
     electron.on('exit', () => {
       vite.kill()
