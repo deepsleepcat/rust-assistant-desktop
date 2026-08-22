@@ -19,6 +19,47 @@ export interface ReadFileResult {
   size: number
 }
 
+/** 项目内文件名搜索结果（轻量路径，不传文件内容）。 */
+export interface ProjectSearchResult {
+  entries: Array<{ path: string; relativePath: string; name: string }>
+  truncated: boolean
+}
+
+/** M38：翻译损坏恢复预览中的单行变更。 */
+export interface TranslationRepairChange {
+  line: number
+  kind: 'section' | 'key' | 'boolean' | 'logic'
+  before: string
+  after: string
+}
+
+/** M38：单个文件的翻译损坏恢复预览。 */
+export interface TranslationRepairPreview {
+  path: string
+  digest: string
+  changeCount: number
+  changes: TranslationRepairChange[]
+}
+
+export interface TranslationRepairScanResult {
+  files: TranslationRepairPreview[]
+  scanned: number
+  skipped: number
+  truncated: boolean
+}
+
+export interface TranslationRepairSelection {
+  path: string
+  digest: string
+}
+
+export interface TranslationRepairApplyResult {
+  done: number
+  skipped: number
+  failed: number
+  changedPaths: string[]
+}
+
 export interface OpenedProject {
   rootPath: string
   name: string
@@ -32,9 +73,54 @@ export interface StoreApi {
   set(key: string, value: unknown): Promise<void>
 }
 
+/** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */
+export interface CommunityRequest {
+  url: string
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+  headers?: Record<string, string>
+  /** Main process injects its encrypted community credential when true. */
+  authenticated?: boolean
+  body?: string
+  upload?: { name: string; type: string; bytes: ArrayBuffer }
+}
+
+export interface CommunityResponse {
+  status: number
+  headers: Record<string, string>
+  body: ArrayBuffer
+}
+
+export interface CommunityAuthUser {
+  id: number
+  username: string
+  displayName?: string
+  avatarUrl?: string
+}
+
+export type CommunityAuthState = 'unavailable' | 'signed-out' | 'pairing' | 'signed-in'
+
+export interface CommunityAuthStatus {
+  state: CommunityAuthState
+  user?: CommunityAuthUser
+}
+
+export interface CommunityAuthPairing {
+  state: 'pairing'
+  userCode: string
+  expiresAt: number
+  pollAfterMs: number
+}
+
+export interface AuthApi {
+  status(): Promise<CommunityAuthStatus>
+  startPairing(): Promise<CommunityAuthPairing>
+  pollPairing(): Promise<CommunityAuthStatus>
+  cancelPairing(): Promise<CommunityAuthStatus>
+  logout(): Promise<CommunityAuthStatus>
+}
+
 export interface BridgeApi {
   platform: string
-  version: string
   appInfo(): Promise<{ version: string; platform: string }>
   /** M6 自动更新（更新包托管在 GitHub Releases） */
   app: {
@@ -48,6 +134,11 @@ export interface BridgeApi {
     confirmClose(): Promise<boolean>
   }
   store: StoreApi
+  community?: {
+    request(request: CommunityRequest): Promise<CommunityResponse>
+  }
+  /** Optional browser-auth integration; absent in the current Electron build. */
+  auth?: AuthApi
   project: {
     openFolderDialog(): Promise<OpenedProject | null>
     openImageDialog(): Promise<string | null>
@@ -55,6 +146,8 @@ export interface BridgeApi {
     saveText(title: string, defaultName: string, content: string): Promise<{ ok: boolean; canceled?: boolean; path?: string; message?: string }>
     registerRoots(roots: string[]): Promise<void>
     readDir(rootPath: string, dirPath: string, showHidden?: boolean): Promise<DirEntry[]>
+    /** M37：全项目文件名/相对路径搜索（不读文件内容；受主进程递归上限保护） */
+    searchFiles(rootPath: string, query: string, showHidden?: boolean): Promise<ProjectSearchResult>
     /** 只读元数据（mtimeMs/size）：外部修改轮询用，不传输文件内容 */
     stat(rootPath: string, filePath: string): Promise<{ mtimeMs: number; size: number }>
     readFile(rootPath: string, filePath: string): Promise<ReadFileResult>
@@ -66,12 +159,6 @@ export interface BridgeApi {
     readImageAsDataUrl(rootPath: string, imagePath: string): Promise<string>
     /** M6.5 音频预览：读音频为 data URL（限项目内） */
     readAudioAsDataUrl(rootPath: string, audioPath: string): Promise<string>
-  }
-  avatar: {
-    chooseLocal(): Promise<string | null>
-    /** 保存裁剪后的头像（PNG data URL）→ 返回已登记的文件路径 */
-    saveCropped(dataUrl: string): Promise<string>
-    uploadCommunity(): Promise<{ ok: false; message: string }>
   }
   /** M18 知识包更新器（仅 Electron 真桥提供；浏览器预览回退内置 fetch） */
   knowledge?: {
@@ -96,6 +183,14 @@ export interface BridgeApi {
     discardImport(rootPath: string): Promise<{ ok: boolean }>
     createUnit(rootPath: string, params: { name: string; displayName?: string; folder?: string }): Promise<{ path: string }>
     pack(rootPath: string, options?: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number; files: number; skippedLinks?: number }>
+    /** M35 F3：打包并部署到游戏 mods/units 目录（跳过另存为对话框）。
+     * 同名已存在且未 overwrite 时返回 code:'EXISTS'，UI 确认后带 overwrite 重试。 */
+    packAndDeploy(
+      rootPath: string,
+      options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean },
+      gamePath: string,
+      overwrite: boolean,
+    ): Promise<{ ok: true; filePath: string; size: number; files: number; skippedLinks: number; overwritten: boolean } | { ok: false; code?: 'EXISTS'; filePath?: string; message: string }>
     check(rootPath: string): Promise<{ issues: Array<{ file: string; level: 'error' | 'warning' | 'info'; message: string }>; unitCount: number; fileCount: number }>
     /** 读取模组自述文件（不存在返回 null） */
     readModInfo(rootPath: string): Promise<{ title: string; description?: string; author?: string; version?: string; thumbnail?: string; minVersion?: string; musicFiles: string[]; musicExclusive: boolean; mapsFiles: string[]; mapsExtra: boolean; musicSourceFolder?: string; mapsSourceFolder?: string; updateUrl?: string } | null>
@@ -122,6 +217,20 @@ export interface BridgeApi {
     /** M23 模板库：用户模板目录的 key 列表（分类展示用） */
     listUserTemplateKeys(): Promise<string[]>
     createUnitFromTemplate(rootPath: string, params: { name: string; folder?: string; templateKey: string; values: Record<string, string> }): Promise<{ path: string }>
+    /** M34 单位复制：从其它/同模组复制单位配置到目标项目。
+     * 源/目标项目根都须已登记；仅复制单位文本（不含图片/音频等外部资源），
+     * 目标同名文件已存在时拒绝覆盖。返回新文件相对目标项目根的路径。 */
+    copyUnit(params: {
+      sourceRoot: string
+      sourceFilePath: string
+      targetRoot: string
+      targetName: string
+      targetFolder?: string
+    }): Promise<{ path: string }>
+    /** M38：扫描项目中可确定的翻译损坏预览（只读） */
+    translationRepairScan(rootPath: string): Promise<TranslationRepairScanResult>
+    /** M38：对选定的扫描结果执行恢复（写前重新读取并比对摘要，外部修改会跳过） */
+    translationRepairApply(rootPath: string, selections: TranslationRepairSelection[]): Promise<TranslationRepairApplyResult>
   }
   /** M8 游戏集成：铁锈战争安装目录检测 / 官方单位示例 / 游戏内模组导入 */
   game: {
@@ -151,6 +260,12 @@ export interface BridgeApi {
   ai: {
     /** 健康检查：验证 Key/连接 */
     check(settings: AiSettings): Promise<AiCheckResult>
+    /** DeepSeek API Key 保管：Key 只写主进程 safeStorage，任何响应不回传 Key 本体 */
+    deepSeekKey: {
+      save(key: string): Promise<{ ok: boolean }>
+      status(): Promise<{ configured: boolean }>
+      clear(): Promise<{ ok: boolean }>
+    }
     /** 提供者信息列表（设置面板展示） */
     info(): Promise<{ providers: AiProviderInfo[] }>
     /** 开始流式对话；返回事件通道，通过 onAiEvent 订阅 */

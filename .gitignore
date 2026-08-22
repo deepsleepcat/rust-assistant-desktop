@@ -33,6 +33,9 @@ Thumbs.db
 .zcode/
 .claude/
 
+# 内部技能、研究资料和工作流脚本（仅本地，不随仓库分发）
+.agents/
+
 # 项目说明文档（仅本地，不随仓库分发）
 docs/
 CHANGELOG.md
@@ -43,6 +46,9 @@ assets/ai/references/
 assets/ai/examples/
 
 .playwright-mcp/
+
+# GUI 测试截图（本地调试产物）
+gui-test-screenshots/
 
 ui-*.png
 .env.local

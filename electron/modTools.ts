@@ -16,8 +16,11 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { existsSync } from 'node:fs'
 import { execFile } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import JSZip from 'jszip'
 import { assertNoLinkEscape, isPathInside, normalizePath } from './paths'
+import { splitTopLevelConfigValue } from '../src/services/configSyntax'
+import { repairIniContent, type TranslationRepairChange, type TranslationRepairDictionary } from '../src/services/translationRepair'
 import type { TemplateAction, TemplateMeta } from '../src/types/mod'
 
 /** 把相对路径解析为项目内绝对路径（越界抛错） */
@@ -390,6 +393,214 @@ export async function globalOp(projectRoot: string, params: GlobalOpParams): Pro
   await walk(root)
   return { files, changed, skipped }
 }
+
+// ── 中文翻译损坏恢复：先扫描预览，再按摘要确认写回 ──────────────────────────
+
+const MAX_TRANSLATION_REPAIR_FILES = 10000
+const MAX_TRANSLATION_REPAIR_RESULTS = 1000
+const MAX_TRANSLATION_REPAIR_DEPTH = 64
+const MAX_PREVIEW_CHANGES_PER_FILE = 120
+
+export interface TranslationRepairPreview {
+  path: string
+  digest: string
+  changeCount: number
+  changes: TranslationRepairChange[]
+}
+
+export interface TranslationRepairScanResult {
+  files: TranslationRepairPreview[]
+  scanned: number
+  skipped: number
+  truncated: boolean
+}
+
+export interface TranslationRepairSelection {
+  path: string
+  digest: string
+}
+
+export interface TranslationRepairApplyResult {
+  done: number
+  skipped: number
+  failed: number
+  changedPaths: string[]
+}
+
+function sha256(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex')
+}
+
+export function isRepairSourceFile(name: string): boolean {
+  return /\.(ini|template)$/i.test(name)
+}
+
+export function normalizeRepairRelativePath(value: string): string {
+  if (!value || value.length > 1024 || value.includes('\0') || path.isAbsolute(value)) throw new Error('修复文件路径无效')
+  const normalized = value.replace(/\\/g, '/')
+  const parts = normalized.split('/')
+  if (parts.some((part) => !part || part === '.' || part === '..')) throw new Error('修复文件路径无效')
+  return normalized
+}
+
+async function readRepairText(file: string): Promise<{ content: string; digest: string } | null> {
+  const stat = await fs.stat(file).catch(() => null)
+  if (!stat || !stat.isFile() || stat.size > MAX_SCAN_READ_SIZE) return null
+  const buffer = await fs.readFile(file).catch(() => null)
+  if (!buffer) return null
+  const content = buffer.toString('utf8')
+  // 只改写可无损往返 UTF-8 的文本，避免把旧编码文件错误转码。
+  if (!Buffer.from(content, 'utf8').equals(buffer)) return null
+  return { content, digest: sha256(buffer) }
+}
+
+/**
+ * 扫描项目中的 .ini/.template，生成只读预览。目录链接和隐藏目录不跟随，
+ * 每个候选都做真实路径校验；达到扫描预算时显式返回 truncated。
+ */
+export async function scanTranslationRepair(projectRoot: string, dict: TranslationRepairDictionary): Promise<TranslationRepairScanResult> {
+  const root = resolveInside(projectRoot, '.')
+  const files: TranslationRepairPreview[] = []
+  let scanned = 0
+  let skipped = 0
+  let truncated = false
+
+  async function walk(dir: string, prefix: string, depth: number): Promise<void> {
+    if (truncated) return
+    if (depth > MAX_TRANSLATION_REPAIR_DEPTH) {
+      truncated = true
+      return
+    }
+    const dirStat = await fs.lstat(dir).catch(() => null)
+    if (!dirStat || !dirStat.isDirectory() || dirStat.isSymbolicLink()) {
+      skipped++
+      return
+    }
+    try {
+      await assertNoLinkEscape(root, dir)
+    } catch {
+      skipped++
+      return
+    }
+    const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => null)
+    if (!entries) {
+      skipped++
+      return
+    }
+    for (const entry of entries) {
+      if (truncated) return
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.name.startsWith('.') || isExcluded(rel)) continue
+      if (++scanned > MAX_TRANSLATION_REPAIR_FILES || files.length >= MAX_TRANSLATION_REPAIR_RESULTS) {
+        truncated = true
+        return
+      }
+      const abs = resolveInside(root, rel)
+      const stat = await fs.lstat(abs).catch(() => null)
+      if (!stat || stat.isSymbolicLink()) {
+        skipped++
+        continue
+      }
+      try {
+        await assertNoLinkEscape(root, abs)
+      } catch {
+        skipped++
+        continue
+      }
+      if (stat.isDirectory()) {
+        await walk(abs, rel, depth + 1)
+        continue
+      }
+      if (!stat.isFile() || !isRepairSourceFile(entry.name)) continue
+      const source = await readRepairText(abs)
+      if (!source) {
+        skipped++
+        continue
+      }
+      const repaired = repairIniContent(source.content, dict)
+      if (repaired.changes.length === 0) continue
+      files.push({
+        path: rel,
+        digest: source.digest,
+        changeCount: repaired.changes.length,
+        changes: repaired.changes.slice(0, MAX_PREVIEW_CHANGES_PER_FILE),
+      })
+    }
+  }
+
+  await walk(root, '', 0)
+  files.sort((a, b) => a.path.localeCompare(b.path, 'zh-CN'))
+  return { files, scanned, skipped, truncated }
+}
+
+/**
+ * 对用户从扫描预览中选定的文件执行恢复。每项写入前都重新读取并核对 SHA-256，
+ * 扫描后被其它工具修改的文件会跳过，不会覆盖新内容。
+ */
+export async function applyVerifiedTranslationRepair(
+  projectRoot: string,
+  dict: TranslationRepairDictionary,
+  selections: TranslationRepairSelection[],
+): Promise<TranslationRepairApplyResult> {
+  const root = resolveInside(projectRoot, '.')
+  if (!Array.isArray(selections) || selections.length > MAX_TRANSLATION_REPAIR_RESULTS) throw new Error('修复选择无效')
+  const picked = new Map<string, string>()
+  for (const selection of selections) {
+    if (!selection || typeof selection.path !== 'string' || typeof selection.digest !== 'string' || !/^[a-f0-9]{64}$/i.test(selection.digest)) {
+      throw new Error('修复选择无效')
+    }
+    const rel = normalizeRepairRelativePath(selection.path)
+    if (!isRepairSourceFile(rel)) throw new Error('修复文件类型无效')
+    picked.set(rel, selection.digest.toLowerCase())
+  }
+
+  let done = 0
+  let skipped = 0
+  let failed = 0
+  const changedPaths: string[] = []
+  for (const [rel, digest] of [...picked.entries()].sort(([a], [b]) => a.localeCompare(b, 'zh-CN'))) {
+    let temp = ''
+    try {
+      const abs = resolveInside(root, rel)
+      const stat = await fs.lstat(abs)
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        skipped++
+        continue
+      }
+      await assertNoLinkEscape(root, abs)
+      const source = await readRepairText(abs)
+      if (!source || source.digest !== digest) {
+        skipped++
+        continue
+      }
+      const repaired = repairIniContent(source.content, dict)
+      if (repaired.changes.length === 0) {
+        skipped++
+        continue
+      }
+      // 写前再读取一次，将外部修改窗口缩小到原子 rename 前的最小范围。
+      const verified = await readRepairText(abs)
+      if (!verified || verified.digest !== digest) {
+        skipped++
+        continue
+      }
+      await assertNoLinkEscape(root, path.dirname(abs))
+      temp = path.join(path.dirname(abs), `.${path.basename(abs)}.ra-${randomUUID()}.tmp`)
+      await fs.writeFile(temp, repaired.content, 'utf8')
+      await fs.rename(temp, abs)
+      done++
+      changedPaths.push(rel)
+    } catch {
+      failed++
+    } finally {
+      if (temp) await fs.rm(temp, { force: true }).catch(() => undefined)
+    }
+  }
+  return { done, skipped, failed, changedPaths }
+}
+
+/** 兼容旧调用方；安全校验由 applyVerifiedTranslationRepair 自身执行。 */
+export const applyTranslationRepair = applyVerifiedTranslationRepair
 
 /** 新建模组的参数 */
 export interface CreateModParams {
@@ -1027,6 +1238,64 @@ export async function createUnitFromTemplate(
   return { path: rel }
 }
 
+/** M34 单位复制参数：sourceRoot/sourceFilePath 指明源单位，targetRoot 目标项目 */
+export interface CopyUnitParams {
+  /** 源项目根目录（须已登记；与目标可以相同=同模组复制） */
+  sourceRoot: string
+  /** 源单位文件相对源项目根的路径（scanUnits 返回的 path） */
+  sourceFilePath: string
+  /** 目标项目根目录（须已登记） */
+  targetRoot: string
+  /** 目标单位名（用作新文件目录名；非法字符替换为 -） */
+  targetName: string
+  /** 目标文件夹（相对目标项目根的目录，可空） */
+  targetFolder?: string
+}
+
+/**
+ * 从其它模组（或同模组）复制单位配置到目标模组（M34）。
+ * 主进程原子操作：两端项目根都校验登记 → 源文件越界/链接逃逸校验 →
+ * 单位格式校验（.ini/.template + [core]/[核心]）→ 目标不存在才写入。
+ * 复制的是单位配置文本（含注释/节顺序），不自动复制图片/音频等外部资源；
+ * 与 createUnitFromTemplate 的目标路径规则一致：<folder>/<name>/<name>.ini。
+ */
+export async function copyUnit(params: CopyUnitParams): Promise<{ path: string }> {
+  const { sourceRoot, sourceFilePath, targetRoot, targetName, targetFolder } = params
+  if (!sourceRoot || !targetRoot || !sourceFilePath || !targetName) throw new Error('复制参数不完整')
+
+  // 2) 源：限定 .ini/.template，解析为源项目内绝对路径（越界即抛错）
+  if (!/\.(ini|template)$/i.test(sourceFilePath)) {
+    throw new Error(`只能复制 .ini / .template 单位文件：${sourceFilePath}`)
+  }
+  const sourceAbs = resolveInside(sourceRoot, sourceFilePath)
+  // 源文件不能通过 junction/符号链接指向项目外
+  await assertNoLinkEscape(sourceRoot, sourceAbs)
+  const content = await readTextLimited(sourceAbs)
+  if (!content) throw new Error('源单位文件为空或不可读（超过 64MB 上限？）')
+  // 节名大小写不敏感（引擎同，与 scanUnits/scanResources 的小写化识别对齐）
+  if (!/^\s*\[(core|核心)\s*\]/im.test(content)) {
+    throw new Error('源文件不是单位文件（缺少 [core] / [核心] 节）')
+  }
+
+  // 3) 目标：与 createUnitFromTemplate 相同的路径规则与安全校验
+  const safeName = targetName.trim().replace(/[\\/:*?"<>|]/g, '-') || 'unit'
+  const folder = (targetFolder ?? '').replace(/^\/+|\/+$/g, '')
+  const rel = folder ? path.posix.join(folder, safeName, `${safeName}.ini`) : path.posix.join(safeName, `${safeName}.ini`)
+  const targetAbs = resolveInside(targetRoot, rel)
+  await assertNoLinkEscape(targetRoot, targetAbs)
+  // flag 'wx'：目标已存在即失败（原子防重，消除 exists 检查与写入之间的 TOCTOU 窗口）
+  await fs.mkdir(path.dirname(targetAbs), { recursive: true })
+  try {
+    await fs.writeFile(targetAbs, content, { encoding: 'utf8', flag: 'wx' })
+  } catch (err) {
+    if (err && typeof err === 'object' && 'code' in err && (err as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(`目标文件已存在：${rel}（不会覆盖已有文件）`, { cause: err })
+    }
+    throw new Error(`写入目标文件失败：${rel}`, { cause: err })
+  }
+  return { path: rel }
+}
+
 /** 打包选项：打包时对源文件做清理/格式化 */
 export interface PackOptions {
   /** 移除空文件（源文件内容为空则不打包） */
@@ -1260,6 +1529,79 @@ export async function packModBufferWithCount(projectRoot: string, options?: Pack
   return { buffer: Buffer.from(content), files: fileCount, skippedLinks }
 }
 
+/** M35 F3：打包并部署到游戏 mods/units 目录（一键验证闭环的「部署」环节）。
+ * 设计：游戏目录不是项目根（不登记），写游戏目录是本功能唯一的例外——
+ * 目录判定与 game.ts looksLikeGameDir 同标准（gamePath/assets/units 是目录），
+ * 文件名取项目根 basename 并清洗非法字符/路径穿越/保留设备名/结尾点；
+ * 同名已存在且未确认覆盖时返回 EXISTS 不写盘（防误删游戏内已有模组）；
+ * overwrite=false 用 'wx' 原子创建（防并发覆盖）；拒绝写入符号链接目标
+ * （防 mods/units/<name>.rwmod 被做成指向游戏目录外的链接）；写盘失败
+ * （权限不足/文件被占用）抛错由上层提示。 */
+export async function deployMod(
+  projectRoot: string,
+  gamePath: string,
+  options: PackOptions,
+  overwrite: boolean,
+): Promise<
+  | { ok: true; filePath: string; size: number; files: number; skippedLinks: number; overwritten: boolean }
+  | { ok: false; code?: 'EXISTS'; filePath?: string; message: string }
+> {
+  const root = resolveInside(projectRoot, '.')
+  // 先校验游戏目录（fail fast：配置错误不浪费打包时间与互斥占用）
+  if (!path.isAbsolute(gamePath)) {
+    return { ok: false, message: '游戏目录必须是绝对路径，请检查设置中的游戏安装路径' }
+  }
+  try {
+    const st = await fs.stat(path.join(gamePath, 'assets', 'units'))
+    if (!st.isDirectory()) {
+      return { ok: false, message: '游戏目录校验失败（未找到 assets/units），请检查设置中的游戏安装路径' }
+    }
+  } catch {
+    return { ok: false, message: '游戏目录校验失败（未找到 assets/units），请检查设置中的游戏安装路径' }
+  }
+  const { buffer, files, skippedLinks } = await packModBufferWithCount(root, options)
+  const rawName = path.basename(path.resolve(root)).trim() || 'mod'
+  // 清洗 Windows 文件名非法字符 + 路径穿越 + 结尾点/空格 + 保留设备名（CON/NUL/COM1…）
+  let safeName = rawName.replace(/[\\/:*?"<>|]/g, '_').replace(/\.\./g, '_').replace(/[. ]+$/, '') || 'mod'
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(safeName)) safeName = `_${safeName}`
+  const modsDir = path.join(gamePath, 'mods', 'units')
+  const target = path.join(modsDir, `${safeName}.rwmod`)
+  // 拒绝符号链接目标（防写入被链接重定向到游戏目录外）
+  let existed = false
+  try {
+    const st = await fs.lstat(target)
+    if (st.isSymbolicLink()) {
+      return { ok: false, message: `部署目标存在符号链接，拒绝写入：${target}` }
+    }
+    existed = true
+  } catch {
+    // 目标不存在
+  }
+  if (existed && !overwrite) {
+    return { ok: false, code: 'EXISTS', filePath: target, message: `游戏模组目录已存在同名模组：${safeName}.rwmod（确认覆盖后重试）` }
+  }
+  try {
+    await fs.mkdir(modsDir, { recursive: true })
+    if (overwrite) {
+      await fs.writeFile(target, buffer)
+    } else {
+      // 'wx' 原子创建：并发下不覆盖刚出现的同名文件（EXISTS 检查与写入合一）
+      const handle = await fs.open(target, 'wx')
+      try {
+        await handle.writeFile(buffer)
+      } finally {
+        await handle.close()
+      }
+    }
+  } catch (err) {
+    if (!overwrite && (err as NodeJS.ErrnoException).code === 'EEXIST') {
+      return { ok: false, code: 'EXISTS', filePath: target, message: `游戏模组目录已存在同名模组：${safeName}.rwmod（确认覆盖后重试）` }
+    }
+    throw new Error(`部署到游戏目录失败（权限不足或文件被占用，游戏可能正在运行）：${target}`, { cause: err })
+  }
+  return { ok: true, filePath: target, size: buffer.byteLength, files, skippedLinks, overwritten: existed && overwrite }
+}
+
 /** 单位检查：name 缺失 / [core] 缺失 / name 全局重复 */
 export interface ModCheckIssue {
   file: string
@@ -1348,7 +1690,7 @@ export function runChainInspection(content: string, rules: ChainRule[], file: st
   const sectionNames = new Set(sections.map((s) => s.name))
 
   for (const rule of rules) {
-    const list = (rule.list ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    const list = splitTopLevelConfigValue(rule.list ?? '').map((s) => s.trim()).filter(Boolean)
     const tips = list.filter((s) => s.startsWith('@tip(')).map((s) => s.replace(/^@tip\((.*)\)$/, '$1'))
     const keys = list.filter((s) => !s.startsWith('@'))
 

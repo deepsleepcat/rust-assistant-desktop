@@ -6,7 +6,8 @@
  *
  * 文件系统是内存中的一棵假目录树，存储（设置/工作区）走 localStorage。
  */
-import type { BridgeApi, DirEntry, ReadFileResult } from '../types/bridge'
+import type { BridgeApi, DirEntry, ReadFileResult, TranslationRepairApplyResult, TranslationRepairScanResult } from '../types/bridge'
+import { repairIniContent, type TranslationRepairDictionary } from './translationRepair'
 import { DEFAULT_SETTINGS, sanitizeSettings } from '../utils/settings'
 
 interface MockFile {
@@ -71,6 +72,31 @@ image: rifle.png
 image_turret: NONE
 ` },
   { path: `${MOCK_PROJECT_ROOT}\\units\\rifle\\rifle.png`, content: 'mock-png' },
+  // M36：浏览器预览用最小真实 tileset TMX（MapViewer 需实际走 drawImage，而非 gid 色块）
+  { path: `${MOCK_PROJECT_ROOT}\\maps\\demo.tmx`, content: `<?xml version="1.0"?>
+<map orientation="orthogonal" width="8" height="6" tilewidth="16" tileheight="16">
+  <tileset firstgid="1" name="mock" tilewidth="16" tileheight="16" tilecount="300" columns="25">
+    <image source="tiles.png" width="400" height="250"/>
+  </tileset>
+  <layer name="Ground" width="8" height="6"><data encoding="csv">
+1,2,3,4,5,6,7,8,
+9,10,11,12,13,14,15,16,
+17,18,19,20,21,22,23,24,
+25,26,27,28,29,30,31,32,
+33,34,35,36,37,38,39,40,
+41,42,43,44,45,46,47,48
+  </data></layer>
+  <objectgroup name="Triggers"/>
+</map>` },
+  { path: `${MOCK_PROJECT_ROOT}\\maps\\tiles.png`, content: 'mock-png' },
+  // 外部 TSX：覆盖 Windows 绝对 TMX 路径下「TMX → TSX → PNG」的真实 bridge 路径。
+  { path: `${MOCK_PROJECT_ROOT}\\maps\\tiles.tsx`, content: `<tileset name="mock-external" tilewidth="16" tileheight="16" tilecount="300" columns="25"><image source="tiles.png" width="400" height="250"/></tileset>` },
+  { path: `${MOCK_PROJECT_ROOT}\\maps\\external.tmx`, content: `<?xml version="1.0"?>
+<map orientation="orthogonal" width="4" height="4" tilewidth="16" tileheight="16">
+  <tileset firstgid="1" source="tiles.tsx"/>
+  <layer name="Ground" width="4" height="4"><data encoding="csv">1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16</data></layer>
+  <objectgroup name="Triggers"/>
+</map>` },
   { path: `${MOCK_PROJECT_ROOT}\\README.md`, content: `# 我的第一个模组
 
 在浏览器预览模式下创建的示例模组。
@@ -122,6 +148,45 @@ function relToRoot(fullPath: string): string[] {
   return norm.slice(prefix.length).split('\\')
 }
 
+const MOCK_REPAIR_DICT: TranslationRepairDictionary = {
+  sections: [
+    { code: 'core', translate: '核心' },
+    { code: 'graphics', translate: '图像' },
+    { code: 'attack', translate: '攻击' },
+    { code: 'movement', translate: '运动' },
+    { code: 'action', translate: '行动', needName: true },
+    { code: 'hiddenAction', translate: '隐藏行动', needName: true },
+    { code: 'turret', translate: '炮塔', needName: true },
+    { code: 'projectile', translate: '抛射体', needName: true },
+    { code: 'effect', translate: '效果', needName: true },
+  ],
+  codes: [
+    { code: 'name', translate: '名称', type: 'string' },
+    { code: 'autoTrigger', translate: '自动触发', type: 'logicBoolean' },
+    { code: 'allowMultipleInQueue', translate: '允许多个队列', type: 'boolean' },
+    { code: 'addWaypoint_type', translate: '添加路径点动作类型', type: 'string' },
+    { code: 'addWaypoint_maxTime', translate: '添加路径点检索时间', type: 'time' },
+    { code: 'addWaypoint_target_nearestUnit_tagged', translate: '添加路径点检索标签', type: 'tags' },
+    { code: 'addWaypoint_target_nearestUnit_team', translate: '添加路径点靠近队伍', type: 'addWaypoint_target_nearestUnit_team' },
+    { code: 'addWaypoint_target_nearestUnit_maxRange', translate: '添加路径点检索范围', type: 'float' },
+    { code: 'addWaypoint_target_mapMustBeReachable', translate: '添加路径点路径可达', type: 'boolean' },
+    { code: 'takeResources_includeUnitsWithinRange', translate: '提取资源范围', type: 'float' },
+    { code: 'takeResources_excludeUnitsWithoutTags', translate: '提取资源标签', type: 'tags' },
+    { code: 'invisible', translate: '隐藏图像', type: 'boolean' },
+    { code: 'canAttackFlyingUnits', translate: '可攻击空中单位', type: 'logicBoolean' },
+  ],
+  logicIdentifiers: new Map([['血量', 'hp']]),
+}
+
+function mockDigest(content: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < content.length; i++) {
+    hash ^= content.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
 const MOCK_IMAGE_DATA_URL =
   'data:image/svg+xml,' +
   encodeURIComponent(
@@ -140,6 +205,8 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
   // M10：监听器集合每桥独立（模块级单例会跨测试/跨桥串扰：上个测试的流式事件
   // 会写进下一个测试的 store）
   const mockAiListeners = new Set<(event: import('../types/ai').AiStreamEvent) => void>()
+  // 浏览器预览模式的 DeepSeek Key（仅内存，模拟主进程 safeStorage 保管）
+  let mockDeepSeekKey = ''
 
   const storageKey = 'rust-assistant:mock-state'
   function loadState<T>(key: string, fallback: T): T {
@@ -200,6 +267,39 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     return { mtimeMs: node.content.length, size: new TextEncoder().encode(node.content).length }
   }
 
+  /** M37：浏览器预览同样全树搜索文件名/相对路径（不依赖当前目录是否展开）。
+   * 上限与主进程保持一致，且用迭代栈避免 mock 深树导致 JS 调用栈溢出。 */
+  function searchFiles(query: string, showHidden = false): { entries: Array<{ path: string; relativePath: string; name: string }>; truncated: boolean } {
+    const needle = query.trim().replace(/\\/g, '/').toLowerCase()
+    if (!needle) return { entries: [], truncated: false }
+    const entries: Array<{ path: string; relativePath: string; name: string }> = []
+    const stack: Array<{ dir: MockDir; prefix: string; depth: number }> = [{ dir: tree, prefix: '', depth: 0 }]
+    let scanned = 0
+    let truncated = false
+    while (stack.length > 0) {
+      const current = stack.pop()!
+      if (current.depth > 64) {
+        truncated = true
+        continue
+      }
+      for (const [name, node] of Object.entries(current.dir.children)) {
+        if (++scanned > 50_000) return { entries: entries.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN')), truncated: true }
+        if (!showHidden && name.startsWith('.')) continue
+        const relativePath = current.prefix ? `${current.prefix}/${name}` : name
+        if (node.kind === 'dir') {
+          stack.push({ dir: node, prefix: relativePath, depth: current.depth + 1 })
+          continue
+        }
+        if (name.toLowerCase().includes(needle) || relativePath.toLowerCase().includes(needle)) {
+          entries.push({ path: `${MOCK_PROJECT_ROOT}\\${relativePath.replace(/\//g, '\\')}`, relativePath, name })
+          if (entries.length >= 2000) return { entries: entries.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN')), truncated: true }
+        }
+      }
+    }
+    entries.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN'))
+    return { entries, truncated }
+  }
+
   function writeFile(filePath: string, content: string, opts: { hasBom: boolean }): void {
     const parts = relToRoot(filePath)
     const dir = findNode(tree, parts.slice(0, -1))
@@ -219,7 +319,6 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
 
   return {
     platform: 'mock',
-    version: '0.1.0',
     appInfo: async () => ({ version: '0.1.0', platform: 'mock' }),
     app: {
       checkUpdate: async () => ({ skipped: true, message: '浏览器预览模式不检查更新' }),
@@ -239,10 +338,11 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     },
     project: {
       openFolderDialog: async () => ({ rootPath: MOCK_PROJECT_ROOT, name: '我的第一个模组' }),
-      openImageDialog: async () => MOCK_IMAGE_DATA_URL,
+      openImageDialog: async () => `${MOCK_PROJECT_ROOT}\\units\\tank\\tank.png`,
       saveText: async () => ({ ok: false, message: '模拟环境：无法保存' }),
       registerRoots: async () => undefined,
       readDir: async (_root, dirPath) => listDir(dirPath),
+      searchFiles: async (_root, query, showHidden) => searchFiles(query, showHidden),
       stat: async (_root, filePath) => statFile(filePath),
       readFile: async (_root, filePath) => readFile(filePath),
       writeFile: async (_root, filePath, content, opts) => {
@@ -275,13 +375,14 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         if (!dir || dir.kind !== 'dir') throw new Error('找不到要删除的项目')
         delete dir.children[parts[parts.length - 1]]
       },
-      readImageAsDataUrl: async (_root, _imagePath) => MOCK_IMAGE_DATA_URL,
+      readImageAsDataUrl: async (_root, imagePath) => {
+        const node = findNode(tree, relToRoot(imagePath))
+        if (!node || node.kind !== 'file') throw new Error('图片不存在：' + imagePath)
+        const ext = imagePath.split('.').pop()?.toLowerCase()
+        if (!['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext ?? '')) throw new Error('不是受支持的图片文件：' + imagePath)
+        return MOCK_IMAGE_DATA_URL
+      },
       readAudioAsDataUrl: async (_root, _audioPath) => 'data:audio/ogg;base64,T2dnUw==',
-    },
-    avatar: {
-      chooseLocal: async () => null,
-      saveCropped: async () => 'C:\\mock\\avatar.png',
-      uploadCommunity: async () => ({ ok: false, message: '社区头像服务即将上线' }),
     },
     game: {
       detect: async () => ({ found: false, gamePath: null, units: [], mods: [] }),
@@ -301,11 +402,16 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       discardImport: async () => ({ ok: true }),
       createUnit: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
       pack: async () => ({ canceled: true }),
+      // M35 F3：模拟环境无游戏目录，返回未配置提示（与主进程返回结构一致）
+      packAndDeploy: async () => ({ ok: false, message: '模拟环境：未配置游戏安装目录' }),
       check: async () => ({ issues: [], unitCount: 0, fileCount: 0 }),
       readModInfo: async () => ({ title: '我的模组', musicFiles: [], musicExclusive: false, mapsFiles: [], mapsExtra: false }),
       writeModInfo: async () => ({ ok: true }),
       scanResources: async () => ({
-        files: ['units/tank/tank.png', 'units/tank/tank_wreck.png', 'units/rifle/rifle.png', 'music/bgm.ogg', 'maps/test.tmx'],
+        files: [
+          'units/tank/tank.png', 'units/tank/tank_wreck.png', 'units/rifle/rifle.png', 'music/bgm.ogg',
+          'maps/test.tmx', 'maps/demo.tmx', 'maps/external.tmx', 'maps/tiles.tsx', 'maps/tiles.png',
+        ],
         unitNames: ['重型坦克', '步枪兵', '侦察车'],
       }),
       scanUnits: async () => [
@@ -319,10 +425,55 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         { key: 'mock-tank', name: '基础模板-坦克-陆军模板', nameEn: 'Base-Template(Tank)LAND', actions: [{ label: '名称', key: 'name', section: 'core', tag: 'name-core', type: 'input' }], defaults: { 'name-core': '基础坦克' } },
       ],
       createUnitFromTemplate: async () => ({ path: 'units/mock-unit/mock-unit.ini' }),
+      copyUnit: async (params) => {
+        // 模拟环境：与主进程 copyUnit 对齐的轻量校验（预览用途，不做真实文件操作）
+        if (!params || typeof params !== 'object') throw new Error('复制参数错误')
+        if (!params.sourceRoot || !params.targetRoot || !params.sourceFilePath || !params.targetName) throw new Error('复制参数不完整')
+        if (!/\.(ini|template)$/i.test(params.sourceFilePath)) throw new Error('只能复制 .ini / .template 单位文件')
+        const safeName = params.targetName.trim().replace(/[\\/:*?"<>|]/g, '-') || 'unit'
+        const folder = (params.targetFolder ?? '').replace(/^\/+|\/+$/g, '')
+        return { path: folder ? `${folder}/${safeName}/${safeName}.ini` : `${safeName}/${safeName}.ini` }
+      },
       saveFileAsTemplate: async () => ({ key: 'mock-template' }),
       importTemplate: async () => null,
       deleteUserTemplate: async () => ({ ok: false, message: '模拟环境：无法删除模板' }),
       listUserTemplateKeys: async () => [],
+      translationRepairScan: async (_rootPath: string): Promise<TranslationRepairScanResult> => {
+        const previews: TranslationRepairScanResult['files'] = []
+        const candidates = files.filter((entry) => /\.(ini|template)$/i.test(entry.path))
+        let skipped = 0
+        for (const entry of candidates) {
+          const node = findNode(tree, relToRoot(entry.path))
+          if (!node || node.kind !== 'file') { skipped++; continue }
+          const repaired = repairIniContent(node.content, MOCK_REPAIR_DICT)
+          if (repaired.changes.length === 0) continue
+          const rel = entry.path.replace(MOCK_PROJECT_ROOT + '\\', '').replace(/\\/g, '/')
+          previews.push({ path: rel, digest: mockDigest(node.content), changeCount: repaired.changes.length, changes: repaired.changes })
+        }
+        return { files: previews, scanned: candidates.length, skipped, truncated: false }
+      },
+      translationRepairApply: async (_rootPath: string, selections: Array<{ path: string; digest: string }>): Promise<TranslationRepairApplyResult> => {
+        let done = 0
+        let skipped = 0
+        let failed = 0
+        const changedPaths: string[] = []
+        for (const selection of selections) {
+          const spec = files.find((entry) => entry.path.replace(MOCK_PROJECT_ROOT + '\\', '').replace(/\\/g, '/') === selection.path)
+          if (!spec) { skipped++; continue }
+          const node = findNode(tree, relToRoot(spec.path))
+          if (!node || node.kind !== 'file' || mockDigest(node.content) !== selection.digest) { skipped++; continue }
+          const repaired = repairIniContent(node.content, MOCK_REPAIR_DICT)
+          if (repaired.changes.length === 0) { skipped++; continue }
+          try {
+            writeFile(spec.path, repaired.content, { hasBom: node.hasBom })
+            done++
+            changedPaths.push(selection.path)
+          } catch {
+            failed++
+          }
+        }
+        return { done, skipped, failed, changedPaths }
+      },
     },
     git: {
     info: async () => ({ available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [], message: '模拟环境：无 git' }),
@@ -335,11 +486,23 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
   ai: {
       check: async (settings) => {
         if (settings.provider === 'deepseek') {
-          return settings.deepseekApiKey
+          return mockDeepSeekKey
             ? { ok: true, message: '连接成功（浏览器预览模式）' }
             : { ok: false, message: '未配置 DeepSeek API Key，请在设置中填写' }
         }
         return { ok: false, message: '社区 AI 服务即将上线（内部预留）' }
+      },
+      deepSeekKey: {
+        save: async (key: string) => {
+          if (typeof key !== 'string' || !key.trim()) throw new Error('API Key 不能为空')
+          mockDeepSeekKey = key.trim()
+          return { ok: true }
+        },
+        status: async () => ({ configured: Boolean(mockDeepSeekKey) }),
+        clear: async () => {
+          mockDeepSeekKey = ''
+          return { ok: true }
+        },
       },
       info: async () => ({
         providers: [

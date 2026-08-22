@@ -1,36 +1,48 @@
 /**
  * 顶部标题栏：Logo、项目名、命令搜索（Codex 风格）、设置头像。
  * 在 Electron 中作为可拖拽区域（窗口控制按钮由系统渲染在右侧）。
+ * 社区账号不再持有令牌：登录统一走独立登录门禁（loginCommunity），
+ * 头像经主进程注入凭据后由 /api/me 获取，renderer 只拿到公开资料。
  */
 import { useWorkspaceStore } from '../stores/workspace'
 import { AppIcon } from './AppIcon'
 import { LogoR } from './LogoR'
 import { truncateMiddle } from '../utils/paths'
-import { getBridge } from '../services/bridge'
+import { createCommunityApi, resolveCommunityUrl } from '../services/communityApi'
 import { useEffect, useState } from 'react'
 
 export function TitleBar() {
   const activeProject = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const setCommandOpen = useWorkspaceStore((s) => s.setCommandOpen)
-  const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
-  const avatarSettings = useWorkspaceStore((s) => s.settings.avatar)
-  const [avatar, setAvatar] = useState<{ path: string; url: string | null }>({ path: '', url: null })
+  const openSettings = useWorkspaceStore((s) => s.openSettings)
+  const loginCommunity = useWorkspaceStore((s) => s.loginCommunity)
+  const communityAuth = useWorkspaceStore((s) => s.communityAuth)
+  const signedIn = communityAuth.status === 'signed_in'
+  const [avatar, setAvatar] = useState<{ key: string; url: string | null }>({ key: '', url: null })
 
   useEffect(() => {
-    if (avatarSettings.source !== 'local' || !avatarSettings.localPath) return
+    if (!signedIn) return
     let alive = true
-    void getBridge().project.readImageAsDataUrl('', avatarSettings.localPath).then((url) => alive && setAvatar({ path: avatarSettings.localPath ?? '', url })).catch(() => alive && setAvatar({ path: avatarSettings.localPath ?? '', url: null }))
+    const key = `${communityAuth.user?.id ?? 0}:${communityAuth.user?.username ?? ''}`
+    void createCommunityApi(useWorkspaceStore.getState().settings.ai.communityEndpoint)
+      .me()
+      .then((me) => {
+        if (!alive) return
+        const endpoint = useWorkspaceStore.getState().settings.ai.communityEndpoint
+        setAvatar({ key, url: resolveCommunityUrl(endpoint, me.avatar_url) })
+      })
+      .catch(() => alive && setAvatar({ key, url: null }))
     return () => { alive = false }
-    // updatedAt：重新裁切头像后路径不变，也要重新读取
-  }, [avatarSettings.source, avatarSettings.localPath, avatarSettings.updatedAt])
+  }, [signedIn, communityAuth.user])
 
-  const avatarUrl = avatar.path === avatarSettings.localPath ? avatar.url : null
+  const avatarKey = `${communityAuth.user?.id ?? 0}:${communityAuth.user?.username ?? ''}`
+  const avatarUrl = signedIn && avatar.key === avatarKey ? avatar.url : null
 
   return (
     <header className="titlebar">
       <div className="titlebar-inner">
         <LogoR size="header" />
-        <span className="titlebar-name">铁锈助手</span>
+        <span className="titlebar-name">铁锈工坊</span>
         {activeProject && (
           <>
             <span className="titlebar-sep">/</span>
@@ -47,8 +59,16 @@ export function TitleBar() {
           </span>
         </div>
         <div className="titlebar-spacer" />
-        <button className="avatar-btn glow-hover" title="打开设置" onClick={() => setSettingsOpen(true)}>
-          {avatarUrl ? <img src={avatarUrl} alt="用户头像" /> : '猫'}
+        <button
+          className="community-account-btn"
+          title={signedIn ? '打开社区账号设置' : '在浏览器中登录社区账号'}
+          onClick={() => (signedIn ? openSettings('community') : void loginCommunity())}
+        >
+          <AppIcon name="user" size={13} />
+          <span>{signedIn ? '社区账号' : '登录社区'}</span>
+        </button>
+        <button className="avatar-btn glow-hover" title="社区账号" onClick={() => openSettings('community')}>
+          {avatarUrl ? <img src={avatarUrl} alt="社区账号头像" /> : '猫'}
         </button>
       </div>
     </header>

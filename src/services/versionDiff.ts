@@ -13,11 +13,11 @@
  * - 字段 removeVersion ≥ 0 且 ≤ 目标版本 → 已失效。
  *
  * 可测试性：diff 与报告都接受可选的 codes 参数（缺省 = 全局代码表），
- * 测试可注入受控数据覆盖「弃用字段/迁移建议」分支（真实数据目前没有
- * removeVersion ≥ 0 的字段）。
+ * 测试可注入受控数据覆盖「弃用字段/迁移建议」分支（M35 后真实数据已有
+ * removeVersion=9 的 23 个官方废弃字段，弃用分支走真实数据）。
  */
 import type { CodeInfo } from './codeData'
-import { findCodeByCode, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber, versionNumberToName } from './codeData'
+import { findCodeByCode, getAllCodes, getAliasDict, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber, versionNumberToName } from './codeData'
 import { parseIni, toEnKey } from '../features/editor/semanticChecks/helpers'
 import { joinProjectPath } from '../utils/projectPath'
 
@@ -86,8 +86,8 @@ export interface UpgradeReport {
 
 /**
  * 人工核对的迁移映射（旧字段 → 新字段）。
- * 官方数据目前没有 removeVersion ≥ 0 的字段，此表先留空；
- * 后续版本数据更新后，在此补充人工核对过的替换关系（描述启发式之外的兜底）。
+ * 官方数据只给 isOutdated 布尔、无替代字段声明，描述启发式（代替X）之外
+ * 需要人工核对的关系放这里（如未来确认 turretSize 的替代字段）。
  * 方向约定：key = 用户可能写下的旧名，value = 应改用的现名。
  */
 const MIGRATE_MAP: Record<string, string> = {}
@@ -106,10 +106,17 @@ function parseReplacesTarget(description: string | undefined): string | undefine
   return m?.[1]
 }
 
-/** 代码表 → 大小写不敏感查找表 */
+/** 代码表 → 大小写不敏感查找表（M35：别名旧名同样映射到现行字段，
+ * 与 findCodeByCode 的别名解析语义一致——升级报告对旧名不静默忽略） */
 function lookupCodes(codes: CodeInfo[]): Map<string, CodeInfo> {
   const m = new Map<string, CodeInfo>()
-  for (const c of codes) m.set(c.code.toLowerCase(), c)
+  for (const c of codes) {
+    const key = c.code.toLowerCase()
+    m.set(key, c)
+    for (const [alias, target] of getAliasDict()) {
+      if (target.toLowerCase() === key) m.set(alias, c)
+    }
+  }
   return m
 }
 
@@ -342,7 +349,7 @@ export async function buildUpgradeReport(
 /** 升级报告 → 纯文本（导出/分享；全部相对路径，脱敏） */
 export function upgradeReportToText(r: UpgradeReport): string {
   const lines: string[] = []
-  lines.push(`铁锈助手 · 版本升级改动清单`)
+  lines.push(`铁锈工坊 · 版本升级改动清单`)
   lines.push(`项目：${r.meta.projectName}`)
   lines.push(`生成时间：${new Date(r.meta.generatedAt).toLocaleString()}`)
   lines.push(`升级方向：${r.meta.fromVersion} → ${r.meta.toVersion}`)

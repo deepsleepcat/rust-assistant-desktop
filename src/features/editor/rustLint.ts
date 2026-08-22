@@ -11,8 +11,9 @@
 import { linter } from '@codemirror/lint'
 import type { EditorView } from '@codemirror/view'
 import type { ValueTypeInfo } from '../../services/codeData'
-import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhToEnDict, getZhToEnDict, loadCodeData, resolveValueZhToEn, versionNameToNumber, zhToEnKeySegments } from '../../services/codeData'
 import { classifyLine } from './rustLanguage'
+import { findKeyValueSeparator, splitTopLevelConfigValue } from '../../services/configSyntax'
 import { runSemanticChecks, semanticIssuesToDiagnostics, type CustomRule } from './semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from './semanticChecks/registry'
 import { loadProjectRuleSets } from './semanticChecks/customRules'
@@ -29,26 +30,48 @@ const SPAWN_UNITS_PARAMS = new Set([
   'gridalign', 'skipifoverlapping', 'falling', 'transportedunitstotransfer', 'alwaysstartdiratzero',
   'alwaystartdiratzero', 'offsetx', 'offsety', 'offsetrandomxy', 'offsetrandomx', 'offsetrandomy',
   'offsetheight', 'offsetrandomdir', 'offsetdir', 'addresources', 'spawnsource', 'copywaypointsfrom',
+  'damagingborder', 'zonemarker',
 ])
 
-/** 按逗号分段（括号深度内的逗号不算分隔；spawnUnits 参数值可含函数调用嵌套） */
-function splitTopLevel(value: string): string[] {
-  const segs: string[] = []
-  let depth = 0
-  let cur = ''
-  for (const ch of value) {
-    if (ch === '(') depth++
-    else if (ch === ')') depth = Math.max(0, depth - 1)
-    if (ch === ',' && depth === 0) {
-      segs.push(cur)
-      cur = ''
-      continue
-    }
-    cur += ch
-  }
-  segs.push(cur)
-  return segs
+/** spawnUnits 参数的中文显示名回译；值部分保持原文，避免误改表达式或资源语法。 */
+const SPAWN_UNITS_PARAM_ALIASES: Record<string, string> = {
+  '中立阵营': 'neutralTeam',
+  '设为最后攻击者的阵营': 'setToTeamOfLastAttacker',
+  '攻击性阵营': 'aggressiveTeam',
+  '效果产生几率': 'spawnChance',
+  '生成概率': 'spawnChance',
+  '产生几率': 'spawnChance',
+  '最大生成上限': 'maxSpawnLimit',
+  '技术等级': 'techLevel',
+  '网格对齐': 'gridAlign',
+  '重叠时跳过': 'skipIfOverlapping',
+  '偏移X': 'offsetX',
+  '水平偏移': 'offsetX',
+  'Y偏移': 'offsetY',
+  '垂直偏移': 'offsetY',
+  '随机X偏移': 'offsetRandomX',
+  '随机 X 偏移': 'offsetRandomX',
+  '随机Y偏移': 'offsetRandomY',
+  '随机 Y 偏移': 'offsetRandomY',
+  '随机XY偏移': 'offsetRandomXY',
+  '随机 XY 偏移': 'offsetRandomXY',
+  '高度偏移': 'offsetHeight',
+  '方向偏移': 'offsetDir',
+  '随机方向偏移': 'offsetRandomDir',
+  '资源': 'addResources',
+  '产生来源': 'spawnSource',
+  '复制路径点': 'copyWaypointsFrom',
+  '伤害边界': 'damagingBorder',
+  '区域标记': 'zoneMarker',
 }
+
+function normalizeSpawnUnitsParamName(name: string): string {
+  const trimmed = name.trim()
+  return SPAWN_UNITS_PARAM_ALIASES[trimmed] ?? trimmed
+}
+
+/** 按顶层逗号分段；括号内逗号不算分隔。 */
+const splitTopLevel = splitTopLevelConfigValue
 
 /**
  * spawnUnits 值结构校验（引擎 ci.java:55-80）：
@@ -78,10 +101,11 @@ function validateSpawnUnits(value: string): string | null {
       if (!part) continue
       const eq = part.indexOf('=')
       if (eq <= 0) return `spawnUnits 参数「${part}」缺少 = 分隔`
-      const name = part.slice(0, eq).trim()
+      const rawName = part.slice(0, eq).trim()
+      const name = normalizeSpawnUnitsParamName(rawName)
       const val = part.slice(eq + 1).trim()
-      if (!SPAWN_UNITS_PARAMS.has(name.toLowerCase())) return `spawnUnits 参数「${name}」未知`
-      if (!val) return `spawnUnits 参数「${name}」缺少值`
+      if (!SPAWN_UNITS_PARAMS.has(name.toLowerCase())) return `spawnUnits 参数「${rawName}」未知`
+      if (!val) return `spawnUnits 参数「${rawName}」缺少值`
     }
   }
   return null
@@ -96,8 +120,17 @@ function validateSpawnUnits(value: string): string | null {
  * list 为逗号分隔字符串或数组，两形态兼容）。
  * 返回 null 表示合法；否则返回错误消息。
  */
+function isFiniteEnumList(list: string[] | string, rule?: string): boolean {
+  const items = typeof list === 'string' ? splitTopLevel(list) : list
+  if (items.length === 0 || items.some((item) => item.trim().startsWith('@'))) return false
+  if (!rule?.trim()) return true
+  // 只有纯字面量 alternation 才与 list 形成同一枚举约束；路径/通配规则
+  // （.+\.png、if.* 等）仍由 rule 校验，不能被 list 截断。
+  return rule.split('|').every((part) => /^[A-Za-z0-9_:-]+$/.test(part.trim()))
+}
+
 function validateEnumList(value: string, list: string[] | string, key: string, type: string): string | null {
-  const items = typeof list === 'string' ? list.split(',') : list
+  const items = typeof list === 'string' ? splitTopLevel(list) : list
   // 每条目取括号前的基础名（示例参数不影响枚举成员判定）
   const listLower = new Set(
     items.map((s) => {
@@ -135,6 +168,8 @@ export function validateValue(
     findCode: (k: string) => { type: string } | undefined
     findType: (t: string) => ValueTypeInfo | undefined
     zhToEn?: (k: string) => string | undefined
+    /** 枚举值中文→英文回译；可传当前 list 供 any/X 等歧义值消歧 */
+    valueZhToEn?: (v: string, list?: string | string[]) => string | undefined
   },
 ): string | null {
   const trimmed = stripInlineComment(value)
@@ -187,20 +222,29 @@ export function validateValue(
   // 任一类型规则命中即合法
   let hasConstrainingRule = false
   for (const vt of vts) {
-    // 枚举类类型：rule 为空但 list 非空（autoTriggerOnEvent/drawType 等）——
-    // 数据在 list 里（补全用），校验也用它（此前只读 rule 导致整类误报）
-    if (!vt?.rule && vt.list) {
-      if (vts.some((x) => x.type === 'spawnUnits')) {
-        const err = validateSpawnUnits(trimmed)
-        if (err) {
-          return `「${key}」的值「${trimmed}」不符合类型 ${code.type}（${err}）`
-        }
-        return null
-      }
-      const enumErr = validateEnumList(trimmed, vt.list, key, code.type)
-      if (enumErr) return enumErr
+    if (vts.some((x) => x.type === 'spawnUnits') && !vt.rule && vt.list) {
+      const err = validateSpawnUnits(trimmed)
+      if (err) return `「${key}」的值「${trimmed}」不符合类型 ${code.type}（${err}）`
       return null
     }
+
+    // 所有带 list 的值类型都先做字段受限的中文枚举回译，包括 addWaypoint_type
+    // 这类同时声明 rule 和 list 的类型。只替换括号前的基础名，参数原文保留。
+    if (vt.list && isFiniteEnumList(vt.list, vt.rule)) {
+      const enumValue = splitTopLevel(trimmed).map((raw) => {
+        const segment = raw.trim()
+        const open = segment.indexOf('(')
+        const base = (open >= 0 ? segment.slice(0, open) : segment).trim()
+        const translated = data.valueZhToEn?.(base, vt.list)
+        return translated ? `${translated}${open >= 0 ? segment.slice(open) : ''}` : segment
+      }).join(',')
+      const enumErr = validateEnumList(enumValue, vt.list, key, code.type)
+      if (!enumErr) return null
+      // list 是枚举约束时，错误应由 list 给出完整候选；不能继续让英文 rule
+      // 把中文别名误判成无效值。
+      if (!vt.rule) return enumErr
+    }
+
     if (!vt?.rule) continue
     hasConstrainingRule = true
     const rule = vt.rule.trim()
@@ -229,8 +273,8 @@ export function validateValue(
     // 逗号/竖线分隔的多值列表（如 explodeEffect: a, CUSTOM:b；price: 500|100）：
     // 引擎列表读取器按逗号或竖线分段（d.b.a: str.split(",|\\|")），
     // 任一元素合法即放行
-    if (/[,|]/.test(trimmed)) {
-      const parts = trimmed.split(/[,|]/).map((s) => s.trim()).filter(Boolean)
+    if (/[,|，]/.test(trimmed)) {
+      const parts = splitTopLevelConfigValue(trimmed).flatMap((part) => part.split('|')).map((s) => s.trim()).filter(Boolean)
       if (parts.length > 1 && parts.some((p) => re.test(p) || (reCI?.test(p) ?? false))) return null
     }
   }
@@ -250,6 +294,7 @@ export function lintIniText(
     findCode: (k: string) => { type: string } | undefined
     findType: (t: string) => ValueTypeInfo | undefined
     zhToEn?: (k: string) => string | undefined
+    valueZhToEn?: (v: string, list?: string | string[]) => string | undefined
   },
 ): Array<{ from: number; to: number; message: string; severity: 'error' | 'warning' }> {
   const diagnostics: Array<{ from: number; to: number; message: string; severity: 'error' | 'warning' }> = []
@@ -296,11 +341,8 @@ export function lintIniText(
       // 值合法性
       const err = validateValue(classified.key, classified.value, data)
       if (err) {
-        // 定位值起始（: 与 = 都认，与 classifyLine 的键值判定一致；取先出现的分隔符，
-        // 否则 = 分隔行 colon=-1 会把整个键名划上波浪线）
-        const colon = line.indexOf(':')
-        const eq = line.indexOf('=')
-        const sep = colon < 0 ? eq : eq < 0 ? colon : Math.min(colon, eq)
+        // 定位值起始，与 classifyLine 的 ASCII/中文冒号和等号判定一致。
+        const sep = findKeyValueSeparator(line)
         const from = lineStart + sep + 1
         diagnostics.push({ from, to: lineStart + line.length, message: err, severity: 'error' })
       }
@@ -346,6 +388,34 @@ async function cachedProjectRules(rootPath?: string): Promise<CustomRule[] | und
   return rules
 }
 
+/**
+ * 为语义检查构造英文输入：键名直接由 tracker 恢复，逻辑值只在出现 self. 时
+ * 恢复已追踪的逻辑关键字和 self 标识符。普通中文值不进入替换范围。
+ */
+export function semanticInputContent(
+  content: string,
+  tracker?: Map<string, string> | null,
+  logicIdentifiers?: Map<string, string>,
+): string {
+  if ((!tracker || tracker.size === 0) && (!logicIdentifiers || logicIdentifiers.size === 0)) return content
+  return content.split('\n').map((line) => {
+    const kv = /^(\s*)([^:=：]*?)(\s*)([:=：])(.*?)$/.exec(line)
+    if (!kv) return line
+    const [, indent, keyRaw, ws, separator, value] = kv
+    const trimmedKey = keyRaw.trim()
+    const trackedKey = tracker?.get(trimmedKey)
+    const key = trackedKey ? keyRaw.replace(trimmedKey, trackedKey) : keyRaw
+    if (!value.includes('self.')) return indent + key + ws + separator + value
+    const logical = value
+      .replace(/self\.([一-鿿][一-鿿0-9_]*)/g, (full, name: string) => {
+        const restored = tracker?.get(full) ?? tracker?.get(name) ?? logicIdentifiers?.get(name)
+        return restored ? (restored.startsWith('self.') ? restored : `self.${restored}`) : full
+      })
+      .replace(/^\s*([^\s]+)/, (token) => tracker?.get(token.trim()) ?? token)
+    return indent + key + ws + separator + logical
+  }).join('\n')
+}
+
 export interface RustLintOptions {
   /** 项目根（提供时语义引用检查可拿到单位名列表） */
   rootPath?: string
@@ -355,6 +425,8 @@ export interface RustLintOptions {
   targetVersionName?: string
   /** 当前文件名（checkFile 区分 .template 模板文件用；缺省按单位文件处理） */
   file?: string
+  /** 中文显示层追踪表：语义检查前恢复英文键和逻辑标识符。 */
+  translationMap?: Map<string, string> | null
 }
 
 /** 编辑器语义 lint 的内容上限：超过时只跑基础 lint（单趟 O(n)），
@@ -369,11 +441,16 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
       const zhToEnDict = getZhToEnDict()
       const keyZhToEnDict = getKeyZhToEnDict()
       const content = view.state.doc.toString()
+      const valueZhToEnDict = getValueZhToEnDict()
+      const logicIdentifierZhToEnDict = getLogicIdentifierZhToEnDict()
+      const semanticContent = semanticInputContent(content, opts.translationMap, logicIdentifierZhToEnDict)
       const data = {
         findCode: (k: string) => findCodeByCode(k),
         findType: (t: string) => findValueType(t),
         // 键位置回译先查键名表（键译名不被节名覆盖，如「价格」→price），回落通用词典
         zhToEn: (k: string) => keyZhToEnDict.get(k) ?? zhToEnDict.get(k),
+        // M38：枚举值中文→英文回译（己方→own），按当前 list 消歧 any/X
+        valueZhToEn: (v: string, list?: string | string[]) => resolveValueZhToEn(v, list) ?? valueZhToEnDict.get(v),
       }
       const diagnostics = lintIniText(content, data)
 
@@ -386,7 +463,7 @@ export function rustLintExtension(opts: RustLintOptions = {}) {
         const customRules = await cachedProjectRules(opts.rootPath)
         // M11：目标版本名 → 版本号（空 = 最新版本，由检查器兜底）
         const targetVersionNumber = opts.targetVersionName ? versionNameToNumber(opts.targetVersionName) : undefined
-        const issues = runSemanticChecks(content, {
+        const issues = runSemanticChecks(semanticContent, {
           ruleIds,
           ctx: { ...data, codes: getAllCodes().map((c) => c.code), unitNames, targetVersionNumber, file: opts.file },
           customRules,

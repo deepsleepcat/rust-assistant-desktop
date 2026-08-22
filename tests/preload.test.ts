@@ -6,6 +6,7 @@
  * 3) 事件订阅（onAiEvent/onUpdateEvent/onBeforeClose）返回可注销的取消函数。
  */
 import { describe, expect, it, vi } from 'vitest'
+import { createMockBridge, MOCK_PROJECT_ROOT } from '../src/services/mockBridge'
 
 const mocks = vi.hoisted(() => ({
   exposeInMainWorld: vi.fn((_key: string, _api: unknown) => undefined),
@@ -33,20 +34,38 @@ describe('preload 桥契约', () => {
   it('暴露 window.rustAssistant，且各域齐全', () => {
     expect(mocks.exposeInMainWorld).toHaveBeenCalledWith('rustAssistant', expect.any(Object))
     const a = api()
-    for (const key of ['app', 'store', 'project', 'avatar', 'knowledge', 'game', 'mod', 'git', 'ai']) {
+    for (const key of ['app', 'store', 'community', 'auth', 'project', 'knowledge', 'game', 'mod', 'git', 'ai']) {
       expect(a[key]).toBeTypeOf('object')
     }
   })
 
-  it('启动时经 app:info 拉取版本', async () => {
-    await new Promise((r) => setTimeout(r, 0))
-    expect(mocks.invoke.mock.calls.some((c) => c[0] === 'app:info')).toBe(true)
+  it('社区请求映射到受限 IPC 通道', async () => {
+    const community = api().community as { request: (request: unknown) => Promise<unknown> }
+    const request = { url: 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl/health', method: 'GET' }
+    await community.request(request)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('community:request', request)
+  })
+
+  it('设备认证只映射状态式 IPC，不接收或返回令牌参数', async () => {
+    const auth = api().auth as Record<string, (...args: never[]) => Promise<unknown>>
+    await auth.status()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:status')
+    await auth.startPairing()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:startPairing')
+    await auth.pollPairing()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:pollPairing')
+    await auth.cancelPairing()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:cancelPairing')
+    await auth.logout()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:logout')
   })
 
   it('项目/文件域方法映射到正确通道', async () => {
     const p = api().project as Record<string, (...a: unknown[]) => Promise<unknown>>
     await p.readDir('r', 'd', true)
     expect(mocks.invoke).toHaveBeenLastCalledWith('fs:readDir', 'r', 'd', true)
+    await p.searchFiles('r', 'tank', false)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('project:searchFiles', 'r', 'tank', false)
     await p.readFile('r', 'f')
     expect(mocks.invoke).toHaveBeenLastCalledWith('fs:readFile', 'r', 'f')
     await p.writeFile('r', 'f', 'c', { hasBom: true })
@@ -80,6 +99,8 @@ describe('preload 桥契约', () => {
     expect(mocks.invoke).toHaveBeenLastCalledWith('mod:import', 'archive')
     await mod.import('folder')
     expect(mocks.invoke).toHaveBeenLastCalledWith('mod:import', 'folder')
+    await mod.copyUnit({ sourceRoot: 'src', sourceFilePath: 'units/a.ini', targetRoot: 'dst', targetName: 'b' })
+    expect(mocks.invoke).toHaveBeenLastCalledWith('mod:copyUnit', { sourceRoot: 'src', sourceFilePath: 'units/a.ini', targetRoot: 'dst', targetName: 'b' })
     const game = a.game as Record<string, (...x: unknown[]) => Promise<unknown>>
     await game.importMod('g', 'm.rwmod', 'r')
     expect(mocks.invoke).toHaveBeenLastCalledWith('game:importMod', 'g', 'm.rwmod', 'r')
@@ -94,6 +115,12 @@ describe('preload 桥契约', () => {
     const store = a.store as Record<string, (...x: unknown[]) => Promise<unknown>>
     await store.get('settings')
     expect(mocks.invoke).toHaveBeenLastCalledWith('store:get', 'settings')
+  })
+
+  it('Mock 图片读取：不存在资源返回可识别失败，不伪造成功 data URL', async () => {
+    const bridge = createMockBridge()
+    await expect(bridge.project.readImageAsDataUrl(MOCK_PROJECT_ROOT, 'units/missing.png')).rejects.toThrow()
+    await expect(bridge.game.readAssetImage('C:\\missing-game', 'assets/units/missing.png')).rejects.toThrow()
   })
 
   it('事件订阅：onAiEvent 监听 ai:stream，返回的注销函数移除监听', () => {

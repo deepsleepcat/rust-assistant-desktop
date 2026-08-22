@@ -11,19 +11,25 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { App, Dialog, Shell, WebContents } from 'electron'
 import type { JsonStore } from './store'
+import { COMMUNITY_AUTH_CREDENTIAL_KEY, DEEPSEEK_CREDENTIAL_KEY, type SecureCredentials } from './secureCredentials'
+import type { CommunityAuthService } from './communityAuth'
 import { createKnowledgePack } from './knowledgePack'
 import { getHistory } from './aiHistory'
+import { searchProjectFiles } from './projectSearch'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import {
-  applyOptimization, checkMod, createMod, createUnit, createUnitFromTemplate, deleteUserTemplate,
-  globalOp, importModBuffer, importTemplateFile, listTemplates, listUserTemplateKeys,
-  packModBufferWithCount, readModInfo, saveFileAsTemplate, scanOptimization, scanResources,
-  scanUnits, writeModInfo,
+  applyOptimization, applyVerifiedTranslationRepair, checkMod, copyUnit, createMod, createUnit, createUnitFromTemplate,
+  deleteUserTemplate, deployMod, globalOp, importModBuffer, importTemplateFile, isRepairSourceFile,
+  listTemplates, listUserTemplateKeys, normalizeRepairRelativePath, packModBufferWithCount, readModInfo,
+  saveFileAsTemplate, scanOptimization, scanResources, scanTranslationRepair, scanUnits, writeModInfo,
 } from './modTools'
 import { detectGameDir, importOfficialUnits, launchGame, openDir, preflightCheck, readGameAssetImage } from './game'
 import { conflictFiles, diffBetween, logHistory, repoInfo, restoreFile, statusFiles } from './gitTools'
 import type { AiApprovalResponse, AiChatParams, AiSettings } from '../src/types/ai'
+import type { CommunityRequest, CommunityResponse } from '../src/types/bridge'
+import { buildLogicIdentifierMap } from '../src/services/translationRepair'
+import { validateCommunityOrigin } from './communityOrigin'
 
 /** IPC 注册函数：main.ts 传 ipcMain.handle 的真实绑定；测试传记录用假实现 */
 export type RegisterHandler = (channel: string, handler: (...args: never[]) => unknown) => void
@@ -80,6 +86,10 @@ export interface IpcContext {
   windows: {
     getAllWindows: () => Array<{ isDestroyed(): boolean; destroy(): void }>
   }
+  /** 设备配对认证（主进程私有令牌；渲染层只拿公开状态） */
+  communityAuth: CommunityAuthService | null
+  /** DeepSeek API Key（safeStorage 加密存储；渲染层只拿「已配置」状态，永不见 Key 本身） */
+  deepSeekCredentials: SecureCredentials | null
 }
 
 /** 组装上下文：外部传入真实/假能力，可变状态在此初始化 */
@@ -91,6 +101,8 @@ export function createIpcContext(deps: {
   app: IpcContext['app']
   updater: IpcContext['updater']
   windows: IpcContext['windows']
+  communityAuth?: CommunityAuthService | null
+  deepSeekCredentials?: SecureCredentials | null
 }): IpcContext {
   return {
     ...deps,
@@ -101,6 +113,8 @@ export function createIpcContext(deps: {
     importedDirs: new Set<string>(),
     lifecycle: { quitting: false, flushResolve: null, flushConfirmTimer: null, closeFlushTimer: null },
     ai: { pendingApproval: null, streamActive: false, cancel: null, feedbackReceiver: null },
+    communityAuth: deps.communityAuth ?? null,
+    deepSeekCredentials: deps.deepSeekCredentials ?? null,
   }
 }
 
@@ -111,6 +125,16 @@ export const ANCHOR_MIGRATED_KEY = 'anchorMigratedV1'
 export const MEDIA_MIGRATED_KEY = 'mediaMigratedV1'
 /** 媒体允许集合持久化键 */
 export const MEDIA_ALLOWLIST_KEY = 'mediaAllowlist'
+
+/** 只能由主进程持有的存储键。凭据本身已加密，但也不向渲染层暴露密文。 */
+const MAIN_PROCESS_ONLY_STORE_KEYS = new Set([
+  MEDIA_ALLOWLIST_KEY,
+  PROJECT_ROOTS_KEY,
+  ANCHOR_MIGRATED_KEY,
+  MEDIA_MIGRATED_KEY,
+  COMMUNITY_AUTH_CREDENTIAL_KEY,
+  DEEPSEEK_CREDENTIAL_KEY,
+])
 
 /** 文本文件读取上限（编辑器打开超大文件会拖垮界面） */
 const MAX_TEXT_FILE_SIZE = 64 * 1024 * 1024
@@ -191,14 +215,13 @@ function addAllowedMedia(ctx: IpcContext, p: string): void {
   void ctx.store.set(MEDIA_ALLOWLIST_KEY, [...ctx.media])
 }
 
-/** 从设置中提取外观背景/头像路径：仅当该路径已在允许集合（曾由对话框产生）时才保持信任 */
+/** 从设置中提取外观背景路径：仅当该路径已在允许集合（曾由对话框产生）时才保持信任 */
 export function registerMediaFromSettings(ctx: IpcContext, settings: unknown): void {
   if (!settings || typeof settings !== 'object') return
-  const s = settings as { background?: { imagePath?: unknown }; avatar?: { localPath?: unknown } }
-  for (const p of [s.background?.imagePath, s.avatar?.localPath]) {
-    if (typeof p === 'string' && p && ctx.media.has(normalizePath(p))) {
-      ctx.media.add(normalizePath(p))
-    }
+  const s = settings as { background?: { imagePath?: unknown } }
+  const p = s.background?.imagePath
+  if (typeof p === 'string' && p && ctx.media.has(normalizePath(p))) {
+    ctx.media.add(normalizePath(p))
   }
 }
 
@@ -215,12 +238,11 @@ export function restoreMediaAllowlist(ctx: IpcContext): void {
   if (saved !== null && saved !== undefined) console.warn('[ipc] mediaAllowlist 锚值异常，按无锚处理:', typeof saved)
   // 已迁移过（或从未有旧数据）：不再迁移，保持空信任集合
   if (ctx.store.get(MEDIA_MIGRATED_KEY) === true) return
-  // 旧版本没有 allowlist 记录：设置里已存在的背景/头像路径是当时经系统对话框选择的，
-  // 作为「旧版信任」一次性迁移登记（之后只认对话框来源，不再扩张）
-  const s = ctx.store.get('settings') as { background?: { imagePath?: unknown }; avatar?: { localPath?: unknown } } | undefined
-  for (const p of [s?.background?.imagePath, s?.avatar?.localPath]) {
-    if (typeof p === 'string' && p) ctx.media.add(normalizePath(p))
-  }
+  // 旧版本没有 allowlist 记录：设置里已有的背景图路径来自系统对话框，
+  // 作为旧版信任一次性迁移登记（之后只认对话框来源，不再扩张）。
+  const s = ctx.store.get('settings') as { background?: { imagePath?: unknown } } | undefined
+  const p = s?.background?.imagePath
+  if (typeof p === 'string' && p) ctx.media.add(normalizePath(p))
   void ctx.store.set(MEDIA_ALLOWLIST_KEY, [...ctx.media])
   void ctx.store.set(MEDIA_MIGRATED_KEY, true)
 }
@@ -316,11 +338,15 @@ export function createFeedbackChannel(): {
 
 /** 本地状态存储：store:get / store:set（保留键与大小上限由主进程强制执行） */
 export function registerStoreIpc(ctx: IpcContext, ipc: RegisterHandler): void {
-  ipc('store:get', (_event, key: string) => ctx.store.get(key))
+  ipc('store:get', (_event, key: string) => {
+    if (typeof key !== 'string') throw new Error('存储键无效')
+    if (MAIN_PROCESS_ONLY_STORE_KEYS.has(key)) throw new Error('不允许读取系统保留键')
+    return ctx.store.get(key)
+  })
 
-  ipc('store:set', (_event, key: string, value: unknown) => {
+  ipc('store:set', async (_event, key: string, value: unknown) => {
     // A 修复：主进程自有信任锚键（媒体允许集合/项目根集合/迁移标志）不允许渲染层写入，防伪造
-    if (key === MEDIA_ALLOWLIST_KEY || key === PROJECT_ROOTS_KEY || key === ANCHOR_MIGRATED_KEY || key === MEDIA_MIGRATED_KEY) {
+    if (typeof key !== 'string' || MAIN_PROCESS_ONLY_STORE_KEYS.has(key)) {
       throw new Error('不允许写入系统保留键')
     }
     // M 修复：store 值大小上限，防止渲染层用超大值填满磁盘/拖垮序列化。
@@ -339,8 +365,21 @@ export function registerStoreIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     if (size > limit) throw new Error(`写入的数据过大（超过 ${Math.round(limit / 1024 / 1024)}MB），已拒绝保存`)
     // L-10：媒体信任只来自对话框/自写文件（见 addAllowedMedia），
     // 设置路径的恢复在启动时由 restoreMediaAllowlist + registerMediaFromSettings 完成
-    ctx.store.set(key, value)
+    await ctx.store.set(key, value)
   })
+}
+
+/** 设备配对认证：令牌只在主进程 safeStorage 内存/密文间流转。 */
+export function registerCommunityAuthIpc(ctx: IpcContext, ipc: RegisterHandler): void {
+  const auth = (): CommunityAuthService => {
+    if (!ctx.communityAuth) throw new Error('社区设备认证不可用')
+    return ctx.communityAuth
+  }
+  ipc('auth:status', () => auth().status())
+  ipc('auth:startPairing', () => auth().startPairing())
+  ipc('auth:pollPairing', () => auth().pollPairing())
+  ipc('auth:cancelPairing', () => auth().cancelPairing())
+  ipc('auth:logout', () => auth().logout())
 }
 
 /** 知识包：数据文件读取 / 更新检查 / 增量更新 / 回滚 */
@@ -359,6 +398,111 @@ export function registerKnowledgeIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     return ctx.knowledgePack.update(sourceUrl)
   })
   ipc('knowledge:rollback', () => ctx.knowledgePack.rollback())
+}
+
+/**
+ * 社区网络代理：桌面端用于绕开部署端缺失 CORS 响应头的限制。
+ * 渲染层不能任选主机、方法或路径，避免把主进程暴露为通用 HTTP/SSRF 代理。
+ */
+export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): void {
+  // 只代理正式社区或显式本地开发后端，避免该通道成为通用 HTTP/SSRF 代理。
+  const trustedOrigin = validateCommunityOrigin(
+    process.env.VITE_DEV_SERVER_URL && process.env.OHMYTX_COMMUNITY_ORIGIN === 'http://localhost:3000'
+      ? 'http://localhost:3000'
+      : 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl',
+  )
+  const allowedMethods = new Set(['GET', 'POST', 'PUT', 'DELETE'])
+  const allowedPaths = [
+    /^\/health$/,
+    /^\/api\/auth\/(register|login|logout|verification|email\/bind)$/,
+    /^\/api\/me$/,
+    /^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/,
+    /^\/api\/community\/(boards|tags|rankings|posts)$/,
+    /^\/api\/community\/posts\/following$/,
+    /^\/api\/community\/posts\/\d+$/,
+    /^\/api\/community\/posts\/\d+\/comments$/,
+    /^\/api\/community\/posts\/\d+\/resources$/,
+    /^\/api\/community\/posts\/\d+\/like$/,
+    /^\/api\/community\/authors\/\d+\/follow$/,
+    /^\/api\/community\/comments\/\d+$/,
+    /^\/api\/community\/resources\/\d+(?:\/download)?$/,
+  ]
+  const maxJsonBytes = 2 * 1024 * 1024
+  const maxUploadBytes = 50 * 1024 * 1024
+
+  ipc('community:request', async (_event, input: unknown): Promise<CommunityResponse> => {
+    if (!input || typeof input !== 'object') throw new Error('社区请求参数无效')
+    const request = input as CommunityRequest
+    if (!allowedMethods.has(request.method)) throw new Error('社区请求方法不允许')
+    if (typeof request.url !== 'string' || request.url.length > 600) throw new Error('社区服务器地址无效')
+    if (request.authenticated !== undefined && typeof request.authenticated !== 'boolean') throw new Error('社区认证参数无效')
+    if (request.body !== undefined && typeof request.body !== 'string') throw new Error('社区请求体无效')
+    if (request.headers !== undefined && (!request.headers || typeof request.headers !== 'object' || Array.isArray(request.headers))) throw new Error('社区请求头无效')
+    let url: URL
+    try {
+      url = new URL(request.url)
+    } catch {
+      throw new Error('社区服务器地址无效')
+    }
+    if (url.origin !== trustedOrigin) throw new Error('社区服务器地址不受信任')
+    if (!allowedPaths.some((pattern) => pattern.test(url.pathname))) throw new Error('社区请求路径不允许')
+    if (/^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/.test(url.pathname) && (request.method !== 'GET' || request.body !== undefined || request.upload)) {
+      throw new Error('社区头像只允许读取')
+    }
+    if (url.search.length > 600) throw new Error('社区查询参数过长')
+    if (typeof request.body === 'string' && Buffer.byteLength(request.body, 'utf8') > maxJsonBytes) throw new Error('社区请求体过大')
+    if (request.upload !== undefined) {
+      if (!request.upload || typeof request.upload !== 'object' || Array.isArray(request.upload)) throw new Error('社区附件参数无效')
+      if (typeof request.upload.name !== 'string' || typeof request.upload.type !== 'string' || request.upload.name.length > 180 || request.upload.type.length > 200) throw new Error('社区附件参数无效')
+      const bytes = request.upload.bytes
+      if (!(bytes instanceof ArrayBuffer) || bytes.byteLength > maxUploadBytes) throw new Error('社区附件超过 50 MiB 限制')
+    }
+
+    const headers = new Headers()
+    for (const [key, value] of Object.entries(request.headers ?? {})) {
+      if (!/^(accept|content-type)$/i.test(key) || typeof value !== 'string' || value.length > 600) continue
+      headers.set(key, value)
+    }
+    let body: string | FormData | undefined = request.body
+    if (request.upload) {
+      if (!/^[^\\/\0\r\n]{1,180}$/.test(request.upload.name)) throw new Error('附件名称无效')
+      const form = new FormData()
+      form.append('file', new Blob([request.upload.bytes], { type: request.upload.type || 'application/octet-stream' }), request.upload.name)
+      body = form
+      headers.delete('content-type')
+    }
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 60_000)
+    try {
+      const perform = async (credential?: string): Promise<Response> => {
+        const requestHeaders = new Headers(headers)
+        if (request.authenticated && credential) requestHeaders.set('Authorization', `Bearer ${credential}`)
+        const trustedUrl = new URL(url.pathname + url.search, trustedOrigin)
+        return fetch(trustedUrl, { method: request.method, headers: requestHeaders, body, signal: controller.signal, redirect: 'error' })
+      }
+      const response = request.authenticated
+        ? await (ctx.communityAuth?.withCredential((credential) => perform(credential)) ?? Promise.reject(new Error('社区登录已失效')))
+        : await perform()
+      if (!response) throw new Error('社区登录已失效')
+      if (response.status === 401 && request.authenticated) await ctx.communityAuth?.invalidate()
+      const contentLength = Number(response.headers.get('content-length') ?? '')
+      const limit = url.pathname.endsWith('/download') ? maxUploadBytes : maxJsonBytes
+      if (Number.isFinite(contentLength) && contentLength > limit) throw new Error('社区服务器响应过大')
+      const data = await response.arrayBuffer()
+      if (data.byteLength > limit) throw new Error('社区服务器响应过大')
+      const safeHeaders: Record<string, string> = {}
+      for (const name of ['content-type', 'content-disposition', 'content-length', 'x-oneapi-request-id']) {
+        const value = response.headers.get(name)
+        if (value) safeHeaders[name] = value
+      }
+      return { status: response.status, headers: safeHeaders, body: data }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw new Error('社区服务器请求超时', { cause: error })
+      throw error
+    } finally {
+      clearTimeout(timer)
+    }
+  })
 }
 
 /** 本地 git 辅助：历史/状态/冲突/差异/回滚（路径与哈希在主进程严格校验）。
@@ -501,6 +645,16 @@ export function registerFsIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       return a.name.localeCompare(b.name, 'zh-CN')
     })
     return out
+  })
+
+  // M37：一次性在主进程递归文件名/相对路径，避免渲染层对每个目录反复 IPC。
+  // 只搜索已登记项目根内的普通文件；实现本身不读取任何文件内容。
+  ipc('project:searchFiles', async (_event, rootPath: unknown, query: unknown, showHidden: unknown = false) => {
+    if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
+    if (typeof query !== 'string' || query.length > 256) throw new Error('搜索关键词无效')
+    if (typeof showHidden !== 'boolean') throw new Error('隐藏文件参数无效')
+    await requireRealInsideRoot(ctx, rootPath, rootPath)
+    return searchProjectFiles(rootPath, query, showHidden)
   })
 
   ipc('fs:readFile', async (_event, rootPath: string, filePath: string) => {
@@ -708,6 +862,27 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
 
   // mod:pack 已合并为单次打包（见上）；未暴露给界面的 packTo 已移除（最小特权）
 
+  // M35 F3：打包并部署到游戏 mods/units 目录（一键验证：打包→部署→启动）。
+  // 与 mod:pack 同一互斥域；游戏目录不是项目根——目录判定在 deployMod 内部
+  // 与 looksLikeGameDir 同标准，文件名清洗防穿越，同名未确认覆盖返回 EXISTS
+  ipc('mod:packAndDeploy', async (_event, rootPath: unknown, options: unknown, gamePath: unknown, overwrite: unknown) => {
+    if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
+    if (typeof gamePath !== 'string' || !gamePath) return { ok: false, message: '请先在设置中配置游戏安装目录' }
+    if (overwrite !== undefined && typeof overwrite !== 'boolean') throw new Error('overwrite 参数必须是布尔值')
+    if (ctx.packing.active) throw new Error('已有打包任务正在进行，请稍候')
+    ctx.packing.active = true
+    try {
+      // 登记校验用规范化路径（大小写不敏感）；执行传原始 rootPath——
+      // normalizePath 在 win32 会把路径转小写，部署文件名取项目根 basename，
+      // 传小写会让游戏内模组名（= .rwmod 文件名）丢失大小写（MyTankMod→mytankmod）
+      const normalized = normalizePath(rootPath)
+      if (!ctx.roots.has(normalized)) throw new Error('项目目录未登记，拒绝访问')
+      return await deployMod(rootPath, gamePath, (options ?? {}) as import('./modTools').PackOptions, overwrite === true)
+    } finally {
+      ctx.packing.active = false
+    }
+  })
+
   ipc('mod:check', async (_event, rootPath: string) => {
     requireInsideRoot(ctx, rootPath, rootPath)
     return checkMod(rootPath)
@@ -737,6 +912,97 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   ipc('mod:scanUnits', async (_event, rootPath: string) => {
     requireInsideRoot(ctx, rootPath, rootPath)
     return scanUnits(rootPath)
+  })
+
+  // 翻译恢复词典只允许读取内置知识包的白名单文件（与 knowledgePack 内部 DATA_FILE_NAMES 一致，
+  // 在调用点显式约束，防止将来误传外部文件名）。
+  const DICTIONARY_FILE_NAMES = new Set(['code.json', 'section.json', 'logicboolean.json', 'translations.json'])
+  const readDictionaryFile = async (name: string) => {
+    if (!DICTIONARY_FILE_NAMES.has(name)) throw new Error('不允许的数据文件')
+    return ctx.knowledgePack.readDataFile(name)
+  }
+
+  const translationRepairDictionary = async () => {
+    const [codeRaw, sectionRaw, logicRaw, translationsRaw] = await Promise.all([
+      readDictionaryFile('code.json'),
+      readDictionaryFile('section.json'),
+      readDictionaryFile('logicboolean.json'),
+      readDictionaryFile('translations.json'),
+    ])
+    const code = JSON.parse(codeRaw.content) as { data?: unknown }
+    const section = JSON.parse(sectionRaw.content) as { data?: unknown }
+    const logic = JSON.parse(logicRaw.content) as { data?: unknown }
+    const translations = JSON.parse(translationsRaw.content) as { words?: unknown[]; data?: unknown[] }
+    if (!Array.isArray(code.data) || !Array.isArray(section.data) || !Array.isArray(logic.data)) throw new Error('翻译恢复数据格式无效')
+    const codes = code.data.filter((entry): entry is { code: string; translate: string; type?: string } =>
+      !!entry && typeof entry === 'object' && typeof (entry as { code?: unknown }).code === 'string' && typeof (entry as { translate?: unknown }).translate === 'string',
+    )
+    const logicNames = logic.data
+      .filter((entry): entry is { name: string } => !!entry && typeof entry === 'object' && typeof (entry as { name?: unknown }).name === 'string')
+      .map((entry) => entry.name)
+    return {
+      codes,
+      sections: section.data.filter((entry): entry is { code: string; translate: string; needName?: boolean } =>
+        !!entry && typeof entry === 'object' && typeof (entry as { code?: unknown }).code === 'string' && typeof (entry as { translate?: unknown }).translate === 'string',
+      ),
+      logicIdentifiers: buildLogicIdentifierMap(
+        codes,
+        logicNames,
+        (translations.words ?? translations.data ?? []).filter((entry): entry is { en: string; zh: string } =>
+          !!entry && typeof entry === 'object' && typeof (entry as { en?: unknown }).en === 'string' && typeof (entry as { zh?: unknown }).zh === 'string',
+        ),
+      ),
+    }
+  }
+
+  // M38：扫描仅返回保守、可确定的译名恢复预览；不写入任何文件。
+  ipc('mod:translationRepairScan', async (_event, rootPath: unknown) => {
+    if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
+    await requireRealInsideRoot(ctx, rootPath, rootPath)
+    return scanTranslationRepair(rootPath, await translationRepairDictionary())
+  })
+
+  // M38：写回只接受扫描结果中的相对路径与摘要；同批量 IO 互斥，防与打包/优化交叉覆盖。
+  ipc('mod:translationRepairApply', async (_event, rootPath: unknown, selections: unknown) => {
+    if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
+    if (!Array.isArray(selections)) throw new Error('修复选择无效')
+    // 入口显式防御：与 modTools 内部的校验函数保持一致（单一事实来源）——
+    // 只接受项目内的相对路径，拒绝绝对路径、空段、`.`/`..`、NUL 与超长路径；
+    // 校验后重建规范化对象数组，避免把原始输入直接传入写文件流程。
+    const verifiedSelections: Array<{ path: string; digest: string }> = []
+    for (const selection of selections as Array<{ path?: unknown; digest?: unknown }>) {
+      if (!selection || typeof selection.path !== 'string' || typeof selection.digest !== 'string') throw new Error('修复选择无效')
+      const rel = normalizeRepairRelativePath(selection.path)
+      if (!isRepairSourceFile(rel)) throw new Error('修复文件类型无效')
+      const target = path.resolve(rootPath, rel)
+      await requireRealInsideRoot(ctx, rootPath, target)
+      verifiedSelections.push({ path: rel, digest: selection.digest })
+    }
+    if (ctx.packing.active) throw new Error('已有打包/全局操作正在进行，请稍候')
+    ctx.packing.active = true
+    try {
+      await requireRealInsideRoot(ctx, rootPath, rootPath)
+      return applyVerifiedTranslationRepair(
+        rootPath,
+        await translationRepairDictionary(),
+        verifiedSelections,
+      )
+    } finally {
+      ctx.packing.active = false
+    }
+  })
+
+  // M34 单位复制：从其它/同模组复制单位配置到当前项目。
+  // 源与目标两端项目根都必须是已登记目录；真实文件级校验（越界/链接逃逸/
+  // 单位格式/不覆盖）在 copyUnit 内完成，这里只做信任锚校验。
+  ipc('mod:copyUnit', async (_event, params: import('./modTools').CopyUnitParams) => {
+    if (!params || typeof params !== 'object') throw new Error('复制参数错误')
+    if (typeof params.sourceRoot !== 'string' || typeof params.targetRoot !== 'string') throw new Error('复制参数缺少项目目录')
+    if (typeof params.sourceFilePath !== 'string' || typeof params.targetName !== 'string') throw new Error('复制参数缺少源文件或目标名称')
+    if (params.targetFolder !== undefined && typeof params.targetFolder !== 'string') throw new Error('复制参数中的目标文件夹无效')
+    requireInsideRoot(ctx, params.sourceRoot, params.sourceRoot)
+    requireInsideRoot(ctx, params.targetRoot, params.targetRoot)
+    return copyUnit(params)
   })
 
   // 优化工具：扫描可优化项 / 执行优化
@@ -971,13 +1237,8 @@ export function registerAppIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       r()
       return true
     }
-    if (ctx.lifecycle.closeFlushTimer) {
-      clearTimeout(ctx.lifecycle.closeFlushTimer)
-      ctx.lifecycle.closeFlushTimer = null
-    }
-    const win = ctx.windows.getAllWindows()[0]
-    if (win && !win.isDestroyed()) win.destroy()
-    return true
+    // 没有待确认的退出流程时，渲染层不能凭空销毁主窗口。
+    return false
   })
 
   // ===== M6 自动更新（更新包托管在 GitHub Releases）=====
@@ -1014,49 +1275,45 @@ export function registerAppIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     return true
   })
 
-  ipc('avatar:chooseLocal', async () => {
-    const result = await ctx.dialog.showOpenDialog({
-      properties: ['openFile'],
-      title: '选择头像图片',
-      filters: [{ name: '头像图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
-    })
-    if (result.canceled || result.filePaths.length === 0) return null
-    const p = result.filePaths[0]
-    // 登记为允许读取的媒体（readMediaAsDataUrl 空 rootPath 分支只认这个集合）
-    addAllowedMedia(ctx, p)
-    return p
-  })
-  // 头像裁切（M8）：渲染端 canvas 生成 PNG data URL → 写入 userData/avatar.png 并登记
-  // （固定文件名覆盖式：同一用户的头像始终是这一个文件，重启后从设置自动恢复登记）
-  ipc('avatar:saveCropped', async (_event, dataUrl: string) => {
-    const PREFIX = 'data:image/png;base64,'
-    if (typeof dataUrl !== 'string' || !dataUrl.startsWith(PREFIX)) throw new Error('无效的头像数据')
-    // L2：先按字符串长度拦截超大输入（避免先解码出几百 MB 缓冲再被拒绝）
-    if (dataUrl.length > 7 * 1024 * 1024) throw new Error('头像图片过大（超过 5MB）')
-    const buf = Buffer.from(dataUrl.slice(PREFIX.length), 'base64')
-    // 校验 PNG 魔数，拒绝伪造/损坏数据
-    if (buf.byteLength < 8 || buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
-      throw new Error('头像数据不是有效的 PNG 图片')
-    }
-    if (buf.byteLength > 5 * 1024 * 1024) throw new Error('头像图片过大（超过 5MB）')
-    const file = path.join(ctx.app.getPath('userData'), 'avatar.png')
-    await fs.writeFile(file, buf)
-    addAllowedMedia(ctx, file)
-    return file
-  })
-  ipc('avatar:uploadCommunity', () => ({ ok: false, message: '社区头像服务即将上线' }))
 }
 
-/** AI 服务：检查 / 审批 / 中止 / 历史 / 流式对话 */
+/** AI 服务：检查 / 审批 / 中止 / 历史 / 流式对话 / DeepSeek 密钥保管 */
 export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
+  /** 读取已保存的 DeepSeek Key（safeStorage 解密；未配置返回空串） */
+  async function resolveDeepSeekKey(): Promise<string> {
+    if (!ctx.deepSeekCredentials) return ''
+    return (await ctx.deepSeekCredentials.withCredential((key) => key)) ?? ''
+  }
+
   ipc('ai:check', async (_event, settings: AiSettings) => {
     if (settings.provider === 'deepseek') {
-      return checkDeepSeek({ apiKey: settings.deepseekApiKey, model: settings.deepseekModel })
+      // Key 只存在主进程安全存储里；渲染层 settings 不再携带（防明文落盘/回传）
+      return checkDeepSeek({ apiKey: await resolveDeepSeekKey(), model: settings.deepseekModel })
     }
     if (settings.provider === 'community') {
-      return checkCommunity({ endpoint: settings.communityEndpoint, token: settings.communityToken })
+      // 社区 AI 未上线：主进程持有令牌，渲染层无 token 可传；直接走「即将上线」分支
+      return checkCommunity({ endpoint: settings.communityEndpoint, token: '' })
     }
     return { ok: false, message: '未知的 AI 提供者' }
+  })
+
+  // DeepSeek API Key 保管：保存/查询/清除。Key 本体只进 safeStorage，任何响应都不回传。
+  ipc('ai:credential:save', async (_event, key: unknown) => {
+    if (!ctx.deepSeekCredentials) throw new Error('系统安全凭据存储不可用')
+    if (typeof key !== 'string' || !key.trim()) throw new Error('API Key 不能为空')
+    await ctx.deepSeekCredentials.saveCredential(key)
+    return { ok: true }
+  })
+
+  ipc('ai:credential:status', async () => {
+    if (!ctx.deepSeekCredentials) return { configured: false }
+    return { configured: await ctx.deepSeekCredentials.hasCredential() }
+  })
+
+  ipc('ai:credential:clear', async () => {
+    if (!ctx.deepSeekCredentials) return { ok: false }
+    await ctx.deepSeekCredentials.clearCredential()
+    return { ok: true }
   })
 
   ipc('ai:info', async () => {
@@ -1188,11 +1445,13 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       }
       if (totalChars > 2 * 1024 * 1024) throw new Error('对话历史过大（超过 2MB），请新建对话')
       if (settings.provider === 'deepseek') {
+        const deepSeekApiKey = await resolveDeepSeekKey()
+        if (!deepSeekApiKey) throw new Error('尚未配置 DeepSeek API Key，请先在设置 → AI 中保存密钥')
         await streamAgent(
           sender as unknown as WebContents,
           channel,
           params,
-          { apiKey: settings.deepseekApiKey, model: settings.deepseekModel },
+          { apiKey: deepSeekApiKey, model: settings.deepseekModel },
           projectRoot,
           (id, resolve) => {
             // beforeToolCall 提供请求 id 与 resolve；approval:respond 按 id 匹配。
@@ -1233,6 +1492,8 @@ export function registerAiIpc(ctx: IpcContext, ipc: RegisterHandler): void {
 /** 注册全部 IPC 通道（按域拆分，便于测试与维护） */
 export function registerIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   registerStoreIpc(ctx, ipc)
+  registerCommunityAuthIpc(ctx, ipc)
+  registerCommunityIpc(ctx, ipc)
   registerKnowledgeIpc(ctx, ipc)
   registerGitIpc(ctx, ipc)
   registerDialogIpc(ctx, ipc)

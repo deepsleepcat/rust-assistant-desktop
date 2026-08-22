@@ -54,7 +54,7 @@ export function CommandPalette() {
       { id: 'new-conversation', title: '新建 AI 对话', hint: 'Ctrl+Shift+C', icon: <IconChat size={15} />, run: () => createConversation() },
       { id: 'open-settings', title: '打开设置', hint: 'Ctrl+,', icon: <IconGear size={15} />, run: () => setSettingsOpen(true) },
       // M33-社区：工作区切换命令（与左侧导航一致：紧凑模式下顺带收起抽屉，避免目标工作区被抽屉遮挡）
-      { id: 'surface-community', title: '打开社区（本地示例数据）', icon: <AppIcon name="share" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setDrawerSide(null); useWorkspaceStore.getState().setActiveSurface('community') } },
+      { id: 'surface-community', title: '打开社区', icon: <AppIcon name="share" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setDrawerSide(null); useWorkspaceStore.getState().setActiveSurface('community') } },
       { id: 'surface-editor', title: '返回工作台（编辑器）', icon: <AppIcon name="code" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setDrawerSide(null); useWorkspaceStore.getState().setActiveSurface('editor') } },
       {
         id: 'close-tab',
@@ -68,6 +68,7 @@ export function CommandPalette() {
       { id: 'mod-pack', title: '模组：打包（.rwmod）', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); void packModProject() } },
       { id: 'mod-check', title: '模组：检查单位', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); void checkModProject() } },
       { id: 'mod-optimize', title: '模组：优化（清理垃圾）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); setModDialog('optimize') } },
+      { id: 'mod-translation-repair', title: '模组：修复中文翻译损坏', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); setModDialog('translationRepair') } },
       { id: 'template-library', title: '模板库管理（本地浏览/导入/删除）', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setTemplateLibraryOpen(true) } },
       { id: 'git-info', title: 'Git 历史与回滚（本地）', icon: <AppIcon name="clock" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setGitInfoOpen(true) } },
       { id: 'code-table', title: '浏览代码表', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setCodeTableOpen(true) } },

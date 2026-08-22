@@ -12,7 +12,7 @@ export type AppIconName =
   | 'sparkle' | 'download' | 'import' | 'archive' | 'star' | 'info' | 'copy'
   // M8 图标库扩充（570+Icons-CN）
   | 'music' | 'image' | 'play' | 'pause' | 'undo' | 'redo' | 'upload' | 'export'
-  | 'menu' | 'message' | 'bell' | 'user' | 'avatar' | 'moon' | 'sun' | 'picker'
+  | 'menu' | 'message' | 'bell' | 'user' | 'moon' | 'sun' | 'picker'
   | 'link' | 'lock' | 'unlock' | 'eye' | 'eye-off' | 'code' | 'document' | 'bookmark'
   | 'ranking' | 'tag' | 'pin' | 'cloud' | 'bolt' | 'zoom-in' | 'zoom-out' | 'share'
   | 'stop' | 'clock' | 'calendar' | 'expand' | 'edit'
@@ -59,7 +59,6 @@ const ICONS: Record<AppIconName, string> = {
   message: './icons/message.svg',
   bell: './icons/bell.svg',
   user: './icons/user.svg',
-  avatar: './icons/avatar.svg',
   moon: './icons/moon.svg',
   sun: './icons/sun.svg',
   picker: './icons/picker.svg',

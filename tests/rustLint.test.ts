@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lintIniText, stripInlineComment, validateValue } from '../src/features/editor/rustLint'
+import { lintIniText, semanticInputContent, stripInlineComment, validateValue } from '../src/features/editor/rustLint'
 import type { ValueTypeInfo } from '../src/services/codeData'
 
 /** 测试用最小数据源 */
@@ -33,12 +33,21 @@ const data = {
       canBuild_1_name: { type: 'key' },
       // 中文模式：名称 → name（string）
       name: { type: 'string' },
+      isBuilder: { type: 'boolean' },
     }
-    return map[k]
+    return map[k] ?? map[Object.keys(map).find((name) => name.toLowerCase() === k.toLowerCase()) ?? '']
   },
   findType: (t: string) => TYPE_RULES[t],
   zhToEn: (k: string) => (k === '名称' ? 'name' : k === '是' ? 'true' : k === '真' ? 'true' : k === '假' ? 'false' : k === '生命值' ? 'maxHp' : undefined),
 }
+
+describe('语义检查输入', () => {
+  it('中文显示层逻辑函数使用 tracker 恢复英文，普通中文值不被改写', () => {
+    const tracker = new Map([['血量', 'hp'], ['自动触发', 'autoTrigger']])
+    const input = '自动触发: if self.血量(lessThan=120)\ndescription: 血量不足时治疗'
+    expect(semanticInputContent(input, tracker)).toBe('autoTrigger: if self.hp(lessThan=120)\ndescription: 血量不足时治疗')
+  })
+})
 
 describe('值合法性检查（validateValue）', () => {
   it('合法值通过', () => {
@@ -74,6 +83,11 @@ describe('值合法性检查（validateValue）', () => {
   it('变量引用 ${...} 放行', () => {
     expect(validateValue('maxHp', '${self.maxHp}', data)).toBeNull()
     expect(validateValue('life', '${self.life}', data)).toBeNull()
+  })
+
+  it('isBuilder 大小写不敏感：isbuilder 与 isBuilder 都通过布尔校验', () => {
+    expect(validateValue('isbuilder', 'true', data)).toBeNull()
+    expect(validateValue('isBuilder', 'false', data)).toBeNull()
   })
 
   it('中文模式兼容：中文键/中文布尔值', () => {
@@ -270,6 +284,8 @@ describe('M28 真实模组对齐（引擎源码实证）', () => {
     expect(validateValue('spawnUnits', '原生-兵卵*1(spawnChance=0.1,maxSpawnLimit=1,offsetX=-30)', enumData)).toBeNull()
     expect(validateValue('spawnUnits', '中立视野副本(spawnSource=createMarker(x=self.x(), y=self.y(), teamId=thisActionTarget.teamId()))', enumData)).toBeNull()
     expect(validateValue('spawnUnits', 'sy(spawnChance=0.51,offsetRandomX=200,offsetRandomY=200,offsetRandomDir=360)', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', 'sas*1(Y偏移=8,效果产生几率=0.045),gign*1(Y偏移=8,效果产生几率=0.045)', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', 'sas(offsetY=8,生成概率=0.045,damagingBorder=true,zoneMarker=marker)', enumData)).toBeNull()
     expect(validateValue('spawnUnits', '色幕', enumData)).toBeNull()
     expect(validateValue('spawnUnits', '单位(未知参数=1)', enumData)).not.toBeNull()
     expect(validateValue('spawnUnits', '单位(offsetX)', enumData)).not.toBeNull()
@@ -355,5 +371,67 @@ describe('M28 审查修正回归（引擎语义实证）', () => {
     // 只有串外的 maxHp 报错；text 行不进入多行串状态（否则后续 maxHp 被吞、无诊断）
     expect(diags.length).toBe(1)
     expect(diags[0].message).toContain('maxHp')
+  })
+})
+
+describe('M38 中文枚举值回译（lint 不误报）', () => {
+  const enumData = {
+    findCode: (k: string) => {
+      const map: Record<string, { type: string }> = {
+        addWaypoint_target_nearestUnit_team: { type: 'addWaypoint_target_nearestUnit_team' },
+        addWaypoint_target_nearestUnit_tagged: { type: 'string' },
+        displayText: { type: 'string' },
+      }
+      return map[k]
+    },
+    findType: (t: string) => {
+      const types: Record<string, ValueTypeInfo> = {
+        addWaypoint_target_nearestUnit_team: {
+          name: '路径点靠近队伍', type: 'addWaypoint_target_nearestUnit_team', rule: '',
+          list: 'own,neutral,allyNotOwn,ally,enemy,any,notOwn',
+        },
+        string: { name: '字符串', type: 'string', rule: '.+' },
+      }
+      return types[t]
+    },
+    zhToEn: (_k: string) => undefined,
+    valueZhToEn: (v: string) => {
+      const map: Record<string, string> = {
+        '己方': 'own', '中立': 'neutral', '友军': 'ally',
+        '敌军': 'enemy', '任意': 'any', '非己方': 'notOwn',
+        '友军（非己方）': 'allyNotOwn',
+      }
+      return map[v]
+    },
+  }
+
+  it('中文枚举值回译后不报错（己方→own）', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '己方', enumData)).toBeNull()
+  })
+
+  it('其他中文枚举值同样不报错', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '中立', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '敌军', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '任意', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '友军（非己方）', enumData)).toBeNull()
+  })
+
+  it('逗号分隔多值中文枚举逐段回译', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '己方,友军', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '己方,中立,友军', enumData)).toBeNull()
+  })
+
+  it('英文枚举值仍然正常', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', 'own', enumData)).toBeNull()
+    expect(validateValue('addWaypoint_target_nearestUnit_team', 'enemy', enumData)).toBeNull()
+  })
+
+  it('未知中文值仍报错', () => {
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '不存在的中文', enumData)).not.toBeNull()
+  })
+
+  it('无 valueZhToEn 时不报错（向后兼容）', () => {
+    const noValueZh = { ...enumData, valueZhToEn: undefined }
+    expect(validateValue('addWaypoint_target_nearestUnit_team', '己方', noValueZh)).not.toBeNull()
   })
 })

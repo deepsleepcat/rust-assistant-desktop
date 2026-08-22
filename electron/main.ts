@@ -3,13 +3,16 @@
  * 全部 IPC 通道在 electron/ipc.ts 按域注册（本文件不直接注册任何通道），
  * 真实能力（dialog/shell/app/updater/窗口）在此注入 IpcContext。
  */
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import path from 'node:path'
 import { createStore } from './store'
 import { getHistory, initAiHistory } from './aiHistory'
 import { createKnowledgePack } from './knowledgePack'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
 import { createIpcContext, registerIpc, registerMediaFromSettings, restoreMediaAllowlist, restoreProjectRoots } from './ipc'
+import { createCommunityAuth } from './communityAuth'
+import { createSecureCredentials, DEEPSEEK_CREDENTIAL_KEY } from './secureCredentials'
+import { migrateLegacySettingsCredentials } from './legacyMigrations'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
 
@@ -21,6 +24,13 @@ const knowledgePack = createKnowledgePack(
   path.join(app.getPath('userData'), 'knowledge-pack'),
   path.join(__dirname, '..', '..', 'public', 'data'),
 )
+const communityCredentials = createSecureCredentials(store, safeStorage)
+const communityAuth = createCommunityAuth({
+  credentials: communityCredentials,
+  openExternal: (url) => shell.openExternal(url),
+})
+// DeepSeek API Key 同样只走 safeStorage（独立键）；渲染层只见「已配置」状态
+const deepSeekCredentials = createSecureCredentials(store, safeStorage, DEEPSEEK_CREDENTIAL_KEY)
 
 /** 全部 IPC 通道共享的依赖与可变状态（见 ipc.ts 的 IpcContext） */
 const ctx = createIpcContext({
@@ -31,6 +41,8 @@ const ctx = createIpcContext({
   app,
   updater: { checkForUpdates, downloadUpdate, quitAndInstall, isPackaged },
   windows: { getAllWindows: () => BrowserWindow.getAllWindows() },
+  communityAuth,
+  deepSeekCredentials,
 })
 
 function createWindow(): BrowserWindow {
@@ -39,7 +51,7 @@ function createWindow(): BrowserWindow {
     height: 900,
     minWidth: 960,
     minHeight: 600,
-    title: '铁锈助手',
+    title: '铁锈工坊',
     backgroundColor: '#f6f7f9',
     // R Logo 图标（任务栏/窗口图标；打包后由 electron-builder 注入 exe）
     icon: path.join(__dirname, '..', '..', 'build', 'icon.ico'),
@@ -91,8 +103,10 @@ app.whenReady().then(async () => {
   // 注册全部 IPC 通道（ipcMain.handle 的监听器首参是事件对象，与 RegisterHandler 契约一致）
   registerIpc(ctx, (channel, handler) => ipcMain.handle(channel, handler as never))
   // 等本地存储加载完成：恢复持久化的信任锚（媒体允许集合/项目根集合），
-  // 再登记已保存的背景图/头像路径
+  // 再登记已保存的背景图路径
   await store.ready()
+  // 旧版明文凭据迁移（社区令牌 + DeepSeek Key）：搬入系统安全存储后立即擦除并落盘
+  await migrateLegacySettingsCredentials(store, { community: communityCredentials, deepSeek: deepSeekCredentials })
   restoreMediaAllowlist(ctx)
   restoreProjectRoots(ctx)
   registerMediaFromSettings(ctx, store.get('settings'))

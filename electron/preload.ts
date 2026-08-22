@@ -7,7 +7,6 @@ import type { BridgeApi } from '../src/types/bridge'
 
 const api: BridgeApi = {
   platform: process.platform,
-  version: '',
   appInfo: () => ipcRenderer.invoke('app:info'),
   app: {
     checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
@@ -29,12 +28,23 @@ const api: BridgeApi = {
     get: (key: string) => ipcRenderer.invoke('store:get', key),
     set: (key: string, value: unknown) => ipcRenderer.invoke('store:set', key, value),
   },
+  community: {
+    request: (request) => ipcRenderer.invoke('community:request', request),
+  },
+  auth: {
+    status: () => ipcRenderer.invoke('auth:status'),
+    startPairing: () => ipcRenderer.invoke('auth:startPairing'),
+    pollPairing: () => ipcRenderer.invoke('auth:pollPairing'),
+    cancelPairing: () => ipcRenderer.invoke('auth:cancelPairing'),
+    logout: () => ipcRenderer.invoke('auth:logout'),
+  },
   project: {
     openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
     openImageDialog: () => ipcRenderer.invoke('dialog:openImage'),
     saveText: (title: string, defaultName: string, content: string) => ipcRenderer.invoke('dialog:saveText', title, defaultName, content),
     registerRoots: (roots: string[]) => ipcRenderer.invoke('project:registerRoots', roots),
     readDir: (rootPath: string, dirPath: string, showHidden?: boolean) => ipcRenderer.invoke('fs:readDir', rootPath, dirPath, showHidden),
+    searchFiles: (rootPath: string, query: string, showHidden?: boolean) => ipcRenderer.invoke('project:searchFiles', rootPath, query, showHidden),
     stat: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:stat', rootPath, filePath),
     readFile: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:readFile', rootPath, filePath),
     writeFile: (rootPath: string, filePath: string, content: string, opts: { hasBom: boolean }) =>
@@ -45,12 +55,6 @@ const api: BridgeApi = {
     delete: (rootPath: string, targetPath: string) => ipcRenderer.invoke('fs:delete', rootPath, targetPath),
     readImageAsDataUrl: (rootPath: string, imagePath: string) => ipcRenderer.invoke('image:readAsDataUrl', rootPath, imagePath),
     readAudioAsDataUrl: (rootPath: string, audioPath: string) => ipcRenderer.invoke('media:readAsDataUrl', rootPath, audioPath),
-  },
-  avatar: {
-    chooseLocal: () => ipcRenderer.invoke('avatar:chooseLocal'),
-    /** 保存裁剪后的头像（PNG data URL）→ 返回已登记的文件路径 */
-    saveCropped: (dataUrl: string) => ipcRenderer.invoke('avatar:saveCropped', dataUrl),
-    uploadCommunity: () => ipcRenderer.invoke('avatar:uploadCommunity'),
   },
   /** M18 知识包更新器（数据文件读取/更新检查/增量更新/回滚） */
   knowledge: {
@@ -78,6 +82,8 @@ const api: BridgeApi = {
     discardImport: (rootPath: string) => ipcRenderer.invoke('mod:discardImport', rootPath),
     createUnit: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnit', rootPath, params),
     pack: (rootPath: string, options?: unknown) => ipcRenderer.invoke('mod:pack', rootPath, options),
+    packAndDeploy: (rootPath: string, options: unknown, gamePath: string, overwrite: boolean) =>
+      ipcRenderer.invoke('mod:packAndDeploy', rootPath, options, gamePath, overwrite),
     check: (rootPath: string) => ipcRenderer.invoke('mod:check', rootPath),
     readModInfo: (rootPath: string) => ipcRenderer.invoke('mod:readModInfo', rootPath),
     writeModInfo: (rootPath: string, data: unknown) => ipcRenderer.invoke('mod:writeModInfo', rootPath, data),
@@ -92,6 +98,10 @@ const api: BridgeApi = {
     deleteUserTemplate: (key: string) => ipcRenderer.invoke('template:deleteUser', key),
     listUserTemplateKeys: () => ipcRenderer.invoke('template:listUserKeys'),
     createUnitFromTemplate: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnitFromTemplate', rootPath, params),
+    /** M34 单位复制：从其它/同模组复制单位配置（两侧项目根都须已登记） */
+    copyUnit: (params: unknown) => ipcRenderer.invoke('mod:copyUnit', params),
+    translationRepairScan: (rootPath: string) => ipcRenderer.invoke('mod:translationRepairScan', rootPath),
+    translationRepairApply: (rootPath: string, selections: unknown) => ipcRenderer.invoke('mod:translationRepairApply', rootPath, selections),
   },
   git: {
     info: (rootPath: string) => ipcRenderer.invoke('git:info', rootPath),
@@ -103,6 +113,11 @@ const api: BridgeApi = {
   },
   ai: {
     check: (settings) => ipcRenderer.invoke('ai:check', settings),
+    deepSeekKey: {
+      save: (key) => ipcRenderer.invoke('ai:credential:save', key),
+      status: () => ipcRenderer.invoke('ai:credential:status'),
+      clear: () => ipcRenderer.invoke('ai:credential:clear'),
+    },
     info: () => ipcRenderer.invoke('ai:info'),
     stream: (params, settings, projectRoot) => ipcRenderer.invoke('ai:stream', params, settings, projectRoot),
     approve: (response: { id: string; approved: boolean }) => ipcRenderer.invoke('ai:approval:respond', response),
@@ -117,9 +132,5 @@ const api: BridgeApi = {
     },
   },
 }
-
-void ipcRenderer.invoke('app:info').then((info: { version: string }) => {
-  api.version = info.version
-})
 
 contextBridge.exposeInMainWorld('rustAssistant', api)

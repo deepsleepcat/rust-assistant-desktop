@@ -51,15 +51,12 @@ export interface AppSettings {
   background: BackgroundSettings
   /** 是否启用中文翻译显示层 */
   translateMode: boolean
-  /** 头像配置（本地选择 / 社区后端上传预留） */
-  avatar: import('./ai').AvatarProvider
-  /** AI 设置（M4） */
+  /** AI 设置（M4；Key 本体只存主进程 safeStorage，这里只有「已配置」标志） */
   ai: {
     provider: 'deepseek' | 'community'
-    deepseekApiKey: string
+    deepseekKeyConfigured: boolean
     deepseekModel: string
     communityEndpoint: string
-    communityToken: string
     communityModel: string
   }
   /** 编辑器字体族名称 */
@@ -168,6 +165,8 @@ export interface EditorTab {
   translationEnabled: boolean
   /** 翻译追踪表（中文显示串 → 原始英文串）：保存时精确还原，未追踪中文保留 */
   translationMap?: Map<string, string>
+  /** 打开时只在内存规范化了已知中文键；必须用户明确保存才写回磁盘。 */
+  pendingRepair?: boolean
   /** 读取文件时的大小（仅供展示） */
   size: number
   /** 磁盘快照时间与外部修改标记 */

@@ -4,13 +4,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
+import { enToZh, makeDict, zhToEn } from '../src/services/translation'
 import {
+  findCodeByCode,
+  findCodesByQuery,
   findCodesBySection,
   findSectionsByQuery,
   findValueTypes,
+  getAliasDict,
   getDataVersionInfo,
+  getKeyZhToEnDict,
+  getLogicIdentifierZhToEnDict,
+  getValueZhToEnDict,
+  isPreserveValueKey,
   loadCodeData,
+  normalizeValueForEngine,
   normalizeSectionName,
+  resolveValueZhToEn,
   reloadCodeData,
 } from '../src/services/codeData'
 
@@ -41,6 +51,37 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   reloadCodeData()
+})
+
+describe('loadCodeData 代次竞态', () => {
+  it('旧请求晚完成时不能覆盖 reload 后的新词典', async () => {
+    let codeRequests = 0
+    let releaseOldCode!: () => void
+    const oldCode = new Promise<void>((resolve) => { releaseOldCode = resolve })
+    const realCode = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'code.json'), 'utf8')) as { data: Array<Record<string, unknown>> }
+    const newCode = {
+      data: [...realCode.data, {
+        code: 'generationMarker', translate: '新代次标记', description: '测试', type: 'string', section: 'core', demo: '', addVersion: 0, removeVersion: -1,
+      }],
+    }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const rel = String(url).replace(/^\.?\//, '')
+      if (rel === 'data/code.json' && codeRequests++ === 0) {
+        await oldCode
+        return { ok: true, status: 200, json: async () => realCode } as unknown as Response
+      }
+      const file = path.resolve(DATA_DIR, rel.replace(/^data\//, ''))
+      const content = rel === 'data/code.json' ? newCode : JSON.parse(fs.readFileSync(file, 'utf8'))
+      return { ok: true, status: 200, json: async () => content } as unknown as Response
+    }))
+    const oldLoad = loadCodeData()
+    reloadCodeData()
+    await loadCodeData()
+    expect((await import('../src/services/codeData')).getAllCodes().some((c) => c.code === 'generationMarker')).toBe(true)
+    releaseOldCode()
+    await oldLoad
+    expect((await import('../src/services/codeData')).getAllCodes().some((c) => c.code === 'generationMarker')).toBe(true)
+  })
 })
 
 describe('getDataVersionInfo（离线数据版本）', () => {
@@ -80,6 +121,99 @@ describe('M31 补全数据查询（真实数据）', () => {
     stubFetchFromDisk()
   })
 
+  it('真实单位路径点字段完整显示中文且回译无损', async () => {
+    await loadCodeData()
+    const dict = makeDict(
+      (await import('../src/services/codeData')).getEnToZhDict(),
+      (await import('../src/services/codeData')).getZhToEnDict(),
+      (await import('../src/services/codeData')).getKeyZhToEnDict(),
+      (await import('../src/services/codeData')).getSectionZhToEnDict(),
+    )
+    const original = [
+      '[hiddenAction_治疗友军]',
+      'autoTrigger:true',
+      'addWaypoint_type:repair',
+      'addWaypoint_target_nearestUnit_tagged:伤员',
+      'addWaypoint_target_nearestUnit_team:own',
+      'addWaypoint_target_nearestUnit_maxRange:200',
+      'allowMultipleInQueue:false',
+    ].join('\n')
+    const tracker = new Map<string, string>()
+    const view = enToZh(original, dict, tracker)
+    expect(view).toContain('[隐藏行动_治疗友军]')
+    expect(view).toContain('自动触发:真')
+    expect(view).toContain('添加路径点动作类型:repair')
+    expect(view).toContain('添加路径点检索标签:伤员')
+    expect(view).toContain('添加路径点靠近队伍:己方')
+    expect(view).toContain('添加路径点检索范围:200')
+    expect(view).toContain('允许多个队列:假')
+    expect(zhToEn(view, dict, tracker)).toBe(original)
+  })
+
+  it('M38：真实标签字段保留规范驼峰，self 标识符和中文枚举别名可安全回译', async () => {
+    await loadCodeData()
+    expect(getKeyZhToEnDict().get('临时标签添加')).toBe('temporarilyAddTags')
+    expect(getKeyZhToEnDict().get('临时标签删除')).toBe('temporarilyRemoveTags')
+    expect(getKeyZhToEnDict().get('添加全局标签')).toBe('addGlobalTeamTags')
+    expect(getKeyZhToEnDict().get('移除全局标签')).toBe('removeGlobalTeamTags')
+    expect(getLogicIdentifierZhToEnDict().get('血量')).toBe('hp')
+    expect(getLogicIdentifierZhToEnDict().get('生命值')).toBe('maxHp')
+    expect(getValueZhToEnDict().get('己方')).toBe('own')
+    expect(getValueZhToEnDict().get('任何')).toBe('any')
+    expect(resolveValueZhToEn('任何', 'own,neutral,allyNotOwn,ally,enemy,any,notOwn')).toBe('any')
+    expect(resolveValueZhToEn('任意', 'X')).toBe('X')
+    expect(normalizeValueForEngine('isBuilder', '是')).toBe('true')
+    expect(normalizeValueForEngine('addWaypoint_target_nearestUnit_team', '任何')).toBe('any')
+    expect(normalizeValueForEngine('movementType', '空中')).toBe('AIR')
+    expect(normalizeValueForEngine('movementType', '空中，陆地')).toBe('AIR,LAND')
+    expect(isPreserveValueKey('builtFrom_1_name')).toBe(true)
+    expect(isPreserveValueKey('displayText_zh')).toBe(true)
+
+    const dict = makeDict(
+      (await import('../src/services/codeData')).getEnToZhDict(),
+      (await import('../src/services/codeData')).getZhToEnDict(),
+      getKeyZhToEnDict(),
+      (await import('../src/services/codeData')).getSectionZhToEnDict(),
+      getLogicIdentifierZhToEnDict(),
+      (await import('../src/services/codeData')).getLogicIdentifierEnToZhDict(),
+      (await import('../src/services/codeData')).getPreserveValueKeys(),
+      (await import('../src/services/codeData')).getLogicValueKeys(),
+    )
+    const tracker = new Map<string, string>()
+    const source = '[action]\ntemporarilyAddTags:攻击\nautoTrigger:if self.maxHp(lessThan=120)'
+    const view = enToZh(source, dict, tracker)
+    expect(view).toContain('临时标签添加:攻击')
+    expect(view).toContain('self.生命值')
+    expect(zhToEn(view, dict, tracker)).toBe(source)
+  })
+
+  it('self.xxx 大小写不敏感翻译：self.HP / self.hp 都能显示中文', async () => {
+    await loadCodeData()
+    const dict = makeDict(
+      (await import('../src/services/codeData')).getEnToZhDict(),
+      (await import('../src/services/codeData')).getZhToEnDict(),
+      getKeyZhToEnDict(),
+      (await import('../src/services/codeData')).getSectionZhToEnDict(),
+      getLogicIdentifierZhToEnDict(),
+      (await import('../src/services/codeData')).getLogicIdentifierEnToZhDict(),
+      (await import('../src/services/codeData')).getPreserveValueKeys(),
+      (await import('../src/services/codeData')).getLogicValueKeys(),
+    )
+    const tracker = new Map<string, string>()
+    // self.hp（小写）应翻译为 self.血量
+    const src1 = '[core]\nisVisible:if self.hp(greaterThan=0)'
+    const view1 = enToZh(src1, dict, tracker)
+    expect(view1).toContain('self.血量')
+    expect(zhToEn(view1, dict, tracker)).toBe(src1)
+
+    // self.HP（大写）也应翻译为 self.血量
+    const tracker2 = new Map<string, string>()
+    const src2 = '[core]\nisVisible:if self.HP(greaterThan=0)'
+    const view2 = enToZh(src2, dict, tracker2)
+    expect(view2).toContain('self.血量')
+    expect(zhToEn(view2, dict, tracker2)).toBe(src2)
+  })
+
   it('多值类型 findValueTypes：float,logicBoolean 合并全部命中段（补全不再只取第一段）', async () => {
     await loadCodeData()
     const vts = findValueTypes('float,logicBoolean')
@@ -98,6 +232,12 @@ describe('M31 补全数据查询（真实数据）', () => {
     const numbered = findCodesBySection('turret_1', '')
     expect(numbered.length).toBeGreaterThan(0)
     expect(numbered.map((c) => c.code)).toEqual(base.map((c) => c.code))
+  })
+
+  it('混合大小写节 canBuild 仍能命中「排序」字段', async () => {
+    await loadCodeData()
+    const list = findCodesBySection('canBuild_1', '排序')
+    expect(list.some((c) => c.code === 'pos' && c.type === 'float')).toBe(true)
   })
 
   it('normalizeSectionName：中文编号节和命名节归一化到已知基础节', async () => {
@@ -119,5 +259,48 @@ describe('M31 补全数据查询（真实数据）', () => {
     expect(named.some((s) => s.code === 'turret')).toBe(true)
     const zh = findSectionsByQuery('炮塔_主炮')
     expect(zh.some((s) => s.code === 'turret')).toBe(true)
+  })
+})
+
+describe('M35 字段别名（aliases.json：旧名也能搜到/悬停）', () => {
+  beforeEach(() => {
+    stubFetchFromDisk()
+  })
+
+  it('按旧名 turretlimitingAngle 模糊搜索命中现行字段 limitingAngle', async () => {
+    await loadCodeData()
+    const hits = findCodesByQuery('turretlimitingAngle')
+    expect(hits.some((c) => c.code === 'limitingAngle')).toBe(true)
+  })
+
+  it('别名搜索大小写不敏感（TurretLimitingAngle 同样命中）', async () => {
+    await loadCodeData()
+    const hits = findCodesByQuery('TurretLimitingAngle')
+    expect(hits.some((c) => c.code === 'limitingAngle')).toBe(true)
+  })
+
+  it('findCodesBySection 内别名同样命中（炮塔节过滤不丢）', async () => {
+    await loadCodeData()
+    const hits = findCodesBySection('turret', 'turretlimiting')
+    expect(hits.some((c) => c.code === 'limitingAngle')).toBe(true)
+  })
+
+  it('findCodeByCode 精确查不到时解析旧名别名（悬停/lint 用）', async () => {
+    await loadCodeData()
+    expect(findCodeByCode('turretlimitingAngle')?.code).toBe('limitingAngle')
+    expect(findCodeByCode('limitingAngle')?.code).toBe('limitingAngle')
+  })
+
+  it('别名表可查询：getAliasDict 键为小写别名，值为现行 code', async () => {
+    await loadCodeData()
+    const dict = getAliasDict()
+    expect(dict.get('turretlimitingangle')).toBe('limitingAngle')
+  })
+
+  it('无别名时行为不变（不存在的旧名仍搜不到）', async () => {
+    await loadCodeData()
+    const hits = findCodesByQuery('noSuchAlias_xyz')
+    expect(hits).toEqual([])
+    expect(findCodeByCode('noSuchAlias_xyz')).toBeUndefined()
   })
 })

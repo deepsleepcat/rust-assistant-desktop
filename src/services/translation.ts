@@ -7,6 +7,7 @@
  * - 翻译开关切换基于 original 重新生成，不覆盖用户编辑；
  * - 纯函数实现，词典由调用方注入，方便测试。
  */
+import { KEY_VALUE_RE, findKeyValueSeparator, normalizeKeyValueSeparators } from './configSyntax'
 
 export interface TranslationDict {
   enToZh: Map<string, string>
@@ -14,6 +15,22 @@ export interface TranslationDict {
   /** 键名回译表（code.json 译名 → 键名）：键位置词典兜底优先查，
    * 避免键译名被节名/旧词条译名撞车覆盖（价格→price 误成 prices） */
   keyZhToEn?: Map<string, string>
+  /** 节名回译表（section.json 译名 → 节名）：节头位置回译优先查。
+   * 节名译名与代码表键译名可能撞车（炮塔→节 turret vs 键 c_turret_t1）——
+   * 节位置必须得到节名，与键位置的 keyZhToEn 分开，互不覆盖。 */
+  sectionZhToEn?: Map<string, string>
+  /** 已确认的 self 标识符中文别名 → 英文标识符。 */
+  logicIdentifierZhToEn?: Map<string, string>
+  /** 已确认的 self 标识符英文 → 中文显示别名。 */
+  logicIdentifierEnToZh?: Map<string, string>
+  /** 值区自由字段的规范英文键：值保持用户原文，不走通用回译。 */
+  preserveValueKeys?: ReadonlySet<string>
+  /** 允许 self.xxx 翻译的逻辑字段键。 */
+  logicValueKeys?: ReadonlySet<string>
+  /** 动态模板键的自由值保护判断。 */
+  isPreserveValueKey?: (key: string) => boolean
+  /** 中文手输的布尔/有限枚举值保存前规范化为引擎值。 */
+  normalizeValue?: (key: string, value: string) => string
 }
 
 const EN_WORD_RE = /\b[a-zA-Z_][a-zA-Z0-9_]*\b/g
@@ -36,6 +53,88 @@ export type TranslationTracker = Map<string, string>
  * tracker 可选：开启时记录「中文显示串 → 原始英文串」，供保存时精确回译。
  */
 export function enToZh(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
+  const translateLine = (line: string): string => {
+    const trimmed = line.trimStart()
+    if (trimmed.startsWith('#')) return line
+    if (trimmed.startsWith('[')) {
+      const close = line.indexOf(']')
+      if (close >= 0) return translateWords(line.slice(0, close + 1), dict, tracker) + line.slice(close + 1)
+    }
+    const sepIndex = findKeyValueSeparator(line)
+    if (sepIndex < 0) return translateSelfIdentifiers(translateWords(line, dict, tracker), dict, tracker)
+    const prefix = line.slice(0, sepIndex)
+    const keyParts = /^(\s*)(.*?)(\s*)$/.exec(prefix)!
+    const [, indent, keyRaw, ws] = keyParts
+    const separator = line[sepIndex]
+    const rawValue = line.slice(sepIndex + 1)
+    const inlineComment = /([ \t]+#.*?)(\r?)$/.exec(rawValue)
+    const valuePart = inlineComment ? rawValue.slice(0, inlineComment.index) : rawValue
+    const commentPart = inlineComment ? inlineComment[1] + inlineComment[2] : ''
+    const key = keyRaw.trim().toLowerCase()
+    const translatedKey = translateWords(keyRaw, dict, tracker)
+    if (dict.preserveValueKeys?.has(key) || dict.isPreserveValueKey?.(keyRaw.trim())) {
+      return indent + translatedKey + ws + separator + valuePart + commentPart
+    }
+    const value = dict.logicValueKeys?.has(key)
+      ? translateLogicValue(valuePart, dict, tracker)
+      : translateWords(valuePart, dict, tracker)
+    return indent + translatedKey + ws + separator + value + commentPart
+  }
+  return text.split(/(\r?\n)/).map((part) => part === '\n' || part === '\r\n' ? part : translateLine(part)).join('')
+}
+
+function translateLogicValue(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
+  const withSelf = translateSelfIdentifiers(text, dict, tracker)
+  // 逻辑值中的布尔常量允许中文显示，但只翻译完整 token，参数名和 if/
+  // 普通英文函数保持引擎原文，保存时由 tracker 精确恢复。
+  return withSelf.replace(/(^|[^a-zA-Z0-9_])(true|false)(?=$|[^a-zA-Z0-9_])/gi, (full, prefix: string, token: string) => {
+    const zh = dict.enToZh.get(token.toLowerCase())
+    if (!zh) return full
+    const shown = `${prefix}${zh}`
+    if (!tracker) return shown
+    const existing = tracker.get(zh)
+    if (existing === undefined) tracker.set(zh, token)
+    return existing === undefined || existing === token ? shown : full
+  })
+}
+
+function translateSelfIdentifiers(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
+  const map = dict.logicIdentifierEnToZh
+  if (!map || map.size === 0) return text
+  return text.replace(/self\.([a-zA-Z_][a-zA-Z0-9_]*)/g, (full, name: string) => {
+    // 大小写不敏感查找：用户可能写 self.HP / self.hp / self.Hp
+    const zh = map.get(name) ?? map.get(name.toLowerCase()) ?? [...map.entries()].find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1]
+    if (!zh) return full
+    const shown = `self.${zh}`
+    if (tracker) {
+      const existing = tracker.get(shown)
+      if (existing === undefined) tracker.set(shown, `self.${name}`)
+      else if (existing !== `self.${name}`) return full
+    }
+    return shown
+  })
+}
+
+function restoreSelfIdentifiers(text: string, dict: TranslationDict, tracker: TranslationTracker): string {
+  return text.replace(/self\.([a-zA-Z_一-鿿][a-zA-Z0-9_一-鿿]*)/g, (full, name: string) => {
+    const tracked = tracker.get(full)
+    if (tracked) return tracked
+    const restored = dict.logicIdentifierZhToEn?.get(name)
+    return restored ? `self.${restored}` : full
+  })
+}
+
+function restoreLogicBooleanTokens(text: string, tracker: TranslationTracker): string {
+  const entries = [...tracker.entries()]
+    .filter(([, original]) => /^(?:true|false)$/i.test(original))
+    .sort(([a], [b]) => b.length - a.length)
+  if (entries.length === 0) return text
+  const pattern = entries.map(([shown]) => escapeRegExp(shown)).join('|')
+  const re = new RegExp(`(?<![\\u4e00-\\u9fffA-Za-z0-9_])(${pattern})(?![\\u4e00-\\u9fffA-Za-z0-9_])`, 'g')
+  return text.replace(re, (shown) => tracker.get(shown) ?? shown)
+}
+
+function translateWords(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
   return text.replace(EN_WORD_RE, (word) => {
     // 全大写且长度 > 1：视为常量/引用标识符，不翻译，避免保存时信息丢失
     if (word.length > 1 && word === word.toUpperCase()) return word
@@ -53,6 +152,16 @@ export function enToZh(text: string, dict: TranslationDict, tracker?: Translatio
         return zh
       }
       return existing === word ? zh : word
+    }
+
+    // 完整字段优先：addWaypoint_target_nearestUnit_tagged 这类代码表已有的
+    // 复合键不能先按 _ 拆开，否则只会显示成「addWaypoint_类型」。
+    const direct = dict.enToZh.get(word.toLowerCase())
+    if (direct) {
+      if (/^[A-Z]/.test(word) && !/^[A-Z]/.test(direct)) {
+        return record(direct.charAt(0).toUpperCase() + direct.slice(1))
+      }
+      return record(direct)
     }
 
     // 兜底链：①带编号后缀（projectile_1 → projectile）
@@ -80,12 +189,7 @@ export function enToZh(text: string, dict: TranslationDict, tracker?: Translatio
       if (joined !== word) return record(joined)
     }
 
-    const zh = dict.enToZh.get(word.toLowerCase())
-    if (!zh) return word
-    if (/^[A-Z]/.test(word) && !/^[A-Z]/.test(zh)) {
-      return record(zh.charAt(0).toUpperCase() + zh.slice(1))
-    }
-    return record(zh)
+    return word
   })
 }
 
@@ -110,31 +214,60 @@ function lookupBase(base: string, dict: TranslationDict): string {
 export function zhToEn(text: string, dict: TranslationDict, tracker?: TranslationTracker): string {
   if (!tracker) {
     // 非追踪模式：纯词典回译（lint/表单回译查询用）
-    return dictFallback(text, dict, dict.zhToEn)
+    return normalizeKeyValueSeparators(dictFallback(text, dict, dict.zhToEn))
   }
   // 追踪模式：按行处理（键位置与值位置的回译规则不同）；
   // 空 tracker（本次打开没翻译出任何词）也要走追踪语义——值位置全保留，
   // 不能回落词典回译（会把用户中文数据改写成英文）
-  return text
-    .split('\n')
-    .map((line) => zhToEnLine(line, dict, tracker))
-    .join('\n')
+  return normalizeKeyValueSeparators(text
+    .split(/(\r?\n)/)
+    .map((part) => part === '\n' || part === '\r\n' ? part : zhToEnLine(part, dict, tracker))
+    .join(''))
 }
 
 /** 追踪模式单行回译：认 : 与 = 分隔符（与引擎解析一致）；
  * 键位置（含节头 [name]）允许键后跟 _（宏字段后缀/needName 节实例名），
  * 值位置严格边界（用户数据「攻击_力强」里的 攻击 不被改写） */
+function restoreSectionLine(line: string, dict: TranslationDict, tracker: TranslationTracker): string {
+  const open = line.indexOf('[')
+  const close = open >= 0 ? line.indexOf(']', open + 1) : -1
+  if (open >= 0 && close > open && dict.sectionZhToEn) {
+    const rawName = line.slice(open + 1, close)
+    const restored = restoreSectionText(rawName, dict.sectionZhToEn)
+    if (restored !== rawName) return line.slice(0, open + 1) + restored + line.slice(close)
+  }
+  return tracedReplace(line, tracker, true)
+}
+
 function zhToEnLine(line: string, dict: TranslationDict, tracker: TranslationTracker): string {
-  const kv = /^(\s*)([^:=]*?)(\s*)([:=])(.*)$/.exec(line)
+  const trimmed = line.trimStart()
+  if (trimmed.startsWith('#')) return line
+  if (trimmed.startsWith('[')) return restoreSectionLine(line, dict, tracker)
+  const kv = KEY_VALUE_RE.exec(line)
   if (!kv) {
-    // 节头行（[name]）按键位置宽松边界处理；其余行（注释/普通文本）严格边界
-    const isSection = line.trimStart().startsWith('[')
-    return tracedReplace(line, tracker, isSection)
+    // 节头使用独立节名词典兜底；普通文本仍只按 tracker 精确回译。
+    if (line.trimStart().startsWith('[')) return restoreSectionLine(line, dict, tracker)
+    return tracedReplace(line, tracker, false)
   }
   const [, indent, keyRaw, ws, sep, rest] = kv
   const keyEn = restoreKeyText(keyRaw, dict, tracker)
-  const valEn = tracedReplace(rest, tracker, false)
-  return indent + keyEn + ws + sep + valEn
+  const keyLookup = keyEn.trim().toLowerCase()
+  const inlineComment = /([ \t]+#.*)$/.exec(rest)
+  const valuePart = inlineComment ? rest.slice(0, inlineComment.index) : rest
+  const commentPart = inlineComment?.[1] ?? ''
+  let valEn: string
+  if (dict.logicValueKeys?.has(keyLookup)) {
+    // 逻辑显示层只额外翻译 self.xxx 和完整布尔 token；两者均由 tracker
+    // 精确恢复，if/lessThan 等引擎语法保持原文。
+    valEn = restoreLogicBooleanTokens(restoreSelfIdentifiers(valuePart, dict, tracker), tracker)
+    if (dict.normalizeValue) valEn = dict.normalizeValue(keyEn.trim(), valEn)
+  } else if (!dict.preserveValueKeys?.has(keyLookup) && !dict.isPreserveValueKey?.(keyEn.trim())) {
+    valEn = tracedReplace(valuePart, tracker, false)
+    if (dict.normalizeValue) valEn = dict.normalizeValue(keyEn.trim(), valEn)
+  } else {
+    valEn = valuePart
+  }
+  return indent + keyEn + ws + sep + valEn + commentPart
 }
 
 /**
@@ -149,9 +282,25 @@ function zhToEnLine(line: string, dict: TranslationDict, tracker: TranslationTra
 function tracedReplace(text: string, tracker: TranslationTracker, allowUnderscoreRight = false): string {
   if (tracker.size === 0) return text
   const keys = [...tracker.keys()].sort((a, b) => b.length - a.length) // 最长优先，防短键先吞长键
-  const right = allowUnderscoreRight ? '(?![\\u4e00-\\u9fffA-Za-z0-9])' : '(?![\\u4e00-\\u9fffA-Za-z0-9_])'
-  const re = new RegExp('(?<![\\u4e00-\\u9fffA-Za-z0-9_])(' + keys.map(escapeRegExp).join('|') + ')' + right, 'g')
-  return text.replace(re, (hit) => tracker.get(hit)!)
+  const rightStrict = '(?![\\u4e00-\\u9fffA-Za-z0-9_])'
+  const rightLoose = '(?![\\u4e00-\\u9fffA-Za-z0-9])'
+  const re = new RegExp(
+    '(?<![\\u4e00-\\u9fffA-Za-z0-9_])(' + keys.map(escapeRegExp).join('|') + ')' +
+    (allowUnderscoreRight ? rightLoose : rightStrict),
+    'g',
+  )
+  return text.replace(re, (hit) => {
+    // tracker 键本身已以下划线结尾（如「炮塔_→turret_」）：下划线已消费，
+    // 后续跟中文实例名是合法的，右边界放宽为 rightLoose
+    if (hit.endsWith('_')) {
+      const relaxed = new RegExp(
+        '(?<![\\u4e00-\\u9fffA-Za-z0-9_])(' + escapeRegExp(hit) + ')' + rightLoose,
+        'g',
+      )
+      if (!relaxed.test(text)) return text.slice(text.indexOf(hit), text.indexOf(hit) + hit.length)
+    }
+    return tracker.get(hit)!
+  })
 }
 
 /** 键位置回译：tracker 精确还原优先；未覆盖（表单新增中文键）时词典兜底（整串 → 分段） */
@@ -162,6 +311,23 @@ function restoreKeyText(keyRaw: string, dict: TranslationDict, tracker: Translat
   const direct = keyMap.get(keyRaw.trim()) ?? dict.zhToEn.get(keyRaw.trim())
   if (direct) return keyRaw.replace(keyRaw.trim(), direct)
   return dictFallback(keyRaw, dict, keyMap)
+}
+
+/** 节头回译：整段优先，再按已知中文节名前缀恢复并保留自定义后缀。 */
+function restoreSectionText(text: string, map: Map<string, string>): string {
+
+  const trimmed = text.trim()
+  const direct = map.get(trimmed)
+  if (direct) return text.replace(trimmed, direct)
+  const prefixes = [...map.entries()]
+    .filter(([from]) => from.endsWith('_'))
+    .sort((a, b) => b[0].length - a[0].length)
+  for (const [from, to] of prefixes) {
+    if (trimmed.startsWith(from) && trimmed.length > from.length) {
+      return text.replace(trimmed, to + trimmed.slice(from.length))
+    }
+  }
+  return text
 }
 
 /** 词典回译（整段优先查表，未命中按汉字 run 最长前缀拆解） */
@@ -189,7 +355,18 @@ function escapeRegExp(s: string): string {
   return out
 }
 
-/** 构造词典对象（从快照 Map；keyZhToEn 可选：键位置词典兜底优先表） */
-export function makeDict(enToZh: Map<string, string>, zhToEn: Map<string, string>, keyZhToEn?: Map<string, string>): TranslationDict {
-  return { enToZh, zhToEn, keyZhToEn }
+/** 构造词典对象（从快照 Map；keyZhToEn 可选：键位置词典兜底优先表）。 */
+export function makeDict(
+  enToZh: Map<string, string>,
+  zhToEn: Map<string, string>,
+  keyZhToEn?: Map<string, string>,
+  sectionZhToEn?: Map<string, string>,
+  logicIdentifierZhToEn?: Map<string, string>,
+  logicIdentifierEnToZh?: Map<string, string>,
+  preserveValueKeys?: ReadonlySet<string>,
+  logicValueKeys?: ReadonlySet<string>,
+  isPreserveValueKey?: (key: string) => boolean,
+  normalizeValue?: (key: string, value: string) => string,
+): TranslationDict {
+  return { enToZh, zhToEn, keyZhToEn, sectionZhToEn, logicIdentifierZhToEn, logicIdentifierEnToZh, preserveValueKeys, logicValueKeys, isPreserveValueKey, normalizeValue }
 }

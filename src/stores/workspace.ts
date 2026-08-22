@@ -10,7 +10,7 @@
  */
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
-import type { BridgeApi } from '../types/bridge'
+import type { BridgeApi, CommunityAuthStatus, CommunityAuthUser } from '../types/bridge'
 import type { Conversation } from '../types/domain'
 import { getBridge } from '../services/bridge'
 import { DEFAULT_SETTINGS, sanitizeSettings } from '../utils/settings'
@@ -23,6 +23,18 @@ import type { WorkspaceStore, WorkspaceStoreState } from './types'
 
 export type { WorkspaceStore, WorkspaceStoreState, WorkspaceStoreActions, ConfirmRequest, EditorPosition } from './types'
 
+function mapBridgeAuthState(state: CommunityAuthStatus['state']): 'signed_out' | 'signed_in' | 'checking' | 'error' {
+  if (state === 'signed-in') return 'signed_in'
+  if (state === 'unavailable') return 'error'
+  return 'signed_out'
+}
+
+function mapBridgeUser(user: CommunityAuthUser | undefined) {
+  return user
+    ? { id: user.id, username: user.username, display_name: user.displayName, avatar_url: user.avatarUrl }
+    : null
+}
+
 /** 持久化裁剪后仍超限的提示标志（本次会话只提示一次，防噪音） */
 let trimNotified = false
 
@@ -30,6 +42,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
   let persistTimer: ReturnType<typeof setTimeout> | null = null
   // L1：init 幂等（StrictMode 双挂载/重复调用只执行一次，避免重复订阅更新事件）
   let initPromise: Promise<void> | null = null
+  let pairingCheckInFlight = false
 
   return create<WorkspaceStore>()((set, get) => {
     function persist(): void {
@@ -130,11 +143,13 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       activeTabId: null,
       editorPos: { line: 1, col: 1 },
       settingsOpen: false,
+      settingsTab: 'appearance',
       commandOpen: false,
       drawerSide: null,
       activeSurface: 'editor',
       communityTab: 'recommend',
       communityFollowing: [],
+      communityAuth: { status: 'checking', user: null, error: null, pairing: null },
       codeTableOpen: false,
       versionDiffOpen: false,
       relationGraphOpen: false,
@@ -157,10 +172,70 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       modReportProgress: null,
       optimizeItems: null,
       optimizeError: null,
+      translationRepairItems: null,
+      translationRepairError: null,
       updateState: { status: 'idle' },
 
       // ── 领域切片（按域拆分，见 slices/）──
       ...createUiSlice()(set, get),
+      async refreshCommunityAuth() {
+        const bridgeAuth = bridge.auth
+        if (!bridgeAuth) {
+          // 浏览器预览模式：真实社区认证只属于桌面端，预览继续使用本地示例数据
+          set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
+          return
+        }
+        set({ communityAuth: { status: 'checking', user: get().communityAuth.user, error: null, pairing: get().communityAuth.pairing } })
+        try {
+          const status = await bridgeAuth.status()
+          set({ communityAuth: { status: mapBridgeAuthState(status.state), user: mapBridgeUser(status.user), error: null, pairing: null } })
+        } catch (error) {
+          set({ communityAuth: { status: 'error', user: null, error: error instanceof Error ? error.message : String(error), pairing: null } })
+        }
+      },
+      async loginCommunity() {
+        if (get().communityAuth.status === 'loading') return
+        set({ communityAuth: { status: 'loading', user: get().communityAuth.user, error: null, pairing: get().communityAuth.pairing } })
+        try {
+          const bridgeAuth = bridge.auth
+          if (!bridgeAuth) throw new Error('社区登录仅支持桌面端')
+          const pairing = await bridgeAuth.startPairing()
+          set({ communityAuth: { status: 'loading', user: null, error: null, pairing: { userCode: pairing.userCode, expiresAt: pairing.expiresAt } } })
+        } catch (error) {
+          set({ communityAuth: { status: 'error', user: get().communityAuth.user, error: error instanceof Error ? error.message : String(error), pairing: null } })
+        }
+      },
+      async checkCommunityPairing() {
+        if (pairingCheckInFlight || get().communityAuth.status !== 'loading') return
+        pairingCheckInFlight = true
+        try {
+          const bridgeAuth = bridge.auth
+          if (!bridgeAuth) throw new Error('社区登录仅支持桌面端')
+          const status = await bridgeAuth.pollPairing()
+          if (status.state === 'signed-in') {
+            set({ communityAuth: { status: 'signed_in', user: mapBridgeUser(status.user), error: null, pairing: null } })
+            return
+          }
+          if (status.state === 'signed-out') {
+            set({ communityAuth: { status: 'error', user: null, error: '配对已结束或已过期，请重新开始', pairing: null } })
+          }
+        } catch (error) {
+          set({ communityAuth: { status: 'error', user: get().communityAuth.user, error: error instanceof Error ? error.message : String(error), pairing: null } })
+        } finally {
+          pairingCheckInFlight = false
+        }
+      },
+      async cancelCommunityPairing() {
+        try { await bridge.auth?.cancelPairing() } finally {
+          set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
+        }
+      },
+      async logoutCommunity() {
+        if (bridge.auth) {
+          try { await bridge.auth.logout() } catch { /* 本地仍清除会话 */ }
+        }
+        set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
+      },
       ...createConversationSlice({ persist })(set, get),
       ...createAiSlice({ bridge, persist })(set, get),
       ...createProjectSlice({ bridge, persist })(set, get),
@@ -197,6 +272,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
           await bridge.project.registerRoots(roots)
           await get().refreshTree()
           set({ ready: true })
+          void get().refreshCommunityAuth()
 
           // M6：订阅主进程的自动更新事件（设置 → 关于 展示状态）
           bridge.app.onUpdateEvent((event) => {

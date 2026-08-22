@@ -5,7 +5,7 @@
  * - 有冒号行 → 按值类型补全值（list 候选 / @file 资源文件 / 单位名联想）
  * - 中文输入也能联想（code / translate 双语匹配）
  * - 中文模式提交时自动应用中文键/节名（保存时回译）
- * - int/float 类型键提交后自动补默认值（1 / 1.0）
+ * - 键补全提交时自动补该值类型声明的分隔符
  *
  * 数据源可注入（CompletionDataSource），便于单元测试；
  * 默认使用 codeData 的真实数据。
@@ -23,6 +23,7 @@ import {
   findValueTypes,
   getDialectWords,
   getKeyZhToEnDict,
+  getValueZhDict,
   getZhToEnDict,
   loadCodeData,
   parseValueList,
@@ -30,15 +31,16 @@ import {
   zhToEnKeySegments,
 } from '../../services/codeData'
 import { findSectionOfLine, isUnclosedSection, keyOfLine, collectLocalVariables } from './rustLanguage'
+import { splitTopLevelConfigValue } from '../../services/configSyntax'
 
 /** 补全数据源接口（可注入） */
 export interface CompletionDataSource {
   findSectionsByQuery(query: string, limit?: number): Array<{ code: string; translate: string; needName?: boolean }>
   findCodesBySection(section: string, query: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string; section?: string }>
   findCodeByCode(code: string): { code: string; translate: string; description: string; type: string } | undefined
-  findValueType(type: string): { external?: string; list?: string; describe?: string } | undefined
+  findValueType(type: string): { name?: string; type?: string; external?: string; list?: string; describe?: string } | undefined
   /** M31：多值类型合并查询（float,logicBoolean → 全部命中段；未提供时回退 findValueType 单条） */
-  findValueTypes?(type: string): Array<{ external?: string; list?: string; describe?: string }>
+  findValueTypes?(type: string): Array<{ name?: string; type?: string; external?: string; list?: string; describe?: string }>
   findCodesByQuery(query: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string }>
   /** 按值类型查代码（@type(类型) 关联联想） */
   findCodesByType(type: string, query?: string, limit?: number): Array<{ code: string; translate: string; description: string; type: string }>
@@ -198,46 +200,34 @@ export function commitText(code: string, translate: string, suffix = ''): string
 }
 
 function toCompletion(c: { code: string; translate: string; description: string; type: string }, suffix = ''): Completion {
-  // int/float 键提交后自动补默认值并选中，可直接覆盖输入
-  const defaultVal = c.type === 'int' ? '1' : c.type === 'float' ? '1.0' : ''
   const text = commitText(c.code, c.translate, suffix)
   return {
     label: c.translate ? `${c.code} · ${c.translate}` : c.code,
     detail: c.description || undefined,
     type: 'property',
-    apply: defaultVal
-      ? (view, completion, from, to) => {
-          // M1：中文提交前登记追踪表；同译名撞键时改用英文原文（防保存回译改键）
-          const ok = trackCommit(c.code, c.translate)
-          const insert = (ok ? text : c.code + suffix) + defaultVal
-          view.dispatch({
-            changes: { from, to, insert },
-            selection: { anchor: from + (ok ? text : c.code + suffix).length, head: from + insert.length },
-            // 标准补全事务标记：保留撤销分组/事件语义（否则 CM 不识别这次插入是补全提交）
-            annotations: [pickedCompletion.of(completion), Transaction.userEvent.of('input.complete')],
-          })
-          return true
-        }
-      : (view, completion, from, to) => {
-          const ok = trackCommit(c.code, c.translate)
-          view.dispatch({
-            changes: { from, to, insert: ok ? text : c.code + suffix },
-            annotations: [pickedCompletion.of(completion), Transaction.userEvent.of('input.complete')],
-          })
-          return true
-        },
+    apply: (view, completion, from, to) => {
+      const ok = trackCommit(c.code, c.translate)
+      view.dispatch({
+        changes: { from, to, insert: ok ? text : c.code + suffix },
+        annotations: [pickedCompletion.of(completion), Transaction.userEvent.of('input.complete')],
+      })
+      return true
+    },
   }
 }
 
 function toSectionCompletion(s: { code: string; translate: string; needName?: boolean }): Completion {
   // 提交文本：用户已输入 [ 时不再重复补 [（word 分隔符已把 [ 排除在词外；
   // 向前跳过空白判断，兼容 `[ tur` 这类写法）。base 可由调用方覆盖（撞键时用英文）
-  const sectionTextWith = (view: import('@codemirror/view').EditorView, from: number, base: string, suffix: string) => {
+  const sectionTextWith = (view: import('@codemirror/view').EditorView, from: number, _to: number, base: string, suffix: string) => {
     let i = from - 1
     while (i >= 0 && /[ \t]/.test(view.state.doc.sliceString(i, i + 1))) i--
     const before = i >= 0 ? view.state.doc.sliceString(i, i + 1) : ''
     const bracket = before === '[' ? '' : '['
-    return bracket + base + suffix
+    // 替换范围可能已经包含用户输入的 `_`；提交文本必须重新带上一个后缀，
+    // 否则 `[turret_` 点击候选时会把已有下划线一起删掉。
+    const safeSuffix = suffix && !base.endsWith(suffix) ? suffix : ''
+    return bracket + base + safeSuffix
   }
   // needName 节（turret/projectile 等）：补 [turret_ 并把光标停在 _ 后，等用户输入命名
   if (s.needName) {
@@ -247,7 +237,7 @@ function toSectionCompletion(s: { code: string; translate: string; needName?: bo
       apply: (view, completion, from, to) => {
         const ok = trackCommit(s.code, s.translate)
         const base = ok ? commitText(s.code, s.translate) : s.code
-        const text = sectionTextWith(view, from, base, '_')
+        const text = sectionTextWith(view, from, to, base, '_')
         view.dispatch({
           changes: { from, to, insert: text },
           selection: { anchor: from + text.length, head: from + text.length },
@@ -263,7 +253,7 @@ function toSectionCompletion(s: { code: string; translate: string; needName?: bo
     apply: (view, completion, from, to) => {
       const ok = trackCommit(s.code, s.translate)
       const base = ok ? commitText(s.code, s.translate) : s.code
-      const text = sectionTextWith(view, from, base, ']')
+      const text = sectionTextWith(view, from, to, base, ']')
       view.dispatch({
         changes: { from, to, insert: text },
         annotations: [pickedCompletion.of(completion), Transaction.userEvent.of('input.complete')],
@@ -318,7 +308,7 @@ function withThumbnail(c: Completion, projectId: string | null): Completion {
 }
 
 /** 多值类型合并：data 提供 findValueTypes 用合并结果，否则回退单条（测试注入数据） */
-function valueTypeInfos(data: CompletionDataSource, type: string): Array<{ external?: string; list?: string; describe?: string }> {
+function valueTypeInfos(data: CompletionDataSource, type: string): Array<{ name?: string; type?: string; external?: string; list?: string; describe?: string }> {
   if (data.findValueTypes) return data.findValueTypes(type)
   const single = data.findValueType(type)
   return single ? [single] : []
@@ -337,14 +327,17 @@ function parseFileExts(spec: string): string[] {
   if (typeOpen >= 0) {
     const typeClose = inner.indexOf('}', typeOpen + 5)
     if (typeClose > typeOpen) {
-      return inner
-        .slice(typeOpen + 5, typeClose)
-        .split(',')
+      return splitTopLevelConfigValue(inner.slice(typeOpen + 5, typeClose))
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
     }
   }
   return [inner]
+}
+
+/** 逻辑函数补全提交的引擎语法（显示层不应将中文函数名写入文件）。 */
+export function logicCompletionText(name: string): string {
+  return `self.${name}()`
 }
 
 /** 值补全：key 查类型 → 类型 list → 候选（中文模式下键是中文，先回译成英文再查） */
@@ -374,12 +367,27 @@ async function valueCompletions(key: string, query: string, data: CompletionData
       for (const v of parseValueList(vt.list)) {
         if (!items.includes(v)) items.push(v)
       }
-      for (const d of (vt.list ?? '').split(',').map((s) => s.trim()).filter((s) => s.startsWith('@'))) {
+      for (const d of splitTopLevelConfigValue(vt.list ?? '').map((s) => s.trim()).filter((s) => s.startsWith('@'))) {
         if (!directives.includes(d)) directives.push(d)
       }
     }
-    for (const v of items.filter((v) => !q || v.toLowerCase().includes(q))) {
-      result.push({ label: v, type: 'value', apply: v })
+    // 枚举值候选：中文解释进入主标签，输入中文解释同样可检索；
+    // apply 始终保留英文引擎值，避免中文显示层把枚举值错误写回磁盘。
+    const valueZh = getValueZhDict()
+    const typeHint = vts
+      .map((vt) => [vt.name, vt.describe].filter(Boolean).join('：'))
+      .filter(Boolean)
+      .join(' · ')
+    for (const v of items) {
+      const base = v.slice(0, v.indexOf('(') >= 0 ? v.indexOf('(') : v.length)
+      const zhDesc = valueZh.get(v.toLowerCase()) ?? valueZh.get(base.toLowerCase())
+      if (q && !v.toLowerCase().includes(q) && !zhDesc?.includes(query.trim())) continue
+      result.push({
+        label: zhDesc ? `${v} · ${zhDesc}` : v,
+        detail: typeHint || undefined,
+        type: 'value',
+        apply: v,
+      })
     }
 
     // @file(类型)：扫描项目内资源文件（png/jpg/ogg/ini…）
@@ -425,7 +433,7 @@ async function valueCompletions(key: string, query: string, data: CompletionData
   if (/^self\./.test(query)) {
     const names = searchLogicBooleans(query.slice(5), 30)
     for (const n of names) {
-      const text = `self.${n.name}()`
+      const text = logicCompletionText(n.name.replace(/^self\./i, '').replace(/\(\)$/, ''))
       result.push({
         label: text,
         detail: n.description || undefined,
@@ -470,13 +478,18 @@ const LOGIC_VALUE_TYPES = new Set([
 ])
 
 /** 键补全：当前节内优先 */
+function keySuffix(c: { type: string }, data: CompletionDataSource): string {
+  // language 的 `_` 是多语言键结构分隔符，不是普通键补全时的提交后缀；
+  // 命名节的 `_` 仍由 toSectionCompletion 专门处理。
+  if (c.type === 'language') return ''
+  if (c.type === 'prefixKey') return '_'
+  const external = valueTypeInfos(data, c.type).find((v) => v.external)?.external ?? ''
+  return external === ':' || external === '=' ? external : ''
+}
+
+/** 键补全：当前节内优先 */
 function keyCompletions(section: string, query: string, data: CompletionDataSource): Completion[] {
-  return data.findCodesBySection(section, query).map((c) => {
-    // 多值类型合并：external 取第一个非空段（如 float,logicBoolean → float 的 :）
-    const vts = valueTypeInfos(data, c.type)
-    const external = vts.find((v) => v.external)?.external ?? ''
-    return toCompletion(c, external)
-  })
+  return data.findCodesBySection(section, query).map((c) => toCompletion(c, keySuffix(c, data)))
 }
 
 /** 纯函数补全逻辑（供测试）：根据行上下文选择处理器 */
@@ -503,9 +516,10 @@ export async function computeRustCompletions(
   }
 
   // 3. 键补全：无冒号行
-  return keyCompletions(section, word, data).length > 0
-    ? keyCompletions(section, word, data)
-    : data.findCodesByQuery(word).map((c) => toCompletion(c))
+  const inSection = keyCompletions(section, word, data)
+  return inSection.length > 0
+    ? inSection
+    : data.findCodesByQuery(word).map((c) => toCompletion(c, keySuffix(c, data)))
 }
 
 /** CodeMirror 补全 source：根据光标上下文选择处理器 */
@@ -527,7 +541,7 @@ export async function rustCompletionSource(context: CompletionContext): Promise<
 
   // 分隔符包含 [ ] 等结构符号：光标前的「词」不含这些符号，
   // 保证节补全（[tur → from 指向 tur）等场景的替换范围正确
-  const word = before.split(/[\s:;,()=[\]{}]+/).pop() ?? ''
+  const word = before.split(/[\s:;,，：()=[\]{}]+/).pop() ?? ''
 
   // 局部变量补全：行内 ${ 未闭合（对齐手机版 CodeAutoCompleteJob：
   // } 位置在 ${ 之前 → 响应变量），替换范围从 ${ 开始，避免插入后变成 ${{变量}}

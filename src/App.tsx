@@ -25,9 +25,11 @@ import { GitInfoModal } from './features/project/GitInfoModal'
 import { UnitLibraryModal } from './features/editor/UnitLibraryModal'
 import { ValueTypeModal } from './features/settings/ValueTypeModal'
 import { CursorEffect } from './components/CursorEffect'
+import { LoginScreen } from './features/auth/LoginScreen'
 
 export function App() {
   const ready = useWorkspaceStore((s) => s.ready)
+  const communityAuth = useWorkspaceStore((s) => s.communityAuth)
   const settings = useWorkspaceStore((s) => s.settings)
   const settingsOpen = useWorkspaceStore((s) => s.settingsOpen)
   const codeTableOpen = useWorkspaceStore((s) => s.codeTableOpen)
@@ -162,6 +164,10 @@ export function App() {
       </div>
     )
   }
+
+  // Desktop builds require the browser-backed community session; preview mode
+  // remains usable offline with the mock bridge and local example workspace.
+  if (isElectron && communityAuth.status !== 'signed_in') return <LoginScreen />
 
   return (
     <div className={`app${settings.background.kind !== 'none' ? ' has-backdrop' : ''}`}>

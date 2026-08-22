@@ -14,13 +14,19 @@ import { getBridge } from '../../../services/bridge'
 import { AppIcon } from '../../../components/AppIcon'
 import { useEscapeHandler } from '../../../utils/modalStack'
 import {
+  animationFrameNumber,
+  computeDrawGeometry,
   computeDrawLayout,
   computeFrames,
+  computeSightGeometry,
+  directionCount,
+  directionSourceRect,
   framePath,
   parseGraphicsRecipe,
   parseImageRef,
   parsePreviewTurrets,
   resolveImageCandidates,
+  type TeamColoringMode,
 } from './recipe'
 
 interface Props {
@@ -115,6 +121,21 @@ async function fetchImage(
   })
 }
 
+/** 队伍着色模式渲染（M34：Canvas 近似官方 GLSL shader 效果）。
+ * - pureGreen：灰阶 → 棕 → 色相转到绿（官方 pureGreenTeamColor.frag 的近似）
+ * - hueShift：整体色相偏移到默认队伍绿 120°（官方 hueShiftTeamColor.frag 的近似；
+ *   预览无队伍概念，固定用「我方」绿色）
+ * - hueAdd：绘制后以 'color' 混合模式叠加绿色（保留原图亮度，官方 hueAddTeamColor.frag 近似）
+ */
+function applyTeamColor(ctx: CanvasRenderingContext2D, mode: TeamColoringMode): void {
+  if (mode === 'pureGreen') {
+    ctx.filter = 'grayscale(1) sepia(1) hue-rotate(75deg) saturate(5)'
+  } else if (mode === 'hueShift') {
+    ctx.filter = 'hue-rotate(120deg)'
+  }
+  // hueAdd 由调用方在 drawImage 后叠加（需要图像区域矩形）
+}
+
 /** 单位合成预览器（模态弹窗） */
 export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, onClose }: Props) {
   useEscapeHandler(onClose)
@@ -122,8 +143,15 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const [images, setImages] = useState<Map<string, HTMLImageElement | null>>(new Map())
   const [frame, setFrame] = useState(0)
   const [showWreck, setShowWreck] = useState(false)
+  const [showSight, setShowSight] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [failed, setFailed] = useState<Array<{ image: string; reason: FailReason }>>([])
+  // M34 动画播放：播放中 / 当前动画状态（待机/移动/攻击）/ 多向动画朝向
+  const [playing, setPlaying] = useState(true)
+  const [animState, setAnimState] = useState<'idle' | 'moving' | 'attack'>('idle')
+  const [directionIdx, setDirectionIdx] = useState(0)
+  const elapsedRef = useRef(0)
+  const lastTsRef = useRef<number | null>(null)
 
   // 中文显示层：传回译函数才能解析 [图像组]/主体图像 等中文节键（与单位表单一致）
   const recipe = useMemo(() => parseGraphicsRecipe(content, zhToEn), [content, zhToEn])
@@ -139,6 +167,42 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
 
   // 帧号钳制：切单位/改帧数后滑块可能越界——渲染期钳制，不触发额外 setState
   const clampedFrame = Math.min(frame, Math.max(0, frameInfo.count - 1))
+  // 多向动画：方向块单帧，帧播放器停用（方向切换代替帧滑块）
+  const dirCount = directionCount(recipe.direction)
+  const isDirectional = dirCount > 1
+  const animFrameCount = isDirectional ? 1 : frameInfo.count
+
+  // M34 播放器：rAF 累计时长 → animationFrameNumber 计算当前帧。
+  // 帧区间/速度/往返（animation_idle/moving/attack_*）按配方播放；无配置时整序列循环。
+  useEffect(() => {
+    if (!playing || animFrameCount <= 1) return
+    let raf = 0
+    const loop = (ts: number) => {
+      if (lastTsRef.current == null) lastTsRef.current = ts
+      // 钳制单帧 delta（<=250ms）：标签页后台 rAF 停摆后恢复不产生巨跳
+      const delta = Math.min(250, ts - lastTsRef.current)
+      lastTsRef.current = ts
+      elapsedRef.current += delta
+      const anim = recipe.animations[animState]
+      const n = animationFrameNumber(anim, elapsedRef.current, animFrameCount)
+      // 帧号未变不触发重渲染（60fps 下大多数帧号不变）
+      setFrame((prev) => (prev === n ? prev : n))
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => {
+      cancelAnimationFrame(raf)
+      lastTsRef.current = null
+    }
+  }, [playing, animState, animFrameCount, recipe.animations])
+
+  /** 切换动画状态：重置播放计时（避免状态切换瞬间跳帧） */
+  const switchAnimState = (s: 'idle' | 'moving' | 'attack') => {
+    elapsedRef.current = 0
+    setAnimState(s)
+    setFrame(0)
+    setPlaying(true)
+  }
 
   // 加载全部引用图像（主体多帧/阴影/炮塔/残骸去重）
   useEffect(() => {
@@ -199,6 +263,23 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     const cx = canvas.width / 2
     const cy = canvas.height / 2
     const items = computeDrawLayout(recipe, turrets).filter((i) => (i.kind === 'wreck' ? showWreck : true))
+    const teamMode = recipe.teamColoringMode
+    if (showSight) {
+      const sight = computeSightGeometry(recipe, canvas.width, canvas.height, zoom)
+      if (sight) {
+        ctx.save()
+        ctx.globalAlpha = 0.18
+        ctx.fillStyle = '#3b82f6'
+        ctx.strokeStyle = '#2563eb'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.arc(sight.cx, sight.cy, sight.radius, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.globalAlpha = 0.65
+        ctx.stroke()
+        ctx.restore()
+      }
+    }
     for (const item of items) {
       // 多帧引用（a.png;b.png）：主体按帧号切换整图；其余（阴影/炮塔）用首帧或原引用
       let imgKey = item.image
@@ -210,22 +291,33 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
         continue
       }
-      // 主体与 AUTO 阴影跟随帧滑块；炮塔单帧
-      const f = item.kind === 'turret' ? 0 : clampedFrame
-      const sx = fi.multiFile ? 0 : f * fi.frameW
-      const sy = 0
-      const dw = fi.frameW * item.scale * scale
-      const dh = fi.frameH * item.scale * scale
+      // 源矩形：方向块只作用于主体/自动阴影；炮塔始终使用自身整图。
+      const directionRect = isDirectional && item.sourceMode === 'bodyFrames'
+        ? directionSourceRect(recipe.direction!, directionIdx, img.naturalWidth, img.naturalHeight)
+        : undefined
+      const geometry = computeDrawGeometry(item, img.naturalWidth, img.naturalHeight, fi, clampedFrame, scale, directionRect)
+      const { sx, sy, sw, sh } = geometry.source
+      const { dx, dy, dw, dh } = geometry.destination
+      const drawX = cx + dx
+      const drawY = cy + dy
       ctx.save()
       ctx.globalAlpha = item.alpha
-      if (item.kind === 'shadow' && recipe.imageShadow?.toUpperCase() === 'AUTO') {
-        // AUTO 阴影：主图剪影（黑色半透明）
+      if (item.kind === 'shadow' && recipe.imageShadow && /^AUTO/i.test(recipe.imageShadow)) {
+        // AUTO 阴影：主图剪影（黑色半透明）——不随队伍着色；AUTO_ANIMATED 同属自动剪影
         ctx.filter = 'grayscale(1) brightness(0.2)'
+      } else if (item.kind !== 'shadow' && teamMode !== 'disabled') {
+        applyTeamColor(ctx, teamMode)
       }
-      ctx.drawImage(img, sx, sy, fi.frameW, fi.frameH, cx + item.cx * scale - dw / 2, cy + item.cy * scale - dh / 2, dw, dh)
+      ctx.drawImage(img, sx, sy, sw, sh, drawX, drawY, dw, dh)
+      // hueAdd：'color' 混合模式叠加队伍绿（保留亮度，近似官方色相叠加）
+      if (item.kind !== 'shadow' && teamMode === 'hueAdd') {
+        ctx.globalCompositeOperation = 'color'
+        ctx.fillStyle = '#00c800'
+        ctx.fillRect(drawX, drawY, dw, dh)
+      }
       ctx.restore()
     }
-  }, [images, frameInfo, clampedFrame, showWreck, zoom, recipe, turrets, mainImgOrNull])
+  }, [images, frameInfo, clampedFrame, showWreck, showSight, zoom, recipe, turrets, mainImgOrNull, isDirectional, directionIdx])
 
   const noGamePath = failed.filter((f) => f.reason === 'no-game-path')
   const gameMissing = failed.filter((f) => f.reason === 'game-missing')
@@ -241,9 +333,48 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         </div>
         <div className="modal-body vdiff-body">
           <div className="unitprev-toolbar">
-            <span className="vdiff-hint">按 [graphics] 配方合成（帧切片/炮塔叠加/阴影），纯本地渲染</span>
+            <span className="vdiff-hint">按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染</span>
             <span className="grow" />
-            {totalFrames > 1 && (
+            <button
+              className={`btn${showSight ? ' primary' : ''}`}
+              style={{ padding: '2px 10px', fontSize: 11.5 }}
+              title="显示/隐藏战争迷雾视野（地块数；不代表攻击范围）"
+              aria-label="显示或隐藏战争迷雾视野"
+              onClick={() => setShowSight((v) => !v)}
+            >
+              <AppIcon name="eye" size={12} /> 视野
+            </button>
+            {animFrameCount > 1 && (
+              <>
+                <button className="icon-btn" title={playing ? '暂停' : '播放'} onClick={() => setPlaying((p) => !p)}>
+                  <AppIcon name={playing ? 'pause' : 'play'} size={13} />
+                </button>
+                {(['idle', 'moving', 'attack'] as const).map((s) => (
+                  <button
+                    key={s}
+                    className={`btn${animState === s ? ' primary' : ''}`}
+                    style={{ padding: '1px 8px', fontSize: 11 }}
+                    title={`播放 ${s === 'idle' ? '待机' : s === 'moving' ? '移动' : '攻击'}动画帧区间`}
+                    onClick={() => switchAnimState(s)}
+                  >
+                    {s === 'idle' ? '待机' : s === 'moving' ? '移动' : '攻击'}
+                  </button>
+                ))}
+              </>
+            )}
+            {isDirectional && recipe.direction && (
+              <label className="vdiff-select">
+                朝向
+                <select value={directionIdx} onChange={(e) => setDirectionIdx(Number(e.target.value))}>
+                  {Array.from({ length: dirCount }, (_, i) => (
+                    <option key={i} value={i}>
+                      {Math.round((recipe.direction!.starting + i * recipe.direction!.units) % 360)}°
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {totalFrames > 1 && !isDirectional && (
               <label className="vdiff-select">
                 帧 {clampedFrame + 1}/{totalFrames}
                 <input
@@ -251,7 +382,10 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
                   min={0}
                   max={totalFrames - 1}
                   value={clampedFrame}
-                  onChange={(e) => setFrame(Number(e.target.value))}
+                  onChange={(e) => {
+                    setFrame(Number(e.target.value))
+                    setPlaying(false)
+                  }}
                   style={{ width: 140 }}
                 />
               </label>
@@ -281,10 +415,10 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
               以下图像未找到：{localMissing.map((f) => f.image).join('、')}（图片应放在单位文件同目录或项目根下）
             </div>
           )}
-          {failed.length === 0 && <div className="lint-suggestion">预览正常：{recipe.image ? `${recipe.image}（${totalFrames} 帧）` : '未配置主体图像'}{turrets.length > 0 ? ` · ${turrets.length} 个炮塔` : ''}</div>}
+          {failed.length === 0 && <div className="lint-suggestion">预览正常：{recipe.image ? `${recipe.image}（${totalFrames} 帧）` : '未配置主体图像'}{turrets.length > 0 ? ` · ${turrets.length} 个炮塔` : ''}{recipe.teamColoringMode !== 'disabled' ? ` · 队伍着色：${recipe.teamColoringMode === 'pureGreen' ? '纯绿' : recipe.teamColoringMode === 'hueAdd' ? '色相叠加' : '色相偏移'}（Canvas 近似，游戏内为 GPU 着色）` : ''}</div>}
         </div>
         <div className="modal-footer">
-          <span className="vdiff-hint">单位中心为原点；图像相对单位文件目录或项目根</span>
+          <span className="vdiff-hint">单位中心为原点；视野 = 战争迷雾地块数 × 20 像素；不模拟建造视野/攻击范围</span>
           <span className="grow" />
           <button className="btn primary" onClick={onClose}>关闭</button>
         </div>

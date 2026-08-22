@@ -4,6 +4,7 @@
  */
 import type { AppSettings, BackgroundKind, FileSort, ThemeMode, WorkbenchLayoutSettings } from '../types/domain'
 import type { AiProviderType } from '../types/ai'
+import { DEFAULT_COMMUNITY_ENDPOINT } from '../services/communityApi'
 import { defaultSemanticCheckerConfig, sanitizeCheckerConfig } from '../features/editor/semanticChecks/registry'
 import { INNER_RATIO_MAX, INNER_RATIO_MIN, WORKBENCH_CONSTRAINTS } from './layout'
 
@@ -70,13 +71,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   /** M18：知识包数据源（默认未配置——官方数据仓库就绪后在此填写；可加镜像） */
   knowledgeSourceUrl: '',
   knowledgeSources: [],
-  avatar: { source: 'default', localPath: null, remoteUrl: null, updatedAt: 0 },
   ai: {
     provider: 'deepseek',
-    deepseekApiKey: '',
+    // Key 本体存主进程 safeStorage；旧配置里的 deepseekApiKey 字段在清洗时被丢弃
+    deepseekKeyConfigured: false,
     deepseekModel: 'deepseek-v4-flash',
-    communityEndpoint: '',
-    communityToken: '',
+    communityEndpoint: DEFAULT_COMMUNITY_ENDPOINT,
     communityModel: '',
   },
 }
@@ -109,7 +109,6 @@ export function sanitizeSettings(input: unknown): AppSettings {
     fontFamily: FONT_OPTIONS.some((f) => f.value === raw.fontFamily) ? (raw.fontFamily as string) : DEFAULT_SETTINGS.fontFamily,
     fontSize: clamp(typeof raw.fontSize === 'number' ? raw.fontSize : DEFAULT_SETTINGS.fontSize, 12, 20),
     translateMode: typeof raw.translateMode === 'boolean' ? raw.translateMode : DEFAULT_SETTINGS.translateMode,
-    avatar: sanitizeAvatar(raw.avatar),
     leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, WORKBENCH_CONSTRAINTS.minLeft, WORKBENCH_CONSTRAINTS.maxLeft),
     rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, WORKBENCH_CONSTRAINTS.minRight, WORKBENCH_CONSTRAINTS.maxRight),
     layout: sanitizeLayout(raw.layout),
@@ -171,28 +170,16 @@ function sanitizeSources(input: unknown): string[] {
   return out
 }
 
-/** 头像配置清洗：旧版本没有头像字段时使用默认头像 */
-function sanitizeAvatar(raw: unknown): AppSettings['avatar'] {
-  const input = (raw && typeof raw === 'object' ? raw : {}) as Partial<AppSettings['avatar']>
-  const source = input.source === 'local' || input.source === 'community' ? input.source : 'default'
-  return {
-    source,
-    localPath: typeof input.localPath === 'string' ? input.localPath : null,
-    remoteUrl: typeof input.remoteUrl === 'string' ? input.remoteUrl : null,
-    updatedAt: typeof input.updatedAt === 'number' ? input.updatedAt : 0,
-  }
-}
-
-/** AI 设置清洗：兼容旧配置，保证字段完整 */
+/** AI 设置清洗：兼容旧配置，保证字段完整。旧版明文 deepseekApiKey 字段在这里被
+ * 静默丢弃（Key 由主进程启动时迁入 safeStorage，渲染层从此不再持有明文） */
 function sanitizeAi(raw: unknown): AppSettings['ai'] {
   const input = (raw && typeof raw === 'object' ? raw : {}) as Partial<AppSettings['ai']>
   return {
     provider: AI_PROVIDERS.includes(input.provider as AiProviderType) ? (input.provider as AiProviderType) : DEFAULT_SETTINGS.ai.provider,
-    deepseekApiKey: typeof input.deepseekApiKey === 'string' ? input.deepseekApiKey : '',
+    deepseekKeyConfigured: input.deepseekKeyConfigured === true,
     deepseekModel: typeof input.deepseekModel === 'string' && input.deepseekModel ? migrateModel(input.deepseekModel) : DEFAULT_SETTINGS.ai.deepseekModel,
-    communityEndpoint: typeof input.communityEndpoint === 'string' ? input.communityEndpoint : '',
-    communityToken: typeof input.communityToken === 'string' ? input.communityToken : '',
-    communityModel: typeof input.communityModel === 'string' ? input.communityModel : '',
+    communityEndpoint: DEFAULT_COMMUNITY_ENDPOINT,
+    communityModel: typeof input.communityModel === 'string' ? input.communityModel.trim().slice(0, 120) : '',
   }
 }
 

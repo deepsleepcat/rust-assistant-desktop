@@ -7,6 +7,7 @@ import {
   commitText,
   computeRustCompletions,
   localVariableCompletions,
+  logicCompletionText,
   rustCompletionSource,
   setCompletionChineseMode,
   withTimeout,
@@ -29,6 +30,8 @@ const fakeData: CompletionDataSource = {
       { code: 'health', translate: '生命值', description: '血量', type: 'int', section: 'core' },
       { code: 'image', translate: '图像', description: '单位图像', type: 'baseImage', section: 'graphics' },
       { code: 'logic', translate: '逻辑', description: '逻辑判断', type: 'logicBoolean', section: 'logicBoolean' },
+      { code: 'builtFrom', translate: '建造自', description: '带序号的前缀键', type: 'prefixKey', section: 'core' },
+      { code: 'displayText', translate: '界面显示名称', description: '单位显示名称', type: 'language', section: 'core' },
     ]
       .filter((c) => c.section === 'all' || c.section === section)
       .filter((c) => c.code.includes(q) || c.translate.includes(q)),
@@ -41,18 +44,21 @@ const fakeData: CompletionDataSource = {
       logic: { code: 'logic', translate: '逻辑', description: '', type: 'logicBoolean' },
       floatLogic: { code: 'floatLogic', translate: '浮动逻辑', description: '', type: 'float,logicBoolean' },
       builtFrom_1_name: { code: 'builtFrom_1_name', translate: '建造自_1_名称', description: '', type: 'unit' },
+      displayText: { code: 'displayText', translate: '界面显示名称', description: '', type: 'language' },
     }
     return map[code]
   },
   findValueType: (type) => {
-    const map: Record<string, { external?: string; list?: string }> = {
-      string: { external: ':' },
+    const map: Record<string, { name?: string; external?: string; list?: string; describe?: string }> = {
+      string: { name: '文本', external: ':' },
       resource: { external: ':', list: 'NONE,AUTO,@file(png)' },
       int: { external: ':' },
       baseImage: { list: 'NONE,AUTO,@file(png),@file(jpg)' },
       logicBoolean: { list: 'true,false,if,@type(noParameterLogicStatement)' },
       'float,logicBoolean': { external: ':', list: '@type(noParameterLogicStatement)' },
       unit: { external: ':', list: '@type(internalUnits),@customType(unitName)' },
+      prefixKey: { external: '_' },
+      language: { external: '_', list: '@type(countryCode)' },
     }
     return map[type]
   },
@@ -222,11 +228,19 @@ describe('补全候选计算（注入假数据源）', () => {
     expect(commitText('name', '名称', ':')).toBe('name:')
   })
 
-  it('int 类型键提交自动补默认值 1（apply 为函数）', async () => {
+  it('int 类型键补全只插入键名和冒号，不猜默认值', async () => {
     const result = await computeRustCompletions('health', 'core', 'health', 'health', 0, ['[core]', 'health'], fakeData)
     const health = result.find((r) => r.label.startsWith('health'))
     expect(health).toBeTruthy()
     expect(typeof health!.apply).toBe('function')
+    let applied = EditorState.create({ doc: 'health' })
+    const view = {
+      state: applied,
+      dispatch: (spec: Parameters<EditorState['update']>[0]) => { applied = applied.update(spec).state },
+    } as unknown as { state: EditorState; dispatch: (spec: Parameters<EditorState['update']>[0]) => void }
+    const apply = health!.apply as (view: { state: EditorState; dispatch: (spec: Parameters<EditorState['update']>[0]) => void }, completion: unknown, from: number, to: number) => boolean
+    apply(view, health, 0, 6)
+    expect(applied.doc.toString()).toBe('health:')
   })
 
   it('中文模式：提交文本用中文键/节名', async () => {
@@ -242,9 +256,85 @@ describe('补全候选计算（注入假数据源）', () => {
     expect(commitText('name', '名称', ':')).toBe('name:')
   })
 
+  it('language 键点击补全不追加下划线', async () => {
+    setCompletionChineseMode(true)
+    try {
+      const result = await computeRustCompletions('界面', 'core', '界面', '界面', 0, ['[core]', '界面'], fakeData)
+      const item = result.find((r) => r.label.startsWith('displayText'))
+      expect(item).toBeTruthy()
+      expect(typeof item!.apply).toBe('function')
+
+      let applied = EditorState.create({ doc: '界面' })
+      const view = {
+        state: applied,
+        dispatch: (spec: Parameters<typeof applied.update>[0]) => {
+          applied = applied.update(spec).state
+        },
+      } as unknown as { state: EditorState; dispatch: (spec: Parameters<typeof applied.update>[0]) => void }
+      const apply = item!.apply as (
+        view: { state: EditorState; dispatch: (spec: Parameters<EditorState['update']>[0]) => void },
+        completion: unknown,
+        from: number,
+        to: number,
+      ) => boolean
+      apply(view, item, 0, 2)
+
+      expect(applied.doc.toString()).toBe('界面显示名称')
+      expect(applied.doc.toString()).not.toContain('界面显示名称_')
+    } finally {
+      setCompletionChineseMode(false)
+    }
+  })
+
+  it('普通键补全不会把 prefixKey 的下划线后缀带入普通键位置', async () => {
+    const result = await computeRustCompletions('built', 'core', 'built', 'built', 0, ['[core]', 'built'], fakeData)
+    const item = result.find((r) => r.label.startsWith('builtFrom'))
+    expect(item).toBeTruthy()
+    // prefixKey 的 `_` 只在需要用户继续输入命名/序号的专用流程生效；普通键提交只插入候选 code。
+    expect(item?.apply).not.toBe('_')
+  })
+
+  it('合法下划线字段保持完整，值补全不追加下划线', async () => {
+    const result = await computeRustCompletions('builtFrom_1_name: ', 'core', '', 'builtFrom_1_name: ', 0, ['[core]', 'builtFrom_1_name: '], fakeData)
+    expect(result.map((r) => r.apply)).toContain('重型坦克')
+    expect(result.map((r) => r.apply)).not.toContain('重型坦克_')
+  })
+
+  it('needName 节头仅在未闭合节上下文提供候选，普通键值行不触发节后缀', async () => {
+    const first = await computeRustCompletions('[tur', '', 'tur', '[tur', 0, ['[tur'], fakeData)
+    expect(first.some((r) => r.label.startsWith('turret'))).toBe(true)
+    const value = await computeRustCompletions('name: turret_cannon', 'core', 'turret_cannon', 'name: turret_cannon', 0, ['[core]', 'name: turret_cannon'], fakeData)
+    expect(value.map((r) => String(r.apply))).not.toContain('turret_cannon_')
+  })
+
+  it('needName 节补全保留用户已经输入的下划线', async () => {
+    const result = await computeRustCompletions('[tur', '', 'tur', '[tur', 0, ['[tur'], fakeData)
+    const turret = result.find((r) => r.label.startsWith('turret'))
+    expect(turret).toBeTruthy()
+    let applied = EditorState.create({ doc: '[turret_' })
+    const view = {
+      state: applied,
+      dispatch: (spec: Parameters<EditorState['update']>[0]) => { applied = applied.update(spec).state },
+    } as unknown as { state: EditorState; dispatch: (spec: Parameters<EditorState['update']>[0]) => void }
+    const apply = turret!.apply as (view: { state: EditorState; dispatch: (spec: Parameters<EditorState['update']>[0]) => void }, completion: unknown, from: number, to: number) => boolean
+    apply(view, turret, 1, 8)
+    expect(applied.doc.toString()).toBe('[turret_')
+  })
+
+  it('节头智能回车只为未闭合节补后缀，不影响键值行', async () => {
+    const result = await computeRustCompletions('displayName: 界面显示名称', 'core', '界面显示名称', 'displayName: 界面显示名称', 0, ['[core]', 'displayName: 界面显示名称'], fakeData)
+    expect(result.map((r) => String(r.apply))).not.toContain('界面显示名称_')
+  })
+
   it('节过滤：非当前节的键不出现', async () => {
     const result = await computeRustCompletions('', 'turret', '', '', 0, ['[turret]'], fakeData)
     expect(Array.isArray(result)).toBe(true)
+  })
+})
+
+describe('逻辑函数补全', () => {
+  it('逻辑函数候选始终提交英文引擎语法', () => {
+    expect(logicCompletionText('hp')).toBe('self.hp()')
   })
 })
 
@@ -254,6 +344,17 @@ describe('值类型 list 解析', () => {
     expect(parseValueList('NONE,AUTO,@file(png),ROOT:')).toEqual(['NONE', 'AUTO', 'ROOT:'])
     expect(parseValueList('')).toEqual([])
     expect(parseValueList(undefined)).toEqual([])
+  })
+
+  it('参数化枚举中的逗号不拆开成员', () => {
+    expect(parseValueList('queueItemAdded(withActionTag="#",other="x"),move')).toEqual([
+      'queueItemAdded(withActionTag="#",other="x")',
+      'move',
+    ])
+    expect(parseValueList('queueItemAdded(withActionTag="#"，other="x")，move')).toEqual([
+      'queueItemAdded(withActionTag="#"，other="x")',
+      'move',
+    ])
   })
 })
 
@@ -365,6 +466,23 @@ describe('rustCompletionSource（真实数据集成：注释/空行守卫/等号
     expect(result).not.toBeNull()
     const apps = result!.options.map((o) => String(o.apply))
     expect(apps).toContain('true')
+  })
+
+  it('真实 canBuild 节补全排序键带冒号且不填入 1.0', async () => {
+    const state = EditorState.create({ doc: '[canBuild_1]\n排序\n' })
+    const pos = state.doc.length - 1
+    const result = await rustCompletionSource(new CompletionContext(state, pos, true))
+    expect(result).not.toBeNull()
+    const item = result!.options.find((option) => option.label.startsWith('pos'))
+    expect(item).toBeTruthy()
+    let applied = state
+    const view = {
+      state: applied,
+      dispatch: (spec: Parameters<EditorState['update']>[0]) => { applied = applied.update(spec).state },
+    } as unknown as { state: EditorState; dispatch: (spec: Parameters<EditorState['update']>[0]) => void }
+    const apply = item!.apply as (view: { state: EditorState; dispatch: (spec: Parameters<EditorState['update']>[0]) => void }, completion: unknown, from: number, to: number) => boolean
+    apply(view, item, result!.from, pos)
+    expect(applied.doc.toString()).toBe('[canBuild_1]\npos:\n')
   })
 
   it('中文 dialect 查询：结果级 filter:false（CodeMirror 不再按英文 label 二次过滤）', async () => {

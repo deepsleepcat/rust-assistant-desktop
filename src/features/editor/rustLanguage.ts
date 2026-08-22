@@ -9,6 +9,7 @@
  */
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
+import { findKeyValueSeparator } from '../../services/configSyntax'
 
 /** 逐行分类：纯函数，供测试 */
 export type RustKeyKind = 'animation' | 'graphic' | 'property'
@@ -19,13 +20,9 @@ export function keyKind(key: string): RustKeyKind {
   return 'property'
 }
 
-/** 键值分隔符位置：取行内先出现的 : 或 =（引擎两种写法都认；键不允许含冒号） */
+/** 键值分隔符位置：兼容 ASCII/中文冒号与等号。 */
 function firstSepIndex(line: string): number {
-  const colon = line.indexOf(':')
-  const eq = line.indexOf('=')
-  if (colon < 0) return eq
-  if (eq < 0) return colon
-  return Math.min(colon, eq)
+  return findKeyValueSeparator(line)
 }
 
 export function classifyLine(line: string): { kind: 'comment' | 'section' | 'keyvalue' | 'plain'; key?: string; value?: string } {

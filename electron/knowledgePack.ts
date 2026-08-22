@@ -29,6 +29,8 @@
  */
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import dns from 'node:dns/promises'
+import net from 'node:net'
 import { createHash } from 'node:crypto'
 
 /** 允许更新的数据文件名（manifest 只能声明这些文件；migrate.json 为版本迁移表预留） */
@@ -36,6 +38,8 @@ export const DATA_FILE_NAMES: readonly string[] = [
   'code.json',
   'section.json',
   'value_type.json',
+  // M34：枚举值中文词典（与 value_type.json 配套，随知识包更新/回滚同步）
+  'value_zh.json',
   'translations.json',
   'vocabulary.json',
   'logicboolean.json',
@@ -43,6 +47,8 @@ export const DATA_FILE_NAMES: readonly string[] = [
   'game_version.json',
   // M26-2：逻辑语法 token 词库（独立文件：并入 vocabulary.json 会被知识包更新整文件覆盖）
   'dialect.json',
+  // M35：字段别名（旧字段名 → 现行字段名，随知识包同步）
+  'aliases.json',
   'migrate.json',
 ]
 
@@ -100,11 +106,24 @@ export interface RollbackResult {
 }
 
 /** 数据源 URL 校验：只允许 http/https（file:// 可读任意本地文件，拒绝） */
-export function validateSourceUrl(url: string): string | null {
+export function validateSourceUrl(url: string, options: { allowPrivateHosts?: boolean } = {}): string | null {
   const trimmed = String(url ?? '').trim()
   if (!trimmed) return '未配置数据源'
-  if (!/^https?:\/\//i.test(trimmed)) return '数据源必须以 http:// 或 https:// 开头'
   if (trimmed.length > 500) return '数据源地址过长'
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return '数据源地址无效'
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '数据源必须以 http:// 或 https:// 开头'
+  if (parsed.username || parsed.password || parsed.hash || parsed.search) return '数据源地址不允许凭据、查询参数或片段'
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const privateIpv4 = /^(10|127|169\.254|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(hostname)
+  const ipv6 = hostname.includes(':')
+  if (!options.allowPrivateHosts && (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local') || privateIpv4 || ipv6 || hostname === '0.0.0.0' || hostname === '::')) {
+    return '数据源地址不允许访问本机或内网'
+  }
   return null
 }
 
@@ -160,10 +179,17 @@ export interface KnowledgePackApi {
 }
 
 /** 带超时 + 流式字节上限的拉取（防失联源永久挂起、恶意源撑爆内存） */
-async function fetchLimited(url: string, maxBytes: number, timeoutMs: number): Promise<Buffer> {
+async function fetchLimited(url: string, maxBytes: number, timeoutMs: number, options: { allowPrivateHosts?: boolean } = {}): Promise<Buffer> {
+  const parsed = new URL(url)
+  if (!options.allowPrivateHosts) {
+    const addresses = net.isIP(parsed.hostname) ? [parsed.hostname] : await dns.lookup(parsed.hostname, { all: true }).then((items) => items.map((item) => item.address))
+    if (addresses.some((address) => net.isIP(address) === 4 && (/^(10|127|169\.254|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(address) || address === '0.0.0.0') || net.isIP(address) === 6 && (address === '::' || address === '::1' || address.toLowerCase().startsWith('fc') || address.toLowerCase().startsWith('fd') || address.toLowerCase().startsWith('fe80:')))) {
+      throw new Error('数据源地址解析到本机或内网，已拒绝请求')
+    }
+  }
   let res: Response
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+    res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'error' })
   } catch (err) {
     // AbortSignal.timeout 中止抛 DOMException（英文）；转成可读提示（保留原因为排查留痕）
     if (err instanceof Error && err.name === 'TimeoutError') throw new Error('连接超时，已中止（检查网络或数据源地址）', { cause: err })
@@ -193,7 +219,7 @@ async function fetchLimited(url: string, maxBytes: number, timeoutMs: number): P
 }
 
 /** 创建知识包管理器（pure Node：不依赖 electron，便于测试注入目录） */
-export function createKnowledgePack(packDir: string, builtinDir: string): KnowledgePackApi {
+export function createKnowledgePack(packDir: string, builtinDir: string, options: { allowPrivateHosts?: boolean } = {}): KnowledgePackApi {
   const CURRENT_FILE = path.join(packDir, 'current.json')
   /** update/rollback 互斥（防双触发交错导致指针与目录不一致） */
   let mutating = false
@@ -286,15 +312,89 @@ export function createKnowledgePack(packDir: string, builtinDir: string): Knowle
     }
   }
 
+  const CORE_CODE_KEYS = [
+    'autoTrigger',
+    'allowMultipleInQueue',
+    'addWaypoint_type',
+    'addWaypoint_target_nearestUnit_tagged',
+    'addWaypoint_target_nearestUnit_team',
+    'addWaypoint_target_nearestUnit_maxRange',
+  ]
+  const CORE_SECTION_KEYS = ['hiddenAction', 'action', 'turret', 'projectile', 'effect']
+  const CORE_VALUE_TYPES = ['addWaypoint_type', 'addWaypoint_target_nearestUnit_team']
+  const CORE_VALUE_ZH = ['move', 'attackMove', 'guard', 'loadInto', 'setPassiveTarget']
+
+  function readDataArray(content: string): unknown[] | null {
+    try {
+      const parsed = JSON.parse(content) as { data?: unknown }
+      return Array.isArray(parsed.data) ? parsed.data : null
+    } catch {
+      return null
+    }
+  }
+
+  function hasCodeKeys(content: string, keys: string[]): boolean {
+    const data = readDataArray(content)
+    if (!data) return false
+    const found = new Set(
+      data
+        .filter((item): item is { code?: unknown; translate?: unknown } => Boolean(item && typeof item === 'object'))
+        .filter((item) => typeof item.code === 'string' && typeof item.translate === 'string' && item.translate.trim())
+        .map((item) => String(item.code).toLowerCase()),
+    )
+    return keys.every((key) => found.has(key.toLowerCase()))
+  }
+
+  function hasSectionKeys(content: string, keys: string[]): boolean {
+    return hasCodeKeys(content, keys)
+  }
+
+  function hasValueTypes(content: string, types: string[]): boolean {
+    const data = readDataArray(content)
+    if (!data) return false
+    const found = new Set(
+      data
+        .filter((item): item is { type?: unknown; name?: unknown } => Boolean(item && typeof item === 'object'))
+        .filter((item) => typeof item.type === 'string' && typeof item.name === 'string' && item.name.trim())
+        .map((item) => String(item.type).toLowerCase()),
+    )
+    return types.every((type) => found.has(type.toLowerCase()))
+  }
+
+  function hasValueZh(content: string, values: string[]): boolean {
+    try {
+      const parsed = JSON.parse(content) as { data?: unknown }
+      if (!parsed.data || typeof parsed.data !== 'object' || Array.isArray(parsed.data)) return false
+      const found = new Set(Object.keys(parsed.data as Record<string, unknown>).map((key) => key.toLowerCase()))
+      return values.every((value) => found.has(value.toLowerCase()))
+    } catch {
+      return false
+    }
+  }
+
+  /** 更新知识包必须至少保留内置包已有的关键翻译数据，避免旧快照静默遮蔽新字段。 */
+  async function isUpdatedDataUsable(name: string, content: string): Promise<boolean> {
+    const builtin = await fs.readFile(path.join(builtinDir, name), 'utf8').catch(() => '')
+    if (!builtin) return true
+    if (name === 'code.json') return !hasCodeKeys(builtin, CORE_CODE_KEYS) || hasCodeKeys(content, CORE_CODE_KEYS)
+    if (name === 'section.json') return !hasSectionKeys(builtin, CORE_SECTION_KEYS) || hasSectionKeys(content, CORE_SECTION_KEYS)
+    if (name === 'value_type.json') return !hasValueTypes(builtin, CORE_VALUE_TYPES) || hasValueTypes(content, CORE_VALUE_TYPES)
+    if (name === 'value_zh.json') return !hasValueZh(builtin, CORE_VALUE_ZH) || hasValueZh(content, CORE_VALUE_ZH)
+    return true
+  }
+
   async function readDataFile(name: string): Promise<{ content: string; source: 'builtin' | 'updated'; version: string | null }> {
     if (!DATA_FILE_NAMES.includes(name)) throw new Error(`未知的数据文件名：${name}`)
     // 当前版本目录是全量快照（增量更新会复制上一版本未变更文件）：
-    // 找到文件直接返回；找不到（异常情况）回退内置包
+    // 找到文件直接返回；找不到或内容缺少核心字段时回退内置包。
     const current = await readCurrent()
     if (current) {
       try {
         const buf = await fs.readFile(path.join(versionDir(current.version), name))
-        return { content: buf.toString('utf8'), source: 'updated', version: current.version }
+        const content = buf.toString('utf8')
+        if (await isUpdatedDataUsable(name, content)) {
+          return { content, source: 'updated', version: current.version }
+        }
       } catch {
         // 该文件不在当前快照（磁盘异常）→ 落到内置包
       }
@@ -322,9 +422,9 @@ export function createKnowledgePack(packDir: string, builtinDir: string): Knowle
 
   /** 拉取远端 manifest（带超时与大小上限） */
   async function fetchManifest(sourceUrl: string): Promise<KnowledgeManifest> {
-    const err = validateSourceUrl(sourceUrl)
+    const err = validateSourceUrl(sourceUrl, options)
     if (err) throw new Error(err)
-    const buf = await fetchLimited(`${sourceUrl}/manifest.json`, MAX_MANIFEST_BYTES, MANIFEST_TIMEOUT_MS)
+    const buf = await fetchLimited(`${sourceUrl}/manifest.json`, MAX_MANIFEST_BYTES, MANIFEST_TIMEOUT_MS, options)
     let manifest: { version?: unknown; files?: unknown }
     try {
       manifest = JSON.parse(buf.toString('utf8')) as { version?: unknown; files?: unknown }
@@ -395,7 +495,7 @@ export function createKnowledgePack(packDir: string, builtinDir: string): Knowle
         await fs.mkdir(pendingDir, { recursive: true })
         // 逐个下载 + 校验：任一失败抛错 → 外层清理 pending，指针不动（旧版继续生效）
         for (const f of changed) {
-          const buf = await fetchLimited(`${sourceUrl}/${f.path}`, MAX_FILE_BYTES, FILE_TIMEOUT_MS)
+          const buf = await fetchLimited(`${sourceUrl}/${f.path}`, MAX_FILE_BYTES, FILE_TIMEOUT_MS, options)
           if (f.size >= 0 && buf.length !== f.size) throw new Error(`「${f.path}」大小不符（期望 ${f.size}，实际 ${buf.length}）`)
           const hash = sha256Hex(buf)
           if (hash !== f.sha256) throw new Error(`「${f.path}」哈希校验失败，已中止更新（旧版不受影响）`)

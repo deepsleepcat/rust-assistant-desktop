@@ -37,9 +37,78 @@ describe('翻译服务', () => {
     expect(enToZh('unknownKey = 1', dict())).toBe('unknownKey = 1')
   })
 
+  it('损坏中文命名节无 tracker 时也能恢复官方前缀', () => {
+    const d = makeDict(
+      new Map([['hiddenaction', '隐藏行动']]),
+      new Map([['隐藏行动', 'hiddenAction']]),
+      new Map(),
+      new Map([
+        ['隐藏行动', 'hiddenAction'],
+        ['隐藏行动_', 'hiddenAction_'],
+      ]),
+    )
+    const tracker = new Map<string, string>()
+    expect(zhToEn('[隐藏行动_治疗友军]', d, tracker)).toBe('[hiddenAction_治疗友军]')
+  })
+
+  it('完整复合字段优先于下划线分段翻译', () => {
+    const d = makeDict(
+      new Map([
+        ['addwaypoint', '添加路径点'],
+        ['type', '类型'],
+        ['addwaypoint_type', '添加路径点动作类型'],
+        ['addwaypoint_target_nearestunit_tagged', '添加路径点检索标签'],
+        ['takeresources', '提取资源'],
+        ['takeresources_includeunitswithinrange', '提取资源范围'],
+        ['takeresources_excludeunitswithouttags', '提取资源标签'],
+      ]),
+      new Map([
+        ['添加路径点', 'addwaypoint'],
+        ['类型', 'type'],
+        ['添加路径点动作类型', 'addwaypoint_type'],
+        ['添加路径点检索标签', 'addwaypoint_target_nearestunit_tagged'],
+        ['提取资源', 'takeresources'],
+        ['提取资源范围', 'takeresources_includeunitswithinrange'],
+        ['提取资源标签', 'takeresources_excludeunitswithouttags'],
+      ]),
+    )
+    const tracker = new Map<string, string>()
+    const original = [
+      'addWaypoint_type: move',
+      'addWaypoint_target_nearestUnit_tagged: repair',
+      'takeResources_includeUnitsWithinRange: 300',
+      'takeResources_excludeUnitsWithoutTags: medic',
+    ].join('\n')
+
+    const zh = enToZh(original, d, tracker)
+
+    expect(zh).toBe([
+      '添加路径点动作类型: move',
+      '添加路径点检索标签: repair',
+      '提取资源范围: 300',
+      '提取资源标签: medic',
+    ].join('\n'))
+    expect(zhToEn(zh, d, tracker)).toBe(original)
+  })
+
   it('中文 → 英文（最长匹配优先）', () => {
     expect(zhToEn('名称 = "步枪兵"', dict())).toBe('name = "rifleman"')
     expect(zhToEn('价格 = 300', dict())).toBe('price = 300')
+  })
+
+  it('全角冒号按键值分隔解析并在回写时规范为 ASCII 冒号', () => {
+    const tracker = new Map<string, string>()
+    const shown = enToZh('name：rifleman', dict(), tracker)
+    expect(shown).toBe('名称：步枪兵')
+    expect(zhToEn(shown, dict(), tracker)).toBe('name:rifleman')
+  })
+
+  it('注释和 CRLF 回译保持结构与行尾不变', () => {
+    const tracker = new Map<string, string>()
+    const source = '# name: rifleman\r\nname：rifleman # health: 100\r\n[core] # note：keep\r\n'
+    const shown = enToZh(source, dict(), tracker)
+    expect(shown).toBe('# name: rifleman\r\n名称：步枪兵 # health: 100\r\n[core] # note：keep\r\n')
+    expect(zhToEn(shown, dict(), tracker)).toBe('# name: rifleman\r\nname:rifleman # health: 100\r\n[core] # note：keep\r\n')
   })
 
   it('未收录的中文保持原样', () => {
@@ -146,6 +215,18 @@ describe('M9 第四轮修复回归：编号/宏字段键往返', () => {
     expect(zh).toBe('flag: 是\nother: True')
     const back = zhToEn(zh, d, tracker)
     expect(back).toBe('flag: true\nother: True')
+  })
+
+  it('isbuilder 与 isBuilder 中文显示往返保留原始键大小写', () => {
+    const d = makeDict(
+      new Map([['isbuilder', '是建造者']]),
+      new Map([['是建造者', 'isBuilder']]),
+    )
+    const tracker = new Map<string, string>()
+    const original = 'isbuilder: true\nisBuilder: false'
+    const zh = enToZh(original, d, tracker)
+    expect(zh).toBe('是建造者: true\nisBuilder: false')
+    expect(zhToEn(zh, d, tracker)).toBe(original)
   })
 
   it('混合中文数据（我的坦克2）整体保留，不被词典改写', () => {
@@ -287,5 +368,35 @@ describe('M32 保存回译修复（E1/E2/E3）', () => {
     expect(zh).toBe('名称 = 50')
     const back = zhToEn(zh, d, tracker)
     expect(back).toBe(original)
+  })
+
+  it('中文手输的布尔/枚举值保存前规范化，自由值保持原样', () => {
+    const d = makeDict(
+      new Map([
+        ['isBio', '生物单位'],
+        ['movementType', '移动类型'],
+        ['name', '名称'],
+      ]),
+      new Map([
+        ['生物单位', 'isBio'],
+        ['移动类型', 'movementType'],
+        ['名称', 'name'],
+      ]),
+      new Map([
+        ['生物单位', 'isBio'],
+        ['移动类型', 'movementType'],
+        ['名称', 'name'],
+      ]),
+      undefined,
+      undefined,
+      undefined,
+      new Set(['name']),
+      undefined,
+      (key) => key === 'name',
+      (key, value) => key === 'isBio' ? (value.trim() === '是' ? 'true' : value) : key === 'movementType' && value.trim() === '空中' ? 'AIR' : value,
+    )
+    const tracker = new Map<string, string>()
+    const view = '[core]\n生物单位: 是\n移动类型: 空中\n名称: 攻击'
+    expect(zhToEn(view, d, tracker)).toBe('[core]\nisBio:true\nmovementType:AIR\nname: 攻击')
   })
 })

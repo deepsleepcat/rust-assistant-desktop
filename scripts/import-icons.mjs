@@ -22,7 +22,6 @@ const ICONS = {
   消息: 'message',
   通知: 'bell',
   用户: 'user',
-  用户头像: 'avatar',
   深色模式: 'moon',
   浅色模式: 'sun',
   取色器: 'picker',

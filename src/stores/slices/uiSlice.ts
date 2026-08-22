@@ -6,6 +6,7 @@
 import type { StoreApi } from 'zustand'
 import type { ConfirmRequest, EditorPosition, WorkspaceStore } from '../types'
 import type { CommunityTab } from '../../features/community/communityData'
+import type { SettingsTab } from '../types'
 
 export function createUiSlice() {
   return (set: StoreApi<WorkspaceStore>['setState'], get: () => WorkspaceStore) => ({
@@ -14,7 +15,13 @@ export function createUiSlice() {
     },
 
     setSettingsOpen(open: boolean) {
-      set({ settingsOpen: open })
+      set({ settingsOpen: open, ...(open ? { settingsTab: 'appearance' as SettingsTab } : {}) })
+    },
+    openSettings(tab: SettingsTab = 'appearance') {
+      set({ settingsOpen: true, settingsTab: tab })
+    },
+    setSettingsTab(tab: SettingsTab) {
+      set({ settingsTab: tab })
     },
     setCommandOpen(open: boolean) {
       set({ commandOpen: open })
@@ -82,9 +89,10 @@ export function createUiSlice() {
     },
 
     /** M5：模组工具弹窗开关 */
-    setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | null) {
+    setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | 'translationRepair' | null) {
       // 优化弹窗：每次打开都清掉旧扫描结果，由弹窗重新扫描（避免显示过期列表）
       if (kind === 'optimize') set({ optimizeItems: null, optimizeError: null })
+      if (kind === 'translationRepair') set({ translationRepairItems: null, translationRepairError: null })
       set({ modDialog: kind })
     },
 

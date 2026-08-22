@@ -7,7 +7,8 @@
  */
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, getKeyZhToEnDict, getZhToEnDict, loadCodeData, normalizeSectionName, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
+import { findKeyValueSeparator, splitTopLevelConfigValue } from '../../services/configSyntax'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, findValueTypes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, parseValueList, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
 function stripComment(line: string): string {
@@ -25,8 +26,26 @@ export function resolveKeyEn(key: string): string {
   return getKeyZhToEnDict().get(trimmed) ?? getZhToEnDict().get(trimmed) ?? zhToEnKeySegments(trimmed)
 }
 
+/** 逻辑表达式 self.xxx 中的函数名回译：只查已知词典，未知中文保持原样。 */
+export function resolveLogicFunctionEn(name: string): string {
+  return getLogicIdentifierZhToEnDict().get(name) ?? getKeyZhToEnDict().get(name) ?? getZhToEnDict().get(name) ?? name
+}
+
 const COLOR_RE = /#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/
 const SECTION_RE = /^\s*\[(.+?)\]\s*(?:#.*)?$/
+
+function topLevelSegmentAt(value: string, offset: number): { start: number; end: number; text: string } {
+  let start = 0
+  const parts = splitTopLevelConfigValue(value)
+  for (const [index, part] of parts.entries()) {
+    const end = start + part.length
+    if (offset <= end || index === parts.length - 1) {
+      return { start, end, text: part }
+    }
+    start = end + 1
+  }
+  return { start: 0, end: value.length, text: value }
+}
 
 function colorCard(hex: string): string {
   const c = hex.replace('#', '')
@@ -79,9 +98,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
 
   // 2) 键名/值悬停：key: value 行（引擎解析同时认 : 和 =，与 lint/补全一致）。
   // 手动找分隔符（正则含 = 会被安全扫描误报）
-  const colonIdx = lineText.indexOf(':')
-  const eqIdx = lineText.indexOf('=')
-  const sepIdx = colonIdx < 0 ? eqIdx : eqIdx < 0 ? colonIdx : Math.min(colonIdx, eqIdx)
+  const sepIdx = findKeyValueSeparator(lineText)
   const kv = sepIdx > 0 ? [lineText.slice(0, sepIdx), lineText.slice(sepIdx + 1)] : null
   if (kv) {
     const keyStart = 0
@@ -104,14 +121,17 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
           },
         }
       }
-      // 逻辑布尔函数：self.xxx( ... ) 或独立函数名/关键字（and/or/not/if…）
+      // 逻辑布尔函数：self.xxx( ... ) 或独立函数名/关键字（and/or/not/if…）。
+      // 中文显示层会把 self.hp() 显示为 self.血量()，因此 self. 后允许已翻译的汉字 token；
+      // 真正的函数表仍只用回译后的英文名查询，未知中文不猜测。
       const valueText = lineText.slice(valStart)
-      for (const m of valueText.matchAll(/self\.([a-zA-Z_][a-zA-Z0-9_]*)\(|(?<![\w.])if\b|(?<![\w.])(?:and|or|not|true|false)\b/g)) {
+      for (const m of valueText.matchAll(/self\.([a-zA-Z_一-鿿][a-zA-Z0-9_一-鿿]*)\(|(?<![\w.])if\b|(?<![\w.])(?:and|or|not|true|false)\b/g)) {
         const fn = m[1] ?? m[0]
+        const fnEn = m[1] ? resolveLogicFunctionEn(fn) : fn
         const start = valStart + (m.index ?? 0)
         const end = valStart + (m.index ?? 0) + m[0].length
         if (inLine >= start && inLine <= end) {
-          const lb = findLogicBoolean(fn)
+          const lb = findLogicBoolean(fnEn)
           if (!lb) continue
           return {
             pos: start,
@@ -119,8 +139,8 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
             create: () => {
               const dom = document.createElement('div')
               dom.className = 'cm-hover-doc'
-              const parts = [`<b>${escapeHtml(fn)}</b>`]
-              if (lb.description && lb.description !== fn) parts.push(`<div style="margin-top:3px">${escapeHtml(lb.description)}</div>`)
+              const parts = [`<b>${escapeHtml(fn)}</b>${fnEn !== fn ? ` · ${escapeHtml(fnEn)}` : ''}`]
+              if (lb.description && lb.description !== fnEn) parts.push(`<div style="margin-top:3px">${escapeHtml(lb.description)}</div>`)
               if (lb.example) parts.push(`<pre class="cm-hover-demo">${escapeHtml(lb.example)}</pre>`)
               dom.innerHTML = parts.join('')
               return { dom }
@@ -128,6 +148,46 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
           }
         }
       }
+      // 枚举值中文解释：只对当前字段允许的 list 值提示，避免资源路径中普通英文
+      // 被误识别为枚举。带参数枚举用括号前基础值查 value_zh，原参数串仍完整保留。
+      const key = resolveKeyEn(kv[0].trim())
+      const code = findCodeByCode(key)
+      const types = code ? findValueTypes(code.type) : []
+      const allowed = new Set(types.flatMap((type) => parseValueList(type.list)).map((value) => value.toLowerCase()))
+      const allowedBases = new Set([...allowed].map((value) => {
+        const open = value.indexOf('(')
+        return (open >= 0 ? value.slice(0, open) : value).trim()
+      }))
+      const typeHint = types
+        .map((type) => [type.name, type.describe].filter(Boolean).join('：'))
+        .filter(Boolean)
+        .join(' · ')
+      const fullValue = valueText.trim()
+      const valueZh = getValueZhDict()
+      const enumTooltip = (raw: string, start: number, end: number) => {
+        const base = raw.slice(0, raw.indexOf('(') >= 0 ? raw.indexOf('(') : raw.length)
+        const zh = valueZh.get(raw.toLowerCase()) ?? valueZh.get(base.toLowerCase())
+        if (!zh || (!allowed.has(raw.toLowerCase()) && !allowedBases.has(base.trim().toLowerCase()))) return null
+        return {
+          pos: start,
+          end,
+          create: () => {
+            const dom = document.createElement('div')
+            dom.className = 'cm-hover-doc'
+            const field = code?.translate ? `${code.code} · ${code.translate}` : code?.code
+            dom.innerHTML = `<b>${escapeHtml(raw)}</b> · ${escapeHtml(zh)}${field ? `<div class="cm-hover-muted">${escapeHtml(field)}</div>` : ''}${typeHint ? `<div class="cm-hover-muted">${escapeHtml(typeHint)}</div>` : ''}<div class="cm-hover-muted">枚举值（引擎保留原写法）</div>`
+            return { dom }
+          },
+        }
+      }
+      const whole = enumTooltip(fullValue, valStart, lineText.length)
+      if (whole) return whole
+      // 逗号分隔的多枚举值：括号内逗号属于参数，不切断当前枚举项。
+      const segmentRange = topLevelSegmentAt(fullValue, Math.max(0, inLine - valStart))
+      const segStart = valStart + segmentRange.start
+      const segEnd = valStart + segmentRange.end
+      const segment = enumTooltip(segmentRange.text.trim(), segStart, segEnd)
+      if (segment && inLine >= segStart && inLine <= segEnd) return segment
     }
 
     // 键区间（含中文回译）：中文模式下键是中文译名（名称/主体图像），

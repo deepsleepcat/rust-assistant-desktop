@@ -35,6 +35,8 @@ describe('Rust 配置行分类（高亮规则）', () => {
   it('行内 key 提取', () => {
     expect(keyOfLine('name: 值')).toBe('name')
     expect(keyOfLine('damage : 12')).toBe('damage')
+    expect(keyOfLine('名称：值')).toBe('名称')
+    expect(classifyLine('名称：值')).toEqual({ kind: 'keyvalue', key: '名称', value: '值' })
     expect(keyOfLine('没有冒号')).toBeNull()
   })
 

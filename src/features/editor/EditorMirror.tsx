@@ -7,7 +7,7 @@
 import { useEffect, useRef } from 'react'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, repositionTooltips, tooltips } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, CompletionContext, startCompletion } from '@codemirror/autocomplete'
 import { search, searchKeymap } from '@codemirror/search'
 import { rustConfigLanguageSupport, smartEnterBindings } from './rustLanguage'
@@ -26,6 +26,9 @@ interface EditorMirrorProps {
   onChange: (value: string) => void
   onCursor: (line: number, col: number) => void
   onSave: () => void
+  /** 每 tab 统一编辑历史：代码快捷键调用 store，而非实例级 CodeMirror history */
+  onUndo?: () => void
+  onRedo?: () => void
   fontFamily: string
   fontSize: number
   /** 中文显示层开启时，补全提交中文键/节名（保存时自动回译） */
@@ -78,6 +81,30 @@ const editorTheme = EditorView.theme({
     borderRadius: '8px',
     boxShadow: 'var(--shadow-md)',
     color: 'var(--text-primary)',
+    // M34：补全/悬浮提示浮层层级明确化——高于工具栏溢出菜单(z80)
+    // 与紧凑抽屉(z90)、mod-tools 菜单(z60)，低于全局弹窗(z200)
+    zIndex: 95,
+  },
+  // M34：候选过多时在提示框内滚动，避免撑出编辑器/视口被裁切；
+  // 宽度贴着可用视口约束（补全候选行可能很长）。
+  // 注意：ul 选择器必须带 .cm-tooltip 前缀与 CodeMirror baseTheme 同级
+  // specificity（.ͼb .cm-tooltip.cm-tooltip-autocomplete > ul），否则被
+  // baseTheme 的 max-height:10em 覆盖，高度限制不生效
+  '.cm-tooltip-autocomplete': {
+    maxHeight: 'min(340px, 55vh)',
+    maxWidth: 'min(560px, calc(100vw - 24px))',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul': {
+    overflowY: 'auto',
+    maxHeight: 'min(300px, 48vh)',
+    maxWidth: '100%',
+  },
+  '.cm-tooltip-autocomplete > ul li': {
+    overflowX: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
     backgroundColor: 'var(--surface-hover)',
@@ -124,12 +151,15 @@ const editorTheme = EditorView.theme({
   },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName, fileName }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName, fileName }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
   const onCursorRef = useRef(onCursor)
   const onSaveRef = useRef(onSave)
+  const onUndoRef = useRef(onUndo)
+  const onRedoRef = useRef(onRedo)
+  const syncingRef = useRef(false)
   // 语义 lint 专用槽位：配置（开关/项目根）变化时热替换，避免挂载时闭包陈旧
   // （否则设置页关掉检查器，已打开的编辑器波浪线仍按旧配置检查）
   const lintCompartment = useRef(new Compartment())
@@ -138,7 +168,9 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     onChangeRef.current = onChange
     onCursorRef.current = onCursor
     onSaveRef.current = onSave
-  }, [onChange, onCursor, onSave])
+    onUndoRef.current = onUndo
+    onRedoRef.current = onRedo
+  }, [onChange, onCursor, onSave, onUndo, onRedo])
 
   // 中文显示层切换 → 补全提交文本同步（中文键/节名）；卸载时复位为英文模式
   useEffect(() => {
@@ -169,9 +201,9 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         highlightActiveLine(),
         highlightActiveLineGutter(),
         drawSelection(),
-        history(),
+        // 统一历史由 workspace store 管理；CM 仅负责显示受控内容，避免切 tab/表单模式丢栈。
         rustConfigLanguageSupport(),
-        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
+        lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName, translationMap: chineseMode ? translationMap : null })),
         rustHoverExtension,
         // aboveCursor：补全框显示在光标上方——中文输入时系统输入法候选窗
         // 在光标正下方，框在下方会被完全挡住（表现为「中文补全不可用」；
@@ -192,10 +224,12 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         }),
         search({ top: true }),
         keymap.of([
+          { key: 'Mod-z', run: () => { onUndoRef.current?.(); return true } },
+          { key: 'Mod-y', run: () => { onRedoRef.current?.(); return true } },
+          { key: 'Mod-Shift-z', run: () => { onRedoRef.current?.(); return true } },
           ...smartEnterBindings, // 必须排在 defaultKeymap 之前：defaultKeymap 的 Enter（换行）无条件返回 true，
           // 排在后面永远轮不到；补全弹窗打开时 Enter 仍先走 Prec.highest 的 acceptCompletion（自动注册，与数组位置无关）
           ...defaultKeymap,
-          ...historyKeymap,
           ...searchKeymap,
           ...foldKeymap,
           ...lintKeymap,
@@ -203,7 +237,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
           { key: 'Mod-s', run: () => { onSaveRef.current(); return true } },
         ]),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
+          if (update.docChanged && !syncingRef.current) {
             onChangeRef.current(update.state.doc.toString())
           }
           if (update.selectionSet || update.docChanged) {
@@ -279,9 +313,9 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     const view = viewRef.current
     if (!view) return
     view.dispatch({
-      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
+      effects: lintCompartment.current.reconfigure(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName, translationMap: chineseMode ? translationMap : null })),
     })
-  }, [rootPath, semanticCheckers, targetVersionName, fileName])
+  }, [rootPath, semanticCheckers, targetVersionName, fileName, translationMap, chineseMode])
 
   // 外部 value 变化（切换标签、恢复文档）→ 同步进编辑器
   useEffect(() => {
@@ -290,10 +324,12 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
     if (view.state.doc.toString() !== value) {
       // 不进撤销历史（addToHistory annotation）——程序化整档替换（切中文视图/格式化/
       // 恢复文档）否则 Ctrl+Z 会把整档回退到旧视图，而 store 里翻译开关已切换，视图与状态不一致
+      syncingRef.current = true
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: value },
         annotations: Transaction.addToHistory.of(false),
       })
+      syncingRef.current = false
     }
   }, [value])
 

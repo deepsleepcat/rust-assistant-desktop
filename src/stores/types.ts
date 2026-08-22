@@ -5,6 +5,18 @@ import type { AppSettings, Conversation, EditorTab, ProjectInfo, TreeNode } from
 import type { DiffLine } from '../types/diff'
 import type { ModImportKind } from '../types/bridge'
 import type { CommunityTab } from '../features/community/communityData'
+import type { CommunityUser } from '../services/communityApi'
+
+export type CommunityAuthStatus = 'checking' | 'signed_out' | 'signed_in' | 'loading' | 'error'
+
+export interface CommunityAuthState {
+  status: CommunityAuthStatus
+  user: CommunityUser | null
+  error: string | null
+  pairing: { userCode: string; expiresAt: number } | null
+}
+
+export type SettingsTab = 'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'community' | 'game' | 'coming' | 'about'
 
 export interface ConfirmRequest {
   title: string
@@ -42,6 +54,8 @@ export interface WorkspaceStoreState {
   activeTabId: string | null
   editorPos: EditorPosition
   settingsOpen: boolean
+  /** 当前设置页签只属于本次界面会话，不写入本地设置。 */
+  settingsTab: SettingsTab
   commandOpen: boolean
   /** M29：紧凑窗口下打开的抽屉（'left' | 'right'；null = 关闭） */
   drawerSide: 'left' | 'right' | null
@@ -51,6 +65,8 @@ export interface WorkspaceStoreState {
   communityTab: CommunityTab
   /** 社区关注的创作者 id（会话内状态，不持久化；服务器上线后并入账号数据） */
   communityFollowing: string[]
+  /** Browser-auth community session; token remains in sanitized app settings. */
+  communityAuth: CommunityAuthState
   /** M7：代码表浏览弹窗 */
   codeTableOpen: boolean
   /** M17：版本差异对比弹窗（P2 任务 1） */
@@ -88,7 +104,7 @@ export interface WorkspaceStoreState {
   /** 「定位到文件行」请求（质检清单跳转用）：{ path, line, seq }，seq 递增保证重复跳转同位置也生效 */
   editorJump: { path: string; line: number; seq: number } | null
   /** M5：模组工具弹窗（null 表示关闭） */
-  modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'report' | 'import' | null
+  modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'report' | 'import' | 'translationRepair' | null
   /** M5：单位检查结果 */
   modCheckResult: { issues: Array<{ file: string; level: 'error' | 'warning' | 'info'; message: string }>; unitCount: number; fileCount: number } | null
   /** M13：模组质量报告（生成中为 null；reportOpen 控制弹窗） */
@@ -99,7 +115,10 @@ export interface WorkspaceStoreState {
   modReportError: string | null
   /** 报告生成进度（done/total 为可检查文件数） */
   modReportProgress: { done: number; total: number } | null
-  /** M7：优化工具扫描结果 */
+  /** M38：翻译损坏修复扫描结果 */
+  translationRepairItems: Array<{ path: string; digest: string; changeCount: number; changes: Array<{ line: number; kind: 'section' | 'key' | 'boolean' | 'logic'; before: string; after: string }> }> | null
+  /** M38：翻译损坏修复扫描失败信息 */
+  translationRepairError: string | null
   optimizeItems: Array<{ id: string; kind: 'emptyFile' | 'emptyFolder' | 'backupFile' | 'emptyLine' | 'comment'; rel: string; detail?: string }> | null
   /** M8：优化扫描失败信息（null 表示无失败；重试入口由弹窗提供） */
   optimizeError: string | null
@@ -130,7 +149,12 @@ export interface WorkspaceStoreActions {
   reloadDirNode(path: string): Promise<void>
   toggleDir(path: string): void
   openFile(path: string): Promise<void>
-  updateTabContent(id: string, content: string): void
+  updateTabContent(id: string, content: string, options?: { history?: boolean }): void
+  /** 编辑器即时撤销/重做（每个标签独立，非持久化；只改变内存内容，不写盘） */
+  undoTab(id: string): void
+  redoTab(id: string): void
+  canUndoTab(id: string): boolean
+  canRedoTab(id: string): boolean
   /** 保存标签页：返回是否保存成功（外部修改拦截/失败时返回 false，调用方据此决定是否关闭标签）；
    * force=true 跳过外部修改检查（用户明确「覆盖保存」） */
   saveTab(id: string, opts?: { force?: boolean }): Promise<boolean>
@@ -163,6 +187,9 @@ export interface WorkspaceStoreActions {
   /** 恢复到指定历史版本（快照 id；打开标签有未保存修改时先确认） */
   aiRestoreFileVersion(relPath: string, snapshotId: string): Promise<void>
   setSettingsOpen(open: boolean): void
+  /** 打开设置并直接定位到指定页签，供社区账号等上下文入口使用。 */
+  openSettings(tab?: SettingsTab): void
+  setSettingsTab(tab: SettingsTab): void
   setCommandOpen(open: boolean): void
   /** M29：紧凑窗口抽屉开关 */
   setDrawerSide(side: 'left' | 'right' | null): void
@@ -172,6 +199,16 @@ export interface WorkspaceStoreActions {
   setCommunityTab(tab: CommunityTab): void
   /** M33-社区：关注/取消关注创作者（会话内状态） */
   toggleCommunityFollow(creatorId: string): void
+  /** Refresh the browser-auth community session from the saved token. */
+  refreshCommunityAuth(): Promise<void>
+  /** Start browser pairing without polling in the background. */
+  loginCommunity(): Promise<void>
+  /** Manually check one pairing request. */
+  checkCommunityPairing(): Promise<void>
+  /** Cancel the active browser pairing. */
+  cancelCommunityPairing(): Promise<void>
+  /** Clear the local community session and revoke it when possible. */
+  logoutCommunity(): Promise<void>
   setCodeTableOpen(open: boolean): void
   setVersionDiffOpen(open: boolean): void
   setRelationGraphOpen(open: boolean): void
@@ -195,7 +232,7 @@ export interface WorkspaceStoreActions {
   sendAiMessage(conversationId: string, text: string): Promise<void>
   respondApproval(approved: boolean): Promise<void>
   /** M5：模组工具 */
-  setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | null): void
+  setModDialog(kind: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'import' | 'translationRepair' | null): void
   createModProject(params: { title: string; description?: string; author?: string; version?: string; musicFiles?: string[]; musicExclusive?: boolean; updateUrl?: string }): Promise<void>
   /** M7：编辑模组自述文件（mod-info.txt 读写，包含 thumbnail/music/maps） */
   saveModInfo(data: { title: string; description?: string; author?: string; version?: string; thumbnail?: string; minVersion?: string; musicFiles: string[]; musicExclusive: boolean; mapsFiles: string[]; mapsExtra: boolean; musicSourceFolder?: string; mapsSourceFolder?: string; updateUrl?: string }): Promise<void>
@@ -203,7 +240,8 @@ export interface WorkspaceStoreActions {
   saveActiveFileAsTemplate(name: string): Promise<void>
   createUnitFile(params: { name: string; templateKey: string; values: Record<string, string> }): Promise<void>
   packModProject(): Promise<void>
-  packModWithOptions(options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }): Promise<void>
+  /** deployToGame=true（M35 F3）：打包后部署到游戏 mods/units 并自动启动游戏 */
+  packModWithOptions(options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }, deployToGame?: boolean): Promise<void>
   checkModProject(): Promise<void>
   /** M13：生成模组质量报告 */
   generateModReport(): Promise<void>
@@ -216,6 +254,10 @@ export interface WorkspaceStoreActions {
   applyOptimizeProject(ids: string[]): Promise<void>
   /** 全局操作：批量替换/头部附加/尾部附加（返回结果供弹窗展示；失败返回 null） */
   globalOpProject(params: { kind: 'replace' | 'prepend' | 'append'; find?: string; text?: string }): Promise<{ files: number; changed: number; skipped: number } | null>
+  /** M38：扫描当前项目中可确定的翻译损坏预览 */
+  scanTranslationRepairProject(): Promise<void>
+  /** M38：对选定的扫描结果执行恢复 */
+  applyTranslationRepairProject(selections: Array<{ path: string; digest: string }>): Promise<void>
   /** M6：自动更新 */
   checkUpdate(): Promise<void>
   downloadUpdate(): Promise<void>

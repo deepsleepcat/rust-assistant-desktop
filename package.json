@@ -1,9 +1,9 @@
 {
   "name": "rust-assistant-desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "license": "GPL-3.0",
-  "description": "铁锈助手 · 铁锈战争模组开发工作台（电脑版）",
+  "description": "铁锈工坊 · 铁锈战争模组开发工作台（电脑版）",
   "main": "dist-electron/electron/main.js",
   "engines": {
     "node": ">=20"
@@ -20,6 +20,8 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run test",
     "check:real-mods": "node scripts/check-real-mods.mjs",
+    "check:rw-skill": "node .agents/skills/rusted-warfare-modding/scripts/validate-skill.mjs",
+    "check:desktop-boundary": "vitest run tests/desktopPackageBoundary.test.ts",
     "pack": "npm run build && electron-builder --win",
     "pack:dir": "npm run build && electron-builder --dir",
     "pack:release": "npm run build && electron-builder --win --publish always"
@@ -40,7 +42,6 @@
     "jszip": "^3.10.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-easy-crop": "^6.2.3",
     "typebox": "^1.3.12",
     "zustand": "^5.0.14"
   },
@@ -63,7 +64,7 @@
   },
   "build": {
     "appId": "com.deepsleepcat.rust-assistant-desktop",
-    "productName": "铁锈助手",
+    "productName": "铁锈工坊",
     "icon": "build/icon.ico",
     "directories": {
       "output": "release"
@@ -89,7 +90,7 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "铁锈助手",
+      "shortcutName": "铁锈工坊",
       "artifactName": "rust-assistant-desktop-setup-${version}.${ext}"
     },
     "portable": {

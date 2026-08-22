@@ -219,7 +219,7 @@ export function ConversationView({ id, title, onRename }: { id: string; title: s
 
   // 社区后端为预留服务（主进程也返回「即将上线」）：选中时输入区明确提示怎么恢复
   const communitySelected = aiSettings.provider === 'community'
-  const providerReady = aiSettings.provider === 'deepseek' ? aiSettings.deepseekApiKey.length > 0 : false
+  const providerReady = aiSettings.provider === 'deepseek' ? aiSettings.deepseekKeyConfigured : false
 
   // 新消息自动滚动到底部：仅当用户本来就停在底部附近时才跟随，
   // 否则向上阅读历史时每个流式增量都会把人拽回底部（打断阅读）

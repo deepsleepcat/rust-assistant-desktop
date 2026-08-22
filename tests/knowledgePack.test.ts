@@ -83,6 +83,9 @@ describe('validateSourceUrl / sanitizeVersion / compareVersions', () => {
   it('只允许 http/https（file:// 可读本地文件，拒绝）', () => {
     expect(validateSourceUrl('https://example.com/pack')).toBeNull()
     expect(validateSourceUrl('http://example.com')).toBeNull()
+    expect(validateSourceUrl('http://127.0.0.1:3000')).toMatch(/本机或内网/)
+    expect(validateSourceUrl('http://10.0.0.1/pack')).toMatch(/本机或内网/)
+    expect(validateSourceUrl('https://user:pass@example.com/pack')).toMatch(/凭据/)
     expect(validateSourceUrl('')).toMatch(/未配置/)
     expect(validateSourceUrl('file:///etc/passwd')).toMatch(/http/)
     expect(validateSourceUrl('ftp://x')).toMatch(/http/)
@@ -109,7 +112,7 @@ describe('validateSourceUrl / sanitizeVersion / compareVersions', () => {
 
 describe('readDataFile（内置回退）', () => {
   it('未更新时读内置包；更新后读更新包', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     const before = await kp.readDataFile('code.json')
     expect(before.source).toBe('builtin')
     expect(JSON.parse(before.content).data[0].code).toBe('builtinOnly')
@@ -122,14 +125,35 @@ describe('readDataFile（内置回退）', () => {
     expect(JSON.parse(after.content).data[0].code).toBe('updatedField')
   })
 
+  it('更新包缺核心字段或译名为空时回退真实内置数据', async () => {
+    const coreCodes = [
+      'autoTrigger',
+      'allowMultipleInQueue',
+      'addWaypoint_type',
+      'addWaypoint_target_nearestUnit_tagged',
+      'addWaypoint_target_nearestUnit_team',
+      'addWaypoint_target_nearestUnit_maxRange',
+    ].map((code) => ({ code, translate: `${code}-中文`, type: 'string', section: 'core' }))
+    fs.writeFileSync(path.join(builtinDir, 'code.json'), JSON.stringify({ data: coreCodes }))
+    writeSource({
+      'code.json': JSON.stringify({ data: [{ code: 'autoTrigger', translate: '', type: 'string' }] }),
+    }, 'incomplete')
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
+    expect((await kp.update(baseUrl)).ok).toBe(true)
+    const result = await kp.readDataFile('code.json')
+    expect(result.source).toBe('builtin')
+    expect(JSON.parse(result.content).data).toHaveLength(coreCodes.length)
+    expect(JSON.parse(result.content).data.some((item: { code: string }) => item.code === 'addWaypoint_type')).toBe(true)
+  })
+
   it('未知文件名拒绝（白名单）', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     await expect(kp.readDataFile('../evil.json')).rejects.toThrow(/未知的数据文件名/)
     await expect(kp.readDataFile('manifest.json')).rejects.toThrow(/未知的数据文件名/)
   })
 
   it('更新包缺某文件时回退内置包（增量包只覆盖部分文件）', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     await kp.update(baseUrl) // source 只有 code.json
     const sec = await kp.readDataFile('section.json')
     expect(sec.source).toBe('builtin')
@@ -139,7 +163,7 @@ describe('readDataFile（内置回退）', () => {
 
 describe('checkUpdate / update（增量）', () => {
   it('首次检查：全部文件为变更', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     const r = await kp.checkUpdate(baseUrl)
     expect(r.hasUpdate).toBe(true)
     expect(r.currentVersion).toBeNull()
@@ -147,7 +171,7 @@ describe('checkUpdate / update（增量）', () => {
   })
 
   it('更新成功：版本切换 + 再次检查无变更', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     const upd = await kp.update(baseUrl)
     expect(upd.ok).toBe(true)
     expect(upd.version).toBe('v1')
@@ -164,7 +188,7 @@ describe('checkUpdate / update（增量）', () => {
   })
 
   it('增量更新：只下载变更文件', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     await kp.update(baseUrl)
     // 服务端出新版本：code.json 变更 + 新增 section.json，version 升 v2
     writeSource(
@@ -191,7 +215,7 @@ describe('checkUpdate / update（增量）', () => {
   })
 
   it('全量快照：增量更新后未变更文件仍是更新版（不静默回退内置）', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     await kp.update(baseUrl) // v1：只含 code.json（updatedField）
     // v2：section.json 变更（新增），code.json 不变
     writeSource(
@@ -211,7 +235,7 @@ describe('checkUpdate / update（增量）', () => {
   })
 
   it('多位数版本清理/回滚按数值序（v9→v10 不误删当前版本）', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     writeSource({ 'code.json': UPDATED_CODE }, 'v9')
     await kp.update(baseUrl)
     writeSource({ 'code.json': '{"data":[{"code":"v10x","translate":"V10","type":"string","section":"core"}]}' }, 'v10')
@@ -227,7 +251,7 @@ describe('checkUpdate / update（增量）', () => {
   })
 
   it('无网络/服务不可用：返回错误，本地包不受影响', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     await kp.update(baseUrl)
     server.close()
     const r = await kp.checkUpdate('http://127.0.0.1:1/manifest.json')
@@ -240,7 +264,7 @@ describe('checkUpdate / update（增量）', () => {
 
 describe('更新失败自动回滚（旧版不受影响）', () => {
   it('哈希校验失败：中止更新，指针不动，pending 清理', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     await kp.update(baseUrl)
     // 服务端 manifest 声明错误哈希（内容与哈希不符，size 正确 → 命中哈希校验）
     const fakeManifest = JSON.stringify({
@@ -262,7 +286,7 @@ describe('更新失败自动回滚（旧版不受影响）', () => {
   })
 
   it('大小不符：中止更新', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     const fakeManifest = JSON.stringify({
       version: 'bad',
       files: [{ path: 'code.json', sha256: sha256Hex(Buffer.from(UPDATED_CODE)), size: 99999 }],
@@ -275,7 +299,7 @@ describe('更新失败自动回滚（旧版不受影响）', () => {
   })
 
   it('manifest 非法文件名被忽略（路径穿越白名单）', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     const evil = JSON.stringify({
       version: 'evil',
       files: [
@@ -293,7 +317,7 @@ describe('更新失败自动回滚（旧版不受影响）', () => {
   })
 
   it('manifest 版本字符串消毒：不会逃逸出知识包目录', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     const evil = JSON.stringify({
       version: '../../escape',
       files: [{ path: 'code.json', sha256: sha256Hex(Buffer.from(UPDATED_CODE)), size: Buffer.byteLength(UPDATED_CODE) }],
@@ -311,7 +335,7 @@ describe('更新失败自动回滚（旧版不受影响）', () => {
 
 describe('rollback（回滚到上一版本）', () => {
   it('两次更新后可回滚到上一版', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     await kp.update(baseUrl) // v1
     writeSource({ 'code.json': '{"data":[{"code":"v2x","translate":"V2X","type":"string","section":"core"}]}' }, 'v2')
     await kp.update(baseUrl) // v2
@@ -328,7 +352,7 @@ describe('rollback（回滚到上一版本）', () => {
   })
 
   it('从未更新时无法回滚', async () => {
-    const kp = createKnowledgePack(packDir, builtinDir)
+    const kp = createKnowledgePack(packDir, builtinDir, { allowPrivateHosts: true })
     const rb = await kp.rollback()
     expect(rb.ok).toBe(false)
     expect(rb.error).toMatch(/没有可回滚/)

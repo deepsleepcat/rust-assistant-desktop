@@ -76,7 +76,7 @@ export function GameSettingsTab() {
       if (!target) return
       const result = await getBridge().game.importSample(detect.gamePath, target.rootPath, {
         title: '官方单位示例',
-        description: `由铁锈助手从游戏安装目录导入的 ${detect.units.length} 个官方单位（仅供学习参考）`,
+        description: `由铁锈工坊从游戏安装目录导入的 ${detect.units.length} 个官方单位（仅供学习参考）`,
       })
       const ok = await useWorkspaceStore
         .getState()

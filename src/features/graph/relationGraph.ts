@@ -10,6 +10,7 @@
  */
 import { parseIni, parseUnitListValue, sectionEnName, toEnKey } from '../editor/semanticChecks/helpers'
 import { BUILTIN_UNITS } from '../editor/semanticChecks/helpers'
+import { splitTopLevelConfigValue } from '../../services/configSyntax'
 import { loadCodeData } from '../../services/codeData'
 import { joinProjectPath } from '../../utils/projectPath'
 
@@ -72,8 +73,7 @@ const MAX_FILE_CHARS = 2 * 1024 * 1024
 
 /** 从值里提取资源路径 token（多帧 a.png;b.png、逗号/空格分隔都拆开） */
 function extractPathTokens(value: string): string[] {
-  return value
-    .split(/[;,]/)
+  return splitTopLevelConfigValue(value.replace(/;/g, ','))
     .map((s) => s.trim())
     .filter(Boolean)
     .filter((s) => !s.startsWith('${') && !s.includes('${')) // 变量引用跳过

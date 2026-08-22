@@ -25,18 +25,16 @@ export interface AiProviderInfo {
   models: string[]
 }
 
-/** AI 设置（本地持久化，API Key 不入 git） */
+/** AI 设置（本地持久化；Key 本体只存主进程 safeStorage，这里只有「已配置」标志） */
 export interface AiSettings {
   /** 当前使用的提供者 */
   provider: AiProviderType
-  /** DeepSeek API Key */
-  deepseekApiKey: string
+  /** DeepSeek API Key 是否已保存进系统安全存储 */
+  deepseekKeyConfigured: boolean
   /** DeepSeek 模型 */
   deepseekModel: string
   /** 社区后端地址（预留） */
   communityEndpoint: string
-  /** 社区后端令牌（预留） */
-  communityToken: string
   /** 社区后端模型（预留） */
   communityModel: string
 }
@@ -101,15 +99,6 @@ export type UpdateEvent =
   | { type: 'download_progress'; percent: number }
   | { type: 'downloaded'; version: string }
   | { type: 'update_error'; message: string }
-
-/** 头像来源：community 为闭源社区后端上传预留 */
-export interface AvatarProvider {
-  source: 'default' | 'local' | 'community'
-  localPath: string | null
-  remoteUrl: string | null
-  /** 头像更新序号：重新选择/裁切时递增，供界面感知「同一路径的新头像」 */
-  updatedAt?: number
-}
 
 /** 健康检查结果 */
 export interface AiCheckResult {

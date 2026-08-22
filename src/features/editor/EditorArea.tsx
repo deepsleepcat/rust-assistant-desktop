@@ -4,9 +4,10 @@
  * - 无标签时显示欢迎页（最近项目 + 快捷操作）
  * - 有标签时显示简易代码编辑区（行号 + 文本编辑 + 保存）
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { getZhToEnDict } from '../../services/codeData'
+import { getEnToZhDict, getKeyZhToEnDict, getLogicIdentifierEnToZhDict, getLogicIdentifierZhToEnDict, getLogicValueKeys, getPreserveValueKeys, getSectionZhToEnDict, getZhToEnDict, isPreserveValueKey, normalizeValueForEngine } from '../../services/codeData'
+import { makeDict, zhToEn } from '../../services/translation'
 import { TurretEditorModal } from '../modTools/TurretEditorModal'
 import { formatRelativeTime } from '../../utils/conversation'
 import { truncateMiddle } from '../../utils/paths'
@@ -17,7 +18,7 @@ import { ConfirmBox, PromptModal } from '../../components/Modal'
 import { EditorMirror } from './EditorMirror'
 import { isUnitFile, UnitFormPanel } from './unitForm/UnitFormPanel'
 import { UnitPreviewModal } from './unitPreview/UnitPreviewModal'
-import { isMapFile, MapViewer } from '../map/MapViewer'
+import { isMapFile, MapViewer, type MapCamera } from '../map/MapViewer'
 import { ImageViewer } from './ImageViewer'
 import { AudioViewer } from './AudioViewer'
 import { isPreviewableAudio, isPreviewableImage } from '../../utils/paths'
@@ -27,6 +28,19 @@ import { scanSections } from './outline'
 import { OverflowToolbar, type ToolbarAction } from '../../components/OverflowToolbar'
 import { SplitHandle } from '../../components/SplitHandle'
 
+interface MapSession {
+  editMode: boolean
+  camera?: MapCamera
+}
+
+function keepMapSession(previous: Record<string, MapSession>, id: string, session: MapSession): Record<string, MapSession> {
+  const next = { ...previous, [id]: session }
+  const ids = Object.keys(next)
+  // UUID 键按插入顺序枚举；最多保留 32 个最近用过的地图会话。
+  if (ids.length > 32) delete next[ids[0]]
+  return next
+}
+
 export function EditorArea() {
   const tabs = useWorkspaceStore((s) => s.openTabs)
   const activeTabId = useWorkspaceStore((s) => s.activeTabId)
@@ -35,13 +49,19 @@ export function EditorArea() {
   const turretEditorOpen = useWorkspaceStore((s) => s.turretEditorOpen)
   // M22：单位合成预览弹窗（本地状态——只服务于当前标签）
   const [previewOpen, setPreviewOpen] = useState(false)
+  // M36：地图代码/预览模式与镜头是每标签会话状态，不写入 workspace 持久化协议。
+  // 记录只在本次 Electron 会话存在，并在写入时限制 32 个，防反复开关地图标签累积。
+  const [mapSessions, setMapSessions] = useState<Record<string, MapSession>>({})
+
+  const activeId = activeTabId ?? tabs[0]?.id
+  const activeSession = activeId ? mapSessions[activeId] : undefined
 
   return (
     <section className="editor-panel panel" style={{ flex: 1, minWidth: 0 }}>
       {turretEditorOpen && <TurretEditorModal onClose={() => useWorkspaceStore.getState().setTurretEditorOpen(false)} />}
       {tabs.length > 0 && (
         <div
-          className="tabbar"
+          className={`tabbar${tabs.length > 12 ? ' tabbar-many' : ''}`}
           role="tablist"
           aria-label="打开的文件"
           onKeyDown={(e) => {
@@ -65,7 +85,25 @@ export function EditorArea() {
       ) : (
         // key=tabId：每个标签独立挂载编辑器实例，撤销/重做历史互不串扰
         // （共享单实例时，跨标签 Ctrl+Z 会撤销「标签切换替换」而把 A 的内容写进 B，损坏数据）
-        <EditorPane key={activeTabId ?? tabs[0].id} tabId={activeTabId ?? tabs[0].id} onOpenPreview={() => setPreviewOpen(true)} />
+        <EditorPane
+          key={activeId!}
+          tabId={activeId!}
+          onOpenPreview={() => setPreviewOpen(true)}
+          mapEditMode={activeSession?.editMode ?? false}
+          mapCamera={activeSession?.camera}
+          onMapEditModeChange={(editMode) => {
+            if (!activeId) return
+            setMapSessions((previous) => keepMapSession(previous, activeId, { ...previous[activeId], editMode }))
+          }}
+          onMapCameraChange={(camera) => {
+            if (!activeId) return
+            setMapSessions((previous) => {
+              const old = previous[activeId]?.camera
+              if (old?.x === camera.x && old.y === camera.y && old.zoom === camera.zoom) return previous
+              return keepMapSession(previous, activeId, { ...previous[activeId], editMode: previous[activeId]?.editMode ?? false, camera })
+            })
+          }}
+        />
       )}
       {previewOpen && <PreviewModalForActiveTab onClose={() => setPreviewOpen(false)} />}
     </section>
@@ -107,12 +145,21 @@ function EditorTabChip({ tabId, active, onActivate }: { tabId: string; active: b
   const closeTab = useWorkspaceStore((s) => s.closeTab)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
   const [pendingClose, setPendingClose] = useState(false)
+  const chipRef = useRef<HTMLDivElement>(null)
+
+  // M34：活动标签变化时自动滚入可视区（标签多到横向溢出时，键盘切换/
+  // 打开文件/切换项目后活动标签不再藏在意料外的位置）
+  useEffect(() => {
+    if (active && chipRef.current) {
+      chipRef.current.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+  }, [active])
 
   if (!tab) return null
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (tab.dirty) {
+    if (tab.dirty || tab.pendingRepair) {
       setPendingClose(true)
       return
     }
@@ -124,6 +171,7 @@ function EditorTabChip({ tabId, active, onActivate }: { tabId: string; active: b
       {/* div+role=tab（不是 button 嵌 button）：关闭按钮是独立 button，
           键盘可聚焦、读屏可识别——此前 button 内嵌 span role=button 属非法嵌套 */}
       <div
+        ref={chipRef}
         className={`tab${active ? ' active' : ''}`}
         role="tab"
         aria-selected={active}
@@ -150,8 +198,8 @@ function EditorTabChip({ tabId, active, onActivate }: { tabId: string; active: b
       </div>
       {pendingClose && (
         <ConfirmBox
-          title="有未保存的修改"
-          message={`「${tab.name}」的修改尚未保存。`}
+          title={tab.pendingRepair && !tab.dirty ? '有待写回的翻译修复' : '有未保存的修改'}
+          message={`「${tab.name}」${tab.pendingRepair && !tab.dirty ? '包含尚未写回磁盘的中文键修复。' : '的修改尚未保存。'}`}
           danger
           confirmText="直接关闭"
           cancelText="取消"
@@ -192,7 +240,7 @@ function WelcomeView() {
       <div className="stagger" style={{ display: 'contents' }}>
         <div className="welcome-logo"><LogoR size="welcome" /></div>
         <h1>
-          <span>铁锈助手</span>
+          <span>铁锈工坊</span>
         </h1>
         <p className="subtitle">铁锈战争 · 模组开发工作台</p>
         <div className="welcome-actions">
@@ -227,9 +275,27 @@ function WelcomeView() {
   )
 }
 
-function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: () => void }) {
+function EditorPane({
+  tabId,
+  onOpenPreview,
+  mapEditMode,
+  mapCamera,
+  onMapEditModeChange,
+  onMapCameraChange,
+}: {
+  tabId: string
+  onOpenPreview?: () => void
+  mapEditMode: boolean
+  mapCamera?: MapCamera
+  onMapEditModeChange: (editMode: boolean) => void
+  onMapCameraChange: (camera: MapCamera) => void
+}) {
   const tab = useWorkspaceStore((s) => s.openTabs.find((t) => t.id === tabId))
   const updateTabContent = useWorkspaceStore((s) => s.updateTabContent)
+  const undoTab = useWorkspaceStore((s) => s.undoTab)
+  const redoTab = useWorkspaceStore((s) => s.redoTab)
+  const canUndoTab = useWorkspaceStore((s) => s.canUndoTab)
+  const canRedoTab = useWorkspaceStore((s) => s.canRedoTab)
   const saveTab = useWorkspaceStore((s) => s.saveTab)
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const semanticCheckers = useWorkspaceStore((s) => s.settings.semanticCheckers)
@@ -243,8 +309,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
   const [liveOutlineH, setLiveOutlineH] = useState<number | null>(null)
   // M14：表单模式（仅单位文件；表单与代码实时双向同步）
   const [formMode, setFormMode] = useState(false)
-  // M15：地图文件「代码编辑」切换（MapViewer 只读，XML 可能需手改）
-  const [mapEditMode, setMapEditMode] = useState(false)
+  // M36：地图模式由 EditorArea 按标签保存，切换标签后不重置。
   // 保存为模板：弹窗输入模板名（null 表示关闭）
   const [templateName, setTemplateName] = useState<string | null>(null)
   // 文件被外部修改后「重新加载」的确认（有未保存修改时才需要）
@@ -280,6 +345,23 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
   const tabContent = tab?.content ?? ''
   const sections = useMemo(() => scanSections(tabContent), [tabContent])
   const formatted = useMemo(() => formatIni(tabContent), [tabContent])
+  // M36：TMX 解析必须使用当前编辑中的英文 XML。中文显示层仅供编辑器展示，
+  // 这里用 tracker 精确回译，既保留未保存修改也不会把用户原有中文数据误改为英文。
+  const mapContent = useMemo(() => {
+    if (!tab || !tab.translationEnabled) return tabContent
+    return zhToEn(tabContent, makeDict(
+      getEnToZhDict(),
+      getZhToEnDict(),
+      getKeyZhToEnDict(),
+      getSectionZhToEnDict(),
+      getLogicIdentifierZhToEnDict(),
+      getLogicIdentifierEnToZhDict(),
+      getPreserveValueKeys(),
+      getLogicValueKeys(),
+      isPreserveValueKey,
+      normalizeValueForEngine,
+    ), tab.translationMap)
+  }, [tab, tabContent])
 
   // M29：第二行操作行动作。useMemo 保持数组引用稳定——OverflowToolbar 的 useLayoutEffect
   // 依赖 actions 身份重测宽度，每次渲染新建数组会陷入 setState 无限循环。
@@ -287,11 +369,27 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
     if (!tab) return []
     const list: ToolbarAction[] = [
       {
+        key: 'undo',
+        label: '撤销',
+        icon: <AppIcon name="undo" size={12} />,
+        title: '撤销（Ctrl+Z）',
+        disabled: !canUndoTab(tab.id),
+        onClick: () => undoTab(tab.id),
+      },
+      {
+        key: 'redo',
+        label: '重做',
+        icon: <AppIcon name="redo" size={12} />,
+        title: '重做（Ctrl+Y 或 Ctrl+Shift+Z）',
+        disabled: !canRedoTab(tab.id),
+        onClick: () => redoTab(tab.id),
+      },
+      {
         key: 'format',
         label: '格式化',
         icon: <AppIcon name="text" size={12} />,
         title: 'Ctrl+Shift+F',
-        onClick: () => useWorkspaceStore.getState().updateTabContent(tab.id, formatted),
+        onClick: () => useWorkspaceStore.getState().updateTabContent(tab.id, formatted, { history: true }),
       },
       {
         key: 'outline',
@@ -321,7 +419,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
         onClick: () => setTemplateName(tab.name.replace(/\.(ini|template)$/i, '')),
       })
     }
-    if (/\.ini$/i.test(tab.path) && (/^\s*\[turret_\d+\]\s*(?:#.*)?$/im.test(tab.content) || /^\s*\[炮塔_\d+\]\s*(?:#.*)?$/im.test(tab.content))) {
+    if (/\.ini$/i.test(tab.path) && (/^\s*\[turret_.+\]\s*(?:#.*)?$/im.test(tab.content) || /^\s*\[炮塔_.+\]\s*(?:#.*)?$/im.test(tab.content))) {
       list.push({
         key: 'turret',
         label: '炮塔',
@@ -356,7 +454,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
         icon: <AppIcon name="edit" size={12} />,
         title: '地图查看器只读；切换到代码模式可手改 XML',
         active: mapEditMode,
-        onClick: () => setMapEditMode((v) => !v),
+        onClick: () => onMapEditModeChange(!mapEditMode),
       })
     }
     list.push({
@@ -367,7 +465,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
       onClick: () => void saveTab(tab.id),
     })
     return list
-  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onOpenPreview, saveTab])
+  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onMapEditModeChange, onOpenPreview, saveTab, undoTab, redoTab, canUndoTab, canRedoTab])
 
   if (!tab) return null
   if (isPreviewableImage(tab.path) && project) {
@@ -412,6 +510,11 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
             </>
           )}
           {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
+          {tab.pendingRepair && !tab.dirty && (
+            <span style={{ color: 'var(--warn, #d99014)', fontSize: 11.5 }} title="打开时已在内存中恢复中文键；保存时写回英文到磁盘">
+              ◐ 待写回修复
+            </span>
+          )}
           <button
             className={tab.translationEnabled ? 'btn primary' : 'btn'}
             onClick={() => toggleTranslation(tab.id)}
@@ -469,6 +572,8 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
               onChange={(content) => updateTabContent(tab.id, content)}
               onCursor={(line, col) => setEditorPos({ line, col })}
               onSave={() => void saveTab(tab.id)}
+              onUndo={() => undoTab(tab.id)}
+              onRedo={() => redoTab(tab.id)}
               fontFamily={fontFamily}
               fontSize={fontSize}
               chineseMode={tab.translationEnabled}
@@ -481,7 +586,7 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
               fileName={tab.path}
             />
           ) : (
-            <MapViewer path={tab.path} rootPath={project.rootPath} />
+            <MapViewer path={tab.path} rootPath={project.rootPath} content={mapContent} initialCamera={mapCamera} onCameraChange={onMapCameraChange} />
           )
         ) : formMode && isUnitFile(tab.content) && project ? (
           <UnitFormPanel tab={tab} rootPath={project.rootPath} onOpenPreview={onOpenPreview} />
@@ -491,6 +596,8 @@ function EditorPane({ tabId, onOpenPreview }: { tabId: string; onOpenPreview?: (
           onChange={(content) => updateTabContent(tab.id, content)}
           onCursor={(line, col) => setEditorPos({ line, col })}
           onSave={() => void saveTab(tab.id)}
+          onUndo={() => undoTab(tab.id)}
+          onRedo={() => redoTab(tab.id)}
           fontFamily={fontFamily}
           fontSize={fontSize}
           chineseMode={tab.translationEnabled}

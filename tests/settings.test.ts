@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, clamp, sanitizeSettings } from '../src/utils/settings'
+import { DEFAULT_COMMUNITY_ENDPOINT } from '../src/services/communityApi'
 import type { AppSettings } from '../src/types/domain'
 
 describe('设置清洗', () => {
@@ -111,5 +112,20 @@ describe('设置清洗', () => {
     expect(sanitizeSettings({ layout: 'oops' }).layout).toEqual(DEFAULT_SETTINGS.layout)
     expect(sanitizeSettings({ layout: [1, 2] }).layout).toEqual(DEFAULT_SETTINGS.layout)
     expect(sanitizeSettings({ layout: 42 }).layout).toEqual(DEFAULT_SETTINGS.layout)
+  })
+
+  it('旧版本本地头像设置会被忽略', () => {
+    const legacy = sanitizeSettings({
+      avatar: { source: 'local', localPath: 'C:\\legacy\\avatar.png', remoteUrl: 'https://example.invalid/avatar.png' },
+    })
+    expect('avatar' in legacy).toBe(false)
+  })
+
+  it('社区服务器固定为内置地址，旧明文令牌不再进入渲染层设置', () => {
+    expect(DEFAULT_SETTINGS.ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
+    const saved = sanitizeSettings({ ai: { communityEndpoint: 'https://example.invalid', communityToken: '  sk-test  ' } })
+    expect(saved.ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
+    // 令牌只在主进程安全存储（safeStorage）中留存；清洗后的设置绝不包含明文令牌
+    expect('communityToken' in saved.ai).toBe(false)
   })
 })
