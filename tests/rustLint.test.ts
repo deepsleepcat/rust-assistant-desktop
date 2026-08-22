@@ -284,6 +284,8 @@ describe('M28 真实模组对齐（引擎源码实证）', () => {
     expect(validateValue('spawnUnits', '原生-兵卵*1(spawnChance=0.1,maxSpawnLimit=1,offsetX=-30)', enumData)).toBeNull()
     expect(validateValue('spawnUnits', '中立视野副本(spawnSource=createMarker(x=self.x(), y=self.y(), teamId=thisActionTarget.teamId()))', enumData)).toBeNull()
     expect(validateValue('spawnUnits', 'sy(spawnChance=0.51,offsetRandomX=200,offsetRandomY=200,offsetRandomDir=360)', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', 'sas*1(Y偏移=8,效果产生几率=0.045),gign*1(Y偏移=8,效果产生几率=0.045)', enumData)).toBeNull()
+    expect(validateValue('spawnUnits', 'sas(offsetY=8,生成概率=0.045,damagingBorder=true,zoneMarker=marker)', enumData)).toBeNull()
     expect(validateValue('spawnUnits', '色幕', enumData)).toBeNull()
     expect(validateValue('spawnUnits', '单位(未知参数=1)', enumData)).not.toBeNull()
     expect(validateValue('spawnUnits', '单位(offsetX)', enumData)).not.toBeNull()

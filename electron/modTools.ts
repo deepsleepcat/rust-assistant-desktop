@@ -537,7 +537,7 @@ export async function scanTranslationRepair(projectRoot: string, dict: Translati
  * 对用户从扫描预览中选定的文件执行恢复。每项写入前都重新读取并核对 SHA-256，
  * 扫描后被其它工具修改的文件会跳过，不会覆盖新内容。
  */
-export async function applyTranslationRepairSafe(
+export async function applyVerifiedTranslationRepair(
   projectRoot: string,
   dict: TranslationRepairDictionary,
   selections: TranslationRepairSelection[],
@@ -599,8 +599,8 @@ export async function applyTranslationRepairSafe(
   return { done, skipped, failed, changedPaths }
 }
 
-/** 兼容旧调用方；安全校验由 applyTranslationRepairSafe 自身执行。 */
-export const applyTranslationRepair = applyTranslationRepairSafe
+/** 兼容旧调用方；安全校验由 applyVerifiedTranslationRepair 自身执行。 */
+export const applyTranslationRepair = applyVerifiedTranslationRepair
 
 /** 新建模组的参数 */
 export interface CreateModParams {

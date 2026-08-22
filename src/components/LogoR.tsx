@@ -9,7 +9,7 @@ export function LogoR({ size = 'header' }: { size?: 'header' | 'welcome' | 'abou
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       role="img"
-      aria-label="铁锈助手 R Logo"
+      aria-label="铁锈工坊 R Logo"
       style={{ display: 'block', flexShrink: 0 }}
     >
       <path

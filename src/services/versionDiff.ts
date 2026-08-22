@@ -349,7 +349,7 @@ export async function buildUpgradeReport(
 /** 升级报告 → 纯文本（导出/分享；全部相对路径，脱敏） */
 export function upgradeReportToText(r: UpgradeReport): string {
   const lines: string[] = []
-  lines.push(`铁锈助手 · 版本升级改动清单`)
+  lines.push(`铁锈工坊 · 版本升级改动清单`)
   lines.push(`项目：${r.meta.projectName}`)
   lines.push(`生成时间：${new Date(r.meta.generatedAt).toLocaleString()}`)
   lines.push(`升级方向：${r.meta.fromVersion} → ${r.meta.toVersion}`)

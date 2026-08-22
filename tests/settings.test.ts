@@ -114,12 +114,18 @@ describe('设置清洗', () => {
     expect(sanitizeSettings({ layout: 42 }).layout).toEqual(DEFAULT_SETTINGS.layout)
   })
 
-  it('社区服务器设置保留合法地址并清洗令牌，非法地址回退默认', () => {
+  it('旧版本本地头像设置会被忽略', () => {
+    const legacy = sanitizeSettings({
+      avatar: { source: 'local', localPath: 'C:\\legacy\\avatar.png', remoteUrl: 'https://example.invalid/avatar.png' },
+    })
+    expect('avatar' in legacy).toBe(false)
+  })
+
+  it('社区服务器固定为内置地址，旧明文令牌不再进入渲染层设置', () => {
     expect(DEFAULT_SETTINGS.ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
-    const valid = sanitizeSettings({ ai: { communityEndpoint: `${DEFAULT_COMMUNITY_ENDPOINT}///`, communityToken: '  sk-test  ' } })
-    expect(valid.ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
-    expect(valid.ai.communityToken).toBe('sk-test')
-    expect(sanitizeSettings({ ai: { communityEndpoint: 'file:///secret', communityToken: 123 } }).ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
-    expect(sanitizeSettings({ ai: { communityToken: 'x'.repeat(600) } }).ai.communityToken).toHaveLength(500)
+    const saved = sanitizeSettings({ ai: { communityEndpoint: 'https://example.invalid', communityToken: '  sk-test  ' } })
+    expect(saved.ai.communityEndpoint).toBe(DEFAULT_COMMUNITY_ENDPOINT)
+    // 令牌只在主进程安全存储（safeStorage）中留存；清洗后的设置绝不包含明文令牌
+    expect('communityToken' in saved.ai).toBe(false)
   })
 })

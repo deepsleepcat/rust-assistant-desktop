@@ -12,11 +12,14 @@ import { createStore } from '../electron/store'
 import { createKnowledgePack } from '../electron/knowledgePack'
 import { initAiHistory, getHistory } from '../electron/aiHistory'
 import { normalizePath } from '../electron/paths'
+import { createSecureCredentials, DEEPSEEK_CREDENTIAL_KEY } from '../electron/secureCredentials'
 import {
   createFeedbackChannel,
   createIpcContext,
   registerAiIpc,
   registerAppIpc,
+  registerCommunityAuthIpc,
+  registerCommunityIpc,
   registerDialogIpc,
   registerFsIpc,
   registerGameIpc,
@@ -24,6 +27,7 @@ import {
   registerKnowledgeIpc,
   registerModIpc,
   registerStoreIpc,
+  registerIpc,
   registerMediaFromSettings,
   restoreMediaAllowlist,
   restoreProjectRoots,
@@ -60,7 +64,6 @@ async function invokeWithEvent<T>(
   return (h as (...a: unknown[]) => unknown)(event, ...args) as Promise<T>
 }
 
-/** 1x1 透明 PNG（base64）：avatar:saveCropped 魔数校验用 */
 const TINY_PNG =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
 
@@ -101,9 +104,20 @@ afterEach(async () => {
 })
 
 describe('IPC 通道完整性', () => {
-  it('九个域注册函数覆盖全部 75 个通道，无遗漏无重复', () => {
+  it('registerIpc 组合函数不重复注册通道（真实 ipcMain.handle 对重复注册会抛错）', () => {
+    const seen = new Set<string>()
+    const strictIpc: RegisterHandler = (channel) => {
+      if (seen.has(channel)) throw new Error(`重复注册通道：${channel}`)
+      seen.add(channel)
+    }
+    expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
+  })
+
+  it('十一个域注册函数覆盖全部 81 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
+    registerCommunityIpc(ctx, ipc)
+    registerCommunityAuthIpc(ctx, ipc)
     registerKnowledgeIpc(ctx, ipc)
     registerGitIpc(ctx, ipc)
     registerDialogIpc(ctx, ipc)
@@ -114,8 +128,9 @@ describe('IPC 通道完整性', () => {
     registerAiIpc(ctx, ipc)
 
     const expected = [
-      // store
-      'store:get', 'store:set',
+      // store + 受限社区代理 + 主进程设备认证
+      'store:get', 'store:set', 'community:request',
+      'auth:status', 'auth:startPairing', 'auth:pollPairing', 'auth:cancelPairing', 'auth:logout',
       // knowledge
       'knowledge:readDataFile', 'knowledge:info', 'knowledge:checkUpdate', 'knowledge:update', 'knowledge:rollback',
       // git
@@ -133,14 +148,102 @@ describe('IPC 通道完整性', () => {
       'template:import', 'template:deleteUser', 'template:listUserKeys',
       // game
       'game:detect', 'game:importSample', 'game:importMod', 'game:launch', 'game:openDir', 'game:preflight', 'game:readAssetImage',
-      // app + avatar
+      // app
       'app:info', 'app:flush-done', 'app:checkUpdate', 'app:downloadUpdate', 'app:installUpdate',
-      'avatar:chooseLocal', 'avatar:saveCropped', 'avatar:uploadCommunity',
       // ai
-      'ai:check', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
+      'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(75)
+    expect(channels.size).toBe(81)
+  })
+})
+
+describe('社区设备认证 IPC', () => {
+  it('只暴露状态式认证方法，认证服务不可用时拒绝', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCommunityAuthIpc(ctx, ipc)
+    await expect(invoke(channels, 'auth:status')).rejects.toThrow('社区设备认证不可用')
+
+    const auth = {
+      status: vi.fn(async () => ({ state: 'signed-out' as const })),
+      startPairing: vi.fn(async () => ({ state: 'pairing' as const, userCode: 'ABCD-1234', expiresAt: 1, pollAfterMs: 1_000 })),
+      pollPairing: vi.fn(async () => ({ state: 'pairing' as const })),
+      cancelPairing: vi.fn(async () => ({ state: 'signed-out' as const })),
+      logout: vi.fn(async () => ({ state: 'signed-out' as const })),
+      withCredential: vi.fn(),
+      invalidate: vi.fn(),
+    }
+    ctx.communityAuth = auth
+    await expect(invoke(channels, 'auth:status')).resolves.toEqual({ state: 'signed-out' })
+    await expect(invoke(channels, 'auth:startPairing')).resolves.toMatchObject({ userCode: 'ABCD-1234' })
+    await invoke(channels, 'auth:pollPairing')
+    await invoke(channels, 'auth:cancelPairing')
+    await invoke(channels, 'auth:logout')
+    expect(auth.status).toHaveBeenCalledTimes(1)
+    expect(auth.startPairing).toHaveBeenCalledTimes(1)
+    expect(auth.pollPairing).toHaveBeenCalledTimes(1)
+    expect(auth.cancelPairing).toHaveBeenCalledTimes(1)
+    expect(auth.logout).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('社区请求代理', () => {
+  it('只读取受信任社区的规范头像 URL，并拒绝写入、任意主机和路径', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCommunityIpc(ctx, ipc)
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetcher)
+    const trusted = 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+    const objectKey = `${'a'.repeat(48)}.png`
+    await expect(invoke<{ status: number }>(channels, 'community:request', { url: `${trusted}/api/avatar/${objectKey}`, method: 'GET' })).resolves.toMatchObject({ status: 200 })
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/avatar/${objectKey}`, method: 'POST' })).rejects.toThrow('只允许读取')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/avatar`, method: 'POST' })).rejects.toThrow('路径不允许')
+    await expect(invoke(channels, 'community:request', { url: 'https://example.com/api/avatar', method: 'POST' })).rejects.toThrow('不受信任')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/avatar/not-an-object.png`, method: 'GET' })).rejects.toThrow('路径不允许')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/avatar/../../secrets`, method: 'GET' })).rejects.toThrow('路径不允许')
+    vi.unstubAllGlobals()
+  })
+
+  it('认证意图由主进程注入 Bearer，renderer 提供的 Authorization 一律剥除', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCommunityIpc(ctx, ipc)
+    const injected = 'sk-main-process-secret'
+    ctx.communityAuth = {
+      withCredential: async (apply: (secret: string) => unknown) => apply(injected),
+    } as never
+    const seen: Array<{ headers: Headers; body: unknown }> = []
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push({ headers: new Headers(init?.headers), body: init?.body })
+      return new Response(JSON.stringify({ success: true, data: null }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    vi.stubGlobal('fetch', fetcher)
+    const trusted = 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+
+    // authenticated 请求：主进程注入自己的凭据
+    await invoke(channels, 'community:request', {
+      url: `${trusted}/api/me`,
+      method: 'GET',
+      authenticated: true,
+    })
+    expect(seen[0].headers.get('Authorization')).toBe('Bearer sk-main-process-secret')
+
+    // renderer 伪造 Authorization 的请求：主进程剥除并注入受信凭据
+    await invoke(channels, 'community:request', {
+      url: `${trusted}/api/me`,
+      method: 'GET',
+      authenticated: true,
+      headers: { authorization: 'Bearer sk-forged-by-renderer' },
+    })
+    expect(seen[1].headers.get('Authorization')).toBe('Bearer sk-main-process-secret')
+
+    // 未登录（无凭据）时认证请求失败且不发出网络调用
+    ctx.communityAuth = { withCredential: async () => null } as never
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/me`, method: 'GET', authenticated: true })).rejects.toThrow('社区登录已失效')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', upload: null })).rejects.toThrow('社区附件参数无效')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', upload: { name: 'x.zip', type: 'application/zip', bytes: 'not-an-array-buffer' } })).rejects.toThrow('社区附件超过 50 MiB 限制')
+    vi.unstubAllGlobals()
   })
 })
 
@@ -152,11 +255,13 @@ describe('store 通道', () => {
     expect(await invoke(channels, 'store:get', 'myKey')).toEqual({ a: 1 })
   })
 
-  it('系统保留键拒绝渲染层写入', async () => {
+  it('系统保留键拒绝渲染层读写', async () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     await expect(invoke(channels, 'store:set', 'projectRoots', ['C:\\x'])).rejects.toThrow('不允许写入系统保留键')
     await expect(invoke(channels, 'store:set', 'mediaAllowlist', ['C:\\x'])).rejects.toThrow('不允许写入系统保留键')
+    await expect(invoke(channels, 'store:set', 'communityAuthCredentialV1', 'ciphertext')).rejects.toThrow('不允许写入系统保留键')
+    await expect(invoke(channels, 'store:get', 'communityAuthCredentialV1')).rejects.toThrow('不允许读取系统保留键')
   })
 
   it('超限值拒绝写入（10MB 上限；workspace 键放宽 50MB）', async () => {
@@ -324,10 +429,44 @@ describe('AI 通道', () => {
     const unknown = await invoke<{ ok: boolean; message: string }>(channels, 'ai:check', { provider: 'x' })
     expect(unknown.ok).toBe(false)
     expect(unknown.message).toContain('未知的 AI 提供者')
-    const noKey = await invoke<{ ok: boolean; message: string }>(channels, 'ai:check', { provider: 'deepseek', deepseekApiKey: '' })
+    const noKey = await invoke<{ ok: boolean; message: string }>(channels, 'ai:check', { provider: 'deepseek' })
     expect(noKey.message).toContain('未配置 DeepSeek API Key')
     const community = await invoke<{ ok: boolean; message: string }>(channels, 'ai:check', { provider: 'community', endpoint: '', token: '' })
     expect(community.message).toContain('即将上线')
+  })
+
+  it('ai:credential:*：DeepSeek Key 保管（key 不回传、空值拒绝、密文只落保留键）+ stream 未配置即拒绝', async () => {
+    const channels = setupAi()
+    const data = new Map<string, unknown>()
+    const memoryStore = { get: (k: string) => data.get(k), set: async (k: string, v: unknown) => { data.set(k, v) } }
+    const fakeSafeStorage = {
+      isEncryptionAvailable: () => true,
+      getSelectedStorageBackend: () => 'os_crypt',
+      encryptString: (s: string) => Buffer.from(s, 'utf8'),
+      decryptString: (b: Buffer) => b.toString('utf8'),
+    }
+    ctx.deepSeekCredentials = createSecureCredentials(memoryStore as never, fakeSafeStorage as never, DEEPSEEK_CREDENTIAL_KEY)
+
+    expect(await invoke<{ configured: boolean }>(channels, 'ai:credential:status')).toEqual({ configured: false })
+
+    // stream 未配置 Key：拒绝且不泄漏 AI 锁（两次调用都应命中同一错误而非「已有请求」）
+    ctx.roots.add(normalizePath(tmp))
+    const streamEvent = { sender: { isDestroyed: () => false, send: () => undefined } }
+    await expect(invokeWithEvent(channels, 'ai:stream', streamEvent, { messages: [] }, { provider: 'deepseek', deepseekModel: 'deepseek-v4-flash' }, tmp)).rejects.toThrow('尚未配置 DeepSeek API Key')
+    await expect(invokeWithEvent(channels, 'ai:stream', streamEvent, { messages: [] }, { provider: 'deepseek', deepseekModel: 'deepseek-v4-flash' }, tmp)).rejects.toThrow('尚未配置 DeepSeek API Key')
+
+    await expect(invoke(channels, 'ai:credential:save', '   ')).rejects.toThrow('API Key 不能为空')
+    await expect(invoke(channels, 'ai:credential:save', 123)).rejects.toThrow('API Key 不能为空')
+
+    // 测试占位值（非真实凭据样式）
+    await invoke(channels, 'ai:credential:save', 'test-key-placeholder')
+    expect(await invoke<{ configured: boolean }>(channels, 'ai:credential:status')).toEqual({ configured: true })
+    // 密文（safe-v1: 前缀）落在 DeepSeek 保留键里，明文不落盘
+    expect(String(data.get(DEEPSEEK_CREDENTIAL_KEY))).toMatch(/^safe-v1:/)
+    expect(String(data.get(DEEPSEEK_CREDENTIAL_KEY))).not.toContain('test-key-placeholder')
+
+    await invoke(channels, 'ai:credential:clear')
+    expect(await invoke<{ configured: boolean }>(channels, 'ai:credential:status')).toEqual({ configured: false })
   })
 
   it('ai:info 列出提供者', async () => {
@@ -633,11 +772,11 @@ describe('mod / game / app 通道', () => {
     expect(await invoke<boolean>(channels, 'app:flush-done')).toBe(true)
     expect(flushed).toBe(true)
 
-    // flush-done：close 路径（无 flushResolve → 销毁窗口）
+    // flush-done：没有待确认退出流程时，渲染层不得凭空销毁窗口
     const destroy = vi.fn()
     ctx.windows = { getAllWindows: () => [{ isDestroyed: () => false, destroy }] }
-    expect(await invoke<boolean>(channels, 'app:flush-done')).toBe(true)
-    expect(destroy).toHaveBeenCalled()
+    expect(await invoke<boolean>(channels, 'app:flush-done')).toBe(false)
+    expect(destroy).not.toHaveBeenCalled()
 
     // installUpdate：退出流程中 → 直接 false（不弹框）
     ctx.lifecycle.quitting = true
@@ -653,15 +792,6 @@ describe('mod / game / app 通道', () => {
     ctx.dialog = { ...ctx.dialog, showMessageBox: async () => ({ response: 1, checkboxChecked: false }) }
     expect(await invoke<boolean>(channels, 'app:installUpdate')).toBe(true)
     expect(quitAndInstall).toHaveBeenCalled()
-  })
-
-  it('avatar:saveCropped：非法数据拒绝，合法 PNG 写入并登记媒体', async () => {
-    const { channels, ipc } = createFakeIpc()
-    registerAppIpc(ctx, ipc)
-    await expect(invoke(channels, 'avatar:saveCropped', 'data:image/png;base64,not-png!')).rejects.toThrow('不是有效的 PNG')
-    const file = await invoke<string>(channels, 'avatar:saveCropped', `data:image/png;base64,${TINY_PNG}`)
-    expect(file).toBe(path.join(tmp, 'avatar.png'))
-    expect(ctx.media.has(normalizePath(file))).toBe(true)
   })
 
   it('git 通道参数校验与项目根登记校验（M3 加固）', async () => {
@@ -750,7 +880,7 @@ describe('安全加固（第一线审查 M2：媒体信任/上限/白名单）',
     const trusted = path.join(tmp, 'trusted.png')
     const untrusted = path.join(tmp, 'untrusted.png')
     ctx.media.add(normalizePath(trusted))
-    registerMediaFromSettings(ctx, { background: { imagePath: trusted }, avatar: { localPath: untrusted } })
+    registerMediaFromSettings(ctx, { background: { imagePath: trusted } })
     expect(ctx.media.has(normalizePath(trusted))).toBe(true)
     expect(ctx.media.has(normalizePath(untrusted))).toBe(false)
   })
@@ -774,12 +904,6 @@ describe('安全加固（第一线审查 M2：媒体信任/上限/白名单）',
     const png = path.join(tmp, 'image.png')
     await fs.writeFile(png, Buffer.from('x'))
     await expect(invoke(channels, 'media:readAsDataUrl', tmp, png)).rejects.toThrow('不支持的文件格式')
-  })
-
-  it('avatar:saveCropped：超大输入先按字符串长度拒绝（不解码大缓冲）', async () => {
-    const { channels, ipc } = createFakeIpc()
-    registerAppIpc(ctx, ipc)
-    await expect(invoke(channels, 'avatar:saveCropped', 'data:image/png;base64,' + 'a'.repeat(7 * 1024 * 1024))).rejects.toThrow('头像图片过大')
   })
 
   it('mod:globalOp：超 1MB 文本拒绝（防注入大文本刷盘）', async () => {

@@ -218,7 +218,7 @@
 
 /* ── 我的 ─────────────────────────────────────────── */
 .me-profile { flex-direction: row; align-items: center; gap: 12px; }
-.me-avatar { width: 44px; height: 44px; font-size: 17px; }
+.me-avatar { width: 44px; height: 44px; font-size: 17px; object-fit: cover; }
 .me-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
@@ -272,8 +272,18 @@ body.ra-compact .mod-grid, body.ra-compact .creator-grid { grid-template-columns
 body.ra-compact .activity-meta { display: none; }
 
 /* ── 帖子社区 ───────────────────────────────────────── */
-.community-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.community-toolbar .rank-filter { flex: 1 1 100%; }
+.community-toolbar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-sm);
+  background: var(--surface-0);
+}
+.community-toolbar .rank-filter { flex: 0 0 100%; }
 .community-toolbar input, .community-toolbar select, .community-form input, .community-form select, .community-form textarea, .comment-compose input {
   min-width: 0;
   border: 1px solid var(--border);
@@ -281,11 +291,17 @@ body.ra-compact .activity-meta { display: none; }
   background: var(--bg-input);
   color: var(--text-primary);
   font: 12px var(--font-ui);
-  padding: 7px 9px;
+  padding: 0 9px;
 }
-.community-toolbar input { flex: 1 1 160px; }
-.community-toolbar select { flex: 0 1 130px; }
-.post-list { display: flex; flex-direction: column; gap: 10px; }
+.community-toolbar input, .community-toolbar select { height: 28px; }
+.community-toolbar input { flex: 1 1 150px; }
+.community-toolbar select { flex: 0 1 116px; }
+.community-toolbar .btn-sm { flex: none; }
+.post-card-foot .grow, .community-pagination .grow { flex: 1; min-width: 0; }
+.post-list { display: flex; flex-direction: column; gap: 8px; }
+body.ra-compact .community-toolbar { gap: 6px; padding: 7px 8px; }
+body.ra-compact .community-toolbar input { flex-basis: 120px; }
+body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .post-card { gap: 8px; }
 .post-card-main { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .post-card-main:hover .post-card-title { color: var(--accent); }

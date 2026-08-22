@@ -205,6 +205,8 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
   // M10：监听器集合每桥独立（模块级单例会跨测试/跨桥串扰：上个测试的流式事件
   // 会写进下一个测试的 store）
   const mockAiListeners = new Set<(event: import('../types/ai').AiStreamEvent) => void>()
+  // 浏览器预览模式的 DeepSeek Key（仅内存，模拟主进程 safeStorage 保管）
+  let mockDeepSeekKey = ''
 
   const storageKey = 'rust-assistant:mock-state'
   function loadState<T>(key: string, fallback: T): T {
@@ -317,7 +319,6 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
 
   return {
     platform: 'mock',
-    version: '0.1.0',
     appInfo: async () => ({ version: '0.1.0', platform: 'mock' }),
     app: {
       checkUpdate: async () => ({ skipped: true, message: '浏览器预览模式不检查更新' }),
@@ -382,11 +383,6 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
         return MOCK_IMAGE_DATA_URL
       },
       readAudioAsDataUrl: async (_root, _audioPath) => 'data:audio/ogg;base64,T2dnUw==',
-    },
-    avatar: {
-      chooseLocal: async () => null,
-      saveCropped: async () => 'C:\\mock\\avatar.png',
-      uploadCommunity: async () => ({ ok: false, message: '社区头像服务即将上线' }),
     },
     game: {
       detect: async () => ({ found: false, gamePath: null, units: [], mods: [] }),
@@ -490,11 +486,23 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
   ai: {
       check: async (settings) => {
         if (settings.provider === 'deepseek') {
-          return settings.deepseekApiKey
+          return mockDeepSeekKey
             ? { ok: true, message: '连接成功（浏览器预览模式）' }
             : { ok: false, message: '未配置 DeepSeek API Key，请在设置中填写' }
         }
         return { ok: false, message: '社区 AI 服务即将上线（内部预留）' }
+      },
+      deepSeekKey: {
+        save: async (key: string) => {
+          if (typeof key !== 'string' || !key.trim()) throw new Error('API Key 不能为空')
+          mockDeepSeekKey = key.trim()
+          return { ok: true }
+        },
+        status: async () => ({ configured: Boolean(mockDeepSeekKey) }),
+        clear: async () => {
+          mockDeepSeekKey = ''
+          return { ok: true }
+        },
       },
       info: async () => ({
         providers: [

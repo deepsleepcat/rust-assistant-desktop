@@ -30,7 +30,45 @@ const SPAWN_UNITS_PARAMS = new Set([
   'gridalign', 'skipifoverlapping', 'falling', 'transportedunitstotransfer', 'alwaysstartdiratzero',
   'alwaystartdiratzero', 'offsetx', 'offsety', 'offsetrandomxy', 'offsetrandomx', 'offsetrandomy',
   'offsetheight', 'offsetrandomdir', 'offsetdir', 'addresources', 'spawnsource', 'copywaypointsfrom',
+  'damagingborder', 'zonemarker',
 ])
+
+/** spawnUnits 参数的中文显示名回译；值部分保持原文，避免误改表达式或资源语法。 */
+const SPAWN_UNITS_PARAM_ALIASES: Record<string, string> = {
+  '中立阵营': 'neutralTeam',
+  '设为最后攻击者的阵营': 'setToTeamOfLastAttacker',
+  '攻击性阵营': 'aggressiveTeam',
+  '效果产生几率': 'spawnChance',
+  '生成概率': 'spawnChance',
+  '产生几率': 'spawnChance',
+  '最大生成上限': 'maxSpawnLimit',
+  '技术等级': 'techLevel',
+  '网格对齐': 'gridAlign',
+  '重叠时跳过': 'skipIfOverlapping',
+  '偏移X': 'offsetX',
+  '水平偏移': 'offsetX',
+  'Y偏移': 'offsetY',
+  '垂直偏移': 'offsetY',
+  '随机X偏移': 'offsetRandomX',
+  '随机 X 偏移': 'offsetRandomX',
+  '随机Y偏移': 'offsetRandomY',
+  '随机 Y 偏移': 'offsetRandomY',
+  '随机XY偏移': 'offsetRandomXY',
+  '随机 XY 偏移': 'offsetRandomXY',
+  '高度偏移': 'offsetHeight',
+  '方向偏移': 'offsetDir',
+  '随机方向偏移': 'offsetRandomDir',
+  '资源': 'addResources',
+  '产生来源': 'spawnSource',
+  '复制路径点': 'copyWaypointsFrom',
+  '伤害边界': 'damagingBorder',
+  '区域标记': 'zoneMarker',
+}
+
+function normalizeSpawnUnitsParamName(name: string): string {
+  const trimmed = name.trim()
+  return SPAWN_UNITS_PARAM_ALIASES[trimmed] ?? trimmed
+}
 
 /** 按顶层逗号分段；括号内逗号不算分隔。 */
 const splitTopLevel = splitTopLevelConfigValue
@@ -63,10 +101,11 @@ function validateSpawnUnits(value: string): string | null {
       if (!part) continue
       const eq = part.indexOf('=')
       if (eq <= 0) return `spawnUnits 参数「${part}」缺少 = 分隔`
-      const name = part.slice(0, eq).trim()
+      const rawName = part.slice(0, eq).trim()
+      const name = normalizeSpawnUnitsParamName(rawName)
       const val = part.slice(eq + 1).trim()
-      if (!SPAWN_UNITS_PARAMS.has(name.toLowerCase())) return `spawnUnits 参数「${name}」未知`
-      if (!val) return `spawnUnits 参数「${name}」缺少值`
+      if (!SPAWN_UNITS_PARAMS.has(name.toLowerCase())) return `spawnUnits 参数「${rawName}」未知`
+      if (!val) return `spawnUnits 参数「${rawName}」缺少值`
     }
   }
   return null

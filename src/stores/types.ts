@@ -5,6 +5,18 @@ import type { AppSettings, Conversation, EditorTab, ProjectInfo, TreeNode } from
 import type { DiffLine } from '../types/diff'
 import type { ModImportKind } from '../types/bridge'
 import type { CommunityTab } from '../features/community/communityData'
+import type { CommunityUser } from '../services/communityApi'
+
+export type CommunityAuthStatus = 'checking' | 'signed_out' | 'signed_in' | 'loading' | 'error'
+
+export interface CommunityAuthState {
+  status: CommunityAuthStatus
+  user: CommunityUser | null
+  error: string | null
+  pairing: { userCode: string; expiresAt: number } | null
+}
+
+export type SettingsTab = 'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'community' | 'game' | 'coming' | 'about'
 
 export interface ConfirmRequest {
   title: string
@@ -42,6 +54,8 @@ export interface WorkspaceStoreState {
   activeTabId: string | null
   editorPos: EditorPosition
   settingsOpen: boolean
+  /** 当前设置页签只属于本次界面会话，不写入本地设置。 */
+  settingsTab: SettingsTab
   commandOpen: boolean
   /** M29：紧凑窗口下打开的抽屉（'left' | 'right'；null = 关闭） */
   drawerSide: 'left' | 'right' | null
@@ -51,6 +65,8 @@ export interface WorkspaceStoreState {
   communityTab: CommunityTab
   /** 社区关注的创作者 id（会话内状态，不持久化；服务器上线后并入账号数据） */
   communityFollowing: string[]
+  /** Browser-auth community session; token remains in sanitized app settings. */
+  communityAuth: CommunityAuthState
   /** M7：代码表浏览弹窗 */
   codeTableOpen: boolean
   /** M17：版本差异对比弹窗（P2 任务 1） */
@@ -171,6 +187,9 @@ export interface WorkspaceStoreActions {
   /** 恢复到指定历史版本（快照 id；打开标签有未保存修改时先确认） */
   aiRestoreFileVersion(relPath: string, snapshotId: string): Promise<void>
   setSettingsOpen(open: boolean): void
+  /** 打开设置并直接定位到指定页签，供社区账号等上下文入口使用。 */
+  openSettings(tab?: SettingsTab): void
+  setSettingsTab(tab: SettingsTab): void
   setCommandOpen(open: boolean): void
   /** M29：紧凑窗口抽屉开关 */
   setDrawerSide(side: 'left' | 'right' | null): void
@@ -180,6 +199,16 @@ export interface WorkspaceStoreActions {
   setCommunityTab(tab: CommunityTab): void
   /** M33-社区：关注/取消关注创作者（会话内状态） */
   toggleCommunityFollow(creatorId: string): void
+  /** Refresh the browser-auth community session from the saved token. */
+  refreshCommunityAuth(): Promise<void>
+  /** Start browser pairing without polling in the background. */
+  loginCommunity(): Promise<void>
+  /** Manually check one pairing request. */
+  checkCommunityPairing(): Promise<void>
+  /** Cancel the active browser pairing. */
+  cancelCommunityPairing(): Promise<void>
+  /** Clear the local community session and revoke it when possible. */
+  logoutCommunity(): Promise<void>
   setCodeTableOpen(open: boolean): void
   setVersionDiffOpen(open: boolean): void
   setRelationGraphOpen(open: boolean): void

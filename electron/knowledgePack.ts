@@ -29,6 +29,8 @@
  */
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import dns from 'node:dns/promises'
+import net from 'node:net'
 import { createHash } from 'node:crypto'
 
 /** 允许更新的数据文件名（manifest 只能声明这些文件；migrate.json 为版本迁移表预留） */
@@ -104,11 +106,24 @@ export interface RollbackResult {
 }
 
 /** 数据源 URL 校验：只允许 http/https（file:// 可读任意本地文件，拒绝） */
-export function validateSourceUrl(url: string): string | null {
+export function validateSourceUrl(url: string, options: { allowPrivateHosts?: boolean } = {}): string | null {
   const trimmed = String(url ?? '').trim()
   if (!trimmed) return '未配置数据源'
-  if (!/^https?:\/\//i.test(trimmed)) return '数据源必须以 http:// 或 https:// 开头'
   if (trimmed.length > 500) return '数据源地址过长'
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    return '数据源地址无效'
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '数据源必须以 http:// 或 https:// 开头'
+  if (parsed.username || parsed.password || parsed.hash || parsed.search) return '数据源地址不允许凭据、查询参数或片段'
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  const privateIpv4 = /^(10|127|169\.254|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(hostname)
+  const ipv6 = hostname.includes(':')
+  if (!options.allowPrivateHosts && (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local') || privateIpv4 || ipv6 || hostname === '0.0.0.0' || hostname === '::')) {
+    return '数据源地址不允许访问本机或内网'
+  }
   return null
 }
 
@@ -164,10 +179,17 @@ export interface KnowledgePackApi {
 }
 
 /** 带超时 + 流式字节上限的拉取（防失联源永久挂起、恶意源撑爆内存） */
-async function fetchLimited(url: string, maxBytes: number, timeoutMs: number): Promise<Buffer> {
+async function fetchLimited(url: string, maxBytes: number, timeoutMs: number, options: { allowPrivateHosts?: boolean } = {}): Promise<Buffer> {
+  const parsed = new URL(url)
+  if (!options.allowPrivateHosts) {
+    const addresses = net.isIP(parsed.hostname) ? [parsed.hostname] : await dns.lookup(parsed.hostname, { all: true }).then((items) => items.map((item) => item.address))
+    if (addresses.some((address) => net.isIP(address) === 4 && (/^(10|127|169\.254|192\.168|172\.(1[6-9]|2\d|3[01]))\./.test(address) || address === '0.0.0.0') || net.isIP(address) === 6 && (address === '::' || address === '::1' || address.toLowerCase().startsWith('fc') || address.toLowerCase().startsWith('fd') || address.toLowerCase().startsWith('fe80:')))) {
+      throw new Error('数据源地址解析到本机或内网，已拒绝请求')
+    }
+  }
   let res: Response
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
+    res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), redirect: 'error' })
   } catch (err) {
     // AbortSignal.timeout 中止抛 DOMException（英文）；转成可读提示（保留原因为排查留痕）
     if (err instanceof Error && err.name === 'TimeoutError') throw new Error('连接超时，已中止（检查网络或数据源地址）', { cause: err })
@@ -197,7 +219,7 @@ async function fetchLimited(url: string, maxBytes: number, timeoutMs: number): P
 }
 
 /** 创建知识包管理器（pure Node：不依赖 electron，便于测试注入目录） */
-export function createKnowledgePack(packDir: string, builtinDir: string): KnowledgePackApi {
+export function createKnowledgePack(packDir: string, builtinDir: string, options: { allowPrivateHosts?: boolean } = {}): KnowledgePackApi {
   const CURRENT_FILE = path.join(packDir, 'current.json')
   /** update/rollback 互斥（防双触发交错导致指针与目录不一致） */
   let mutating = false
@@ -400,9 +422,9 @@ export function createKnowledgePack(packDir: string, builtinDir: string): Knowle
 
   /** 拉取远端 manifest（带超时与大小上限） */
   async function fetchManifest(sourceUrl: string): Promise<KnowledgeManifest> {
-    const err = validateSourceUrl(sourceUrl)
+    const err = validateSourceUrl(sourceUrl, options)
     if (err) throw new Error(err)
-    const buf = await fetchLimited(`${sourceUrl}/manifest.json`, MAX_MANIFEST_BYTES, MANIFEST_TIMEOUT_MS)
+    const buf = await fetchLimited(`${sourceUrl}/manifest.json`, MAX_MANIFEST_BYTES, MANIFEST_TIMEOUT_MS, options)
     let manifest: { version?: unknown; files?: unknown }
     try {
       manifest = JSON.parse(buf.toString('utf8')) as { version?: unknown; files?: unknown }
@@ -473,7 +495,7 @@ export function createKnowledgePack(packDir: string, builtinDir: string): Knowle
         await fs.mkdir(pendingDir, { recursive: true })
         // 逐个下载 + 校验：任一失败抛错 → 外层清理 pending，指针不动（旧版继续生效）
         for (const f of changed) {
-          const buf = await fetchLimited(`${sourceUrl}/${f.path}`, MAX_FILE_BYTES, FILE_TIMEOUT_MS)
+          const buf = await fetchLimited(`${sourceUrl}/${f.path}`, MAX_FILE_BYTES, FILE_TIMEOUT_MS, options)
           if (f.size >= 0 && buf.length !== f.size) throw new Error(`「${f.path}」大小不符（期望 ${f.size}，实际 ${buf.length}）`)
           const hash = sha256Hex(buf)
           if (hash !== f.sha256) throw new Error(`「${f.path}」哈希校验失败，已中止更新（旧版不受影响）`)

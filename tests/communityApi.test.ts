@@ -4,6 +4,7 @@ import {
   createCommunityApi,
   DEFAULT_COMMUNITY_ENDPOINT,
   normalizeCommunityEndpoint,
+  resolveCommunityUrl,
 } from '../src/services/communityApi'
 
 function response(body: unknown, status = 200, headers?: HeadersInit): Response {
@@ -61,6 +62,54 @@ describe('communityApi', () => {
     await expect(createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, '', fetcher).login('alice', 'password123')).resolves.toEqual({
       token: 'sk-token', user: { id: 1, username: 'alice' },
     })
+  })
+
+  it('注册可传邮箱验证码，验证码请求与绑定遵守认证约定', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/auth/register') {
+        expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+        expect(JSON.parse(String(init?.body))).toEqual({
+          username: 'alice', password: 'password123', email: 'alice@example.com', verification_code: '123456',
+        })
+        return response({ success: true, message: '', data: { token: 'sk-token', user: { id: 1, username: 'alice' } } })
+      }
+      if (url.pathname === '/api/auth/verification') {
+        expect(url.searchParams.get('email')).toBe('alice@example.com')
+        expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+        return response({ success: true, message: '', data: null })
+      }
+      expect(url.pathname).toBe('/api/auth/email/bind')
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer sk-token')
+      expect(JSON.parse(String(init?.body))).toEqual({ email: 'alice@example.com', verification_code: '123456' })
+      return response({ success: true, message: '', data: { id: 1, username: 'alice', email_verified: true } })
+    })
+    const anonymous = createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, '', fetcher)
+    await anonymous.register('alice', 'password123', { email: 'alice@example.com', verificationCode: '123456' })
+    await expect(anonymous.requestVerification('alice@example.com')).resolves.toBeNull()
+    await expect(createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, 'sk-token', fetcher).bindEmail('alice@example.com', '123456')).resolves.toMatchObject({ email_verified: true })
+  })
+
+  it('头像 URL 只能解析为社区服务器同源 HTTP 地址', () => {
+    expect(resolveCommunityUrl(DEFAULT_COMMUNITY_ENDPOINT, '/api/avatar/avatar-key.png')).toBe(`${DEFAULT_COMMUNITY_ENDPOINT}/api/avatar/avatar-key.png`)
+    expect(resolveCommunityUrl(DEFAULT_COMMUNITY_ENDPOINT, 'https://example.com/avatar.png')).toBeNull()
+    expect(resolveCommunityUrl(DEFAULT_COMMUNITY_ENDPOINT, 'javascript:alert(1)')).toBeNull()
+  })
+
+  it('注销使用带 Bearer 的 POST，401 会统一通知会话清理', async () => {
+    const onUnauthorized = vi.fn()
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(`${DEFAULT_COMMUNITY_ENDPOINT}/api/auth/logout`)
+      expect(init?.method).toBe('POST')
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer sk-token')
+      return response({ success: true, message: '', data: null })
+    })
+    await expect(createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, 'sk-token', fetcher, onUnauthorized).logout()).resolves.toBeNull()
+    expect(onUnauthorized).not.toHaveBeenCalled()
+
+    const unauthorized = vi.fn(async () => response({ success: false, message: '无效令牌', data: null }, 401))
+    await expect(createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, 'sk-token', unauthorized, onUnauthorized).me()).rejects.toMatchObject({ status: 401 })
+    expect(onUnauthorized).toHaveBeenCalledTimes(1)
   })
 
   it('认证请求发送 Bearer，业务失败和 HTTP 401 都转成可读错误', async () => {

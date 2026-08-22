@@ -34,14 +34,9 @@ describe('preload 桥契约', () => {
   it('暴露 window.rustAssistant，且各域齐全', () => {
     expect(mocks.exposeInMainWorld).toHaveBeenCalledWith('rustAssistant', expect.any(Object))
     const a = api()
-    for (const key of ['app', 'store', 'project', 'avatar', 'knowledge', 'game', 'mod', 'git', 'ai']) {
+    for (const key of ['app', 'store', 'community', 'auth', 'project', 'knowledge', 'game', 'mod', 'git', 'ai']) {
       expect(a[key]).toBeTypeOf('object')
     }
-  })
-
-  it('启动时经 app:info 拉取版本', async () => {
-    await new Promise((r) => setTimeout(r, 0))
-    expect(mocks.invoke.mock.calls.some((c) => c[0] === 'app:info')).toBe(true)
   })
 
   it('社区请求映射到受限 IPC 通道', async () => {
@@ -49,6 +44,20 @@ describe('preload 桥契约', () => {
     const request = { url: 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl/health', method: 'GET' }
     await community.request(request)
     expect(mocks.invoke).toHaveBeenLastCalledWith('community:request', request)
+  })
+
+  it('设备认证只映射状态式 IPC，不接收或返回令牌参数', async () => {
+    const auth = api().auth as Record<string, (...args: never[]) => Promise<unknown>>
+    await auth.status()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:status')
+    await auth.startPairing()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:startPairing')
+    await auth.pollPairing()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:pollPairing')
+    await auth.cancelPairing()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:cancelPairing')
+    await auth.logout()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('auth:logout')
   })
 
   it('项目/文件域方法映射到正确通道', async () => {

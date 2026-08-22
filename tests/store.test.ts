@@ -59,6 +59,41 @@ describe('工作区 store 业务流', () => {
     expect(importMod).toHaveBeenLastCalledWith('folder')
   })
 
+  it('导入/注册新项目时清空上个项目的检查与修复状态（M39 防串数据回归）', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    // 模拟上个项目遗留的工作区状态（M39 前 addImportedProject/startModImport 漏了 translationRepair 两个字段）
+    store.setState({
+      modCheckResult: { issues: [{ file: 'units/a.ini', level: 'error', message: '旧问题' }], unitCount: 1, fileCount: 1 },
+      optimizeItems: [{ id: '1', kind: 'emptyLine', rel: 'units/a.ini' }],
+      translationRepairItems: [{ path: 'units/a.ini', digest: 'd', changeCount: 1, changes: [{ line: 1, kind: 'key', before: 'a', after: 'b' }] }],
+      translationRepairError: '旧错误',
+      modReportProgress: { done: 1, total: 2 },
+    })
+
+    // 注册已存在目录为新项目：全部工作区状态应重置
+    await store.getState().addImportedProject(MOCK_PROJECT_ROOT, '新项目', '已注册')
+    let s = store.getState()
+    expect(s.modCheckResult).toBeNull()
+    expect(s.optimizeItems).toBeNull()
+    expect(s.translationRepairItems).toBeNull()
+    expect(s.translationRepairError).toBeNull()
+    expect(s.modReportProgress).toBeNull()
+
+    // 再次污染后走 startModImport（文件包/文件夹导入）路径，同样应重置
+    store.setState({
+      translationRepairItems: [{ path: 'units/b.ini', digest: 'd2', changeCount: 1, changes: [{ line: 2, kind: 'boolean', before: '是', after: 'true' }] }],
+      translationRepairError: '又一个旧错误',
+      modCheckResult: { issues: [], unitCount: 0, fileCount: 0 },
+    })
+    bridge.mod.import = vi.fn(async () => ({ name: '导入模组', rootPath: MOCK_PROJECT_ROOT, files: 3 }))
+    await store.getState().startModImport('archive')
+    s = store.getState()
+    expect(s.translationRepairItems).toBeNull()
+    expect(s.translationRepairError).toBeNull()
+    expect(s.modCheckResult).toBeNull()
+  })
+
   it('一个项目可创建多个对话并正确切换', async () => {
     await store.getState().init()
     await store.getState().openProject()

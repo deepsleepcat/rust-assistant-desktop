@@ -240,7 +240,7 @@ function WelcomeView() {
       <div className="stagger" style={{ display: 'contents' }}>
         <div className="welcome-logo"><LogoR size="welcome" /></div>
         <h1>
-          <span>铁锈助手</span>
+          <span>铁锈工坊</span>
         </h1>
         <p className="subtitle">铁锈战争 · 模组开发工作台</p>
         <div className="welcome-actions">

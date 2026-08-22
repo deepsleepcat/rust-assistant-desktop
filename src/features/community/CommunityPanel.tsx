@@ -3,7 +3,7 @@ import { AppIcon } from '../../components/AppIcon'
 import { Modal } from '../../components/Modal'
 import { PanelState } from '../../components/PanelState'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { createCommunityApi, type CommunityApi, type CommunityComment, type CommunityPost, type CommunityPostDetail, type CommunityRankingItem, type CommunityResource, type PostFeed } from '../../services/communityApi'
+import { createCommunityApi, resolveCommunityUrl, type CommunityApi, type CommunityComment, type CommunityPost, type CommunityPostDetail, type CommunityRankingItem, type CommunityResource, type PostFeed } from '../../services/communityApi'
 import { localCommunityDataSource, TAB_LABELS, type CommunitySnapshot, type CommunityTab } from './communityData'
 
 const FEEDS: Array<{ value: PostFeed; label: string }> = [
@@ -76,6 +76,10 @@ export function CommunityPanel() {
   const settings = useWorkspaceStore((s) => s.settings)
   const following = useWorkspaceStore((s) => s.communityFollowing)
   const toggleFollow = useWorkspaceStore((s) => s.toggleCommunityFollow)
+  const loginCommunity = useWorkspaceStore((s) => s.loginCommunity)
+  const refreshCommunityAuth = useWorkspaceStore((s) => s.refreshCommunityAuth)
+  const communityAuth = useWorkspaceStore((s) => s.communityAuth)
+  const signedIn = communityAuth.status === 'signed_in'
   const [api, setApi] = useState<CommunityApi | null>(null)
   const [posts, setPosts] = useState<DisplayPost[]>([])
   const [localMode, setLocalMode] = useState(false)
@@ -93,18 +97,24 @@ export function CommunityPanel() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const openCommunityLogin = () => void loginCommunity()
+  const handleUnauthorized = useCallback(() => {
+    setCurrentUserId(null)
+    setMessage('社区登录已失效，请重新登录')
+    void refreshCommunityAuth().catch(() => undefined)
+  }, [refreshCommunityAuth])
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     const endpoint = settings.ai.communityEndpoint
     try {
-      const client = createCommunityApi(endpoint, settings.ai.communityToken)
+      const client = createCommunityApi(endpoint, undefined, undefined, handleUnauthorized)
       setApi(client)
-      if (settings.ai.communityToken) void client.me().then((user) => setCurrentUserId(user.id)).catch(() => setCurrentUserId(null))
+      if (signedIn) void client.me().then((user) => setCurrentUserId(user.id)).catch(() => setCurrentUserId(null))
       else setCurrentUserId(null)
       if (tab === 'following') {
-        if (!settings.ai.communityToken) throw new Error('请先在设置中登录社区账号')
+        if (!signedIn) throw new Error('请先在登录界面登录社区账号')
         const result = await client.following(page)
         setPosts(result.items)
         setTotal(result.total)
@@ -130,7 +140,7 @@ export function CommunityPanel() {
     } finally {
       setLoading(false)
     }
-  }, [board, feed, keyword, page, settings.ai.communityEndpoint, settings.ai.communityToken, tab, tag])
+  }, [board, handleUnauthorized, feed, keyword, page, settings.ai.communityEndpoint, signedIn, tab, tag])
 
   useEffect(() => {
     const timer = setTimeout(() => { void load() }, 0)
@@ -152,8 +162,9 @@ export function CommunityPanel() {
   }
 
   const onFollow = async (authorId: number) => {
-    if (!api || localMode || !settings.ai.communityToken) {
-      setMessage('登录社区账号后才能关注作者')
+    if (!api || localMode || !signedIn) {
+      setMessage('请先登录社区账号，再关注作者')
+      openCommunityLogin()
       return
     }
     const key = String(authorId)
@@ -168,8 +179,9 @@ export function CommunityPanel() {
   }
 
   const onLike = async (post: CommunityPost) => {
-    if (!api || localMode || !settings.ai.communityToken) {
-      setMessage('登录社区账号后才能点赞')
+    if (!api || localMode || !signedIn) {
+      setMessage('请先登录社区账号，再点赞')
+      openCommunityLogin()
       return
     }
     try {
@@ -212,7 +224,7 @@ export function CommunityPanel() {
             {tab === 'recommend' && <RecommendView feed={feed} setFeed={(value) => { setFeed(value); setPage(1) }} board={board} setBoard={(value) => { setBoard(value); setPage(1) }} keyword={keyword} setKeyword={(value) => { setKeyword(value); setPage(1) }} tag={tag} setTag={(value) => { setTag(value); setPage(1) }} onSearch={() => setRefreshKey((n) => n + 1)} posts={posts} onOpen={openPost} onLike={onLike} />}
             {tab === 'following' && <FollowingView posts={posts} localMode={localMode} onOpen={openPost} onLike={onLike} />}
             {tab === 'ranking' && <RankingView api={api} localMode={localMode} onOpen={openPost} />}
-            {tab === 'me' && <MeView api={api} token={settings.ai.communityToken} following={following} onOpenSettings={() => useWorkspaceStore.getState().setSettingsOpen(true)} onCreate={() => setFormOpen(true)} />}
+            {tab === 'me' && <MeView api={api} signedIn={signedIn} following={following} onOpenLogin={openCommunityLogin} onCreate={() => setFormOpen(true)} />}
             <div className="community-pagination">
               <span>{total > 0 ? `共 ${total} 条` : '暂无内容'}</span>
               <span className="grow" />
@@ -223,8 +235,8 @@ export function CommunityPanel() {
           </>
         )}
       </div>
-      {(detail || detailLocal) && <PostDetailModal key={(detail ?? detailLocal!).id} api={api} post={detail ?? detailLocal!} token={settings.ai.communityToken} currentUserId={currentUserId} following={following} onClose={() => { setDetail(null); setDetailLocal(null) }} onLike={onLike} onFollow={onFollow} onChanged={() => setRefreshKey((n) => n + 1)} />}
-      {formOpen && <CreatePostModal api={api} token={settings.ai.communityToken} onClose={() => setFormOpen(false)} onCreated={() => { setFormOpen(false); setRefreshKey((n) => n + 1) }} />}
+      {(detail || detailLocal) && <PostDetailModal key={(detail ?? detailLocal!).id} api={api} post={detail ?? detailLocal!} signedIn={signedIn} currentUserId={currentUserId} following={following} onClose={() => { setDetail(null); setDetailLocal(null) }} onLike={onLike} onFollow={onFollow} onChanged={() => setRefreshKey((n) => n + 1)} />}
+      {formOpen && <CreatePostModal api={api} signedIn={signedIn} onClose={() => setFormOpen(false)} onCreated={() => { setFormOpen(false); setRefreshKey((n) => n + 1) }} />}
       {message && <div className="community-toast" role="status" onClick={() => setMessage(null)}>{message}</div>}
     </section>
   )
@@ -266,28 +278,32 @@ function RankingView({ api, localMode, onOpen }: { api: CommunityApi | null; loc
   </>
 }
 
-function MeView({ api, token, following, onOpenSettings, onCreate }: { api: CommunityApi | null; token: string; following: string[]; onOpenSettings: () => void; onCreate: () => void }) {
-  const [user, setUser] = useState<{ username: string; display_name?: string; email?: string } | null>(null)
+function MeView({ api, signedIn, following, onOpenLogin, onCreate }: { api: CommunityApi | null; signedIn: boolean; following: string[]; onOpenLogin: () => void; onCreate: () => void }) {
+  const [user, setUser] = useState<{ username: string; display_name?: string; email?: string; avatar_url?: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    if (!api || !token) return
+    if (!api || !signedIn) return
     let alive = true
     void api.me().then((value) => alive && setUser(value)).catch((err) => alive && setError(err instanceof Error ? err.message : String(err)))
     return () => { alive = false }
-  }, [api, token])
-  if (!token) return <PanelState kind="empty" icon="search" title="尚未登录社区账号" description="登录后可以发帖、评论、点赞、关注作者和上传资源。" action={<button className="btn primary" onClick={onOpenSettings}>打开设置登录</button>} />
+  }, [api, signedIn])
+  if (!signedIn) return <PanelState kind="empty" icon="search" title="尚未登录社区账号" description="登录后可以发帖、评论、点赞、关注作者和上传资源。" action={<button className="btn primary" onClick={onOpenLogin}>在浏览器中登录</button>} />
   return <>
-    <div className="community-card me-profile"><span className="creator-avatar me-avatar" style={{ background: '#4285f4' }}>{(user?.display_name ?? user?.username ?? '我').slice(0, 1)}</span><div className="creator-info"><div className="creator-name">{user?.display_name ?? user?.username ?? '已登录'}</div><div className="creator-tagline">{user?.email || '社区账号'}</div></div><span className="badge success">已登录</span></div>
+    <div className="community-card me-profile">{resolveCommunityAvatar(api, user?.avatar_url) ? <img className="creator-avatar me-avatar" src={resolveCommunityAvatar(api, user?.avatar_url)!} alt="社区头像" /> : <span className="creator-avatar me-avatar" style={{ background: '#4285f4' }}>{(user?.display_name ?? user?.username ?? '我').slice(0, 1)}</span>}<div className="creator-info"><div className="creator-name">{user?.display_name ?? user?.username ?? '已登录'}</div><div className="creator-tagline">{user?.email || '社区账号'}</div></div><span className="badge success">已登录</span></div>
     {error && <div className="local-note community-warning">{error}</div>}
     <div className="disabled-row"><button className="btn primary" onClick={onCreate}>发布帖子</button><span className="local-note">已关注作者：{following.length} 人</span></div>
   </>
+}
+
+function resolveCommunityAvatar(api: CommunityApi | null, avatarUrl: string | undefined): string | null {
+  return api ? resolveCommunityUrl(api.endpoint, avatarUrl) : null
 }
 
 function PostCard({ post, onOpen, onLike }: { post: DisplayPost; onOpen: () => void; onLike: () => void }) {
   return <article className="community-card post-card"><button className="post-card-main" onClick={onOpen}><div className="post-card-title"><span>{post.pinned && '置顶 · '}{post.title}</span>{post.featured && <span className="badge info">精选</span>}</div><div className="post-card-meta">{post.author_name} · {post.board} · {formatTime(post.updated_at)}</div><p>{safeMarkdown(post.body).slice(0, 240)}</p><div className="mod-tags">{(post.tags ?? []).map((item) => <span className="badge" key={item}>{item}</span>)}</div></button><div className="post-card-foot"><span>{post.comment_count ?? 0} 评论 · {post.view_count ?? 0} 浏览</span><span className="grow" /><button className="btn-sm" onClick={(event) => { event.stopPropagation(); onLike() }}>{post.liked ? '已赞' : '点赞'} {post.like_count ?? 0}</button><button className="btn-sm" onClick={onOpen}>查看详情</button></div></article>
 }
 
-function PostDetailModal({ api, post, token, currentUserId, following, onClose, onLike, onFollow, onChanged }: { api: CommunityApi | null; post: DisplayPost; token: string; currentUserId: number | null; following: string[]; onClose: () => void; onLike: (post: CommunityPost) => void; onFollow: (id: number) => void; onChanged: () => void }) {
+function PostDetailModal({ api, post, signedIn, currentUserId, following, onClose, onLike, onFollow, onChanged }: { api: CommunityApi | null; post: DisplayPost; signedIn: boolean; currentUserId: number | null; following: string[]; onClose: () => void; onLike: (post: CommunityPost) => void; onFollow: (id: number) => void; onChanged: () => void }) {
   const [comments, setComments] = useState<CommunityComment[]>([])
   const [comment, setComment] = useState('')
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
@@ -305,7 +321,7 @@ function PostDetailModal({ api, post, token, currentUserId, following, onClose, 
     void api.comments(post.id).then((result) => setComments(result.items)).catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [api, post])
   const uploadResource = async (file: File) => {
-    if (!api || isLocal(post) || !token) return
+    if (!api || isLocal(post) || !signedIn) return
     if (file.size > 50 * 1024 * 1024) {
       setError('附件超过 50 MiB 限制')
       return
@@ -323,7 +339,7 @@ function PostDetailModal({ api, post, token, currentUserId, following, onClose, 
   }
 
   const savePost = async () => {
-    if (!api || isLocal(post) || !token || !editingTitle.trim() || !editingBody.trim()) return
+    if (!api || isLocal(post) || !signedIn || !editingTitle.trim() || !editingBody.trim()) return
     setBusy(true)
     try {
       await api.updatePost(post.id, { board: post.board, title: editingTitle.trim(), body: editingBody.trim(), content_type: post.content_type, tags: post.tags })
@@ -335,7 +351,7 @@ function PostDetailModal({ api, post, token, currentUserId, following, onClose, 
   }
 
   const deletePost = async () => {
-    if (!api || isLocal(post) || !token || !window.confirm('确定删除这篇帖子及其关联内容吗？')) return
+    if (!api || isLocal(post) || !signedIn || !window.confirm('确定删除这篇帖子及其关联内容吗？')) return
     setBusy(true)
     try {
       await api.deletePost(post.id)
@@ -364,7 +380,7 @@ function PostDetailModal({ api, post, token, currentUserId, following, onClose, 
   }
 
   const submitComment = async () => {
-    if (!api || isLocal(post) || !token || !comment.trim()) return
+    if (!api || isLocal(post) || !signedIn || !comment.trim()) return
     setBusy(true)
     try {
       const created = await api.createComment(post.id, comment.trim())
@@ -374,12 +390,12 @@ function PostDetailModal({ api, post, token, currentUserId, following, onClose, 
     } catch (err) { setError(err instanceof Error ? err.message : String(err)) } finally { setBusy(false) }
   }
   const isOwner = !isLocal(post) && currentUserId !== null && post.author_user_id === currentUserId
-  return <Modal wide title={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><AppIcon name="share" size={15} />{editingPost ? '编辑帖子' : editingTitle}</span>} onClose={onClose} footer={<><button className="btn" onClick={() => onLike(post)} disabled={isLocal(post)}>{post.liked ? '取消点赞' : '点赞'} {post.like_count ?? 0}</button><button className="btn" onClick={() => onFollow(post.author_user_id)} disabled={isLocal(post) || !token}>{following.includes(String(post.author_user_id)) ? '取消关注作者' : '关注作者'}</button>{isOwner && !editingPost && <><button className="btn" onClick={() => setEditingPost(true)}>编辑帖子</button><button className="btn-danger" onClick={() => void deletePost()}>删除帖子</button></>}{editingPost && <button className="btn primary" disabled={busy} onClick={() => void savePost()}>保存修改</button>}<button className="btn" onClick={onClose}>关闭</button></>}>
-    <div className="community-detail-body"><div className="post-card-meta">{post.author_name} · {post.board} · {formatTime(post.created_at)}</div>{editingPost ? <div className="community-form"><input aria-label="编辑帖子标题" value={editingTitle} onChange={(event) => setEditingTitle(event.target.value)} maxLength={160} /><textarea aria-label="编辑帖子正文" value={editingBody} onChange={(event) => setEditingBody(event.target.value)} maxLength={256 * 1024} rows={12} /></div> : <><div className="mod-tags">{(post.tags ?? []).map((item) => <span className="badge" key={item}>{item}</span>)}</div><p className="community-detail-desc post-body">{safeMarkdown(editingBody)}</p></>}<div className="detail-meta">{post.view_count ?? 0} 浏览 · {post.comment_count ?? comments.length} 评论 · {post.featured ? '精选' : ''}</div>{(resources.length > 0 || (!isLocal(post) && token)) && <div className="community-section"><div className="community-section-title">附件</div>{resources.map((resource) => <div className="resource-row" key={resource.id}><span>{resource.display_name}</span><span className="grow" /><button className="btn-sm" onClick={() => api?.download(resource.id).then(({ blob, filename }) => { const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000) }).catch((err) => setError(err instanceof Error ? err.message : String(err)))}>下载</button></div>)}{!isLocal(post) && token && <><input ref={fileInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.gif,.txt,.json,.zip,.rwmod" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void uploadResource(file) }} /><button className="btn-sm" disabled={busy} onClick={() => fileInputRef.current?.click()}>{busy ? '上传中…' : '上传附件'}</button></>}</div>}<div className="community-section"><div className="community-section-title">评论（{comments.length}）</div>{comments.map((item) => <div className="comment-row" key={item.id}><strong>{item.author_name}</strong><span className="post-card-meta">{formatTime(item.created_at)}</span>{editingCommentId === item.id ? <div className="comment-compose"><input value={editingCommentBody} onChange={(event) => setEditingCommentBody(event.target.value)} maxLength={32_000} /><button className="btn-sm" disabled={busy} onClick={() => void saveComment(item.id)}>保存</button><button className="btn-sm" onClick={() => setEditingCommentId(null)}>取消</button></div> : <><p>{safeMarkdown(item.body)}</p>{currentUserId !== null && item.author_user_id === currentUserId && <div className="comment-actions"><button className="btn-sm" onClick={() => { setEditingCommentId(item.id); setEditingCommentBody(item.body) }}>编辑</button><button className="btn-sm" onClick={() => void deleteComment(item.id)}>删除</button></div>}</>}</div>)}{!isLocal(post) && token && <div className="comment-compose"><input value={comment} onChange={(event) => setComment(event.target.value)} placeholder="写下评论" maxLength={32_000} /><button className="btn-sm" disabled={busy || !comment.trim()} onClick={() => void submitComment()}>发表评论</button></div>}{error && <div className="community-warning">{error}</div>}</div></div>
+  return <Modal wide title={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><AppIcon name="share" size={15} />{editingPost ? '编辑帖子' : editingTitle}</span>} onClose={onClose} footer={<><button className="btn" onClick={() => onLike(post)} disabled={isLocal(post)}>{post.liked ? '取消点赞' : '点赞'} {post.like_count ?? 0}</button><button className="btn" onClick={() => onFollow(post.author_user_id)} disabled={isLocal(post) || !signedIn}>{following.includes(String(post.author_user_id)) ? '取消关注作者' : '关注作者'}</button>{isOwner && !editingPost && <><button className="btn" onClick={() => setEditingPost(true)}>编辑帖子</button><button className="btn-danger" onClick={() => void deletePost()}>删除帖子</button></>}{editingPost && <button className="btn primary" disabled={busy} onClick={() => void savePost()}>保存修改</button>}<button className="btn" onClick={onClose}>关闭</button></>}>
+    <div className="community-detail-body"><div className="post-card-meta">{post.author_name} · {post.board} · {formatTime(post.created_at)}</div>{editingPost ? <div className="community-form"><input aria-label="编辑帖子标题" value={editingTitle} onChange={(event) => setEditingTitle(event.target.value)} maxLength={160} /><textarea aria-label="编辑帖子正文" value={editingBody} onChange={(event) => setEditingBody(event.target.value)} maxLength={256 * 1024} rows={12} /></div> : <><div className="mod-tags">{(post.tags ?? []).map((item) => <span className="badge" key={item}>{item}</span>)}</div><p className="community-detail-desc post-body">{safeMarkdown(editingBody)}</p></>}<div className="detail-meta">{post.view_count ?? 0} 浏览 · {post.comment_count ?? comments.length} 评论 · {post.featured ? '精选' : ''}</div>{(resources.length > 0 || (!isLocal(post) && signedIn)) && <div className="community-section"><div className="community-section-title">附件</div>{resources.map((resource) => <div className="resource-row" key={resource.id}><span>{resource.display_name}</span><span className="grow" /><button className="btn-sm" onClick={() => api?.download(resource.id).then(({ blob, filename }) => { const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000) }).catch((err) => setError(err instanceof Error ? err.message : String(err)))}>下载</button></div>)}{!isLocal(post) && signedIn && <><input ref={fileInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.gif,.txt,.json,.zip,.rwmod" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void uploadResource(file) }} /><button className="btn-sm" disabled={busy} onClick={() => fileInputRef.current?.click()}>{busy ? '上传中…' : '上传附件'}</button></>}</div>}<div className="community-section"><div className="community-section-title">评论（{comments.length}）</div>{comments.map((item) => <div className="comment-row" key={item.id}><strong>{item.author_name}</strong><span className="post-card-meta">{formatTime(item.created_at)}</span>{editingCommentId === item.id ? <div className="comment-compose"><input value={editingCommentBody} onChange={(event) => setEditingCommentBody(event.target.value)} maxLength={32_000} /><button className="btn-sm" disabled={busy} onClick={() => void saveComment(item.id)}>保存</button><button className="btn-sm" onClick={() => setEditingCommentId(null)}>取消</button></div> : <><p>{safeMarkdown(item.body)}</p>{currentUserId !== null && item.author_user_id === currentUserId && <div className="comment-actions"><button className="btn-sm" onClick={() => { setEditingCommentId(item.id); setEditingCommentBody(item.body) }}>编辑</button><button className="btn-sm" onClick={() => void deleteComment(item.id)}>删除</button></div>}</>}</div>)}{!isLocal(post) && signedIn && <div className="comment-compose"><input value={comment} onChange={(event) => setComment(event.target.value)} placeholder="写下评论" maxLength={32_000} /><button className="btn-sm" disabled={busy || !comment.trim()} onClick={() => void submitComment()}>发表评论</button></div>}{error && <div className="community-warning">{error}</div>}</div></div>
   </Modal>
 }
 
-function CreatePostModal({ api, token, onClose, onCreated }: { api: CommunityApi | null; token: string; onClose: () => void; onCreated: () => void }) {
+function CreatePostModal({ api, signedIn, onClose, onCreated }: { api: CommunityApi | null; signedIn: boolean; onClose: () => void; onCreated: () => void }) {
   const [board, setBoard] = useState('discussion')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -387,7 +403,7 @@ function CreatePostModal({ api, token, onClose, onCreated }: { api: CommunityApi
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const submit = async () => {
-    if (!api || !token) { setError('请先登录社区账号'); return }
+    if (!api || !signedIn) { setError('请先登录社区账号'); return }
     if (!title.trim() || !body.trim()) { setError('标题和正文不能为空'); return }
     if (title.trim().length > 160) { setError('标题最多 160 个字符'); return }
     setBusy(true)

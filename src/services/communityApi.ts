@@ -1,12 +1,13 @@
 import type { CommunityRequest } from '../types/bridge'
+import { getCommunityEndpoint, isAllowedCommunityEndpoint } from './communityConfig'
 
 /**
- * ohmytx 社区 API 客户端。
+ * 铁锈工坊社区 API 客户端。
  * 只依赖 fetch，既可在 Electron renderer 使用，也可在 Vitest 中注入假 fetch。
  * 认证令牌只进入请求头，不会出现在错误消息或日志中。
  */
 
-export const DEFAULT_COMMUNITY_ENDPOINT = 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+export const DEFAULT_COMMUNITY_ENDPOINT = getCommunityEndpoint()
 const MAX_ENDPOINT_LENGTH = 500
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
@@ -28,6 +29,8 @@ export interface CommunityUser {
   id: number
   username: string
   display_name?: string
+  avatar_url?: string
+  email_verified?: boolean
   role?: number
   status?: number
   email?: string
@@ -40,6 +43,11 @@ export interface CommunityUser {
 export interface CommunityAuthResult {
   token: string
   user: CommunityUser
+}
+
+export interface CommunityRegistrationOptions {
+  email?: string
+  verificationCode?: string
 }
 
 export interface CommunityPage<T> {
@@ -154,10 +162,23 @@ export function normalizeCommunityEndpoint(input: string): string {
   }
   try {
     const url = new URL(value)
-    if (!url.hostname) throw new Error('missing host')
+    if (!url.hostname || url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('invalid origin')
+    if (!isAllowedCommunityEndpoint(url.origin)) throw new Error('untrusted origin')
     return url.toString().replace(/\/+$/, '')
   } catch {
     throw new CommunityApiError('社区服务器地址格式无效', { code: 'invalid_endpoint' })
+  }
+}
+
+/** 将后端返回的相对头像路径解析为同源 URL；拒绝非 HTTP(S) 协议。 */
+export function resolveCommunityUrl(endpoint: string, value: string | undefined): string | null {
+  if (!value || value.length > 600) return null
+  try {
+    const base = new URL(normalizeCommunityEndpoint(endpoint))
+    const url = new URL(value, `${base.toString()}/`)
+    return /^https?:$/.test(url.protocol) && url.origin === base.origin ? url.toString() : null
+  } catch {
+    return null
   }
 }
 
@@ -226,7 +247,12 @@ async function defaultCommunityFetch(input: RequestInfo | URL, init?: RequestIni
       ? { name: file.name, type: file.type, bytes: await file.arrayBuffer() }
       : undefined
     const body = typeof init?.body === 'string' ? init.body : undefined
-    const result = await bridge.request({ url: source, method, headers: requestHeaders, body, upload })
+    // 认证凭据由主进程注入：renderer 的 Authorization 一律剥除，只表达「需要认证」的意图
+    const authenticated = headers.has('Authorization') || Boolean((init as { authenticated?: boolean } | undefined)?.authenticated)
+    headers.delete('Authorization')
+    const sanitizedHeaders: Record<string, string> = {}
+    headers.forEach((value, key) => { sanitizedHeaders[key] = value })
+    const result = await bridge.request({ url: source, method, headers: sanitizedHeaders, authenticated, body, upload })
     return new Response(result.body, { status: result.status, headers: result.headers })
   }
 
@@ -247,6 +273,7 @@ export function createCommunityApi(
   endpoint: string,
   token = '',
   fetchImpl: typeof fetch = defaultCommunityFetch,
+  onUnauthorized?: () => void,
 ): CommunityApi {
   const base = normalizeCommunityEndpoint(endpoint)
   const authToken = token.trim()
@@ -257,9 +284,11 @@ export function createCommunityApi(
     const headers = new Headers(init.headers)
     if (!headers.has('Accept')) headers.set('Accept', 'application/json')
     if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+    const requestInit: RequestInit & { authenticated?: boolean } = { ...init, headers, signal: controller.signal }
     if (options.auth !== false && authToken) headers.set('Authorization', `Bearer ${authToken}`)
+    if (options.auth !== false) requestInit.authenticated = true
     try {
-      const response = await fetchImpl(`${base}${path}`, { ...init, headers, signal: controller.signal })
+      const response = await fetchImpl(`${base}${path}`, requestInit)
       const requestId = headerValue(response.headers, 'X-Oneapi-Request-Id')
       const text = await readLimitedText(response, options.maxBytes ?? MAX_RESPONSE_BYTES)
       let payload: CommunityApiEnvelope<T> | null = null
@@ -276,7 +305,10 @@ export function createCommunityApi(
       }
       return payload.data as T
     } catch (error) {
-      if (error instanceof CommunityApiError) throw error
+      if (error instanceof CommunityApiError) {
+        if (error.status === 401) onUnauthorized?.()
+        throw error
+      }
       if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('社区服务器请求超时', { code: 'network' })
       throw new CommunityApiError('无法连接社区服务器，请检查网络或服务器地址', { code: 'network' })
     } finally {
@@ -308,8 +340,29 @@ export function createCommunityApi(
         clearTimeout(timer)
       }
     },
-    register: (username: string, password: string) => json<CommunityAuthResult>('/api/auth/register', 'POST', { username, password }, false),
+    register: (username: string, password: string, options: CommunityRegistrationOptions = {}) => json<CommunityAuthResult>(
+      '/api/auth/register',
+      'POST',
+      {
+        username,
+        password,
+        ...(options.email ? { email: options.email } : {}),
+        ...(options.verificationCode ? { verification_code: options.verificationCode } : {}),
+      },
+      false,
+    ),
     login: (username: string, password: string) => json<CommunityAuthResult>('/api/auth/login', 'POST', { username, password }, false),
+    requestVerification: (email: string) => request<null>(
+      `/api/auth/verification?${query({ email })}`,
+      {},
+      { auth: false },
+    ),
+    bindEmail: (email: string, verificationCode: string) => json<CommunityUser>(
+      '/api/auth/email/bind',
+      'POST',
+      { email, verification_code: verificationCode },
+    ),
+    logout: () => request<null>('/api/auth/logout', { method: 'POST' }),
     me: () => request<CommunityUser>('/api/me'),
     boards: async () => {
       const data = await request<{ items?: CommunityBoard[] }>('/api/community/boards', {}, { auth: false })
@@ -353,7 +406,9 @@ export function createCommunityApi(
           const text = await readLimitedText(response, 64 * 1024)
           let message = ''
           try { message = (JSON.parse(text) as { message?: string }).message ?? '' } catch { /* 附件错误可能不是 JSON */ }
-          throw new CommunityApiError(errorMessage(response.status, message), { status: response.status, code: 'http' })
+          const error = new CommunityApiError(errorMessage(response.status, message), { status: response.status, code: 'http' })
+          if (response.status === 401) onUnauthorized?.()
+          throw error
         }
         const bytes = await readLimitedBytes(response, MAX_DOWNLOAD_BYTES)
         const blob = new Blob([bytes.buffer as ArrayBuffer], { type: response.headers.get('content-type') ?? '' })
@@ -385,8 +440,11 @@ export interface CommunityApi {
   endpoint: string
   tokenConfigured: boolean
   health(): Promise<CommunityHealth>
-  register(username: string, password: string): Promise<CommunityAuthResult>
+  register(username: string, password: string, options?: CommunityRegistrationOptions): Promise<CommunityAuthResult>
   login(username: string, password: string): Promise<CommunityAuthResult>
+  requestVerification(email: string): Promise<null>
+  bindEmail(email: string, verificationCode: string): Promise<CommunityUser>
+  logout(): Promise<null>
   me(): Promise<CommunityUser>
   boards(): Promise<CommunityBoard[]>
   tags(keyword?: string, page?: number, pageSize?: number): Promise<CommunityPage<CommunityTag>>

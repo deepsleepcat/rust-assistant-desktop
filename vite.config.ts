@@ -13,9 +13,18 @@ export default defineConfig({
     // 误把真实社区降级成示例数据；生产 Electron 使用受限 IPC 代理。
     proxy: {
       '/community-api': {
-        target: 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl',
+        target: process.env.VITE_COMMUNITY_ENDPOINT === 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+          ? 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+          : 'http://localhost:3000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/community-api/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (request) => {
+            request.setHeader('Origin', process.env.VITE_COMMUNITY_ENDPOINT === 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+              ? 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+              : 'http://localhost:3000')
+          })
+        },
       },
     },
   },
