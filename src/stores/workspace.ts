@@ -259,7 +259,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             return
           }
           const activePairing = get().communityAuth.pairing
-          if (activePairing) schedulePairingCheck(generation, 3_000, activePairing.expiresAt)
+          if (activePairing) schedulePairingCheck(generation, status.pollAfterMs ?? 3_000, activePairing.expiresAt)
         } catch (error) {
           if (generation !== authGeneration) return
           clearPairingTimer()

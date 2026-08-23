@@ -21,6 +21,7 @@ const REQUEST_TIMEOUT_MS = 15_000
 const MAX_RESPONSE_BYTES = 128 * 1024
 const DEFAULT_PAIRING_LIFETIME_MS = 10 * 60 * 1000
 const DEFAULT_POLL_DELAY_MS = 3_000
+const MAX_POLL_DELAY_MS = 30_000
 
 /**
  * 配对轮询按后端 message 文案识别终态（M39 过渡措施：等后端提供机器可读的
@@ -71,7 +72,7 @@ export interface CommunityAuthDependencies {
 }
 
 export class CommunityAuthError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly retryable = false) {
     super(message)
     this.name = 'CommunityAuthError'
   }
@@ -140,7 +141,7 @@ function toUser(value: unknown): CommunityAuthUser | undefined {
   const data = object(value)
   const id = number(data?.id)
   const username = string(data?.username, 160)
-  if (id === null || !username) return undefined
+  if (id === null || !Number.isInteger(id) || id < 1 || !username) return undefined
   const displayName = string(data?.display_name, 160)
   const avatarUrl = string(data?.avatar_url, 600)
   const email = string(data?.email, 320)
@@ -192,13 +193,31 @@ async function readLimitedBytes(response: Response, maxBytes: number): Promise<U
 async function readJson(response: Response): Promise<unknown> {
   const text = new TextDecoder().decode(await readLimitedBytes(response, MAX_RESPONSE_BYTES)).trim()
   if (!text) return {}
-  try { return JSON.parse(text) as unknown } catch { throw new CommunityAuthError('社区配对服务返回了无效数据') }
+  try { return JSON.parse(text) as unknown } catch {
+    if (!response.ok) return {}
+    throw new CommunityAuthError('社区配对服务返回了无效数据')
+  }
 }
 
-function publicStatus(status: unknown): CommunityAuthStatus {
-  if (status === 'pending' || status === 'approved') return { state: 'pairing' }
-  if (status === 'claimed') return { state: 'signed-in' }
-  return { state: 'signed-out' }
+function publicStatus(status: unknown): CommunityAuthStatus['state'] {
+  if (status === 'pending' || status === 'approved') return 'pairing'
+  if (status === 'claimed') return 'signed-in'
+  if (status === 'denied' || status === 'cancelled' || status === 'expired') return 'signed-out'
+  throw new CommunityAuthError('社区配对服务返回了未知状态')
+}
+
+function isCommunityToken(value: string | null): value is string {
+  return value !== null && /^sk-[A-Za-z0-9]{48}$/.test(value)
+}
+
+function retryPairing(pairing: ActivePairing): CommunityAuthStatus {
+  pairing.pollAfterMs = Math.min(MAX_POLL_DELAY_MS, Math.max(DEFAULT_POLL_DELAY_MS, pairing.pollAfterMs * 2))
+  return { state: 'pairing', pollAfterMs: pairing.pollAfterMs }
+}
+
+function waitingForPairing(pairing: ActivePairing): CommunityAuthStatus {
+  pairing.pollAfterMs = DEFAULT_POLL_DELAY_MS
+  return { state: 'pairing', pollAfterMs: pairing.pollAfterMs }
 }
 
 export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityAuthService {
@@ -229,8 +248,8 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
       return { response, body: await readJson(response) }
     } catch (error) {
       if (error instanceof CommunityAuthError) throw error
-      if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityAuthError('社区配对服务请求超时')
-      throw new CommunityAuthError('无法连接社区配对服务')
+      if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityAuthError('社区配对服务请求超时', true)
+      throw new CommunityAuthError('无法连接社区配对服务', true)
     } finally {
       clearTimeout(timeout)
     }
@@ -239,26 +258,35 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
   async function status(): Promise<CommunityAuthStatus> {
     if (!deps.credentials.isAvailable()) return { state: 'unavailable' }
     if (activePairing && activePairing.expiresAt <= now()) activePairing = null
-    if (activePairing) return { state: 'pairing' }
+    if (activePairing) return { state: 'pairing', pollAfterMs: activePairing.pollAfterMs }
     if (await deps.credentials.hasCredential()) {
       if (!currentUser) {
-        let revoked = false
-        await deps.credentials.withCredential(async (credential) => {
-          const { response, body } = await request(apiUrl(origin, AUTH_ME_PATH), 'GET', undefined, undefined, credential)
-          if (!response.ok) {
-            revoked = response.status === 401
-            throw new CommunityAuthError('社区登录已失效')
-          }
-          currentUser = toUser(successfulData(body))
-        }).catch(async () => {
-          if (revoked) {
+        let unauthorized = false
+        let credentialRead = false
+        try {
+          await deps.credentials.withCredential(async (credential) => {
+            credentialRead = true
+            const { response, body } = await request(apiUrl(origin, AUTH_ME_PATH), 'GET', undefined, undefined, credential)
+            if (response.status === 401) {
+              unauthorized = true
+              throw new CommunityAuthError('社区登录已失效')
+            }
+            if (!response.ok) throw new CommunityAuthError(`无法验证社区登录状态（HTTP ${response.status}）`, response.status >= 500)
+            const user = toUser(successfulData(body))
+            if (!user) throw new CommunityAuthError('社区配对服务返回了无效用户数据')
+            currentUser = user
+          })
+        } catch (error) {
+          if (unauthorized) {
             currentUser = undefined
             await deps.credentials.clearCredential()
+            return { state: 'signed-out' }
           }
-        })
-        if (revoked) return { state: 'signed-out' }
+          throw error
+        }
+        if (!credentialRead) return { state: 'signed-out' }
       }
-      return { state: 'signed-in', ...(currentUser ? { user: currentUser } : {}) }
+      return { state: 'signed-in', user: currentUser }
     }
     currentUser = undefined
     return { state: 'signed-out' }
@@ -314,28 +342,38 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
       const generation = operationGeneration
       const pairing = activePairing
       if (!pairing || pairing.expiresAt <= now()) { activePairing = null; return status() }
-      const { response, body } = await request(apiUrl(origin, DEVICE_POLL_PATH, { pairing_id: pairing.pairingId }), 'GET', undefined, pairing.deviceSecret)
+      let response: Response
+      let body: unknown
+      try {
+        ({ response, body } = await request(apiUrl(origin, DEVICE_POLL_PATH, { pairing_id: pairing.pairingId }), 'GET', undefined, pairing.deviceSecret))
+      } catch (error) {
+        if (activePairing !== pairing || operationGeneration !== generation) return status()
+        if (error instanceof CommunityAuthError && error.retryable) return retryPairing(pairing)
+        activePairing = null
+        throw error
+      }
       if (activePairing !== pairing || operationGeneration !== generation) return status()
       if (!response.ok) {
         const data = object(body)
         if (response.status === 404 || isPairingTerminalResponse(data)) { activePairing = null; return status() }
-        if (response.status === 409 && (data?.error_code === PAIRING_ERROR_CODES.pendingApproval || data?.message === PAIRING_ERROR_MESSAGES.pendingApproval)) return { state: 'pairing' }
-        if (response.status === 429) {
-          activePairing = null
-          throw new CommunityAuthError(typeof data?.message === 'string' ? data.message : '请求过于频繁，请稍后再试')
-        }
+        if (response.status === 409 && (data?.error_code === PAIRING_ERROR_CODES.pendingApproval || data?.message === PAIRING_ERROR_MESSAGES.pendingApproval)) return waitingForPairing(pairing)
+        if (response.status === 429 || response.status >= 500) return retryPairing(pairing)
         activePairing = null
         throw new CommunityAuthError(typeof data?.message === 'string' ? data.message : '社区设备配对状态查询失败')
       }
       const data = successfulData(body)
       const state = publicStatus(data.status)
-      if (state.state === 'pairing') return { state: 'pairing' }
-      if (state.state === 'signed-out') {
+      if (state === 'pairing') return waitingForPairing(pairing)
+      if (state === 'signed-out') {
         activePairing = null
-        return state
+        return { state: 'signed-out' }
       }
-      const token = string(data.token, 8192)
-      if (!token || !token.startsWith('sk-')) throw new CommunityAuthError('社区配对服务返回了无效会话')
+      const token = string(data.token, 128)
+      const user = toUser(data.user)
+      if (!isCommunityToken(token) || !user) {
+        activePairing = null
+        throw new CommunityAuthError('社区配对服务返回了无效会话')
+      }
       if (operationGeneration !== generation || activePairing !== pairing) return status()
       await enqueueCredentialMutation(async () => {
         if (operationGeneration !== generation || activePairing !== pairing) return
@@ -345,9 +383,9 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
         }
       })
       if (operationGeneration !== generation || activePairing !== pairing) return status()
-      currentUser = toUser(data.user)
+      currentUser = user
       activePairing = null
-      return { state: 'signed-in', ...(currentUser ? { user: currentUser } : {}) }
+      return { state: 'signed-in', user: currentUser }
     },
     cancelPairing: async () => {
       operationGeneration += 1

@@ -121,6 +121,38 @@ describe('社区工作区状态（M33）', () => {
     }
   })
 
+  it('uses the main-process retry delay for the next automatic pairing check', async () => {
+    vi.useFakeTimers()
+    try {
+      const pollPairing = vi
+        .fn()
+        .mockResolvedValueOnce({ state: 'pairing' as const, pollAfterMs: 6_000 })
+        .mockResolvedValueOnce({ state: 'signed-in' as const, user: { id: 7, username: 'alice' } })
+      bridge = {
+        ...bridge,
+        auth: {
+          status: async () => ({ state: 'signed-out' as const }),
+          startPairing: async () => ({ state: 'pairing' as const, userCode: 'ABCD-1234', expiresAt: Date.now() + 60_000, pollAfterMs: 3_000 }),
+          pollPairing,
+          cancelPairing: async () => ({ state: 'signed-out' as const }),
+          logout: async () => ({ state: 'signed-out' as const }),
+        },
+      }
+      store = createWorkspaceStore(bridge)
+
+      await store.getState().loginCommunity()
+      await vi.advanceTimersByTimeAsync(3_000)
+      expect(pollPairing).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(5_999)
+      expect(pollPairing).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(pollPairing).toHaveBeenCalledTimes(2)
+      expect(store.getState().communityAuth.status).toBe('signed_in')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('cancelling clears a scheduled automatic pairing check', async () => {
     vi.useFakeTimers()
     try {

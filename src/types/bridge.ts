@@ -104,6 +104,7 @@ export type CommunityAuthState = 'unavailable' | 'signed-out' | 'pairing' | 'sig
 export interface CommunityAuthStatus {
   state: CommunityAuthState
   user?: CommunityAuthUser
+  pollAfterMs?: number
 }
 
 export interface CommunityAuthPairing {

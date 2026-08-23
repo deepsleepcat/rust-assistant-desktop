@@ -128,7 +128,7 @@ describe('community device auth', () => {
         success: true,
         data: {
           status: 'claimed',
-          token: 'sk-desktop-bearer-token',
+          token: `sk-${'a'.repeat(48)}`,
           user: { id: 7, username: 'alice', display_name: 'Alice' },
         },
       })
@@ -145,7 +145,7 @@ describe('community device auth', () => {
     expect(signedIn).toEqual({ state: 'signed-in', user: { id: 7, username: 'alice', displayName: 'Alice' } })
     expect(signedIn).not.toHaveProperty('token')
     expect(String(store.data.get(COMMUNITY_AUTH_CREDENTIAL_KEY))).not.toContain('desktop-bearer-token')
-    await expect(credentials.withCredential((value) => value)).resolves.toBe('sk-desktop-bearer-token')
+    await expect(credentials.withCredential((value) => value)).resolves.toBe(`sk-${'a'.repeat(48)}`)
   })
 
   it('ends terminal pairings without treating them as malformed sessions', async () => {
@@ -199,14 +199,18 @@ describe('community device auth', () => {
     await expect(credentials.hasCredential()).resolves.toBe(false)
   })
 
-  it('cancels locally and clears the encrypted credential even when remote logout fails', async () => {
+  it('keeps a verified session while cancelling and clears the encrypted credential when remote logout fails', async () => {
     const store = createMemoryStore()
     const credentials = createSecureCredentials(store, createSafeStorage())
-    await credentials.saveCredential('desktop-bearer-token')
-    const fetcher = vi.fn(async () => json({ success: false, data: null }, 503))
+    await credentials.saveCredential(`sk-${'b'.repeat(48)}`)
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/me') return json({ success: true, data: { id: 9, username: 'alice' } })
+      return json({ success: false, data: null }, 503)
+    })
     const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: fetcher })
 
-    await expect(auth.cancelPairing()).resolves.toEqual({ state: 'signed-in' })
+    await expect(auth.cancelPairing()).resolves.toEqual({ state: 'signed-in', user: { id: 9, username: 'alice' } })
     await expect(auth.logout()).resolves.toEqual({ state: 'signed-out' })
     await expect(credentials.hasCredential()).resolves.toBe(false)
     expect(store.data.get(COMMUNITY_AUTH_CREDENTIAL_KEY)).toBeNull()
@@ -221,7 +225,7 @@ describe('community device auth', () => {
     await expect(auth.startPairing()).rejects.toThrow('请求过于频繁，请稍后再试')
   })
 
-  it('stops the pairing flow and surfaces the server message when a manual poll is rate limited', async () => {
+  it('keeps pairing active and backs off when a manual poll is rate limited', async () => {
     const store = createMemoryStore()
     const credentials = createSecureCredentials(store, createSafeStorage())
     const openExternal = vi.fn(async () => undefined)
@@ -248,7 +252,148 @@ describe('community device auth', () => {
     const auth = createCommunityAuth({ credentials, openExternal, fetch: fetcher })
 
     await auth.startPairing()
-    await expect(auth.pollPairing()).rejects.toThrow('请求过于频繁，请稍后再试')
-    expect(await auth.status()).toEqual({ state: 'signed-out' })
+    await expect(auth.pollPairing()).resolves.toEqual({ state: 'pairing', pollAfterMs: 6_000 })
+    expect(await auth.status()).toEqual({ state: 'pairing', pollAfterMs: 6_000 })
+    await expect(auth.pollPairing()).resolves.toEqual({ state: 'pairing', pollAfterMs: 3_000 })
+  })
+
+  it('recovers the same claimed token after a retryable poll failure', async () => {
+    const store = createMemoryStore()
+    const credentials = createSecureCredentials(store, createSafeStorage())
+    let pollCount = 0
+    const token = `sk-${'r'.repeat(48)}`
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/device/pairing/start') {
+        return json({
+          success: true,
+          data: {
+            pairing_id: 'recovery-pairing-id',
+            device_secret: 'recovery-device-secret',
+            user_code: 'RECOVER-1',
+            approval_url: `${TRUSTED_COMMUNITY_ORIGIN}${COMMUNITY_PAIRING_PAGE_PATH}?code=RECOVER-1`,
+            expires_at: 700,
+          },
+        })
+      }
+      pollCount += 1
+      if (pollCount === 1) throw new DOMException('aborted', 'AbortError')
+      return json({ success: true, data: { status: 'claimed', token, user: { id: 14, username: 'recovered-user' } } })
+    })
+    const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: fetcher })
+
+    await auth.startPairing()
+    await expect(auth.pollPairing()).resolves.toEqual({ state: 'pairing', pollAfterMs: 6_000 })
+    await expect(auth.pollPairing()).resolves.toEqual({ state: 'signed-in', user: { id: 14, username: 'recovered-user' } })
+    await expect(credentials.withCredential((value) => value)).resolves.toBe(token)
+  })
+
+  it('backs off when a rate-limited gateway response is not JSON', async () => {
+    const store = createMemoryStore()
+    const credentials = createSecureCredentials(store, createSafeStorage())
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/device/pairing/start') {
+        return json({
+          success: true,
+          data: {
+            pairing_id: 'html-pairing-id',
+            device_secret: 'html-device-secret',
+            user_code: 'HTML-429',
+            approval_url: `${TRUSTED_COMMUNITY_ORIGIN}${COMMUNITY_PAIRING_PAGE_PATH}?code=HTML-429`,
+            expires_at: 700,
+          },
+        })
+      }
+      return new Response('<html>rate limited</html>', { status: 429, headers: { 'content-type': 'text/html' } })
+    })
+    const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: fetcher })
+
+    await auth.startPairing()
+    await expect(auth.pollPairing()).resolves.toEqual({ state: 'pairing', pollAfterMs: 6_000 })
+  })
+
+  it('accepts a normal community user after a complete claimed response', async () => {
+    const store = createMemoryStore()
+    const credentials = createSecureCredentials(store, createSafeStorage())
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/device/pairing/start') {
+        return json({
+          success: true,
+          data: {
+            pairing_id: 'pairing-id',
+            device_secret: 'device-secret',
+            user_code: 'NORMAL-01',
+            approval_url: `${TRUSTED_COMMUNITY_ORIGIN}${COMMUNITY_PAIRING_PAGE_PATH}?code=NORMAL-01`,
+            expires_at: 700,
+          },
+        })
+      }
+      return json({
+        success: true,
+        data: {
+          status: 'claimed',
+          token: `sk-${'c'.repeat(48)}`,
+          user: { id: 12, username: 'normal-user', role: 1, status: 1 },
+        },
+      })
+    })
+    const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: fetcher })
+
+    await auth.startPairing()
+    await expect(auth.pollPairing()).resolves.toEqual({ state: 'signed-in', user: { id: 12, username: 'normal-user' } })
+  })
+
+  it('clears only an unauthorized stored credential and reports other verification failures', async () => {
+    for (const testCase of [
+      { name: 'unauthorized', response: json({ success: false, message: 'expired' }, 401), clears: true },
+      { name: 'forbidden', response: json({ success: false, message: 'disabled' }, 403), clears: false },
+      { name: 'server error', response: json({ success: false, message: 'unavailable' }, 503), clears: false },
+      { name: 'invalid response', response: new Response('not-json', { status: 200 }), clears: false },
+    ]) {
+      const store = createMemoryStore()
+      const credentials = createSecureCredentials(store, createSafeStorage())
+      await credentials.saveCredential(`sk-${'d'.repeat(48)}`)
+      const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: async () => testCase.response.clone() })
+      if (testCase.clears) {
+        await expect(auth.status()).resolves.toEqual({ state: 'signed-out' })
+        await expect(credentials.hasCredential()).resolves.toBe(false)
+      } else {
+        await expect(auth.status(), testCase.name).rejects.toThrow()
+        await expect(credentials.hasCredential()).resolves.toBe(true)
+      }
+    }
+  })
+
+  it('rejects unknown pairing states and claimed responses without a complete user', async () => {
+    for (const data of [
+      { status: 'unexpected' },
+      { status: 'claimed', token: `sk-${'e'.repeat(48)}` },
+    ]) {
+      const store = createMemoryStore()
+      const credentials = createSecureCredentials(store, createSafeStorage())
+      const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input))
+        if (url.pathname === '/api/device/pairing/start') {
+          return json({
+            success: true,
+            data: {
+              pairing_id: 'pairing-id',
+              device_secret: 'device-secret',
+              user_code: 'STATE-01',
+              approval_url: `${TRUSTED_COMMUNITY_ORIGIN}${COMMUNITY_PAIRING_PAGE_PATH}?code=STATE-01`,
+              expires_at: 700,
+            },
+          })
+        }
+        return json({ success: true, data })
+      })
+      const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: fetcher })
+
+      await auth.startPairing()
+      await expect(auth.pollPairing()).rejects.toThrow()
+      await expect(credentials.hasCredential()).resolves.toBe(false)
+    }
   })
 })
