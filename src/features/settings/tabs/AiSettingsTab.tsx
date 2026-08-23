@@ -67,7 +67,7 @@ export function AiSettingsTab() {
           AI 提供者
           <div className="desc">AI 对话当前仅支持 DeepSeek；社区服务器用于帖子和账号，不会自动作为 AI 提供者</div>
         </span>
-        <div className="seg-group">
+        <div className="seg-group settings-control">
           <button className={settings.ai.provider === 'deepseek' ? 'active' : ''} onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
             DeepSeek
           </button>
@@ -93,10 +93,10 @@ export function AiSettingsTab() {
                   : '在 platform.deepseek.com 获取，保存进系统安全存储（加密，不落明文文件）'}
               </div>
             </span>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="settings-api-row">
               <input
                 type="password"
-                style={{ width: 260 }}
+                className="settings-api-key"
                 placeholder="sk-..."
                 value={deepSeekKeyDraft}
                 onChange={(e) => setDeepSeekKeyDraft(e.target.value)}

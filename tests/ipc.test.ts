@@ -205,6 +205,34 @@ describe('社区请求代理', () => {
     vi.unstubAllGlobals()
   })
 
+  it('头像认证读取返回图片二进制并注入主进程 Bearer', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCommunityIpc(ctx, ipc)
+    const injected = 'sk-avatar-secret'
+    ctx.communityAuth = {
+      withCredential: async (apply: (secret: string) => unknown) => apply(injected),
+    } as never
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('Authorization')).toBe(`Bearer ${injected}`)
+      return new Response(Uint8Array.from(Buffer.from(TINY_PNG, 'base64')), {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      })
+    })
+    vi.stubGlobal('fetch', fetcher)
+    const trusted = 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+    const objectKey = `${'b'.repeat(48)}.png`
+    const result = await invoke<{ status: number; headers: Record<string, string>; body: ArrayBuffer }>(channels, 'community:request', {
+      url: `${trusted}/api/avatar/${objectKey}`,
+      method: 'GET',
+      authenticated: true,
+    })
+    expect(result.status).toBe(200)
+    expect(result.headers['content-type']).toBe('image/png')
+    expect(new Uint8Array(result.body).byteLength).toBeGreaterThan(0)
+    vi.unstubAllGlobals()
+  })
+
   it('认证意图由主进程注入 Bearer，renderer 提供的 Authorization 一律剥除', async () => {
     const { channels, ipc } = createFakeIpc()
     registerCommunityIpc(ctx, ipc)
@@ -243,6 +271,10 @@ describe('社区请求代理', () => {
     expect(fetcher).toHaveBeenCalledTimes(2)
     await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', upload: null })).rejects.toThrow('社区附件参数无效')
     await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', upload: { name: 'x.zip', type: 'application/zip', bytes: 'not-an-array-buffer' } })).rejects.toThrow('社区附件超过 50 MiB 限制')
+    const upload = { name: 'x.zip', type: 'application/zip', bytes: new ArrayBuffer(1) }
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/me`, method: 'POST', upload })).rejects.toThrow('附件只能上传到帖子资源接口')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'PUT', upload })).rejects.toThrow('附件只能上传到帖子资源接口')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', body: '{}', upload })).rejects.toThrow('附件只能上传到帖子资源接口')
     vi.unstubAllGlobals()
   })
 })

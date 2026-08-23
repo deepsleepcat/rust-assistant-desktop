@@ -10,7 +10,9 @@ import { getCommunityEndpoint, isAllowedCommunityEndpoint } from './communityCon
 export const DEFAULT_COMMUNITY_ENDPOINT = getCommunityEndpoint()
 const MAX_ENDPOINT_LENGTH = 500
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024
 const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
+const COMMUNITY_AVATAR_PATH = /^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/
 const REQUEST_TIMEOUT_MS = 15_000
 
 export interface CommunityApiEnvelope<T> {
@@ -170,16 +172,20 @@ export function normalizeCommunityEndpoint(input: string): string {
   }
 }
 
-/** 将后端返回的相对头像路径解析为同源 URL；拒绝非 HTTP(S) 协议。 */
+/** 将后端返回的头像路径解析为 IPC 白名单内的同源 URL。 */
 export function resolveCommunityUrl(endpoint: string, value: string | undefined): string | null {
   if (!value || value.length > 600) return null
   try {
     const base = new URL(normalizeCommunityEndpoint(endpoint))
     const url = new URL(value, `${base.toString()}/`)
-    return /^https?:$/.test(url.protocol) && url.origin === base.origin ? url.toString() : null
+    return url.origin === base.origin && COMMUNITY_AVATAR_PATH.test(url.pathname) && !url.search && !url.hash ? url.toString() : null
   } catch {
     return null
   }
+}
+
+export function createAvatarObjectUrl(bytes: ArrayBuffer, contentType: string): string {
+  return URL.createObjectURL(new Blob([bytes], { type: contentType || 'image/png' }))
 }
 
 function headerValue(headers: Headers, name: string): string | undefined {
@@ -364,6 +370,36 @@ export function createCommunityApi(
     ),
     logout: () => request<null>('/api/auth/logout', { method: 'POST' }),
     me: () => request<CommunityUser>('/api/me'),
+    avatar: async (value: string | undefined) => {
+      const resolved = resolveCommunityUrl(base, value)
+      if (!resolved) return null
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+      try {
+        const headers = new Headers({ Accept: 'image/png,image/*;q=0.8' })
+        const requestInit: RequestInit & { authenticated?: boolean } = { headers, signal: controller.signal, authenticated: true }
+        if (authToken) headers.set('Authorization', `Bearer ${authToken}`)
+        const response = await fetchImpl(resolved, requestInit)
+        if (response.status === 401) onUnauthorized?.()
+        if (!response.ok) throw new CommunityApiError('社区头像加载失败', { status: response.status, code: 'http' })
+        const contentType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() ?? ''
+        if (contentType !== 'image/png') throw new CommunityApiError('社区头像格式无效', { status: response.status, code: 'invalid_response' })
+        const bytes = await readLimitedBytes(response, MAX_AVATAR_BYTES)
+        const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10]
+        if (bytes.byteLength < pngSignature.length || !pngSignature.every((value, index) => bytes[index] === value)) {
+          throw new CommunityApiError('社区头像内容无效', { status: response.status, code: 'invalid_response' })
+        }
+        const copy = new Uint8Array(bytes.byteLength)
+        copy.set(bytes)
+        return { bytes: copy.buffer, contentType }
+      } catch (error) {
+        if (error instanceof CommunityApiError) throw error
+        if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('社区头像加载超时', { code: 'network' })
+        throw new CommunityApiError('社区头像加载失败', { code: 'network' })
+      } finally {
+        clearTimeout(timer)
+      }
+    },
     boards: async () => {
       const data = await request<{ items?: CommunityBoard[] }>('/api/community/boards', {}, { auth: false })
       return Array.isArray(data) ? data : (data.items ?? [])
@@ -399,7 +435,8 @@ export function createCommunityApi(
       try {
         const headers = new Headers({ Accept: '*/*' })
         if (authToken) headers.set('Authorization', `Bearer ${authToken}`)
-        const response = await fetchImpl(`${base}/api/community/resources/${encodeURIComponent(id)}/download`, { headers, signal: controller.signal })
+        const requestInit: RequestInit & { authenticated?: boolean } = { headers, signal: controller.signal, authenticated: true }
+        const response = await fetchImpl(`${base}/api/community/resources/${encodeURIComponent(id)}/download`, requestInit)
         const length = Number(response.headers.get('content-length') ?? '')
         if (Number.isFinite(length) && length > MAX_DOWNLOAD_BYTES) throw new CommunityApiError('下载资源超过 50 MiB 限制', { status: response.status, code: 'invalid_response' })
         if (!response.ok) {
@@ -446,6 +483,7 @@ export interface CommunityApi {
   bindEmail(email: string, verificationCode: string): Promise<CommunityUser>
   logout(): Promise<null>
   me(): Promise<CommunityUser>
+  avatar(value: string | undefined): Promise<{ bytes: ArrayBuffer; contentType: string } | null>
   boards(): Promise<CommunityBoard[]>
   tags(keyword?: string, page?: number, pageSize?: number): Promise<CommunityPage<CommunityTag>>
   posts(options?: ListPostsOptions): Promise<CommunityPage<CommunityPost>>

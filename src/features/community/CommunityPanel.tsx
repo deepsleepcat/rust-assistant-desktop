@@ -3,7 +3,8 @@ import { AppIcon } from '../../components/AppIcon'
 import { Modal } from '../../components/Modal'
 import { PanelState } from '../../components/PanelState'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { createCommunityApi, resolveCommunityUrl, type CommunityApi, type CommunityComment, type CommunityPost, type CommunityPostDetail, type CommunityRankingItem, type CommunityResource, type PostFeed } from '../../services/communityApi'
+import { createCommunityApi, type CommunityApi, type CommunityComment, type CommunityPost, type CommunityPostDetail, type CommunityRankingItem, type CommunityResource, type PostFeed } from '../../services/communityApi'
+import { CommunityAvatar } from '../../components/CommunityAvatar'
 import { localCommunityDataSource, TAB_LABELS, type CommunitySnapshot, type CommunityTab } from './communityData'
 
 const FEEDS: Array<{ value: PostFeed; label: string }> = [
@@ -97,6 +98,8 @@ export function CommunityPanel() {
   const [refreshKey, setRefreshKey] = useState(0)
   const [formOpen, setFormOpen] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const loadGeneration = useRef(0)
+  const actionLocks = useRef(new Set<string>())
   const openCommunityLogin = () => void loginCommunity()
   const handleUnauthorized = useCallback(() => {
     setCurrentUserId(null)
@@ -105,28 +108,46 @@ export function CommunityPanel() {
   }, [refreshCommunityAuth])
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current
+    const isCurrent = () => generation === loadGeneration.current
     setLoading(true)
     setError(null)
     const endpoint = settings.ai.communityEndpoint
     try {
       const client = createCommunityApi(endpoint, undefined, undefined, handleUnauthorized)
+      if (!isCurrent()) return
       setApi(client)
-      if (signedIn) void client.me().then((user) => setCurrentUserId(user.id)).catch(() => setCurrentUserId(null))
-      else setCurrentUserId(null)
+      if (signedIn) {
+        void client.me().then((user) => isCurrent() && setCurrentUserId(user.id)).catch(() => isCurrent() && setCurrentUserId(null))
+      } else setCurrentUserId(null)
       if (tab === 'following') {
         if (!signedIn) throw new Error('请先在登录界面登录社区账号')
         const result = await client.following(page)
+        if (!isCurrent()) return
         setPosts(result.items)
         setTotal(result.total)
+        for (const item of result.items) {
+          if (item.following && !useWorkspaceStore.getState().communityFollowing.includes(String(item.author_user_id))) {
+            useWorkspaceStore.getState().toggleCommunityFollow(String(item.author_user_id))
+          }
+        }
       } else {
         const result = await client.posts({ board: board || undefined, keyword: keyword || undefined, feed, tag: tag || undefined, page })
+        if (!isCurrent()) return
         setPosts(result.items)
         setTotal(result.total)
+        for (const item of result.items) {
+          if (item.following && !useWorkspaceStore.getState().communityFollowing.includes(String(item.author_user_id))) {
+            useWorkspaceStore.getState().toggleCommunityFollow(String(item.author_user_id))
+          }
+        }
       }
-      setLocalMode(false)
+      if (isCurrent()) setLocalMode(false)
     } catch (err) {
+      if (!isCurrent()) return
       try {
         const snapshot = await localCommunityDataSource.getSnapshot()
+        if (!isCurrent()) return
         const fallback = localPosts(snapshot)
         setPosts(fallback)
         setTotal(fallback.length)
@@ -135,10 +156,10 @@ export function CommunityPanel() {
         setCurrentUserId(null)
         setError(err instanceof Error ? err.message : String(err))
       } catch (fallbackError) {
-        setError(fallbackError instanceof Error ? fallbackError.message : String(fallbackError))
+        if (isCurrent()) setError(fallbackError instanceof Error ? fallbackError.message : String(fallbackError))
       }
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }, [board, handleUnauthorized, feed, keyword, page, settings.ai.communityEndpoint, signedIn, tab, tag])
 
@@ -167,14 +188,19 @@ export function CommunityPanel() {
       openCommunityLogin()
       return
     }
-    const key = String(authorId)
+    const key = `follow:${authorId}`
+    if (actionLocks.current.has(key)) return
+    actionLocks.current.add(key)
+    const wasFollowing = following.includes(String(authorId))
     try {
-      if (following.includes(key)) await api.unfollow(authorId)
+      if (wasFollowing) await api.unfollow(authorId)
       else await api.follow(authorId)
-      toggleFollow(key)
-      setMessage(following.includes(key) ? '已取消关注' : '已关注作者')
+      toggleFollow(String(authorId))
+      setMessage(wasFollowing ? '已取消关注' : '已关注作者')
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      actionLocks.current.delete(key)
     }
   }
 
@@ -184,13 +210,21 @@ export function CommunityPanel() {
       openCommunityLogin()
       return
     }
+    const key = `like:${post.id}`
+    if (actionLocks.current.has(key)) return
+    actionLocks.current.add(key)
+    const wasLiked = post.liked === true
+    const generation = loadGeneration.current
     try {
-      if (post.liked) await api.unlike(post.id)
+      if (wasLiked) await api.unlike(post.id)
       else await api.like(post.id)
-      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, liked: !post.liked, like_count: Math.max(0, (item.like_count ?? 0) + (post.liked ? -1 : 1)) } : item))
-      setDetail((current) => current && current.id === post.id ? { ...current, liked: !post.liked, like_count: Math.max(0, (current.like_count ?? 0) + (post.liked ? -1 : 1)) } : current)
+      if (generation !== loadGeneration.current || !useWorkspaceStore.getState().communityAuth || useWorkspaceStore.getState().communityAuth.status !== 'signed_in') return
+      setPosts((current) => current.map((item) => item.id === post.id ? { ...item, liked: !wasLiked, like_count: Math.max(0, (item.like_count ?? 0) + (wasLiked ? -1 : 1)) } : item))
+      setDetail((current) => current && current.id === post.id ? { ...current, liked: !wasLiked, like_count: Math.max(0, (current.like_count ?? 0) + (wasLiked ? -1 : 1)) } : current)
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      actionLocks.current.delete(key)
     }
   }
 
@@ -289,15 +323,12 @@ function MeView({ api, signedIn, following, onOpenLogin, onCreate }: { api: Comm
   }, [api, signedIn])
   if (!signedIn) return <PanelState kind="empty" icon="search" title="尚未登录社区账号" description="登录后可以发帖、评论、点赞、关注作者和上传资源。" action={<button className="btn primary" onClick={onOpenLogin}>在浏览器中登录</button>} />
   return <>
-    <div className="community-card me-profile">{resolveCommunityAvatar(api, user?.avatar_url) ? <img className="creator-avatar me-avatar" src={resolveCommunityAvatar(api, user?.avatar_url)!} alt="社区头像" /> : <span className="creator-avatar me-avatar" style={{ background: '#4285f4' }}>{(user?.display_name ?? user?.username ?? '我').slice(0, 1)}</span>}<div className="creator-info"><div className="creator-name">{user?.display_name ?? user?.username ?? '已登录'}</div><div className="creator-tagline">{user?.email || '社区账号'}</div></div><span className="badge success">已登录</span></div>
+    <div className="community-card me-profile"><CommunityAvatar api={api} avatarPath={user?.avatar_url} className="creator-avatar me-avatar" iconSize={20} label="社区头像" /><div className="creator-info"><div className="creator-name">{user?.display_name ?? user?.username ?? '已登录'}</div><div className="creator-tagline">{user?.email || '社区账号'}</div></div><span className="badge success">已登录</span></div>
     {error && <div className="local-note community-warning">{error}</div>}
     <div className="disabled-row"><button className="btn primary" onClick={onCreate}>发布帖子</button><span className="local-note">已关注作者：{following.length} 人</span></div>
   </>
 }
 
-function resolveCommunityAvatar(api: CommunityApi | null, avatarUrl: string | undefined): string | null {
-  return api ? resolveCommunityUrl(api.endpoint, avatarUrl) : null
-}
 
 function PostCard({ post, onOpen, onLike }: { post: DisplayPost; onOpen: () => void; onLike: () => void }) {
   return <article className="community-card post-card"><button className="post-card-main" onClick={onOpen}><div className="post-card-title"><span>{post.pinned && '置顶 · '}{post.title}</span>{post.featured && <span className="badge info">精选</span>}</div><div className="post-card-meta">{post.author_name} · {post.board} · {formatTime(post.updated_at)}</div><p>{safeMarkdown(post.body).slice(0, 240)}</p><div className="mod-tags">{(post.tags ?? []).map((item) => <span className="badge" key={item}>{item}</span>)}</div></button><div className="post-card-foot"><span>{post.comment_count ?? 0} 评论 · {post.view_count ?? 0} 浏览</span><span className="grow" /><button className="btn-sm" onClick={(event) => { event.stopPropagation(); onLike() }}>{post.liked ? '已赞' : '点赞'} {post.like_count ?? 0}</button><button className="btn-sm" onClick={onOpen}>查看详情</button></div></article>

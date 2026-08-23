@@ -1,6 +1,6 @@
 {
   "name": "rust-assistant-desktop",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "license": "GPL-3.0",
   "description": "铁锈工坊 · 铁锈战争模组开发工作台（电脑版）",
@@ -20,7 +20,6 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run test",
     "check:real-mods": "node scripts/check-real-mods.mjs",
-    "check:rw-skill": "node .agents/skills/rusted-warfare-modding/scripts/validate-skill.mjs",
     "check:desktop-boundary": "vitest run tests/desktopPackageBoundary.test.ts",
     "pack": "npm run build && electron-builder --win",
     "pack:dir": "npm run build && electron-builder --dir",

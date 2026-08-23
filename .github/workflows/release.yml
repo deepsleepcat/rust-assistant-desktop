@@ -38,6 +38,10 @@ jobs:
             exit 1
           fi
 
+      - name: 安装测试工具
+        shell: bash
+        run: python -m pip install openpyxl
+
       - name: 测试（单元测试全绿才出包）
         run: npx vitest run
 
@@ -47,10 +51,15 @@ jobs:
           npx tsc -p tsconfig.app.json --noEmit
           npm run lint
 
-      - name: 构建并发布（electron-builder --publish always）
+      - name: 构建并发布（仅 tag）
+        if: ${{ github.ref_type == 'tag' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run pack:release
+
+      - name: 构建安装包（手动触发不发布）
+        if: ${{ github.ref_type != 'tag' }}
+        run: npm run pack
 
       - name: 上传构建产物（调试用，tag 发布时上面已自动上传）
         uses: actions/upload-artifact@v4
