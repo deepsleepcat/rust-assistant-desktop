@@ -90,10 +90,26 @@ describe('communityApi', () => {
     await expect(createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, 'sk-token', fetcher).bindEmail('alice@example.com', '123456')).resolves.toMatchObject({ email_verified: true })
   })
 
-  it('头像 URL 只能解析为社区服务器同源 HTTP 地址', () => {
-    expect(resolveCommunityUrl(DEFAULT_COMMUNITY_ENDPOINT, '/api/avatar/avatar-key.png')).toBe(`${DEFAULT_COMMUNITY_ENDPOINT}/api/avatar/avatar-key.png`)
+  it('头像 URL 只能解析为社区服务器同源的规范头像路径', () => {
+    const key = 'a'.repeat(48)
+    expect(resolveCommunityUrl(DEFAULT_COMMUNITY_ENDPOINT, `/api/avatar/${key}.png`)).toBe(`${DEFAULT_COMMUNITY_ENDPOINT}/api/avatar/${key}.png`)
+    expect(resolveCommunityUrl(DEFAULT_COMMUNITY_ENDPOINT, '/api/avatar/avatar-key.png')).toBeNull()
     expect(resolveCommunityUrl(DEFAULT_COMMUNITY_ENDPOINT, 'https://example.com/avatar.png')).toBeNull()
     expect(resolveCommunityUrl(DEFAULT_COMMUNITY_ENDPOINT, 'javascript:alert(1)')).toBeNull()
+  })
+
+  it('头像请求通过认证凭据读取图片二进制', async () => {
+    const key = 'b'.repeat(48)
+    const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(`${DEFAULT_COMMUNITY_ENDPOINT}/api/avatar/${key}.png`)
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer sk-token')
+      expect((init as RequestInit & { authenticated?: boolean }).authenticated).toBe(true)
+      return new Response(png, { status: 200, headers: { 'content-type': 'image/png' } })
+    })
+    const result = await createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, 'sk-token', fetcher).avatar(`/api/avatar/${key}.png`)
+    expect(result?.contentType).toBe('image/png')
+    expect([...new Uint8Array(result?.bytes ?? new ArrayBuffer(0))]).toEqual([...png])
   })
 
   it('注销使用带 Bearer 的 POST，401 会统一通知会话清理', async () => {
@@ -173,6 +189,7 @@ describe('communityApi', () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe(`${DEFAULT_COMMUNITY_ENDPOINT}/api/community/resources/9/download`)
       expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer sk-token')
+      expect((init as RequestInit & { authenticated?: boolean }).authenticated).toBe(true)
       return new Response(new Blob(['unit-data'], { type: 'application/zip' }), {
         status: 200,
         headers: { 'content-disposition': "attachment; filename*=UTF-8''..\\evil.zip", 'content-type': 'application/zip' },

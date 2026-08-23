@@ -65,7 +65,7 @@ export interface WorkspaceStoreState {
   communityTab: CommunityTab
   /** 社区关注的创作者 id（会话内状态，不持久化；服务器上线后并入账号数据） */
   communityFollowing: string[]
-  /** Browser-auth community session; token remains in sanitized app settings. */
+  /** Browser-auth community session; the token remains only in main-process safeStorage. */
   communityAuth: CommunityAuthState
   /** M7：代码表浏览弹窗 */
   codeTableOpen: boolean

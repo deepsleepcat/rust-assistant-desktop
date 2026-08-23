@@ -19,7 +19,7 @@ import { searchProjectFiles } from './projectSearch'
 import { assertNoLinkEscape, invalidateRealRoot, isPathInside, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import {
-  applyOptimization, applyVerifiedTranslationRepair, checkMod, copyUnit, createMod, createUnit, createUnitFromTemplate,
+  applyOptimization, checkMod, copyUnit, createMod, createUnit, createUnitFromTemplate, makeTrustedProjectRoot, processRepairSelections,
   deleteUserTemplate, deployMod, globalOp, importModBuffer, importTemplateFile, isRepairSourceFile,
   listTemplates, listUserTemplateKeys, normalizeRepairRelativePath, packModBufferWithCount, readModInfo,
   saveFileAsTemplate, scanOptimization, scanResources, scanTranslationRepair, scanUnits, writeModInfo,
@@ -29,7 +29,7 @@ import { conflictFiles, diffBetween, logHistory, repoInfo, restoreFile, statusFi
 import type { AiApprovalResponse, AiChatParams, AiSettings } from '../src/types/ai'
 import type { CommunityRequest, CommunityResponse } from '../src/types/bridge'
 import { buildLogicIdentifierMap } from '../src/services/translationRepair'
-import { validateCommunityOrigin } from './communityOrigin'
+import { getConfiguredCommunityOrigin, validateCommunityOrigin } from './communityOrigin'
 
 /** IPC 注册函数：main.ts 传 ipcMain.handle 的真实绑定；测试传记录用假实现 */
 export type RegisterHandler = (channel: string, handler: (...args: never[]) => unknown) => void
@@ -158,6 +158,40 @@ async function exists(target: string): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+async function readResponseBytes(response: Response, maxBytes: number): Promise<ArrayBuffer> {
+  const declaredSize = Number(response.headers.get('content-length') ?? '')
+  if (Number.isFinite(declaredSize) && declaredSize > maxBytes) throw new Error('社区服务器响应过大')
+  if (!response.body) {
+    const body = new Uint8Array(await response.arrayBuffer())
+    if (body.byteLength > maxBytes) throw new Error('社区服务器响应过大')
+    return body.buffer
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+      total += next.value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel()
+        throw new Error('社区服务器响应过大')
+      }
+      chunks.push(next.value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const result = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result.buffer
 }
 
 /** 登记项目根并持久化信任锚（对话框/导入流程才调用；重启后从锚恢复信任） */
@@ -406,11 +440,7 @@ export function registerKnowledgeIpc(ctx: IpcContext, ipc: RegisterHandler): voi
  */
 export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   // 只代理正式社区或显式本地开发后端，避免该通道成为通用 HTTP/SSRF 代理。
-  const trustedOrigin = validateCommunityOrigin(
-    process.env.VITE_DEV_SERVER_URL && process.env.OHMYTX_COMMUNITY_ORIGIN === 'http://localhost:3000'
-      ? 'http://localhost:3000'
-      : 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl',
-  )
+  const trustedOrigin = validateCommunityOrigin(getConfiguredCommunityOrigin())
   const allowedMethods = new Set(['GET', 'POST', 'PUT', 'DELETE'])
   const allowedPaths = [
     /^\/health$/,
@@ -452,6 +482,9 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     if (url.search.length > 600) throw new Error('社区查询参数过长')
     if (typeof request.body === 'string' && Buffer.byteLength(request.body, 'utf8') > maxJsonBytes) throw new Error('社区请求体过大')
     if (request.upload !== undefined) {
+      if (request.method !== 'POST' || !/^\/api\/community\/posts\/\d+\/resources$/.test(url.pathname) || request.body !== undefined) {
+        throw new Error('附件只能上传到帖子资源接口')
+      }
       if (!request.upload || typeof request.upload !== 'object' || Array.isArray(request.upload)) throw new Error('社区附件参数无效')
       if (typeof request.upload.name !== 'string' || typeof request.upload.type !== 'string' || request.upload.name.length > 180 || request.upload.type.length > 200) throw new Error('社区附件参数无效')
       const bytes = request.upload.bytes
@@ -485,11 +518,9 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
         : await perform()
       if (!response) throw new Error('社区登录已失效')
       if (response.status === 401 && request.authenticated) await ctx.communityAuth?.invalidate()
-      const contentLength = Number(response.headers.get('content-length') ?? '')
-      const limit = url.pathname.endsWith('/download') ? maxUploadBytes : maxJsonBytes
-      if (Number.isFinite(contentLength) && contentLength > limit) throw new Error('社区服务器响应过大')
-      const data = await response.arrayBuffer()
-      if (data.byteLength > limit) throw new Error('社区服务器响应过大')
+      const isAvatar = /^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/.test(url.pathname)
+      const limit = url.pathname.endsWith('/download') ? maxUploadBytes : isAvatar ? 2 * 1024 * 1024 : maxJsonBytes
+      const data = await readResponseBytes(response, limit)
       const safeHeaders: Record<string, string> = {}
       for (const name of ['content-type', 'content-disposition', 'content-length', 'x-oneapi-request-id']) {
         const value = response.headers.get(name)
@@ -894,7 +925,7 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     return readModInfo(rootPath)
   })
   ipc('mod:writeModInfo', async (_event, rootPath: string, data: import('./modTools').ModInfoData) => {
-    requireInsideRoot(ctx, rootPath, rootPath)
+    await requireRealInsideRoot(ctx, rootPath, rootPath)
     if (!data || typeof data !== 'object' || typeof data.title !== 'string') {
       throw new Error('写入自述文件失败：参数不完整')
     }
@@ -974,16 +1005,16 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       if (!selection || typeof selection.path !== 'string' || typeof selection.digest !== 'string') throw new Error('修复选择无效')
       const rel = normalizeRepairRelativePath(selection.path)
       if (!isRepairSourceFile(rel)) throw new Error('修复文件类型无效')
-      const target = path.resolve(rootPath, rel)
-      await requireRealInsideRoot(ctx, rootPath, target)
       verifiedSelections.push({ path: rel, digest: selection.digest })
     }
     if (ctx.packing.active) throw new Error('已有打包/全局操作正在进行，请稍候')
     ctx.packing.active = true
     try {
       await requireRealInsideRoot(ctx, rootPath, rootPath)
-      return applyVerifiedTranslationRepair(
-        rootPath,
+      const trustedRoot = [...ctx.roots].find((candidate) => normalizePath(candidate) === normalizePath(rootPath))
+      if (!trustedRoot) throw new Error('项目目录未登记，拒绝访问')
+      return processRepairSelections(
+        makeTrustedProjectRoot(trustedRoot),
         await translationRepairDictionary(),
         verifiedSelections,
       )

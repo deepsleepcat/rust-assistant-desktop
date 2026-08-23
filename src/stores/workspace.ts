@@ -31,7 +31,14 @@ function mapBridgeAuthState(state: CommunityAuthStatus['state']): 'signed_out' |
 
 function mapBridgeUser(user: CommunityAuthUser | undefined) {
   return user
-    ? { id: user.id, username: user.username, display_name: user.displayName, avatar_url: user.avatarUrl }
+    ? {
+        id: user.id,
+        username: user.username,
+        display_name: user.displayName,
+        avatar_url: user.avatarUrl,
+        ...(user.email ? { email: user.email } : {}),
+        ...(user.emailVerified !== undefined ? { email_verified: user.emailVerified } : {}),
+      }
     : null
 }
 
@@ -43,6 +50,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
   // L1：init 幂等（StrictMode 双挂载/重复调用只执行一次，避免重复订阅更新事件）
   let initPromise: Promise<void> | null = null
   let pairingCheckInFlight = false
+  let authGeneration = 0
 
   return create<WorkspaceStore>()((set, get) => {
     function persist(): void {
@@ -179,39 +187,49 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       // ── 领域切片（按域拆分，见 slices/）──
       ...createUiSlice()(set, get),
       async refreshCommunityAuth() {
+        const generation = ++authGeneration
         const bridgeAuth = bridge.auth
         if (!bridgeAuth) {
-          // 浏览器预览模式：真实社区认证只属于桌面端，预览继续使用本地示例数据
           set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
           return
         }
-        set({ communityAuth: { status: 'checking', user: get().communityAuth.user, error: null, pairing: get().communityAuth.pairing } })
+        const previousUser = get().communityAuth.user
+        set({ communityAuth: { status: 'checking', user: previousUser, error: null, pairing: null } })
         try {
           const status = await bridgeAuth.status()
-          set({ communityAuth: { status: mapBridgeAuthState(status.state), user: mapBridgeUser(status.user), error: null, pairing: null } })
+          if (generation !== authGeneration) return
+          const mappedUser = mapBridgeUser(status.user)
+          const nextStatus = mapBridgeAuthState(status.state)
+          set({ communityAuth: { status: nextStatus, user: mappedUser ?? (nextStatus === 'signed_in' ? previousUser : null), error: null, pairing: null } })
         } catch (error) {
-          set({ communityAuth: { status: 'error', user: null, error: error instanceof Error ? error.message : String(error), pairing: null } })
+          if (generation !== authGeneration) return
+          set({ communityAuth: { status: previousUser ? 'signed_in' : 'error', user: previousUser, error: previousUser ? null : (error instanceof Error ? error.message : String(error)), pairing: null } })
         }
       },
       async loginCommunity() {
         if (get().communityAuth.status === 'loading') return
-        set({ communityAuth: { status: 'loading', user: get().communityAuth.user, error: null, pairing: get().communityAuth.pairing } })
+        const generation = ++authGeneration
+        set({ communityAuth: { status: 'loading', user: get().communityAuth.user, error: null, pairing: null } })
         try {
           const bridgeAuth = bridge.auth
           if (!bridgeAuth) throw new Error('社区登录仅支持桌面端')
           const pairing = await bridgeAuth.startPairing()
+          if (generation !== authGeneration) return
           set({ communityAuth: { status: 'loading', user: null, error: null, pairing: { userCode: pairing.userCode, expiresAt: pairing.expiresAt } } })
         } catch (error) {
+          if (generation !== authGeneration) return
           set({ communityAuth: { status: 'error', user: get().communityAuth.user, error: error instanceof Error ? error.message : String(error), pairing: null } })
         }
       },
       async checkCommunityPairing() {
         if (pairingCheckInFlight || get().communityAuth.status !== 'loading') return
+        const generation = authGeneration
         pairingCheckInFlight = true
         try {
           const bridgeAuth = bridge.auth
           if (!bridgeAuth) throw new Error('社区登录仅支持桌面端')
           const status = await bridgeAuth.pollPairing()
+          if (generation !== authGeneration || get().communityAuth.status !== 'loading') return
           if (status.state === 'signed-in') {
             set({ communityAuth: { status: 'signed_in', user: mapBridgeUser(status.user), error: null, pairing: null } })
             return
@@ -220,21 +238,24 @@ export function createWorkspaceStore(bridge: BridgeApi) {
             set({ communityAuth: { status: 'error', user: null, error: '配对已结束或已过期，请重新开始', pairing: null } })
           }
         } catch (error) {
+          if (generation !== authGeneration) return
           set({ communityAuth: { status: 'error', user: get().communityAuth.user, error: error instanceof Error ? error.message : String(error), pairing: null } })
         } finally {
           pairingCheckInFlight = false
         }
       },
       async cancelCommunityPairing() {
+        const generation = ++authGeneration
         try { await bridge.auth?.cancelPairing() } finally {
-          set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
+          if (generation === authGeneration) set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
         }
       },
       async logoutCommunity() {
+        const generation = ++authGeneration
         if (bridge.auth) {
           try { await bridge.auth.logout() } catch { /* 本地仍清除会话 */ }
         }
-        set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
+        if (generation === authGeneration) set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
       },
       ...createConversationSlice({ persist })(set, get),
       ...createAiSlice({ bridge, persist })(set, get),

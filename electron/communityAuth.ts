@@ -16,6 +16,7 @@ const DEVICE_START_PATH = '/api/device/pairing/start'
 const DEVICE_POLL_PATH = '/api/device/pairing/poll'
 const DEVICE_CANCEL_PATH = '/api/device/pairing/cancel'
 const AUTH_LOGOUT_PATH = '/api/auth/logout'
+const AUTH_ME_PATH = '/api/me'
 const REQUEST_TIMEOUT_MS = 15_000
 const MAX_RESPONSE_BYTES = 128 * 1024
 const DEFAULT_PAIRING_LIFETIME_MS = 10 * 60 * 1000
@@ -136,15 +137,54 @@ function toUser(value: unknown): CommunityAuthUser | undefined {
   if (id === null || !username) return undefined
   const displayName = string(data?.display_name, 160)
   const avatarUrl = string(data?.avatar_url, 600)
-  return { id, username, ...(displayName ? { displayName } : {}), ...(avatarUrl ? { avatarUrl } : {}) }
+  const email = string(data?.email, 320)
+  const emailVerified = typeof data?.email_verified === 'boolean' ? data.email_verified : undefined
+  return {
+    id,
+    username,
+    ...(displayName ? { displayName } : {}),
+    ...(avatarUrl ? { avatarUrl } : {}),
+    ...(email ? { email } : {}),
+    ...(emailVerified !== undefined ? { emailVerified } : {}),
+  }
+}
+
+async function readLimitedBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const declaredSize = Number(response.headers.get('content-length') ?? '')
+  if (Number.isFinite(declaredSize) && declaredSize > maxBytes) throw new CommunityAuthError('社区配对服务响应过大')
+  if (!response.body) {
+    const body = new Uint8Array(await response.arrayBuffer())
+    if (body.byteLength > maxBytes) throw new CommunityAuthError('社区配对服务响应过大')
+    return body
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+      total += next.value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel()
+        throw new CommunityAuthError('社区配对服务响应过大')
+      }
+      chunks.push(next.value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const result = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result
 }
 
 async function readJson(response: Response): Promise<unknown> {
-  const declaredSize = Number(response.headers.get('content-length') ?? '')
-  if (Number.isFinite(declaredSize) && declaredSize > MAX_RESPONSE_BYTES) throw new CommunityAuthError('社区配对服务响应过大')
-  const body = await response.arrayBuffer()
-  if (body.byteLength > MAX_RESPONSE_BYTES) throw new CommunityAuthError('社区配对服务响应过大')
-  const text = new TextDecoder().decode(body).trim()
+  const text = new TextDecoder().decode(await readLimitedBytes(response, MAX_RESPONSE_BYTES)).trim()
   if (!text) return {}
   try { return JSON.parse(text) as unknown } catch { throw new CommunityAuthError('社区配对服务返回了无效数据') }
 }
@@ -163,6 +203,13 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
   let currentUser: CommunityAuthUser | undefined
   let startInFlight: Promise<CommunityAuthPairing> | null = null
   let operationGeneration = 0
+  let credentialMutation: Promise<void> = Promise.resolve()
+
+  function enqueueCredentialMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    const run = credentialMutation.then(mutation, mutation)
+    credentialMutation = run.then(() => undefined, () => undefined)
+    return run
+  }
 
   async function request(url: URL, method: 'GET' | 'POST', body?: Record<string, string>, secret?: string, bearer?: string): Promise<{ response: Response; body: unknown }> {
     const controller = new AbortController()
@@ -187,7 +234,26 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
     if (!deps.credentials.isAvailable()) return { state: 'unavailable' }
     if (activePairing && activePairing.expiresAt <= now()) activePairing = null
     if (activePairing) return { state: 'pairing' }
-    if (await deps.credentials.hasCredential()) return { state: 'signed-in', ...(currentUser ? { user: currentUser } : {}) }
+    if (await deps.credentials.hasCredential()) {
+      if (!currentUser) {
+        let revoked = false
+        await deps.credentials.withCredential(async (credential) => {
+          const { response, body } = await request(apiUrl(origin, AUTH_ME_PATH), 'GET', undefined, undefined, credential)
+          if (!response.ok) {
+            revoked = response.status === 401
+            throw new CommunityAuthError('社区登录已失效')
+          }
+          currentUser = toUser(successfulData(body))
+        }).catch(async () => {
+          if (revoked) {
+            currentUser = undefined
+            await deps.credentials.clearCredential()
+          }
+        })
+        if (revoked) return { state: 'signed-out' }
+      }
+      return { state: 'signed-in', ...(currentUser ? { user: currentUser } : {}) }
+    }
     currentUser = undefined
     return { state: 'signed-out' }
   }
@@ -230,7 +296,7 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
   return {
     status,
     withCredential: (apply) => deps.credentials.withCredential(apply),
-    invalidate: () => deps.credentials.clearCredential(),
+    invalidate: () => enqueueCredentialMutation(() => deps.credentials.clearCredential()),
     startPairing: () => {
       if (startInFlight) return startInFlight
       const requestPromise = start()
@@ -261,7 +327,14 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
       const token = string(data.token, 8192)
       if (!token) throw new CommunityAuthError('社区配对服务返回了无效会话')
       if (operationGeneration !== generation || activePairing !== pairing) return status()
-      await deps.credentials.saveCredential(token)
+      await enqueueCredentialMutation(async () => {
+        if (operationGeneration !== generation || activePairing !== pairing) return
+        await deps.credentials.saveCredential(token)
+        if (operationGeneration !== generation || activePairing !== pairing) {
+          await deps.credentials.clearCredential()
+        }
+      })
+      if (operationGeneration !== generation || activePairing !== pairing) return status()
       currentUser = toUser(data.user)
       activePairing = null
       return { state: 'signed-in', ...(currentUser ? { user: currentUser } : {}) }
@@ -277,12 +350,14 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
       operationGeneration += 1
       activePairing = null
       try {
-        await deps.credentials.withCredential(async (credential) => {
-          await request(apiUrl(origin, AUTH_LOGOUT_PATH), 'POST', undefined, undefined, credential).catch(() => undefined)
+        await enqueueCredentialMutation(async () => {
+          await deps.credentials.withCredential(async (credential) => {
+            await request(apiUrl(origin, AUTH_LOGOUT_PATH), 'POST', undefined, undefined, credential).catch(() => undefined)
+          })
+          await deps.credentials.clearCredential()
         })
       } finally {
         currentUser = undefined
-        await deps.credentials.clearCredential()
       }
       return status()
     },

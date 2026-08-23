@@ -248,7 +248,7 @@ export async function applyOptimization(projectRoot: string, ids: string[]): Pro
     try {
       const abs = resolveInside(root, item.rel)
       // M1：链接逃逸校验（优化涉及删除/重写，junction 目录下的文件不能越界操作）
-      await assertNoLinkEscape(root, abs)
+      await assertNoLinkEscape(projectRoot, abs)
       if (item.kind === 'emptyFile' || item.kind === 'backupFile') {
         await fs.rm(abs, { force: true })
         done++
@@ -349,7 +349,7 @@ export async function globalOp(projectRoot: string, params: GlobalOpParams): Pro
       files++
       try {
         // 写入前链接逃逸校验（junction 目录内的文件不能越界操作）
-        await assertNoLinkEscape(root, abs)
+        await assertNoLinkEscape(projectRoot, abs)
         const content = await readTextLimited(abs)
         if (!content) {
           // 空文件/超限：超限（stat > 64MB）跳过；空文件对附加操作等于直接写入 text
@@ -537,12 +537,28 @@ export async function scanTranslationRepair(projectRoot: string, dict: Translati
  * 对用户从扫描预览中选定的文件执行恢复。每项写入前都重新读取并核对 SHA-256，
  * 扫描后被其它工具修改的文件会跳过，不会覆盖新内容。
  */
-export async function applyVerifiedTranslationRepair(
-  projectRoot: string,
+export interface TrustedProjectRoot {
+  readonly rootPath: string
+  resolve(relativePath: string): string
+}
+
+export function makeTrustedProjectRoot(projectRoot: string): TrustedProjectRoot {
+  const root = resolveInside(projectRoot, '.')
+  return Object.freeze({
+    rootPath: root,
+    resolve(relativePath: string) {
+      const normalized = normalizeRepairRelativePath(relativePath)
+      return resolveInside(root, normalized)
+    },
+  })
+}
+
+export async function processRepairSelections(
+  projectRoot: TrustedProjectRoot,
   dict: TranslationRepairDictionary,
   selections: TranslationRepairSelection[],
 ): Promise<TranslationRepairApplyResult> {
-  const root = resolveInside(projectRoot, '.')
+  if (!projectRoot || typeof projectRoot.resolve !== 'function') throw new Error('项目目录信任凭据无效')
   if (!Array.isArray(selections) || selections.length > MAX_TRANSLATION_REPAIR_RESULTS) throw new Error('修复选择无效')
   const picked = new Map<string, string>()
   for (const selection of selections) {
@@ -561,13 +577,13 @@ export async function applyVerifiedTranslationRepair(
   for (const [rel, digest] of [...picked.entries()].sort(([a], [b]) => a.localeCompare(b, 'zh-CN'))) {
     let temp = ''
     try {
-      const abs = resolveInside(root, rel)
+      const abs = projectRoot.resolve(rel)
       const stat = await fs.lstat(abs)
       if (!stat.isFile() || stat.isSymbolicLink()) {
         skipped++
         continue
       }
-      await assertNoLinkEscape(root, abs)
+      await assertNoLinkEscape(projectRoot.rootPath, abs)
       const source = await readRepairText(abs)
       if (!source || source.digest !== digest) {
         skipped++
@@ -584,7 +600,7 @@ export async function applyVerifiedTranslationRepair(
         skipped++
         continue
       }
-      await assertNoLinkEscape(root, path.dirname(abs))
+      await assertNoLinkEscape(projectRoot.rootPath, path.dirname(abs))
       temp = path.join(path.dirname(abs), `.${path.basename(abs)}.ra-${randomUUID()}.tmp`)
       await fs.writeFile(temp, repaired.content, 'utf8')
       await fs.rename(temp, abs)
@@ -600,7 +616,7 @@ export async function applyVerifiedTranslationRepair(
 }
 
 /** 兼容旧调用方；安全校验由 applyVerifiedTranslationRepair 自身执行。 */
-export const applyTranslationRepair = applyVerifiedTranslationRepair
+export const applyTranslationRepair = processRepairSelections
 
 /** 新建模组的参数 */
 export interface CreateModParams {
@@ -1470,7 +1486,7 @@ export async function packModBufferWithCount(projectRoot: string, options?: Pack
         if (st.isDirectory()) {
           // 指向项目外的链接：跳过并计数（打包继续，UI 提示），不中止整次打包
           try {
-            await assertNoLinkEscape(root, abs)
+            await assertNoLinkEscape(projectRoot, abs)
           } catch {
             skippedLinks++
             continue
@@ -1482,7 +1498,7 @@ export async function packModBufferWithCount(projectRoot: string, options?: Pack
           packed += await walk(abs, rel)
         } else if (st.isFile()) {
           try {
-            await assertNoLinkEscape(root, abs)
+            await assertNoLinkEscape(projectRoot, abs)
           } catch {
             skippedLinks++
             continue
@@ -1495,7 +1511,7 @@ export async function packModBufferWithCount(projectRoot: string, options?: Pack
       }
       if (entry.isDirectory()) {
         // M1：目录可能是指向外部的 junction——打包不能把外部文件卷进来
-        await assertNoLinkEscape(root, abs)
+        await assertNoLinkEscape(projectRoot, abs)
         // 空文件夹不会被写入 zip（JSZip 仅随文件创建目录项）
         if (options?.removeEmptyFolders && (await fs.readdir(abs)).length === 0) continue
         packed += await walk(abs, rel)

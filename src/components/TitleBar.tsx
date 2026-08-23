@@ -8,35 +8,34 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { AppIcon } from './AppIcon'
 import { LogoR } from './LogoR'
 import { truncateMiddle } from '../utils/paths'
-import { createCommunityApi, resolveCommunityUrl } from '../services/communityApi'
-import { useEffect, useState } from 'react'
+import { createCommunityApi } from '../services/communityApi'
+import { CommunityAvatar } from './CommunityAvatar'
+import { useEffect, useMemo, useState } from 'react'
 
 export function TitleBar() {
   const activeProject = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const setCommandOpen = useWorkspaceStore((s) => s.setCommandOpen)
   const openSettings = useWorkspaceStore((s) => s.openSettings)
   const loginCommunity = useWorkspaceStore((s) => s.loginCommunity)
+  const refreshCommunityAuth = useWorkspaceStore((s) => s.refreshCommunityAuth)
   const communityAuth = useWorkspaceStore((s) => s.communityAuth)
   const signedIn = communityAuth.status === 'signed_in'
-  const [avatar, setAvatar] = useState<{ key: string; url: string | null }>({ key: '', url: null })
+  const [avatar, setAvatar] = useState<{ key: string; path?: string }>({ key: '' })
+  const endpoint = useWorkspaceStore((s) => s.settings.ai.communityEndpoint)
+  const communityApi = useMemo(() => signedIn ? createCommunityApi(endpoint, undefined, undefined, () => void refreshCommunityAuth()) : null, [endpoint, refreshCommunityAuth, signedIn])
 
   useEffect(() => {
-    if (!signedIn) return
+    if (!communityApi) return
     let alive = true
     const key = `${communityAuth.user?.id ?? 0}:${communityAuth.user?.username ?? ''}`
-    void createCommunityApi(useWorkspaceStore.getState().settings.ai.communityEndpoint)
-      .me()
-      .then((me) => {
-        if (!alive) return
-        const endpoint = useWorkspaceStore.getState().settings.ai.communityEndpoint
-        setAvatar({ key, url: resolveCommunityUrl(endpoint, me.avatar_url) })
-      })
-      .catch(() => alive && setAvatar({ key, url: null }))
+    void communityApi.me()
+      .then((me) => alive && setAvatar({ key, path: me.avatar_url }))
+      .catch(() => alive && setAvatar({ key }))
     return () => { alive = false }
-  }, [signedIn, communityAuth.user])
+  }, [communityApi, communityAuth.user])
 
   const avatarKey = `${communityAuth.user?.id ?? 0}:${communityAuth.user?.username ?? ''}`
-  const avatarUrl = signedIn && avatar.key === avatarKey ? avatar.url : null
+  const avatarPath = signedIn && avatar.key === avatarKey ? avatar.path : communityAuth.user?.avatar_url
 
   return (
     <header className="titlebar">
@@ -68,7 +67,7 @@ export function TitleBar() {
           <span>{signedIn ? '社区账号' : '登录社区'}</span>
         </button>
         <button className="avatar-btn glow-hover" title="社区账号" onClick={() => openSettings('community')}>
-          {avatarUrl ? <img src={avatarUrl} alt="社区账号头像" /> : '猫'}
+          <CommunityAvatar api={communityApi} avatarPath={avatarPath} className="titlebar-avatar" iconSize={15} />
         </button>
       </div>
     </header>

@@ -41,8 +41,11 @@ export function CommunitySettingsTab() {
     if (communityAuth.status !== 'signed_in') return
     setCommunityBindingBusy(true)
     setCommunityCheck(null)
+    const accountId = communityUser?.id
     try {
       const user = await createCommunityApi(settings.ai.communityEndpoint).bindEmail(communityEmail.trim(), communityVerificationCode.trim())
+      const current = useWorkspaceStore.getState().communityAuth
+      if (current.status !== 'signed_in' || current.user?.id !== accountId) return
       useWorkspaceStore.setState({ communityAuth: { status: 'signed_in', user, error: null, pairing: null } })
       setCommunityVerificationCode('')
       setCommunityCheck('✓ 邮箱认证完成')

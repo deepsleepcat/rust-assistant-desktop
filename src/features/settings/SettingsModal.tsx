@@ -33,9 +33,9 @@ export function SettingsModal() {
   return (
     <>
       <Modal title="设置" onClose={() => setSettingsOpen(false)} wide>
-      <div style={{ display: 'flex', gap: 20, minHeight: 380 }}>
+      <div className="settings-layout">
         {/* 左侧导航 */}
-        <nav style={{ width: 130, flexShrink: 0 }}>
+        <nav className="settings-nav">
           <SettingNavItem active={tab === 'appearance'} onClick={() => switchTab('appearance')} icon={<AppIcon name="palette" size={14} />} label="外观" />
           <SettingNavItem active={tab === 'background'} onClick={() => switchTab('background')} icon={<AppIcon name="image" size={14} />} label="背景" />
           <SettingNavItem active={tab === 'editor'} onClick={() => switchTab('editor')} icon={<AppIcon name="text" size={14} />} label="编辑器" />
@@ -48,7 +48,7 @@ export function SettingsModal() {
         </nav>
 
         {/* 内容 */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="settings-content">
           {tab === 'appearance' && <AppearanceSettingsTab />}
           {tab === 'background' && <BackgroundSettingsTab />}
           {tab === 'editor' && <EditorSettingsTab />}
