@@ -5,7 +5,7 @@
  * - 切回编辑器后原有标签与项目状态保留
  * - 关注列表为会话内状态：不写入持久化 workspace
  */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createWorkspaceStore } from '../src/stores/workspace'
 import { createMockBridge, MOCK_PROJECT_ROOT } from '../src/services/mockBridge'
 
@@ -93,5 +93,57 @@ describe('社区工作区状态（M33）', () => {
     expect(saved).not.toHaveProperty('communityFollowing')
     expect(saved).not.toHaveProperty('activeSurface')
     expect(saved).not.toHaveProperty('communityTab')
+  })
+
+  it('批准后自动轮询并登录，不需要再次点击检查状态', async () => {
+    vi.useFakeTimers()
+    try {
+      const pollPairing = vi.fn(async () => ({ state: 'signed-in' as const, user: { id: 7, username: 'alice' } }))
+      bridge = {
+        ...bridge,
+        auth: {
+          status: async () => ({ state: 'signed-out' as const }),
+          startPairing: async () => ({ state: 'pairing' as const, userCode: 'ABCD-1234', expiresAt: Date.now() + 60_000, pollAfterMs: 3_000 }),
+          pollPairing,
+          cancelPairing: async () => ({ state: 'signed-out' as const }),
+          logout: async () => ({ state: 'signed-out' as const }),
+        },
+      }
+      store = createWorkspaceStore(bridge)
+
+      await store.getState().loginCommunity()
+      expect(store.getState().communityAuth.status).toBe('loading')
+      await vi.advanceTimersByTimeAsync(3_000)
+      expect(pollPairing).toHaveBeenCalledTimes(1)
+      expect(store.getState().communityAuth).toMatchObject({ status: 'signed_in', user: { username: 'alice' }, pairing: null })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancelling clears a scheduled automatic pairing check', async () => {
+    vi.useFakeTimers()
+    try {
+      const pollPairing = vi.fn(async () => ({ state: 'signed-in' as const, user: { id: 7, username: 'alice' } }))
+      bridge = {
+        ...bridge,
+        auth: {
+          status: async () => ({ state: 'signed-out' as const }),
+          startPairing: async () => ({ state: 'pairing' as const, userCode: 'ABCD-1234', expiresAt: Date.now() + 60_000, pollAfterMs: 3_000 }),
+          pollPairing,
+          cancelPairing: async () => ({ state: 'signed-out' as const }),
+          logout: async () => ({ state: 'signed-out' as const }),
+        },
+      }
+      store = createWorkspaceStore(bridge)
+
+      await store.getState().loginCommunity()
+      await store.getState().cancelCommunityPairing()
+      await vi.advanceTimersByTimeAsync(3_000)
+      expect(pollPairing).not.toHaveBeenCalled()
+      expect(store.getState().communityAuth.status).toBe('signed_out')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

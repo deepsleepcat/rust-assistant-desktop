@@ -33,8 +33,14 @@ const PAIRING_ERROR_MESSAGES = {
   pendingApproval: '配对尚未批准',
 } as const
 
-function isPairingTerminalMessage(message: unknown): boolean {
-  return typeof message === 'string' && (PAIRING_ERROR_MESSAGES.terminal as readonly string[]).includes(message)
+const PAIRING_ERROR_CODES = {
+  terminal: 'pairing_not_found_or_expired',
+  pendingApproval: 'pairing_pending_approval',
+} as const
+
+function isPairingTerminalResponse(data: Record<string, unknown> | null): boolean {
+  return data?.error_code === PAIRING_ERROR_CODES.terminal ||
+    (typeof data?.message === 'string' && (PAIRING_ERROR_MESSAGES.terminal as readonly string[]).includes(data.message))
 }
 
 interface ActivePairing {
@@ -312,8 +318,8 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
       if (activePairing !== pairing || operationGeneration !== generation) return status()
       if (!response.ok) {
         const data = object(body)
-        if (response.status === 404 || isPairingTerminalMessage(data?.message)) { activePairing = null; return status() }
-        if (response.status === 409 && data?.message === PAIRING_ERROR_MESSAGES.pendingApproval) return { state: 'pairing' }
+        if (response.status === 404 || isPairingTerminalResponse(data)) { activePairing = null; return status() }
+        if (response.status === 409 && (data?.error_code === PAIRING_ERROR_CODES.pendingApproval || data?.message === PAIRING_ERROR_MESSAGES.pendingApproval)) return { state: 'pairing' }
         if (response.status === 429) {
           activePairing = null
           throw new CommunityAuthError(typeof data?.message === 'string' ? data.message : '请求过于频繁，请稍后再试')
@@ -324,8 +330,12 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
       const data = successfulData(body)
       const state = publicStatus(data.status)
       if (state.state === 'pairing') return { state: 'pairing' }
+      if (state.state === 'signed-out') {
+        activePairing = null
+        return state
+      }
       const token = string(data.token, 8192)
-      if (!token) throw new CommunityAuthError('社区配对服务返回了无效会话')
+      if (!token || !token.startsWith('sk-')) throw new CommunityAuthError('社区配对服务返回了无效会话')
       if (operationGeneration !== generation || activePairing !== pairing) return status()
       await enqueueCredentialMutation(async () => {
         if (operationGeneration !== generation || activePairing !== pairing) return

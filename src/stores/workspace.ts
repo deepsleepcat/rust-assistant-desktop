@@ -50,9 +50,25 @@ export function createWorkspaceStore(bridge: BridgeApi) {
   // L1：init 幂等（StrictMode 双挂载/重复调用只执行一次，避免重复订阅更新事件）
   let initPromise: Promise<void> | null = null
   let pairingCheckInFlight = false
+  let pairingTimer: ReturnType<typeof setTimeout> | null = null
   let authGeneration = 0
 
   return create<WorkspaceStore>()((set, get) => {
+    function clearPairingTimer(): void {
+      if (pairingTimer) clearTimeout(pairingTimer)
+      pairingTimer = null
+    }
+
+    function schedulePairingCheck(generation: number, delayMs: number, expiresAt: number): void {
+      clearPairingTimer()
+      const remainingMs = expiresAt - Date.now()
+      if (generation !== authGeneration || remainingMs <= 0) return
+      pairingTimer = setTimeout(() => {
+        pairingTimer = null
+        if (generation === authGeneration) void get().checkCommunityPairing()
+      }, Math.min(Math.max(delayMs, 250), remainingMs))
+    }
+
     function persist(): void {
       const s = get()
       if (persistTimer) clearTimeout(persistTimer)
@@ -216,6 +232,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
           const pairing = await bridgeAuth.startPairing()
           if (generation !== authGeneration) return
           set({ communityAuth: { status: 'loading', user: null, error: null, pairing: { userCode: pairing.userCode, expiresAt: pairing.expiresAt } } })
+          schedulePairingCheck(generation, pairing.pollAfterMs, pairing.expiresAt)
         } catch (error) {
           if (generation !== authGeneration) return
           set({ communityAuth: { status: 'error', user: get().communityAuth.user, error: error instanceof Error ? error.message : String(error), pairing: null } })
@@ -223,6 +240,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       },
       async checkCommunityPairing() {
         if (pairingCheckInFlight || get().communityAuth.status !== 'loading') return
+        clearPairingTimer()
         const generation = authGeneration
         pairingCheckInFlight = true
         try {
@@ -231,14 +249,20 @@ export function createWorkspaceStore(bridge: BridgeApi) {
           const status = await bridgeAuth.pollPairing()
           if (generation !== authGeneration || get().communityAuth.status !== 'loading') return
           if (status.state === 'signed-in') {
+            clearPairingTimer()
             set({ communityAuth: { status: 'signed_in', user: mapBridgeUser(status.user), error: null, pairing: null } })
             return
           }
           if (status.state === 'signed-out') {
+            clearPairingTimer()
             set({ communityAuth: { status: 'error', user: null, error: '配对已结束或已过期，请重新开始', pairing: null } })
+            return
           }
+          const activePairing = get().communityAuth.pairing
+          if (activePairing) schedulePairingCheck(generation, 3_000, activePairing.expiresAt)
         } catch (error) {
           if (generation !== authGeneration) return
+          clearPairingTimer()
           set({ communityAuth: { status: 'error', user: get().communityAuth.user, error: error instanceof Error ? error.message : String(error), pairing: null } })
         } finally {
           pairingCheckInFlight = false
@@ -246,12 +270,14 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       },
       async cancelCommunityPairing() {
         const generation = ++authGeneration
+        clearPairingTimer()
         try { await bridge.auth?.cancelPairing() } finally {
           if (generation === authGeneration) set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
         }
       },
       async logoutCommunity() {
         const generation = ++authGeneration
+        clearPairingTimer()
         if (bridge.auth) {
           try { await bridge.auth.logout() } catch { /* 本地仍清除会话 */ }
         }

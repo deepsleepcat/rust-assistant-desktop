@@ -201,9 +201,9 @@ export interface WorkspaceStoreActions {
   toggleCommunityFollow(creatorId: string): void
   /** Refresh the browser-auth community session from the saved token. */
   refreshCommunityAuth(): Promise<void>
-  /** Start browser pairing without polling in the background. */
+  /** Start browser pairing and continue checking until it completes or expires. */
   loginCommunity(): Promise<void>
-  /** Manually check one pairing request. */
+  /** Immediately check the active pairing without waiting for the next automatic check. */
   checkCommunityPairing(): Promise<void>
   /** Cancel the active browser pairing. */
   cancelCommunityPairing(): Promise<void>

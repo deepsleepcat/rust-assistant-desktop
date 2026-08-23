@@ -128,7 +128,7 @@ describe('community device auth', () => {
         success: true,
         data: {
           status: 'claimed',
-          token: 'desktop-bearer-token',
+          token: 'sk-desktop-bearer-token',
           user: { id: 7, username: 'alice', display_name: 'Alice' },
         },
       })
@@ -145,7 +145,58 @@ describe('community device auth', () => {
     expect(signedIn).toEqual({ state: 'signed-in', user: { id: 7, username: 'alice', displayName: 'Alice' } })
     expect(signedIn).not.toHaveProperty('token')
     expect(String(store.data.get(COMMUNITY_AUTH_CREDENTIAL_KEY))).not.toContain('desktop-bearer-token')
-    await expect(credentials.withCredential((value) => value)).resolves.toBe('desktop-bearer-token')
+    await expect(credentials.withCredential((value) => value)).resolves.toBe('sk-desktop-bearer-token')
+  })
+
+  it('ends terminal pairings without treating them as malformed sessions', async () => {
+    const store = createMemoryStore()
+    const credentials = createSecureCredentials(store, createSafeStorage())
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/device/pairing/start') {
+        return json({
+          success: true,
+          data: {
+            pairing_id: 'private-pairing-id',
+            device_secret: 'private-device-secret',
+            user_code: 'ABCD-1234',
+            approval_url: `${TRUSTED_COMMUNITY_ORIGIN}${COMMUNITY_PAIRING_PAGE_PATH}?code=ABCD-1234`,
+            expires_at: 700,
+          },
+        })
+      }
+      return json({ success: true, data: { status: 'denied' } })
+    })
+    const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: fetcher })
+
+    await auth.startPairing()
+    await expect(auth.pollPairing()).resolves.toEqual({ state: 'signed-out' })
+  })
+
+  it('rejects claimed responses without a community token prefix', async () => {
+    const store = createMemoryStore()
+    const credentials = createSecureCredentials(store, createSafeStorage())
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input))
+      if (url.pathname === '/api/device/pairing/start') {
+        return json({
+          success: true,
+          data: {
+            pairing_id: 'private-pairing-id',
+            device_secret: 'private-device-secret',
+            user_code: 'ABCD-1234',
+            approval_url: `${TRUSTED_COMMUNITY_ORIGIN}${COMMUNITY_PAIRING_PAGE_PATH}?code=ABCD-1234`,
+            expires_at: 700,
+          },
+        })
+      }
+      return json({ success: true, data: { status: 'claimed', token: 'missing-prefix' } })
+    })
+    const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: fetcher })
+
+    await auth.startPairing()
+    await expect(auth.pollPairing()).rejects.toThrow('无效会话')
+    await expect(credentials.hasCredential()).resolves.toBe(false)
   })
 
   it('cancels locally and clears the encrypted credential even when remote logout fails', async () => {
