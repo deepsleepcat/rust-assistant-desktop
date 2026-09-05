@@ -38,6 +38,8 @@ function mapBridgeUser(user: CommunityAuthUser | undefined) {
         avatar_url: user.avatarUrl,
         ...(user.email ? { email: user.email } : {}),
         ...(user.emailVerified !== undefined ? { email_verified: user.emailVerified } : {}),
+        ...(user.role !== undefined ? { role: user.role } : {}),
+        ...(user.status !== undefined ? { status: user.status } : {}),
       }
     : null
 }

@@ -17,6 +17,7 @@ import { findKeyValueSeparator, splitTopLevelConfigValue } from '../../services/
 import { runSemanticChecks, semanticIssuesToDiagnostics, type CustomRule } from './semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from './semanticChecks/registry'
 import { loadProjectRuleSets } from './semanticChecks/customRules'
+import { loadEnabledPluginData } from '../plugins/runtimeData'
 
 /** 规则描述「整行/键」而非「值」的类型：值校验时跳过，避免误报 */
 const LINE_LEVEL_TYPES = new Set(['key', 'section', 'value', 'notes', 'define', 'prefixKey', 'code'])
@@ -383,7 +384,16 @@ async function cachedProjectRules(rootPath?: string): Promise<CustomRule[] | und
     return projectRulesCache.rules
   }
   const loaded = await loadProjectRuleSets(rootPath).catch(() => ({ sets: [], errors: [] }))
-  const rules = loaded.sets.flatMap((s) => s.rules)
+  const projectRules = loaded.sets.flatMap((s) => s.rules)
+  const pluginRaw = await (await import('../../services/bridge')).getBridge().store.get('plugins').catch(() => null)
+  const pluginRules = loadEnabledPluginData(pluginRaw).rules
+  const seen = new Set(projectRules.map((rule) => rule.id.toLowerCase()))
+  const rules = [...projectRules]
+  for (const rule of pluginRules) {
+    if (seen.has(rule.id.toLowerCase())) continue
+    seen.add(rule.id.toLowerCase())
+    rules.push(rule as CustomRule)
+  }
   projectRulesCache = { root: rootPath, rules, at: Date.now() }
   return rules
 }

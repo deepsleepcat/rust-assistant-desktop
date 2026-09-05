@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { enToZh, makeDict, zhToEn } from '../src/services/translation'
+
+interface CodeData {
+  data: Array<{ code: string; translate: string }>
+}
 
 function dict() {
   return makeDict(
@@ -23,6 +29,14 @@ function dict() {
 }
 
 describe('翻译服务', () => {
+  it('公开代码表使用 whenBuilding_rotateTo_aimAtActionTarget 的准确译名', () => {
+    const codeData = JSON.parse(readFileSync(resolve(__dirname, '..', 'public', 'data', 'code.json'), 'utf8')) as CodeData
+    const matches = codeData.data.filter((entry) => entry.code === 'whenBuilding_rotateTo_aimAtActionTarget')
+
+    expect(matches).toHaveLength(1)
+    expect(matches[0].translate).toBe('建造时转向瞄准行动目标')
+  })
+
   it('英文 → 中文', () => {
     expect(enToZh('name = "Rifleman"', dict())).toBe('名称 = "步枪兵"')
     expect(enToZh('price = 300', dict())).toBe('价格 = 300')

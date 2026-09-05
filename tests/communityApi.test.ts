@@ -185,6 +185,35 @@ describe('communityApi', () => {
     await expect(createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, 'sk-token', fetcher).uploadResource(42, file)).resolves.toMatchObject({ id: 9, display_name: 'unit.zip' })
   })
 
+  it('我的帖子、审核和问答采纳使用精确路径与请求载荷', async () => {
+    const calls: Array<{ url: string; method: string; body?: string }> = []
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), method: init?.method ?? 'GET', body: typeof init?.body === 'string' ? init.body : undefined })
+      return response({ success: true, message: '', data: { items: [], total: 0, page: 1, page_size: 20 } })
+    })
+    const api = createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, 'sk-token', fetcher)
+    await api.mine(2, 12)
+    await api.moderationPosts('hidden', 3, 20)
+    await api.moderationComments('all', 1, 20)
+    await api.moderationResources('visible', 1, 20)
+    await api.moderatePost(12, { status: 'hidden', reason: '违规内容' })
+    await api.moderateComment(13, { status: 'visible', reason: '复核通过' })
+    await api.moderateResource(14, { status: 'hidden', reason: '资源违规' })
+    await api.setPostCuration(12, { featured: false, reason: '取消精选' })
+    await api.acceptComment(12, 13)
+    expect(calls.map(({ url, method, body }) => ({ url, method, body }))).toEqual([
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/posts/mine?page=2&page_size=12`, method: 'GET' },
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/moderation/posts?status=hidden&page=3&page_size=20`, method: 'GET' },
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/moderation/comments?status=all&page=1&page_size=20`, method: 'GET' },
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/moderation/resources?status=visible&page=1&page_size=20`, method: 'GET' },
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/moderation/posts/12`, method: 'PUT', body: '{"status":"hidden","reason":"违规内容"}' },
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/moderation/comments/13`, method: 'PUT', body: '{"status":"visible","reason":"复核通过"}' },
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/moderation/resources/14`, method: 'PUT', body: '{"status":"hidden","reason":"资源违规"}' },
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/moderation/posts/12/curation`, method: 'PUT', body: '{"featured":false,"reason":"取消精选"}' },
+      { url: `${DEFAULT_COMMUNITY_ENDPOINT}/api/community/posts/12/comments/13/accept`, method: 'PUT', body: '{}' },
+    ])
+  })
+
   it('资源下载限制大小并解析附件文件名', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe(`${DEFAULT_COMMUNITY_ENDPOINT}/api/community/resources/9/download`)

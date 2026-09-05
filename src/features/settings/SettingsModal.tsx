@@ -21,6 +21,7 @@ import { EditorSettingsTab } from './tabs/EditorSettingsTab'
 import { LayoutSettingsTab } from './tabs/LayoutSettingsTab'
 import { AiSettingsTab } from './tabs/AiSettingsTab'
 import { CommunitySettingsTab } from './tabs/CommunitySettingsTab'
+import { PluginsSettingsTab } from './tabs/PluginsSettingsTab'
 import { AboutSettingsTab } from './tabs/AboutSettingsTab'
 
 export function SettingsModal() {
@@ -42,6 +43,7 @@ export function SettingsModal() {
           <SettingNavItem active={tab === 'layout'} onClick={() => switchTab('layout')} icon={<AppIcon name="layout" size={14} />} label="布局" />
           <SettingNavItem active={tab === 'ai'} onClick={() => switchTab('ai')} icon={<AppIcon name="sparkle" size={14} />} label="AI" />
           <SettingNavItem active={tab === 'community'} onClick={() => switchTab('community')} icon={<AppIcon name="share" size={14} />} label="社区" />
+          <SettingNavItem active={tab === 'plugins'} onClick={() => switchTab('plugins')} icon={<AppIcon name="box" size={14} />} label="插件" />
           <SettingNavItem active={tab === 'game'} onClick={() => switchTab('game')} icon={<AppIcon name="tower" size={14} />} label="游戏" />
           <SettingNavItem active={tab === 'coming'} onClick={() => switchTab('coming')} icon={<AppIcon name="clock" size={14} />} label="计划中" />
           <SettingNavItem active={tab === 'about'} onClick={() => switchTab('about')} icon={<AppIcon name="info" size={14} />} label="关于" />
@@ -55,6 +57,7 @@ export function SettingsModal() {
           {tab === 'layout' && <LayoutSettingsTab />}
           {tab === 'ai' && <AiSettingsTab />}
           {tab === 'community' && <CommunitySettingsTab />}
+          {tab === 'plugins' && <PluginsSettingsTab />}
           {tab === 'game' && <GameSettingsTab />}
 
           {tab === 'coming' && (

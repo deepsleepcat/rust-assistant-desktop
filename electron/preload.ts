@@ -28,6 +28,9 @@ const api: BridgeApi = {
     get: (key: string) => ipcRenderer.invoke('store:get', key),
     set: (key: string, value: unknown) => ipcRenderer.invoke('store:set', key, value),
   },
+  plugins: {
+    importLocal: () => ipcRenderer.invoke('plugin:importLocal'),
+  },
   community: {
     request: (request) => ipcRenderer.invoke('community:request', request),
   },

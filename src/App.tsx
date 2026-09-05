@@ -25,7 +25,37 @@ import { GitInfoModal } from './features/project/GitInfoModal'
 import { UnitLibraryModal } from './features/editor/UnitLibraryModal'
 import { ValueTypeModal } from './features/settings/ValueTypeModal'
 import { CursorEffect } from './components/CursorEffect'
+import { LogoR } from './components/LogoR'
 import { LoginScreen } from './features/auth/LoginScreen'
+
+interface StartupScreenProps {
+  initError: string | null
+  onRetry: () => void
+}
+
+function StartupScreen({ initError, onRetry }: StartupScreenProps) {
+  return (
+    <main className="startup-screen" aria-labelledby="startup-title">
+      <section className="startup-panel">
+        <div className="startup-brand">
+          <LogoR size="about" />
+          <span>铁锈工坊</span>
+        </div>
+        <div className={`startup-state${initError ? ' startup-error' : ''}`} role={initError ? 'alert' : 'status'} aria-live={initError ? undefined : 'polite'}>
+          <h1 id="startup-title">{initError ? '启动失败' : '正在启动…'}</h1>
+          {initError ? (
+            <>
+              <p>{initError}</p>
+              <button className="btn primary" onClick={onRetry}>重试</button>
+            </>
+          ) : (
+            <span className="startup-spinner" aria-hidden="true" />
+          )}
+        </div>
+      </section>
+    </main>
+  )
+}
 
 export function App() {
   const ready = useWorkspaceStore((s) => s.ready)
@@ -142,27 +172,7 @@ export function App() {
   }, [toast, dismissToast])
 
   if (!ready) {
-    return (
-      <div
-        style={{
-          height: '100%',
-          display: 'grid',
-          placeItems: 'center',
-          background: 'var(--bg-app)',
-          color: 'var(--text-2)',
-          fontSize: 14,
-        }}
-      >
-        {initError ? (
-          <div style={{ textAlign: 'center', maxWidth: 420, padding: 24 }}>
-            <div style={{ marginBottom: 12 }}>启动失败：{initError}</div>
-            <button className="btn primary" onClick={runInit}>重试</button>
-          </div>
-        ) : (
-          '正在启动…'
-        )}
-      </div>
-    )
+    return <StartupScreen initError={initError} onRetry={runInit} />
   }
 
   // Desktop builds require the browser-backed community session; preview mode

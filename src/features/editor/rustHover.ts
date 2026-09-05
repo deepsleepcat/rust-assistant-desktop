@@ -8,7 +8,7 @@
 import { hoverTooltip } from '@codemirror/view'
 import type { EditorView } from '@codemirror/view'
 import { findKeyValueSeparator, splitTopLevelConfigValue } from '../../services/configSyntax'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, findValueTypes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, parseValueList, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, findValueTypes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getPluginEnumExplanation, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, parseValueList, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
 function stripComment(line: string): string {
@@ -166,7 +166,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       const valueZh = getValueZhDict()
       const enumTooltip = (raw: string, start: number, end: number) => {
         const base = raw.slice(0, raw.indexOf('(') >= 0 ? raw.indexOf('(') : raw.length)
-        const zh = valueZh.get(raw.toLowerCase()) ?? valueZh.get(base.toLowerCase())
+        const zh = valueZh.get(raw.toLowerCase()) ?? valueZh.get(base.toLowerCase()) ?? getPluginEnumExplanation(key, base)
         if (!zh || (!allowed.has(raw.toLowerCase()) && !allowedBases.has(base.trim().toLowerCase()))) return null
         return {
           pos: start,

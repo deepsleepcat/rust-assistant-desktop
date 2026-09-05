@@ -342,7 +342,7 @@ describe('community device auth', () => {
     const auth = createCommunityAuth({ credentials, openExternal: async () => undefined, fetch: fetcher })
 
     await auth.startPairing()
-    await expect(auth.pollPairing()).resolves.toEqual({ state: 'signed-in', user: { id: 12, username: 'normal-user' } })
+    await expect(auth.pollPairing()).resolves.toEqual({ state: 'signed-in', user: { id: 12, username: 'normal-user', role: 1, status: 1 } })
   })
 
   it('clears only an unauthorized stored credential and reports other verification failures', async () => {

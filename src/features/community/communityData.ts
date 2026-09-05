@@ -9,6 +9,8 @@
  * 底部的 `communityDataSource` 导出（排序/筛选/统计等纯逻辑在 UI 之外，可原样复用）。
  */
 
+import type { CommunityPost, PostFeed } from '../../services/communityApi'
+
 /** 社区页签（与 RustAssistant-master 的 CommunityFragment 四页签结构对应） */
 export type CommunityTab = 'recommend' | 'following' | 'ranking' | 'me'
 
@@ -218,6 +220,40 @@ export function formatCount(n: number): string {
   if (n >= 100_000_000) return trimOne(n / 100_000_000) + '亿'
   if (n >= 10_000) return trimOne(n / 10_000) + '万'
   return String(Math.round(n))
+}
+
+export interface OfflinePostFilterOptions {
+  feed?: PostFeed
+  board?: string
+  keyword?: string
+  tag?: string
+  page?: number
+  pageSize?: number
+}
+
+/** 离线帖子回退：保持与服务端列表相同的筛选条件、排序和分页语义。 */
+export function filterOfflinePosts(posts: CommunityPost[], options: OfflinePostFilterOptions = {}): { items: CommunityPost[]; total: number; page: number; page_size: number } {
+  const page = Math.max(1, options.page ?? 1)
+  const pageSize = Math.max(1, options.pageSize ?? 12)
+  const keyword = options.keyword?.trim().toLocaleLowerCase() ?? ''
+  const filtered = posts
+    .filter((post) => !options.board || post.board === options.board)
+    .filter((post) => !options.tag || (post.tags ?? []).includes(options.tag))
+    .filter((post) => !keyword || `${post.title}\\n${post.body}\\n${post.author_name}`.toLocaleLowerCase().includes(keyword))
+    .filter((post) => {
+      if (!options.feed || options.feed === 'all') return true
+      if (options.feed === 'featured') return post.featured === true
+      if (options.feed === 'dynamic' || options.feed === 'question' || options.feed === 'article') return post.content_type === options.feed
+      return true
+    })
+    .sort((a, b) => {
+      if (options.feed === 'hot') return (b.like_count ?? 0) + (b.view_count ?? 0) / 10 + (b.comment_count ?? 0) * 2 - ((a.like_count ?? 0) + (a.view_count ?? 0) / 10 + (a.comment_count ?? 0) * 2)
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+      if (a.featured !== b.featured) return a.featured ? -1 : 1
+      return b.updated_at - a.updated_at || b.id - a.id
+    })
+  const start = (page - 1) * pageSize
+  return { items: filtered.slice(start, start + pageSize), total: filtered.length, page, page_size: pageSize }
 }
 
 function trimOne(x: number): string {

@@ -16,7 +16,7 @@ export interface CommunityAuthState {
   pairing: { userCode: string; expiresAt: number } | null
 }
 
-export type SettingsTab = 'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'community' | 'game' | 'coming' | 'about'
+export type SettingsTab = 'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'community' | 'plugins' | 'game' | 'coming' | 'about'
 
 export interface ConfirmRequest {
   title: string

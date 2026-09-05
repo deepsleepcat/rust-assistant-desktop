@@ -37,6 +37,18 @@
   0%, 100% { opacity: .38; }
   50% { opacity: .9; }
 }
+@keyframes ra-startup-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ra-startup-pulse {
+  0%, 100% { opacity: .52; transform: scale(.92); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+/* ── 启动状态：轻微入场与进度提示，不延迟真实初始化 ─────── */
+.startup-panel { animation: ra-startup-in .24s ease-out both; }
+.startup-spinner { animation: ra-startup-pulse 1.25s ease-in-out infinite; }
 
 /* ── 浮层：命令面板、设置、确认、M5 弹窗 ─────────────── */
 .modal-overlay, .command-overlay { animation: ra-fade-in .18s ease-out; }
@@ -88,4 +100,5 @@
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+  .startup-panel, .startup-spinner { animation: none; }
 }

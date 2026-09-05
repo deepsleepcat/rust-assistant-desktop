@@ -146,6 +146,8 @@ function toUser(value: unknown): CommunityAuthUser | undefined {
   const avatarUrl = string(data?.avatar_url, 600)
   const email = string(data?.email, 320)
   const emailVerified = typeof data?.email_verified === 'boolean' ? data.email_verified : undefined
+  const role = number(data?.role)
+  const status = number(data?.status)
   return {
     id,
     username,
@@ -153,6 +155,8 @@ function toUser(value: unknown): CommunityAuthUser | undefined {
     ...(avatarUrl ? { avatarUrl } : {}),
     ...(email ? { email } : {}),
     ...(emailVerified !== undefined ? { emailVerified } : {}),
+    ...(role !== null && Number.isInteger(role) ? { role } : {}),
+    ...(status !== null && Number.isInteger(status) ? { status } : {}),
   }
 }
 

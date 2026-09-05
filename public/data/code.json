@@ -6873,7 +6873,7 @@
     },
     {
       "code": "whenBuilding_rotateTo_aimAtActionTarget",
-      "translate": "当建筑物旋转达到行动目标时",
+      "translate": "建造时转向瞄准行动目标",
       "description": "注：在某些情况下是坏的",
       "type": "boolean",
       "addVersion": 3,

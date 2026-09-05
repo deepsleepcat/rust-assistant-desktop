@@ -3,6 +3,7 @@
  * 所有文件操作都必须携带 rootPath（项目根目录），主进程会校验路径范围。
  */
 import type { AiChatParams, AiCheckResult, AiHistoryMeta, AiProviderInfo, AiSettings, AiStreamEvent } from './ai'
+import type { PluginFile, PluginImportKind, PluginManifest } from '../features/plugins'
 
 export interface DirEntry {
   name: string
@@ -73,6 +74,16 @@ export interface StoreApi {
   set(key: string, value: unknown): Promise<void>
 }
 
+export interface PluginImportSelection {
+  source: PluginImportKind
+  manifest: PluginManifest
+  files: ReadonlyArray<PluginFile>
+}
+
+export interface PluginApi {
+  importLocal(): Promise<PluginImportSelection | null>
+}
+
 /** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */
 export interface CommunityRequest {
   url: string
@@ -97,6 +108,8 @@ export interface CommunityAuthUser {
   avatarUrl?: string
   email?: string
   emailVerified?: boolean
+  role?: number
+  status?: number
 }
 
 export type CommunityAuthState = 'unavailable' | 'signed-out' | 'pairing' | 'signed-in'
@@ -137,6 +150,7 @@ export interface BridgeApi {
     confirmClose(): Promise<boolean>
   }
   store: StoreApi
+  plugins?: PluginApi
   community?: {
     request(request: CommunityRequest): Promise<CommunityResponse>
   }

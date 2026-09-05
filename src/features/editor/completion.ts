@@ -23,6 +23,7 @@ import {
   findValueTypes,
   getDialectWords,
   getKeyZhToEnDict,
+  getPluginEnumExplanation,
   getValueZhDict,
   getZhToEnDict,
   loadCodeData,
@@ -380,7 +381,7 @@ async function valueCompletions(key: string, query: string, data: CompletionData
       .join(' · ')
     for (const v of items) {
       const base = v.slice(0, v.indexOf('(') >= 0 ? v.indexOf('(') : v.length)
-      const zhDesc = valueZh.get(v.toLowerCase()) ?? valueZh.get(base.toLowerCase())
+      const zhDesc = valueZh.get(v.toLowerCase()) ?? valueZh.get(base.toLowerCase()) ?? getPluginEnumExplanation(enKey, base)
       if (q && !v.toLowerCase().includes(q) && !zhDesc?.includes(query.trim())) continue
       result.push({
         label: zhDesc ? `${v} · ${zhDesc}` : v,

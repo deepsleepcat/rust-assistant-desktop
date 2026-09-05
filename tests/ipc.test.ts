@@ -26,6 +26,7 @@ import {
   registerGitIpc,
   registerKnowledgeIpc,
   registerModIpc,
+  registerPluginIpc,
   registerStoreIpc,
   registerIpc,
   registerMediaFromSettings,
@@ -95,7 +96,11 @@ beforeEach(async () => {
   })
   await store.ready()
   cleanup = async () => {
-    await fs.rm(tmp, { recursive: true, force: true })
+    // 先把防抖窗口内的最后写入落盘并等待完成，再删临时目录
+    //（不等待的话 rename 会与 rm 竞争：ENOENT 噪声 / ENOTEMPTY 导致 rmdir 失败）
+    await store.flush().catch(() => undefined)
+    await getHistory().flush().catch(() => undefined)
+    await fs.rm(tmp, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }).catch(() => undefined)
   }
 })
 
@@ -113,7 +118,7 @@ describe('IPC 通道完整性', () => {
     expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
   })
 
-  it('十一个域注册函数覆盖全部 81 个通道，无遗漏无重复', () => {
+  it('十二个域注册函数覆盖全部 82 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerCommunityIpc(ctx, ipc)
@@ -121,6 +126,7 @@ describe('IPC 通道完整性', () => {
     registerKnowledgeIpc(ctx, ipc)
     registerGitIpc(ctx, ipc)
     registerDialogIpc(ctx, ipc)
+    registerPluginIpc(ctx, ipc)
     registerFsIpc(ctx, ipc)
     registerModIpc(ctx, ipc)
     registerGameIpc(ctx, ipc)
@@ -136,7 +142,7 @@ describe('IPC 通道完整性', () => {
       // git
       'git:info', 'git:log', 'git:status', 'git:conflicts', 'git:diff', 'git:restore',
       // dialog + project
-      'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots',
+      'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots', 'plugin:importLocal',
       // fs + media
       'fs:readDir', 'project:searchFiles', 'fs:readFile', 'fs:stat', 'fs:writeFile', 'fs:createFile', 'fs:createFolder', 'fs:rename', 'fs:delete',
       'image:readAsDataUrl', 'media:readAsDataUrl',
@@ -154,7 +160,7 @@ describe('IPC 通道完整性', () => {
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(81)
+    expect(channels.size).toBe(82)
   })
 })
 
@@ -275,6 +281,40 @@ describe('社区请求代理', () => {
     await expect(invoke(channels, 'community:request', { url: `${trusted}/api/me`, method: 'POST', upload })).rejects.toThrow('附件只能上传到帖子资源接口')
     await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'PUT', upload })).rejects.toThrow('附件只能上传到帖子资源接口')
     await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', body: '{}', upload })).rejects.toThrow('附件只能上传到帖子资源接口')
+    vi.unstubAllGlobals()
+  })
+
+  it('审核与采纳路径只允许精确的社区接口，不能借代理访问相邻路径', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCommunityIpc(ctx, ipc)
+    const fetcher = vi.fn(async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetcher)
+    const trusted = 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl'
+
+    const allowed = [
+      ['GET', '/api/community/moderation/posts'],
+      ['GET', '/api/community/moderation/comments'],
+      ['GET', '/api/community/moderation/resources'],
+      ['PUT', '/api/community/moderation/posts/12'],
+      ['PUT', '/api/community/moderation/posts/12/curation'],
+      ['PUT', '/api/community/moderation/comments/13'],
+      ['PUT', '/api/community/moderation/resources/14'],
+      ['PUT', '/api/community/posts/12/comments/13/accept'],
+    ] as const
+    for (const [method, pathname] of allowed) {
+      await expect(invoke(channels, 'community:request', { url: `${trusted}${pathname}`, method })).resolves.toMatchObject({ status: 200 })
+    }
+    expect(fetcher).toHaveBeenCalledTimes(allowed.length)
+
+    const rejected = [
+      '/api/community/moderation/posts/12/curation/extra',
+      '/api/community/moderation/comments/13/accept',
+      '/api/community/posts/12/comments/13/accept/extra',
+      '/api/community/moderation/posts/not-a-number',
+    ]
+    for (const pathname of rejected) {
+      await expect(invoke(channels, 'community:request', { url: `${trusted}${pathname}`, method: 'PUT' })).rejects.toThrow('路径不允许')
+    }
     vi.unstubAllGlobals()
   })
 })
@@ -446,6 +486,40 @@ describe('对话框与信任锚', () => {
     await invoke(channels, 'project:registerRoots', [known, unknown])
     expect(ctx.roots.has(normalizePath(known))).toBe(true)
     expect(ctx.roots.has(normalizePath(unknown))).toBe(false)
+  })
+
+  it('plugin:importLocal 只读取用户选中的 manifest.json，并拒绝脚本字段', async () => {
+    const manifestPath = path.join(tmp, 'manifest.json')
+    await fs.writeFile(manifestPath, JSON.stringify({
+      manifestVersion: 1,
+      id: 'local.plugin',
+      version: '1.0.0',
+      name: 'Local plugin',
+      capabilities: ['translations'],
+      translations: { en: { title: 'Title' } },
+      resources: [],
+    }), 'utf8')
+    ctx.dialog = {
+      ...ctx.dialog,
+      showOpenDialog: async () => ({ canceled: false, filePaths: [manifestPath] }),
+    }
+    const { channels, ipc } = createFakeIpc()
+    registerPluginIpc(ctx, ipc)
+    const imported = await invoke<{ manifest: { id: string }; source: string }>(channels, 'plugin:importLocal')
+    expect(imported.source).toBe('json')
+    expect(imported.manifest.id).toBe('local.plugin')
+
+    await fs.writeFile(manifestPath, JSON.stringify({
+      manifestVersion: 1,
+      id: 'unsafe.plugin',
+      version: '1.0.0',
+      name: 'Unsafe plugin',
+      capabilities: ['translations'],
+      translations: { en: { title: 'Title' } },
+      resources: [],
+      script: 'payload.js',
+    }), 'utf8')
+    await expect(invoke(channels, 'plugin:importLocal')).rejects.toThrow('脚本')
   })
 })
 

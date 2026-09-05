@@ -119,6 +119,14 @@ export interface CommunityPostDetail extends CommunityPost {
   resources?: CommunityResource[]
 }
 
+export interface CommunityModerationComment extends CommunityComment {
+  parent_post?: CommunityPost
+}
+
+export interface CommunityModerationResource extends CommunityResource {
+  parent_post?: CommunityPost
+}
+
 export interface CommunityRankingItem {
   id?: number
   post_id?: number
@@ -407,6 +415,7 @@ export function createCommunityApi(
     tags: (keyword = '', page = 1, pageSize = 50) => request<CommunityPage<CommunityTag>>(`/api/community/tags?${query({ keyword, page, page_size: pageSize })}`, {}, { auth: false }),
     posts: (options: ListPostsOptions = {}) => request<CommunityPage<CommunityPost>>(`/api/community/posts?${query({ board: options.board, keyword: options.keyword, feed: options.feed, tag: options.tag, page: options.page ?? 1, page_size: options.pageSize ?? 12 })}`, {}, { auth: false }),
     following: (page = 1, pageSize = 12) => request<CommunityPage<CommunityPost>>(`/api/community/posts/following?${query({ page, page_size: pageSize })}`),
+    mine: (page = 1, pageSize = 12) => request<CommunityPage<CommunityPost>>(`/api/community/posts/mine?${query({ page, page_size: pageSize })}`),
     post: (id: number) => request<CommunityPostDetail>(`/api/community/posts/${encodeURIComponent(id)}`, {}, { auth: false }),
     comments: (postId: number, page = 1, pageSize = 50) => request<CommunityPage<CommunityComment>>(`/api/community/posts/${encodeURIComponent(postId)}/comments?${query({ page, page_size: pageSize })}`, {}, { auth: false }),
     rankings: async (type: 'posts' | 'authors') => {
@@ -416,6 +425,13 @@ export function createCommunityApi(
     createPost: (body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }) => json<CommunityPost>('/api/community/posts', 'POST', body),
     updatePost: (id: number, body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }) => json<CommunityPost>(`/api/community/posts/${encodeURIComponent(id)}`, 'PUT', body),
     deletePost: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    setPostCuration: (id: number, body: { featured?: boolean; pinned?: boolean; reason: string }) => json<{ featured: boolean; pinned: boolean; changed: boolean }>(`/api/community/moderation/posts/${encodeURIComponent(id)}/curation`, 'PUT', body),
+    moderatePost: (id: number, body: { status: 'visible' | 'hidden'; reason: string }) => json<null>(`/api/community/moderation/posts/${encodeURIComponent(id)}`, 'PUT', body),
+    moderationPosts: (status: 'visible' | 'hidden' | 'all' = 'hidden', page = 1, pageSize = 20) => request<CommunityPage<CommunityPost>>(`/api/community/moderation/posts?${query({ status, page, page_size: pageSize })}`),
+    moderationComments: (status: 'visible' | 'hidden' | 'all' = 'hidden', page = 1, pageSize = 20) => request<CommunityPage<CommunityModerationComment>>(`/api/community/moderation/comments?${query({ status, page, page_size: pageSize })}`),
+    moderationResources: (status: 'visible' | 'hidden' | 'all' = 'hidden', page = 1, pageSize = 20) => request<CommunityPage<CommunityModerationResource>>(`/api/community/moderation/resources?${query({ status, page, page_size: pageSize })}`),
+    moderateComment: (id: number, body: { status: 'visible' | 'hidden'; reason: string }) => json<null>(`/api/community/moderation/comments/${encodeURIComponent(id)}`, 'PUT', body),
+    moderateResource: (id: number, body: { status: 'visible' | 'hidden'; reason: string }) => json<null>(`/api/community/moderation/resources/${encodeURIComponent(id)}`, 'PUT', body),
     uploadResource: async (postId: number, file: File) => {
       const form = new FormData()
       form.append('file', file, file.name)
@@ -425,6 +441,7 @@ export function createCommunityApi(
     createComment: (postId: number, body: string) => json<CommunityComment>(`/api/community/posts/${encodeURIComponent(postId)}/comments`, 'POST', { body }),
     updateComment: (id: number, body: string) => json<CommunityComment>(`/api/community/comments/${encodeURIComponent(id)}`, 'PUT', { body }),
     deleteComment: (id: number) => request<null>(`/api/community/comments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    acceptComment: (postId: number, commentId: number) => json<{ accepted: boolean; changed: boolean; comment_id: number }>(`/api/community/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/accept`, 'PUT', {}),
     like: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}/like`, { method: 'POST' }),
     unlike: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}/like`, { method: 'DELETE' }),
     follow: (id: number) => request<null>(`/api/community/authors/${encodeURIComponent(id)}/follow`, { method: 'POST' }),
@@ -488,17 +505,26 @@ export interface CommunityApi {
   tags(keyword?: string, page?: number, pageSize?: number): Promise<CommunityPage<CommunityTag>>
   posts(options?: ListPostsOptions): Promise<CommunityPage<CommunityPost>>
   following(page?: number, pageSize?: number): Promise<CommunityPage<CommunityPost>>
+  mine(page?: number, pageSize?: number): Promise<CommunityPage<CommunityPost>>
   post(id: number): Promise<CommunityPostDetail>
   comments(postId: number, page?: number, pageSize?: number): Promise<CommunityPage<CommunityComment>>
   rankings(type: 'posts' | 'authors'): Promise<CommunityRankingItem[]>
   createPost(body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }): Promise<CommunityPost>
   updatePost(id: number, body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }): Promise<CommunityPost>
   deletePost(id: number): Promise<null>
+  setPostCuration(id: number, body: { featured?: boolean; pinned?: boolean; reason: string }): Promise<{ featured: boolean; pinned: boolean; changed: boolean }>
+  moderatePost(id: number, body: { status: 'visible' | 'hidden'; reason: string }): Promise<null>
+  moderationPosts(status?: 'visible' | 'hidden' | 'all', page?: number, pageSize?: number): Promise<CommunityPage<CommunityPost>>
+  moderationComments(status?: 'visible' | 'hidden' | 'all', page?: number, pageSize?: number): Promise<CommunityPage<CommunityModerationComment>>
+  moderationResources(status?: 'visible' | 'hidden' | 'all', page?: number, pageSize?: number): Promise<CommunityPage<CommunityModerationResource>>
+  moderateComment(id: number, body: { status: 'visible' | 'hidden'; reason: string }): Promise<null>
+  moderateResource(id: number, body: { status: 'visible' | 'hidden'; reason: string }): Promise<null>
   uploadResource(postId: number, file: File): Promise<CommunityResource>
   deleteResource(id: number): Promise<null>
   createComment(postId: number, body: string): Promise<CommunityComment>
   updateComment(id: number, body: string): Promise<CommunityComment>
   deleteComment(id: number): Promise<null>
+  acceptComment(postId: number, commentId: number): Promise<{ accepted: boolean; changed: boolean; comment_id: number }>
   like(id: number): Promise<null>
   unlike(id: number): Promise<null>
   follow(id: number): Promise<null>
