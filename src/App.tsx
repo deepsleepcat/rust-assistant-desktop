@@ -175,9 +175,9 @@ export function App() {
     return <StartupScreen initError={initError} onRetry={runInit} />
   }
 
-  // Desktop builds require the browser-backed community session; preview mode
-  // remains usable offline with the mock bridge and local example workspace.
-  if (isElectron && communityAuth.status !== 'signed_in') return <LoginScreen />
+  // Desktop builds require the browser-backed community session or an explicit
+  // offline choice; preview mode remains usable offline with the mock bridge.
+  if (isElectron && communityAuth.status !== 'signed_in' && communityAuth.status !== 'offline') return <LoginScreen />
 
   return (
     <div className={`app${settings.background.kind !== 'none' ? ' has-backdrop' : ''}`}>

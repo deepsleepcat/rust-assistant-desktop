@@ -9,6 +9,7 @@ export function LoginScreen() {
   const checkPairing = useWorkspaceStore((state) => state.checkCommunityPairing)
   const cancelPairing = useWorkspaceStore((state) => state.cancelCommunityPairing)
   const retry = useWorkspaceStore((state) => state.refreshCommunityAuth)
+  const enterOffline = useWorkspaceStore((state) => state.enterOfflineMode)
   const endpoint = useWorkspaceStore((state) => state.settings.ai.communityEndpoint)
   const busy = auth.status === 'loading' || auth.status === 'checking'
   const pairingActive = auth.status === 'loading' && Boolean(auth.pairing)
@@ -26,6 +27,9 @@ export function LoginScreen() {
         {!pairingActive && <button className="btn primary auth-login" disabled={busy} onClick={() => void login()}>
           <AppIcon name="link" size={14} />
           {busy ? '正在检查登录状态…' : '在浏览器中登录'}
+        </button>}
+        {!pairingActive && <button className="btn auth-offline" disabled={busy} onClick={enterOffline}>
+          离线使用（本地编辑，不连接社区）
         </button>}
         {pairingActive && auth.pairing && <div className="auth-pairing" role="status" aria-live="polite">
           <p>浏览器已打开，请登录后在批准页手动点击“批准设备”。</p>

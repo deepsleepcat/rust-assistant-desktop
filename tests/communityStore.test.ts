@@ -179,3 +179,54 @@ describe('社区工作区状态（M33）', () => {
     }
   })
 })
+
+describe('离线使用（v0.3.7 用户需求）', () => {
+  let store: ReturnType<typeof createWorkspaceStore>
+  let bridge: ReturnType<typeof createMockBridge>
+  let cancelPairing: () => Promise<{ state: 'signed-out' }>
+
+  beforeEach(() => {
+    const mem = new Map<string, string>()
+    ;(globalThis as Record<string, unknown>).localStorage = {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => { mem.set(k, v) },
+      removeItem: (k: string) => { mem.delete(k) },
+      clear: () => { mem.clear() },
+      key: (i: number) => [...mem.keys()][i] ?? null,
+      get length() { return mem.size },
+    }
+    bridge = createMockBridge()
+    cancelPairing = vi.fn(async () => ({ state: 'signed-out' as const }))
+    bridge = {
+      ...bridge,
+      auth: {
+        status: async () => ({ state: 'signed-out' as const }),
+        startPairing: async () => ({ state: 'pairing' as const, userCode: 'ABCD-1234', expiresAt: Date.now() + 60_000, pollAfterMs: 3_000 }),
+        pollPairing: async () => ({ state: 'pairing' as const, pollAfterMs: 3_000 }),
+        cancelPairing,
+        logout: async () => ({ state: 'signed-out' as const }),
+      },
+    }
+    store = createWorkspaceStore(bridge)
+  })
+
+  it('进入离线态：取消进行中的配对并进入 offline', async () => {
+    await store.getState().loginCommunity()
+    expect(store.getState().communityAuth.status).toBe('loading')
+    store.getState().enterOfflineMode()
+    expect(cancelPairing).toHaveBeenCalledTimes(1)
+    expect(store.getState().communityAuth.status).toBe('offline')
+    expect(store.getState().communityAuth.pairing).toBeNull()
+  })
+
+  it('离线态不被后台会话刷新顶回登录页；「登录社区」显式退出离线态', async () => {
+    store.getState().enterOfflineMode()
+    await store.getState().refreshCommunityAuth()
+    expect(store.getState().communityAuth.status).toBe('offline')
+    store.getState().openLoginScreen()
+    expect(store.getState().communityAuth.status).toBe('signed_out')
+    // 退出离线态后刷新恢复常规行为（无已保存令牌 → signed_out，不再保持 offline）
+    await store.getState().refreshCommunityAuth()
+    expect(store.getState().communityAuth.status).toBe('signed_out')
+  })
+})

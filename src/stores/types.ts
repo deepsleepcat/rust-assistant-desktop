@@ -7,7 +7,7 @@ import type { ModImportKind } from '../types/bridge'
 import type { CommunityTab } from '../features/community/communityData'
 import type { CommunityUser } from '../services/communityApi'
 
-export type CommunityAuthStatus = 'checking' | 'signed_out' | 'signed_in' | 'loading' | 'error'
+export type CommunityAuthStatus = 'checking' | 'signed_out' | 'signed_in' | 'loading' | 'error' | 'offline'
 
 export interface CommunityAuthState {
   status: CommunityAuthStatus
@@ -209,6 +209,10 @@ export interface WorkspaceStoreActions {
   cancelCommunityPairing(): Promise<void>
   /** Clear the local community session and revoke it when possible. */
   logoutCommunity(): Promise<void>
+  /** 离线使用：跳过社区登录进入本地编辑（社区页显示引导登录占位） */
+  enterOfflineMode(): void
+  /** 离线模式中回到登录页（社区面板「登录社区」入口） */
+  openLoginScreen(): void
   setCodeTableOpen(open: boolean): void
   setVersionDiffOpen(open: boolean): void
   setRelationGraphOpen(open: boolean): void

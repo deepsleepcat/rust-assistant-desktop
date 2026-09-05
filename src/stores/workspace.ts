@@ -205,6 +205,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       // ── 领域切片（按域拆分，见 slices/）──
       ...createUiSlice()(set, get),
       async refreshCommunityAuth() {
+        // 离线模式不被后台刷新顶回登录页；「登录社区」会先显式退出离线态
+        if (get().communityAuth.status === 'offline') return
         const generation = ++authGeneration
         const bridgeAuth = bridge.auth
         if (!bridgeAuth) {
@@ -283,6 +285,21 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         if (bridge.auth) {
           try { await bridge.auth.logout() } catch { /* 本地仍清除会话 */ }
         }
+        if (generation === authGeneration) set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
+      },
+      /** 离线使用（v0.3.7 用户需求）：服务器不可达/暂不想登录也能进本地编辑器。 */
+      enterOfflineMode() {
+        authGeneration += 1 // 使在途的会话/配对检查失效
+        clearPairingTimer()
+        // 配对进行中也一并取消（后台尽力撤销，不阻塞进入编辑器）
+        void bridge.auth?.cancelPairing().catch(() => undefined)
+        // 保留已有 user 仅作本地显示；离线状态下社区写操作仍需服务端登录
+        set({ communityAuth: { status: 'offline', user: get().communityAuth.user, error: null, pairing: null } })
+      },
+      /** 离线模式中从社区面板回到登录页 */
+      openLoginScreen() {
+        const generation = ++authGeneration
+        clearPairingTimer()
         if (generation === authGeneration) set({ communityAuth: { status: 'signed_out', user: null, error: null, pairing: null } })
       },
       ...createConversationSlice({ persist })(set, get),

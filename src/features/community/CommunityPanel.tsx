@@ -114,6 +114,7 @@ export function CommunityPanel() {
   const following = useWorkspaceStore((s) => s.communityFollowing)
   const toggleFollow = useWorkspaceStore((s) => s.toggleCommunityFollow)
   const loginCommunity = useWorkspaceStore((s) => s.loginCommunity)
+  const openLoginScreen = useWorkspaceStore((s) => s.openLoginScreen)
   const refreshCommunityAuth = useWorkspaceStore((s) => s.refreshCommunityAuth)
   const openSettings = useWorkspaceStore((s) => s.openSettings)
   const communityAuth = useWorkspaceStore((s) => s.communityAuth)
@@ -168,6 +169,12 @@ export function CommunityPanel() {
   }, [refreshCommunityAuth])
 
   const load = useCallback(async () => {
+    // 离线模式：不发任何社区请求，等「登录社区」回到登录页
+    if (useWorkspaceStore.getState().communityAuth.status === 'offline') {
+      setLoading(false)
+      setError(null)
+      return
+    }
     const generation = ++loadGeneration.current
     const isCurrent = () => generation === loadGeneration.current
     setLoading(true)
@@ -322,6 +329,24 @@ export function CommunityPanel() {
     } finally {
       actionLocks.current.delete(key)
     }
+  }
+
+  if (communityAuth.status === 'offline') {
+    return (
+      <section className="community-panel panel">
+        <div className="panel-header">
+          <AppIcon name="share" size={13} /> 社区
+          <span className="badge" title="未连接社区服务器">离线</span>
+          <span className="grow" />
+        </div>
+        <PanelState
+          kind="empty"
+          title="离线模式"
+          description="当前以离线方式使用，本地编辑功能不受影响；登录后可浏览社区、发帖与下载附件。"
+          action={<button className="btn primary" onClick={openLoginScreen}>登录社区</button>}
+        />
+      </section>
+    )
   }
 
   return (
