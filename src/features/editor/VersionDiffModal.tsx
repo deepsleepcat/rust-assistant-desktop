@@ -108,7 +108,7 @@ export function VersionDiffModal({ onClose }: Props) {
   const mustFixCount = report?.mustFixCount ?? 0
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card vdiff-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">版本差异对比</div>
         <div className="modal-body vdiff-body">

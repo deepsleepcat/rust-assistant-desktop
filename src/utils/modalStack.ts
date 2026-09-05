@@ -43,6 +43,9 @@ export function installEscapeDispatcher(): void {
   window.addEventListener(
     'keydown',
     (e) => {
+      // 输入法组合期间（取消候选常用 Escape）不关弹窗：isComposing 之外再兜底
+      // keyCode 229（部分浏览器/IME 组合键按下时 key 是 Process/isComposing 不可靠）
+      if (e.isComposing || e.keyCode === 229) return
       if (e.key === 'Escape' && stack.length > 0) {
         e.preventDefault()
         e.stopImmediatePropagation()

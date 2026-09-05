@@ -214,7 +214,7 @@ export function App() {
         />
       )}
       {gitInfoOpen && !activeProjectId && (
-        <div className="modal-overlay" onClick={() => useWorkspaceStore.getState().setGitInfoOpen(false)}>
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && useWorkspaceStore.getState().setGitInfoOpen(false)}>
           <div className="modal-card vdiff-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">Git 历史与回滚（本地）</div>
             <div className="modal-body">

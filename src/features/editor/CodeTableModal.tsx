@@ -90,7 +90,7 @@ export function CodeTableModal({ onClose, onCopy }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card codetable-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">代码表</div>
         <div className="modal-body codetable-body">

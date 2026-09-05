@@ -20,7 +20,7 @@ export function CheckModal({
   useEscapeHandler(onClose)
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card confirm-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">单位检查结果</div>
         <div className="modal-body mod-check-body">

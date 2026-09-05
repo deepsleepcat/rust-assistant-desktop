@@ -148,7 +148,7 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
 
   if (error) {
     return (
-      <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <div className="modal-card vdiff-card">
           <div className="modal-header">Git 历史</div>
           <div className="modal-body">
@@ -165,7 +165,7 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
   const notAvailable = info && (!info.available || !info.isRepo)
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card vdiff-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">Git 历史与回滚（本地）</div>
         <div className="modal-body vdiff-body">

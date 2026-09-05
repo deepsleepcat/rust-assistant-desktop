@@ -74,7 +74,7 @@ export function RelationGraphModal({ onClose }: Props) {
 
   if (!project) {
     return (
-      <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <div className="modal-card vdiff-card">
           <div className="modal-header">关系图</div>
           <div className="modal-body">
@@ -93,7 +93,7 @@ export function RelationGraphModal({ onClose }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card vdiff-card relgraph-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">模组关系图 · {project.name}</div>
         <div className="modal-body vdiff-body">

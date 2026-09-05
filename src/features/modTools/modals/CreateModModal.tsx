@@ -123,7 +123,7 @@ export function CreateModModal({ onClose, onSubmit }: { onClose: () => void; onS
   const musicNames = musicFiles.map((f) => f.split(/[\\/]/).pop() ?? f)
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card confirm-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">{existing === 'loading' ? '模组自述文件' : existing ? '编辑模组自述文件' : '创建模组自述文件'}</div>
         <div className="modal-body mod-form">

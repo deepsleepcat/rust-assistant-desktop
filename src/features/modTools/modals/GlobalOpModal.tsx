@@ -46,7 +46,7 @@ export function GlobalOpModal({ onClose }: { onClose: () => void }) {
   ]
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card confirm-card optimize-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">全局操作</div>
         <div className="modal-body mod-form">

@@ -158,7 +158,7 @@ export function UnitLibraryModal({ onClose }: Props) {
   const loading = (scan.status === 'loading') || official === null
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={cardRef} className="modal-card unitlib-card" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header" id={titleId}>单位库</div>
         <div className="modal-body unitlib-body">

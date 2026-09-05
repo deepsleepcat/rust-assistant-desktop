@@ -325,7 +325,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const totalFrames = frameInfo.count
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card vdiff-card unitprev-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           单位预览 · {file.split(/[\\/]/).pop()}

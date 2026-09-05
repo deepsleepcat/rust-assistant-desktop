@@ -113,7 +113,7 @@ export function TurretEditorModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card confirm-card turret-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           炮塔编辑器

@@ -40,7 +40,7 @@ export function CreateUnitModal({ onClose, onSubmit }: { onClose: () => void; on
 
   if (step === 1) {
     return (
-      <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <div className="modal-card confirm-card" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">新建单位 · 选择模板</div>
           <div className="modal-body mod-form">
@@ -64,7 +64,7 @@ export function CreateUnitModal({ onClose, onSubmit }: { onClose: () => void; on
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card confirm-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">新建单位 · {selected?.name}</div>
         <div className="modal-body mod-form">

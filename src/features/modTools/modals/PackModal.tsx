@@ -37,7 +37,7 @@ export function PackModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card confirm-card pack-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">打包模组</div>
         <div className="modal-body mod-check-body">
