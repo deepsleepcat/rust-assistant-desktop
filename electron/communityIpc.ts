@@ -49,28 +49,18 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
   // 只代理正式社区或显式本地开发后端，避免该通道成为通用 HTTP/SSRF 代理。
   const trustedOrigin = validateCommunityOrigin(getConfiguredCommunityOrigin())
   const allowedMethods = new Set(['GET', 'POST', 'PUT', 'DELETE'])
-  const allowedPaths = [
+  // 前缀族白名单（方案 D Step 4）：社区服务以后新增同族接口时不需要发桌面版。
+  // 家族之外一律拒绝；源固定、方法、大小上限、头白名单、凭据注入边界全部不变。
+  // 例外：头像仍限定 48 位对象名，附件仍只允许上传到帖子资源接口（精确路径）。
+  const allowedPathPatterns = [
     /^\/health$/,
-    /^\/api\/auth\/(register|login|logout|verification|email\/bind)$/,
     /^\/api\/me$/,
+    /^\/api\/usage$/,
+    /^\/api\/auth\//,
+    /^\/api\/community\//,
     /^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/,
-    /^\/api\/community\/(boards|tags|rankings|posts)$/,
-    /^\/api\/community\/posts\/following$/,
-    /^\/api\/community\/posts\/mine$/,
-    /^\/api\/community\/posts\/\d+$/,
-    /^\/api\/community\/posts\/\d+\/comments$/,
-    /^\/api\/community\/posts\/\d+\/resources$/,
-    /^\/api\/community\/posts\/\d+\/like$/,
-    /^\/api\/community\/authors\/\d+\/follow$/,
-    /^\/api\/community\/comments\/\d+$/,
-    /^\/api\/community\/resources\/\d+(?:\/download)?$/,
-    /^\/api\/community\/moderation\/posts$/,
-    /^\/api\/community\/moderation\/posts\/\d+$/,
-    /^\/api\/community\/moderation\/posts\/\d+\/curation$/,
-    /^\/api\/community\/moderation\/(comments|resources)$/,
-    /^\/api\/community\/moderation\/(comments|resources)\/\d+$/,
-    /^\/api\/community\/posts\/\d+\/comments\/\d+\/accept$/,
   ]
+  const trustedHost = new URL(trustedOrigin).hostname
   const maxJsonBytes = 2 * 1024 * 1024
   const maxUploadBytes = 50 * 1024 * 1024
 
@@ -89,9 +79,13 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       throw new Error('社区服务器地址无效')
     }
     if (url.origin !== trustedOrigin) throw new Error('社区服务器地址不受信任')
+    // 显式主机校验（SSRF 防线）：即使上游源校验被改动，这里也把请求钉死在
+    // 受信任的主机上；http 协议只允许显式本地开发后端（localhost）。
+    if (url.hostname !== trustedHost) throw new Error('社区服务器地址不受信任')
+    if (url.protocol !== 'https:' && url.hostname !== 'localhost') throw new Error('社区服务器地址不受信任')
     // pathname 必须是站内绝对路径（单 / 开头）：阻止 `//host` 协议相对形式借 base 重建时逃逸到其他源
     if (!url.pathname.startsWith('/') || url.pathname.startsWith('//')) throw new Error('社区请求路径不允许')
-    if (!allowedPaths.some((pattern) => pattern.test(url.pathname))) throw new Error('社区请求路径不允许')
+    if (!allowedPathPatterns.some((pattern) => pattern.test(url.pathname))) throw new Error('社区请求路径不允许')
     if (/^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/.test(url.pathname) && (request.method !== 'GET' || request.body !== undefined || request.upload)) {
       throw new Error('社区头像只允许读取')
     }
@@ -131,6 +125,11 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
         const trustedUrl = new URL(trustedOrigin)
         trustedUrl.pathname = url.pathname
         trustedUrl.search = url.search
+        // 发请求前的显式主机校验：协议必须 https（或显式本地开发的 localhost），
+        // 主机必须等于受信任主机——即便上游校验被改动，这里也不会成为通用代理。
+        if (trustedUrl.hostname !== trustedHost || (trustedUrl.protocol !== 'https:' && trustedUrl.hostname !== 'localhost')) {
+          throw new Error('社区服务器地址不受信任')
+        }
         return fetch(trustedUrl, { method: request.method, headers: requestHeaders, body, signal: controller.signal, redirect: 'error' })
       }
       const response = request.authenticated

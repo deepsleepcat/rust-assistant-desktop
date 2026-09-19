@@ -284,7 +284,7 @@ describe('社区请求代理', () => {
     vi.unstubAllGlobals()
   })
 
-  it('审核与采纳路径只允许精确的社区接口，不能借代理访问相邻路径', async () => {
+  it('社区接口按前缀族放行：族内新端点免发版，族外与相邻前缀一律拒绝', async () => {
     const { channels, ipc } = createFakeIpc()
     registerCommunityIpc(ctx, ipc)
     const fetcher = vi.fn(async () => new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }))
@@ -293,13 +293,12 @@ describe('社区请求代理', () => {
 
     const allowed = [
       ['GET', '/api/community/moderation/posts'],
-      ['GET', '/api/community/moderation/comments'],
-      ['GET', '/api/community/moderation/resources'],
-      ['PUT', '/api/community/moderation/posts/12'],
       ['PUT', '/api/community/moderation/posts/12/curation'],
-      ['PUT', '/api/community/moderation/comments/13'],
-      ['PUT', '/api/community/moderation/resources/14'],
       ['PUT', '/api/community/posts/12/comments/13/accept'],
+      // 前缀族：社区服务以后新增的同族接口不再需要发桌面版
+      ['GET', '/api/community/announcements'],
+      ['POST', '/api/community/moderation/bulk-hide'],
+      ['POST', '/api/auth/passkey/login'],
     ] as const
     for (const [method, pathname] of allowed) {
       await expect(invoke(channels, 'community:request', { url: `${trusted}${pathname}`, method })).resolves.toMatchObject({ status: 200 })
@@ -307,18 +306,24 @@ describe('社区请求代理', () => {
     expect(fetcher).toHaveBeenCalledTimes(allowed.length)
 
     const rejected = [
-      '/api/community/moderation/posts/12/curation/extra',
-      '/api/community/moderation/comments/13/accept',
-      '/api/community/posts/12/comments/13/accept/extra',
-      '/api/community/moderation/posts/not-a-number',
+      // 族外路径：网关控制台、AI 中继、未登记前缀
+      '/api/user/self',
+      '/api/token/',
+      '/v1/chat/completions',
+      '/api/status',
+      // 相邻前缀：必须整段匹配，/api/communityx 不是 /api/community/
+      '/api/communityx/posts',
+      '/api/auth2/login',
+      // 精确路径不允许追加段
+      '/api/me/extra',
+      '/health/deep',
     ]
     for (const pathname of rejected) {
-      await expect(invoke(channels, 'community:request', { url: `${trusted}${pathname}`, method: 'PUT' })).rejects.toThrow('路径不允许')
+      await expect(invoke(channels, 'community:request', { url: `${trusted}${pathname}`, method: 'GET' })).rejects.toThrow('路径不允许')
     }
     vi.unstubAllGlobals()
   })
 })
-
 describe('store 通道', () => {
   it('store:get/set 读写往返', async () => {
     const { channels, ipc } = createFakeIpc()
