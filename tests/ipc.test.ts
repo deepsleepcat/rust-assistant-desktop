@@ -22,6 +22,7 @@ import {
   registerCommunityIpc,
   registerDialogIpc,
   registerFsIpc,
+  registerCloudbagIpc,
   registerGameIpc,
   registerGitIpc,
   registerKnowledgeIpc,
@@ -118,7 +119,7 @@ describe('IPC 通道完整性', () => {
     expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
   })
 
-  it('十二个域注册函数覆盖全部 82 个通道，无遗漏无重复', () => {
+  it('十三个域注册函数覆盖全部 83 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerCommunityIpc(ctx, ipc)
@@ -130,6 +131,7 @@ describe('IPC 通道完整性', () => {
     registerFsIpc(ctx, ipc)
     registerModIpc(ctx, ipc)
     registerGameIpc(ctx, ipc)
+    registerCloudbagIpc(ctx, ipc)
     registerAppIpc(ctx, ipc)
     registerAiIpc(ctx, ipc)
 
@@ -154,13 +156,15 @@ describe('IPC 通道完整性', () => {
       'template:import', 'template:deleteUser', 'template:listUserKeys',
       // game
       'game:detect', 'game:importSample', 'game:importMod', 'game:launch', 'game:openDir', 'game:preflight', 'game:readAssetImage',
+      // cloudbag（云书包恢复：拉取覆盖 / 冲突放弃本地改动）
+      'cloudbag:restore',
       // app
       'app:info', 'app:flush-done', 'app:checkUpdate', 'app:downloadUpdate', 'app:installUpdate',
       // ai
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(82)
+    expect(channels.size).toBe(83)
   })
 })
 

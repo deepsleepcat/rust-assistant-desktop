@@ -49,6 +49,38 @@ describe('社区工作区状态（M33）', () => {
     expect(store.getState().communityTab).toBe('me')
   })
 
+  it('云书包视图切换（setCloudBagView）：slug 变更回落 files，只切 section 时保留 slug', () => {
+    const s = store.getState()
+    expect(s.cloudBagSlug).toBeNull()
+    expect(s.cloudBagSection).toBe('files')
+
+    // 打开仓库：默认落 files
+    s.setCloudBagView({ slug: 'iron-curtain' })
+    expect(store.getState().cloudBagSlug).toBe('iron-curtain')
+    expect(store.getState().cloudBagSection).toBe('files')
+
+    // 只切子页签：slug 不变
+    s.setCloudBagView({ section: 'versions' })
+    expect(store.getState().cloudBagSlug).toBe('iron-curtain')
+    expect(store.getState().cloudBagSection).toBe('versions')
+
+    // 换仓库：section 回落到 files（不回落到上一个仓库的页签）
+    s.setCloudBagView({ slug: 'abyss' })
+    expect(store.getState().cloudBagSlug).toBe('abyss')
+    expect(store.getState().cloudBagSection).toBe('files')
+
+    // 返回列表：slug=null 也回落 files
+    s.setCloudBagView({ slug: null })
+    expect(store.getState().cloudBagSlug).toBeNull()
+    expect(store.getState().cloudBagSection).toBe('files')
+
+    // 空 patch：不改动任何字段
+    s.setCloudBagView({ section: 'settings' })
+    s.setCloudBagView({})
+    expect(store.getState().cloudBagSlug).toBeNull()
+    expect(store.getState().cloudBagSection).toBe('settings')
+  })
+
   it('关注/取消关注创作者（幂等切换）', async () => {
     const s = store.getState()
     s.toggleCommunityFollow('c1')

@@ -11,8 +11,8 @@
 
 import type { CommunityPost, PostFeed } from '../../services/communityApi'
 
-/** 社区页签（与 RustAssistant-master 的 CommunityFragment 四页签结构对应） */
-export type CommunityTab = 'recommend' | 'following' | 'ranking' | 'me'
+/** 社区页签（与 RustAssistant-master 的 CommunityFragment 四页签结构对应；cloudBag 为云书包第五页签） */
+export type CommunityTab = 'recommend' | 'following' | 'ranking' | 'me' | 'cloudBag'
 
 /** 排行维度：下载量 / 热度收藏 / 单位数 / 最近更新 */
 export type RankingDimension = 'downloads' | 'favorites' | 'units' | 'updated'
@@ -89,6 +89,7 @@ export const TAB_LABELS: Record<CommunityTab, string> = {
   following: '关注',
   ranking: '排行',
   me: '我的',
+  cloudBag: '云书包',
 }
 
 export const RANKING_DIMENSION_LABELS: Record<RankingDimension, string> = {

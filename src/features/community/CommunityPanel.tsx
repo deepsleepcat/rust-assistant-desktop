@@ -5,6 +5,7 @@ import { PanelState } from '../../components/PanelState'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { createCommunityApi, type CommunityApi, type CommunityBoard, type CommunityComment, type CommunityModerationComment, type CommunityModerationResource, type CommunityPost, type CommunityPostDetail, type CommunityRankingItem, type CommunityResource, type CommunityTag, type CommunityUser, type PostFeed } from '../../services/communityApi'
 import { CommunityAvatar } from '../../components/CommunityAvatar'
+import { CloudBagPanel } from './CloudBagPanel'
 import { filterOfflinePosts, localCommunityDataSource, TAB_LABELS, type CommunitySnapshot, type CommunityTab } from './communityData'
 
 const FEEDS: Array<{ value: PostFeed; label: string }> = [
@@ -123,6 +124,10 @@ export function CommunityPanel() {
   const [posts, setPosts] = useState<DisplayPost[]>([])
   const [localMode, setLocalMode] = useState(false)
   const [loading, setLoading] = useState(true)
+  /** 云书包页签本次真实请求的可达性（null=未发请求/结论未定）。徽标必须反映它，
+   * 否则会出现「头部在线 / 正文加载失败」的自相矛盾。按「页签:刷新计数」打键：
+   * 切页签或刷新后旧结论自动失效（不需要 effect 里 setState 清零）。 */
+  const [cloudBagReach, setCloudBagReach] = useState<{ key: string; reachable: boolean | null } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [feed, setFeed] = useState<PostFeed>('all')
   const [board, setBoard] = useState('')
@@ -173,6 +178,15 @@ export function CommunityPanel() {
     if (useWorkspaceStore.getState().communityAuth.status === 'offline') {
       setLoading(false)
       setError(null)
+      return
+    }
+    // 云书包页签：帖子数据不加载，由 CloudBagPanel 自行按社区状态取数。
+    // localMode 必须复位：该页签从不渲染本地示例数据，徽标若沿用社区页签的
+    // 「本地示例」会与云书包真实在线内容自相矛盾（徽标取自 communityAuth 真实状态）。
+    if (tab === 'cloudBag') {
+      setLoading(false)
+      setError(null)
+      setLocalMode(false)
       return
     }
     const generation = ++loadGeneration.current
@@ -331,29 +345,27 @@ export function CommunityPanel() {
     }
   }
 
-  if (communityAuth.status === 'offline') {
-    return (
-      <section className="community-panel panel">
-        <div className="panel-header">
-          <AppIcon name="share" size={13} /> 社区
-          <span className="badge" title="未连接社区服务器">离线</span>
-          <span className="grow" />
-        </div>
-        <PanelState
-          kind="empty"
-          title="离线模式"
-          description="当前以离线方式使用，本地编辑功能不受影响；登录后可浏览社区、发帖与下载附件。"
-          action={<button className="btn primary" onClick={openLoginScreen}>登录社区</button>}
-        />
-      </section>
-    )
-  }
+  const offline = communityAuth.status === 'offline'
+  /** 云书包页签下，头部徽标以本页签真实请求的可达性为准（可达性未知时回落原门控文案） */
+  const reachKey = `${tab}:${refreshKey}`
+  const cloudBagReachable = cloudBagReach?.key === reachKey ? cloudBagReach.reachable : null
+  const cloudBagDown = tab === 'cloudBag' && cloudBagReachable === false
+  const onCloudBagReachability = useCallback((reachable: boolean | null) => {
+    setCloudBagReach({ key: reachKey, reachable })
+  }, [reachKey])
+  const badge = offline
+    ? { cls: 'warning', label: '离线', title: '未连接社区服务器' }
+    : cloudBagDown
+      ? { cls: 'warning', label: '连接异常', title: '社区服务器当前不可用：云书包请求失败（详见正文）' }
+      : localMode
+        ? { cls: 'info', label: '本地示例', title: '服务器不可用时展示内置示例数据' }
+        : { cls: 'success', label: '在线', title: '已连接社区服务器' }
 
   return (
     <section className="community-panel panel">
       <div className="panel-header">
         <AppIcon name="share" size={13} /> 社区
-        <span className={`badge ${localMode ? 'info' : 'success'}`} title={localMode ? '服务器不可用时展示内置示例数据' : '已连接社区服务器'}>{localMode ? '本地示例' : '在线'}</span>
+        <span className={`badge ${badge.cls}`} title={badge.title}>{badge.label}</span>
         <span className="grow" />
         {isVerifiedUser(currentUser) && (currentUser?.role ?? 0) >= 10 && <button className="btn-sm" onClick={() => setModerationOpen(true)}>审核队列</button>}
         <button className="icon-btn" title="刷新社区数据" aria-label="刷新社区数据" onClick={() => setRefreshKey((n) => n + 1)}><AppIcon name="refresh" size={13} /></button>
@@ -368,13 +380,27 @@ export function CommunityPanel() {
         document.getElementById(`community-tab-${next}`)?.focus()
       }}>
         {(Object.keys(TAB_LABELS) as CommunityTab[]).map((key) => (
-          <button key={key} type="button" role="tab" id={`community-tab-${key}`} aria-selected={tab === key} tabIndex={tab === key ? 0 : -1} className={`community-tab${tab === key ? ' active' : ''}`} onClick={() => { setPage(1); setTab(key) }}>
+          <button key={key} type="button" role="tab" id={`community-tab-${key}`} aria-controls={`community-tabpanel-${key}`} aria-selected={tab === key} tabIndex={tab === key ? 0 : -1} className={`community-tab${tab === key ? ' active' : ''}`} onClick={() => { setPage(1); setTab(key) }}>
             {TAB_LABELS[key]}{key === 'following' && following.length > 0 && <span className="count">{following.length}</span>}
           </button>
         ))}
       </div>
-      <div className="community-body" role="tabpanel" tabIndex={0}>
-        {loading ? <PanelState kind="loading" title="加载社区内容…" /> : (
+      <div className="community-body" role="tabpanel" id={`community-tabpanel-${tab}`} aria-labelledby={`community-tab-${tab}`} tabIndex={0}>
+        {/* refreshKey 传给 CloudBagPanel：头部「刷新社区数据」在云书包页签下必须真正重新取数
+            （CommunityPanel 自己的 load 在 cloudBag 页签提前 return，不覆盖该页签）。
+            离线态登录入口统一走 openLoginScreen（社区页签同款），避免先打一次必然失败的配对请求。
+            onReachabilityChange：头部徽标必须反映云书包页签本次请求的真实可达性。 */}
+        {tab === 'cloudBag' ? <CloudBagPanel refreshKey={refreshKey} onOpenLogin={openLoginScreen} onOpenSettings={openVerificationSettings} onUnauthorized={handleUnauthorized} onReachabilityChange={onCloudBagReachability} /> : offline ? (
+          <PanelState
+            kind="empty"
+            icon="cloud"
+            title="离线模式"
+            description="当前以离线方式使用，本地编辑功能不受影响；登录后可浏览社区、发帖与下载附件。"
+            action={<button className="btn primary" onClick={openLoginScreen}>登录社区</button>}
+            onRetry={() => setRefreshKey((n) => n + 1)}
+            retryLabel="重试"
+          />
+        ) : loading ? <PanelState kind="loading" title="加载社区内容…" /> : (
           <>
             {error && <div className="local-note community-warning">{error}。当前保留本地示例浏览。</div>}
             {tab === 'recommend' && <RecommendView feed={feed} setFeed={(value) => { setFeed(value); setPage(1) }} board={board} setBoard={(value) => { setBoard(value); setPage(1) }} boardOptions={boardOptions} keyword={keyword} setKeyword={(value) => { setKeyword(value); setPage(1) }} tag={tag} setTag={(value) => { setTag(value); setPage(1) }} tagOptions={tagOptions} onSearch={() => setRefreshKey((n) => n + 1)} posts={posts} onOpen={openPost} onLike={onLike} />}

@@ -35,6 +35,12 @@ export function createUiSlice() {
     setCommunityTab(tab: CommunityTab) {
       set({ communityTab: tab })
     },
+    setCloudBagView(patch: { slug?: string | null; section?: 'files' | 'versions' | 'members' | 'settings' }) {
+      set((state) => ({
+        cloudBagSlug: patch.slug !== undefined ? patch.slug : state.cloudBagSlug,
+        cloudBagSection: patch.section ?? (patch.slug !== undefined ? 'files' : state.cloudBagSection),
+      }))
+    },
     toggleCommunityFollow(creatorId: string) {
       const list = get().communityFollowing
       set({

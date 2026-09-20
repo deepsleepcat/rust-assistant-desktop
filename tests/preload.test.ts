@@ -34,7 +34,7 @@ describe('preload 桥契约', () => {
   it('暴露 window.rustAssistant，且各域齐全', () => {
     expect(mocks.exposeInMainWorld).toHaveBeenCalledWith('rustAssistant', expect.any(Object))
     const a = api()
-    for (const key of ['app', 'store', 'community', 'auth', 'project', 'knowledge', 'game', 'mod', 'git', 'ai']) {
+    for (const key of ['app', 'store', 'community', 'cloudbag', 'auth', 'project', 'knowledge', 'game', 'mod', 'git', 'ai']) {
       expect(a[key]).toBeTypeOf('object')
     }
   })
@@ -44,6 +44,13 @@ describe('preload 桥契约', () => {
     const request = { url: 'https://xn--gmqtc392bzw0a.xn--6qq986b3xl/health', method: 'GET' }
     await community.request(request)
     expect(mocks.invoke).toHaveBeenLastCalledWith('community:request', request)
+  })
+
+  it('云书包恢复映射到 cloudbag:restore（根路径/字节/版本号三参原样传递）', async () => {
+    const cloudbag = api().cloudbag as { restore: (root: string, bytes: ArrayBuffer, versionNo: number) => Promise<unknown> }
+    const bytes = new ArrayBuffer(8)
+    await cloudbag.restore('C:\\proj', bytes, 7)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('cloudbag:restore', 'C:\\proj', bytes, 7)
   })
 
   it('设备认证只映射状态式 IPC，不接收或返回令牌参数', async () => {

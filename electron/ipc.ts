@@ -23,6 +23,7 @@ import { registerPluginIpc } from './pluginIpc'
 import { registerFsIpc } from './fsIpc'
 import { registerModIpc } from './modIpc'
 import { registerGameIpc } from './gameIpc'
+import { registerCloudbagIpc } from './cloudbagRestore'
 import { registerAppIpc } from './appIpc'
 import { registerAiIpc } from './aiIpc'
 
@@ -36,6 +37,7 @@ export { registerAiIpc } from './aiIpc'
 export { registerAppIpc } from './appIpc'
 export { registerCommunityAuthIpc } from './communityAuthIpc'
 export { registerCommunityIpc } from './communityIpc'
+export { registerCloudbagIpc } from './cloudbagRestore'
 export { registerDialogIpc } from './dialogIpc'
 export { registerFsIpc } from './fsIpc'
 export { registerGameIpc } from './gameIpc'
@@ -57,6 +59,7 @@ export function registerIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   registerFsIpc(ctx, ipc)
   registerModIpc(ctx, ipc)
   registerGameIpc(ctx, ipc)
+  registerCloudbagIpc(ctx, ipc)
   registerAppIpc(ctx, ipc)
   registerAiIpc(ctx, ipc)
 }

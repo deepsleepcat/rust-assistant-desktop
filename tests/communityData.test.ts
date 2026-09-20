@@ -163,8 +163,9 @@ describe('formatCount（数量格式化）', () => {
 })
 
 describe('标签常量', () => {
-  it('四个页签与排行维度文案齐全', () => {
-    expect(Object.keys(TAB_LABELS).sort()).toEqual(['following', 'me', 'ranking', 'recommend'])
+  it('五个页签（含云书包）与排行维度文案齐全', () => {
+    expect(Object.keys(TAB_LABELS).sort()).toEqual(['cloudBag', 'following', 'me', 'ranking', 'recommend'])
+    expect(TAB_LABELS.cloudBag).toBe('云书包')
     expect(Object.keys(RANKING_DIMENSION_LABELS).sort()).toEqual(['downloads', 'favorites', 'units', 'updated'])
   })
 })

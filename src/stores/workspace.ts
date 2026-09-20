@@ -174,6 +174,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       drawerSide: null,
       activeSurface: 'editor',
       communityTab: 'recommend',
+      cloudBagSlug: null,
+      cloudBagSection: 'files',
       communityFollowing: [],
       communityAuth: { status: 'checking', user: null, error: null, pairing: null },
       codeTableOpen: false,

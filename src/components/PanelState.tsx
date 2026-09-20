@@ -11,7 +11,7 @@ export interface PanelStateProps {
   title?: string
   description?: ReactNode
   /** 空状态图标（默认 folder） */
-  icon?: 'folder' | 'file' | 'tools' | 'image' | 'warn' | 'search'
+  icon?: 'folder' | 'file' | 'tools' | 'image' | 'warn' | 'search' | 'cloud'
   /** 主操作按钮（如「打开项目」） */
   action?: ReactNode
   /** 错误重试 */

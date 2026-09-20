@@ -34,6 +34,10 @@ const api: BridgeApi = {
   community: {
     request: (request) => ipcRenderer.invoke('community:request', request),
   },
+  cloudbag: {
+    restore: (rootPath: string, rwmodBytes: ArrayBuffer, versionNo: number) =>
+      ipcRenderer.invoke('cloudbag:restore', rootPath, rwmodBytes, versionNo),
+  },
   auth: {
     status: () => ipcRenderer.invoke('auth:status'),
     startPairing: () => ipcRenderer.invoke('auth:startPairing'),

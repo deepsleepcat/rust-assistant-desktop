@@ -61,8 +61,12 @@ export interface WorkspaceStoreState {
   drawerSide: 'left' | 'right' | null
   /** M33-社区：当前中心工作区（编辑器 / 社区；切换不丢标签与光标） */
   activeSurface: 'editor' | 'community'
-  /** 社区当前页签（推荐/关注/排行/我的） */
+  /** 社区当前页签（推荐/关注/排行/我的/云书包） */
   communityTab: CommunityTab
+  /** 云书包当前打开的仓库 slug（会话内状态，切页签不丢位置） */
+  cloudBagSlug: string | null
+  /** 云书包仓库页内的子页签 */
+  cloudBagSection: 'files' | 'versions' | 'members' | 'settings'
   /** 社区关注的创作者 id（会话内状态，不持久化；服务器上线后并入账号数据） */
   communityFollowing: string[]
   /** Browser-auth community session; the token remains only in main-process safeStorage. */
@@ -197,6 +201,8 @@ export interface WorkspaceStoreActions {
   setActiveSurface(surface: 'editor' | 'community'): void
   /** M33-社区：切换社区页签 */
   setCommunityTab(tab: CommunityTab): void
+  /** 云书包：打开/关闭仓库详情与子页签（会话内导航状态） */
+  setCloudBagView(patch: { slug?: string | null; section?: 'files' | 'versions' | 'members' | 'settings' }): void
   /** M33-社区：关注/取消关注创作者（会话内状态） */
   toggleCommunityFollow(creatorId: string): void
   /** Refresh the browser-auth community session from the saved token. */

@@ -92,7 +92,8 @@ export interface CommunityRequest {
   /** Main process injects its encrypted community credential when true. */
   authenticated?: boolean
   body?: string
-  upload?: { name: string; type: string; bytes: ArrayBuffer }
+  /** multipart 附件上传（仅白名单上传端点）；fields 为附加表单字段（如云书包 blobs 的 sha256/session_id） */
+  upload?: { name: string; type: string; bytes: ArrayBuffer; fields?: Record<string, string> }
 }
 
 export interface CommunityResponse {
@@ -156,6 +157,15 @@ export interface BridgeApi {
   }
   /** Optional browser-auth integration; absent in the current Electron build. */
   auth?: AuthApi
+  /** 云书包（社区模组仓库）受限主进程能力：把服务端打包的 .rwmod 安全恢复进已登记项目。 */
+  cloudbag?: {
+    /** 用 export.rwmod 覆盖本地项目树（拉取版本 / 冲突「放弃本地改动」出口）。
+     * 主进程负责：已存在文件的本地备份（.ohmytx/backup/<versionNo>/，同版本重复拉取改用
+     * 唯一后缀目录，绝不覆盖旧备份）→ 全量校验 → 逐文件写盘 → 把 zip 外的本地多余文件
+     * 移入备份（删除语义；锚点目录与云书包无法表示的文件除外）→ 失败回滚；.ohmytx 锚点永不覆盖。
+     * movedList = 被移入备份的路径清单（逐条回显用，与 removed 同长）。 */
+    restore(rootPath: string, rwmodBytes: ArrayBuffer, versionNo: number): Promise<{ written: number; backedUp: number; removed: number; movedList: string[]; skipped: string[]; backupDir: string }>
+  }
   project: {
     openFolderDialog(): Promise<OpenedProject | null>
     openImageDialog(): Promise<string | null>

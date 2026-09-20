@@ -19,6 +19,8 @@ export const PACK_EXCLUDE_PATTERNS: string[] = [
   'dist-electron',
   'out',
   '.vite',
+  // 云书包本地同步锚点目录（.ohmytx/cloud.json + 备份）：绝不打进 .rwmod（桌面契约 §6.4）
+  '.ohmytx',
   'Thumbs.db',
   '.DS_Store',
   'desktop.ini',
@@ -26,12 +28,34 @@ export const PACK_EXCLUDE_PATTERNS: string[] = [
   '*.ai-*.tmp',
 ]
 
-/** 检查单个相对路径是否应被打包排除 */
+/** 打包排除规则的折叠副本：目标平台（win32 的 NTFS）大小写不敏感，
+ * 匹配必须同样不区分大小写，否则 `.OHMYTX/`、`.GIT/`、`Node_Modules/` 等变体会绕过。 */
+const PACK_EXCLUDE_PATTERNS_LC = PACK_EXCLUDE_PATTERNS.map((pat) => pat.toLowerCase())
+
+/** 检查单个相对路径是否应被打包排除（大小写不敏感；命中任意一段即排除） */
 export function isExcluded(relPath: string): boolean {
   const parts = relPath.split(/[\\/]/).filter(Boolean)
-  return parts.some((part) =>
-    PACK_EXCLUDE_PATTERNS.some((pat) => pat === part || (pat.startsWith('*') && part.endsWith(pat.slice(1)))),
-  )
+  return parts.some((part) => {
+    const lower = part.toLowerCase()
+    return PACK_EXCLUDE_PATTERNS_LC.some((pat) => pat === lower || (pat.startsWith('*') && lower.endsWith(pat.slice(1))))
+  })
+}
+
+/**
+ * PACK_EXCLUDE_PATTERNS 里的「确定性危险」子集：版本管理元数据与依赖树。
+ * 模组包内出现 .git/node_modules 一类目录意味着包来源异常（服务端打包按同一清单
+ * 本不应产出），恢复必须中止；而 dist/out/.vite/*.tmp 等构建产物/临时文件可以由
+ * 其他客户端合法提交（服务端只跳过 .ohmytx），恢复时跳过并如实上报即可，
+ * 不能整次中止——否则这类版本在桌面端永久无法拉取。
+ */
+export const PACK_DANGEROUS_PATTERNS: string[] = ['.git', '.svn', '.hg', 'node_modules']
+
+const PACK_DANGEROUS_PATTERNS_LC = PACK_DANGEROUS_PATTERNS.map((pat) => pat.toLowerCase())
+
+/** 命中确定性危险目录（.git/.svn/.hg/node_modules 的任意路径段，大小写不敏感） */
+export function isDangerousExcluded(relPath: string): boolean {
+  const parts = relPath.split(/[\\/]/).filter(Boolean)
+  return parts.some((part) => PACK_DANGEROUS_PATTERNS_LC.includes(part.toLowerCase()))
 }
 
 /**

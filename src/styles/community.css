@@ -87,6 +87,10 @@
 }
 .btn-sm:hover { background: var(--surface-hover); border-color: var(--accent); }
 .btn-sm:disabled { opacity: .45; cursor: not-allowed; }
+/* 「未支持」入口用 aria-disabled 代替 disabled（可聚焦，键盘/读屏用户能取到原因），
+   样式必须与 disabled 一致，否则看起来像可用按钮 */
+.btn[aria-disabled='true'], .btn-sm[aria-disabled='true'] { opacity: .45; cursor: not-allowed; }
+.btn[aria-disabled='true']:hover, .btn-sm[aria-disabled='true']:hover { background: var(--surface-0); border-color: var(--border-strong); }
 
 /* ── 卡片基础 ─────────────────────────────────────── */
 .community-card {
@@ -323,3 +327,26 @@ body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .community-form { display: flex; flex-direction: column; gap: 10px; }
 .community-form textarea { resize: vertical; min-height: 180px; line-height: 1.6; }
 .badge.success { color: var(--success, #2e7d32); border-color: currentColor; }
+/* 词表补齐：既有代码用 badge warning（components.css 只定义了 .badge.warn），
+   缺定义时警示徽标会退化成无色基础样式。 */
+.badge.warning { background: var(--warning-bg); color: var(--warning); border-color: transparent; }
+
+/* ── 云书包页签（第 5 页签；消费同一套 token，不引入第二套视觉体系） ── */
+.cloudbag-body { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; overflow: auto; min-height: 0; }
+.cloudbag-repo-head { display: flex; flex-direction: column; gap: 6px; }
+.cloudbag-tree { display: flex; flex-direction: column; border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow: hidden; }
+.cloudbag-tree-row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 8px; border: 0; border-bottom: 1px solid var(--divider); background: transparent; color: var(--text-secondary); font: 12px var(--font-ui); text-align: left; cursor: pointer; }
+.cloudbag-tree-row:hover { background: var(--surface-hover); color: var(--text-primary); }
+.cloudbag-tree-row:last-child { border-bottom: 0; }
+.cloudbag-file-preview { max-height: 52vh; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--divider); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--text-primary); font: 11.5px/1.6 var(--font-mono, monospace); white-space: pre-wrap; word-break: break-all; }
+.cloudbag-section { display: flex; flex-direction: column; gap: 10px; }
+.cloudbag-version-list { display: flex; flex-direction: column; gap: 8px; }
+.cloudbag-diff-list { display: flex; flex-direction: column; border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow: hidden; max-height: 40vh; overflow-y: auto; }
+.cloudbag-diff-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: 11.5px; }
+.cloudbag-diff-row:last-child { border-bottom: 0; }
+.cloudbag-diff-row span:not(.badge) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cloudbag-unsupported-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* 冲突 A/B 双栏：窄窗口（社区面板 ≈360px）折为上下堆叠（桌面契约 §9.5） */
+.cloudbag-conflict { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); }
+.cloudbag-conflict-col { flex: 1 1 260px; min-width: 240px; display: flex; flex-direction: column; gap: 6px; }
+.cloudbag-sync-progress { padding: 6px 8px; border: 1px solid var(--divider); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 11.5px; }
