@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactElement, ReactNode } from 'react'
+import { registerRendererAdapter, resetRendererAdaptersForTest } from '../src/features/plugins/adapterRegistry'
+import { sceneToRenderResult, type PreviewScene } from '../src/features/editor/unitPreview/compositor'
 
 const hooks = vi.hoisted(() => ({
   states: [] as unknown[], refs: [] as Array<{ current: unknown }>,
@@ -22,14 +24,21 @@ vi.mock('react', async (original) => ({
   useEffect: (effect: () => void | (() => void)) => { hooks.effects.push(effect) },
 }))
 vi.mock('../src/utils/modalStack', () => ({ useEscapeHandler: () => undefined }))
-vi.mock('../src/services/bridge', () => ({ getBridge: () => ({ engineDlc: { render: hooks.render, cancel: hooks.cancel } }) }))
+vi.mock('../src/services/bridge', () => ({ getBridge: () => ({
+  engineDlc: { render: hooks.render, cancel: hooks.cancel },
+  store: { get: async () => ({ plugins: [{ enabled: true, manifest: {
+    manifestVersion: 1, id: 'test.preview', name: 'Preview', version: '1.0.0', capabilities: ['rendererAdapter'],
+    resources: [{ id: 'img0', path: 'body.png', kind: 'image' }],
+    rendererAdapter: { formatVersion: 1, kind: 'canvas-2d', allowedCommands: ['drawTile'], resourceIds: ['img0'], maxCommands: 256, maxResponseBytes: 262144 },
+  } }] }) },
+}) }))
 import { UnitPreviewModal } from '../src/features/editor/unitPreview/UnitPreviewModal'
 
-function renderTree() {
+function renderTree(content = '') {
   hooks.stateIndex = 0
   hooks.refIndex = 0
   hooks.effects = []
-  return UnitPreviewModal({ file: '/project/tank.ini', content: '', rootPath: '/project', onClose: () => undefined })
+  return UnitPreviewModal({ file: '/project/tank.ini', content, rootPath: '/project', onClose: () => undefined })
 }
 function elements(node: ReactNode, type: string): Array<ReactElement<Record<string, unknown>>> {
   if (Array.isArray(node)) return node.flatMap((child) => elements(child, type))
@@ -38,7 +47,15 @@ function elements(node: ReactNode, type: string): Array<ReactElement<Record<stri
   return [...(element.type === type ? [element] : []), ...elements(element.props.children as ReactNode, type)]
 }
 
+function text(node: ReactNode): string {
+  if (Array.isArray(node)) return node.map(text).join(' ')
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (!node || typeof node !== 'object' || !('props' in node)) return ''
+  return text((node as ReactElement<{ children?: ReactNode }>).props.children)
+}
+
 beforeEach(() => {
+  resetRendererAdaptersForTest()
   hooks.states = []
   hooks.refs = []
   hooks.render.mockReset().mockResolvedValue({ ok: true, dataUrl: 'data:image/png;base64,test' })
@@ -46,6 +63,49 @@ beforeEach(() => {
 })
 
 describe('engine preview React tree and effect contracts (no real GUI)', () => {
+  it.each(['failure', 'exception', 'image-error', 'success'])('shows the actual displayed renderer after DLC %s', async (mode) => {
+    const drawImage = vi.fn()
+    const ctx = Object.fromEntries(['clearRect', 'fillRect', 'save', 'restore'].map((op) => [op, vi.fn()]))
+    hooks.refs[0] = { current: { width: 560, height: 420, getContext: () => ({ ...ctx, drawImage }) } }
+    renderTree()
+    hooks.states[0] = new Map([['body.png', { naturalWidth: 32, naturalHeight: 32 }]])
+    hooks.states[10] = 'Test DLC'
+    hooks.states[11] = true
+    const run = vi.fn((scene: unknown) => sceneToRenderResult(scene as PreviewScene))
+    registerRendererAdapter({ pluginId: 'test.preview', run })
+    if (mode === 'failure') hooks.render.mockResolvedValue({ ok: false, reason: 'test failure' })
+    if (mode === 'exception') hooks.render.mockRejectedValue(new Error('test exception'))
+    const content = '[graphics]\nimage: body.png\n'
+    renderTree(content)
+    hooks.effects[2]() // Actual DLC request effect.
+    hooks.effects.at(-1)!() // Actual Canvas adapter effect.
+    await vi.waitFor(() => {
+      expect(run).toHaveBeenCalledOnce()
+      expect(drawImage).toHaveBeenCalledOnce()
+      expect(hooks.states[6]).toMatchObject({ pluginId: 'test.preview' })
+      expect(hooks.states[13]).not.toBe('正在用引擎渲染…')
+    })
+    if (mode === 'image-error') {
+      const image = elements(renderTree(content), 'img')[0]
+      ;(image.props.onError as () => void)()
+    }
+    const tree = renderTree(content)
+    const visible = text(tree)
+    if (mode === 'success') {
+      expect(visible).toContain('引擎渲染：Test DLC')
+      expect(visible).not.toContain('渲染路径：插件')
+      expect(elements(tree, 'canvas')[0].props.style).toEqual({ display: 'none' })
+      expect(elements(tree, 'img')).toHaveLength(1)
+    } else {
+      expect(visible).toContain('渲染路径：插件 test.preview')
+      expect(visible).toContain('已回退 Canvas 预览')
+      expect(visible).not.toContain('已回退内置合成')
+      expect(visible).not.toContain('引擎渲染：Test DLC')
+      expect(elements(tree, 'canvas')[0].props.style).toEqual({ display: undefined })
+      expect(elements(tree, 'img')).toHaveLength(0)
+    }
+  })
+
   it('retains the same canvas position and ref through engine success and paused local fallback', () => {
     const local = renderTree()
     hooks.states[7] = false // paused (plugin renderPath occupies state 6)

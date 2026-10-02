@@ -293,12 +293,12 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
           setEngineNote(null)
         } else {
           setEngineImage(null)
-          setEngineNote(`引擎渲染失败，已回退内置合成：${result.reason}`)
+          setEngineNote(`引擎渲染失败，已回退 Canvas 预览：${result.reason}`)
         }
       } catch (error) {
         if (!alive || seq !== engineSeqRef.current) return
         setEngineImage(null)
-        setEngineNote(`引擎渲染失败，已回退内置合成：${error instanceof Error ? error.message : String(error)}`)
+        setEngineNote(`引擎渲染失败，已回退 Canvas 预览：${error instanceof Error ? error.message : String(error)}`)
       }
     })()
     return () => {
@@ -539,11 +539,11 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         <div className="modal-body vdiff-body">
           <div className="unitprev-toolbar">
             <span className="vdiff-hint">
-              {engineMode
+              {engineMode && engineImage
                 ? `引擎渲染：${engineDlcName}（静态帧，不跟随动画播放）`
                 : '按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染'}
             </span>
-            {!engineMode && (
+            {(!engineMode || !engineImage) && (
               <span className="vdiff-hint" title="渲染器插件化（M41）：插件只能引用场景声明的资源与受限绘制指令，不执行任何插件代码">
                 {renderPathText}
               </span>
@@ -641,7 +641,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
                 style={{ width: 560 * zoom, height: 420 * zoom }}
                 onError={() => {
                   setEngineImage(null)
-                  setEngineNote('引擎图片无法显示，已回退内置合成')
+                  setEngineNote('引擎图片无法显示，已回退 Canvas 预览')
                 }}
               />
             )}
