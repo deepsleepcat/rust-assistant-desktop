@@ -28,6 +28,8 @@ import {
   resolveImageCandidates,
   type TeamColoringMode,
 } from './recipe'
+import { loadEnabledPluginData, selectRendererAdapter } from '../../plugins/runtimeData'
+import type { RenderCommandType } from '../../plugins/manifest'
 import { registeredAdapterIds } from '../../plugins/adapterRegistry'
 import { runRendererAdapter } from '../../plugins/adapterRegistry'
 import {
@@ -350,16 +352,6 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       }
     }
 
-    // 宿主注册的插件实现（内置 id 除外）。没有 → 本地合成，状态即初始值，无需 setState。
-    const registered = registeredAdapterIds()
-    const pluginId = registered.find((id) => id !== BUILTIN_PREVIEW_ADAPTER_ID) ?? null
-    if (!pluginId) {
-      drawLocalComposite()
-      return () => {
-        alive = false
-      }
-    }
-
     // 有插件：先组建冻结场景（纯数据）再交给扩展点执行
     const draws: PreviewDrawInput[] = []
     const missingItems: typeof items = []
@@ -403,13 +395,24 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       draws,
     })
     void (async () => {
-      const execution = await runRendererAdapter(pluginId, scene, sceneToRenderResult(scene), {
+      // 注册实现不代表启用；从持久化声明读取能力，读取失败时保持本地预览可用。
+      const raw = await getBridge().store.get('plugins').catch(() => null)
+      if (!alive) return
+      const adapter = selectRendererAdapter(
+        loadEnabledPluginData(raw).rendererAdapters, registeredAdapterIds(), BUILTIN_PREVIEW_ADAPTER_ID,
+      )
+      if (!adapter) {
+        drawLocalComposite()
+        setRenderPath({ pluginId: null, usedFallback: false })
+        return
+      }
+      const execution = await runRendererAdapter(adapter.pluginId, scene, sceneToRenderResult(scene), {
         resources: sceneResources(scene),
         adapter: {
-          allowedCommands: ['drawTile', 'fillRect', 'imageRef'],
-          resourceIds: scene.resources.map((resource) => resource.id),
-          maxCommands: 256,
-          maxResponseBytes: 256 * 1024,
+          allowedCommands: adapter.allowedCommands as RenderCommandType[],
+          resourceIds: adapter.resourceIds,
+          maxCommands: adapter.maxCommands,
+          maxResponseBytes: adapter.maxResponseBytes,
         },
       })
       if (!alive) return

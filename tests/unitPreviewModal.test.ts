@@ -11,7 +11,9 @@ const hooks = vi.hoisted(() => ({
   stateIndex: 0,
   refIndex: 0,
   canvas: null as unknown,
+  pluginState: null as unknown,
 }))
+vi.mock('../src/services/bridge', () => ({ getBridge: () => ({ store: { get: async () => hooks.pluginState } }) }))
 vi.mock('react', async (importOriginal) => ({
   ...await importOriginal<typeof import('react')>(),
   useEffect: (effect: () => void | (() => void)) => { hooks.effects.push(effect) },
@@ -26,7 +28,17 @@ vi.mock('../src/utils/modalStack', () => ({ useEscapeHandler: vi.fn() }))
 
 afterEach(() => { resetRendererAdaptersForTest() })
 
-function renderDrawingEffect(showWreck = false) {
+function renderDrawingEffect(showWreck = false, options: { enabled?: boolean; declared?: boolean; allowedCommands?: string[]; resourceIds?: string[]; maxCommands?: number; maxResponseBytes?: number } = {}) {
+  hooks.pluginState = { plugins: [{ enabled: options.enabled ?? true, manifest: {
+    manifestVersion: 1, id: 'test.preview', name: 'Preview', version: '1.0.0',
+    capabilities: options.declared === false ? ['translations'] : ['rendererAdapter'],
+    ...(options.declared === false ? { translations: { en: { image: '图像' } } } : {}),
+    resources: [{ id: 'img0', path: 'body.png', kind: 'image' }],
+    ...(options.declared === false ? {} : { rendererAdapter: {
+      formatVersion: 1, kind: 'canvas-2d', allowedCommands: options.allowedCommands ?? ['drawTile', 'fillRect', 'imageRef'],
+      resourceIds: options.resourceIds ?? ['img0'], maxCommands: options.maxCommands ?? 256, maxResponseBytes: options.maxResponseBytes ?? 262144,
+    } }),
+  } }] }
   const calls: Array<{ op: string; args: unknown[] }> = []
   const record = (op: string) => (...args: unknown[]) => { calls.push({ op, args }) }
   const ctx = Object.fromEntries(['clearRect', 'fillRect', 'drawImage', 'save', 'restore', 'setLineDash', 'beginPath', 'rect', 'fill', 'stroke', 'fillText'].map((op) => [op, record(op)]))
@@ -79,12 +91,43 @@ describe('UnitPreviewModal host missing image placeholders', () => {
     expect(calls.filter((call) => ['drawImage', 'fillText'].includes(call.op)).map((call) => call.op)).toEqual(['fillText', 'drawImage', 'fillText'])
   })
 
+  it.each([{ enabled: false }, { declared: false }])('registered adapter requires an enabled declaration (%j)', async (options) => {
+    const run = vi.fn(() => ({ commands: [] }))
+    registerRendererAdapter({ pluginId: 'test.preview', run })
+    const { calls } = renderDrawingEffect(false, options)
+    await vi.waitFor(() => { expect(labels(calls)).toHaveLength(2) })
+    expect(run).not.toHaveBeenCalled()
+    expect(calls.filter((call) => call.op === 'drawImage')).toHaveLength(1)
+  })
+
+  it.each([
+    { options: { allowedCommands: ['fillRect'] }, commands: [{ type: 'drawTile', resourceId: 'img0', x: 0, y: 0, width: 1, height: 1 }] },
+    { options: { resourceIds: [] }, commands: [{ type: 'drawTile', path: 'preview/image0.png', x: 0, y: 0, width: 1, height: 1 }] },
+    { options: { maxCommands: 1 }, commands: Array.from({ length: 2 }, () => ({ type: 'fillRect', x: 0, y: 0, width: 1, height: 1, color: '#000' })) },
+    { options: { maxResponseBytes: 1024 }, commands: Array.from({ length: 20 }, () => ({ type: 'fillRect', x: 0, y: 0, width: 1, height: 1, color: '#000' })) },
+  ])('manifest restrictions are enforced by the real drawing effect (%j)', async ({ options, commands }) => {
+    const run = vi.fn(() => ({ commands }))
+    registerRendererAdapter({ pluginId: 'test.preview', run })
+    const { calls } = renderDrawingEffect(false, options)
+    await vi.waitFor(() => { expect(labels(calls)).toHaveLength(2) })
+    expect(run).toHaveBeenCalledOnce()
+    // Rejection runs the local compositor, including its shadow/body/turret order.
+    expect(calls.filter((call) => ['drawImage', 'fillText'].includes(call.op)).map((call) => call.op)).toEqual(['fillText', 'drawImage', 'fillText'])
+  })
+
+  it('declared scene alias resolves to the same image as resourceId', async () => {
+    registerRendererAdapter({ pluginId: 'test.preview', run: () => ({ commands: [{ type: 'imageRef', path: 'preview/image0.png', x: 10, y: 20, width: 30, height: 40 }] }) })
+    const { calls } = renderDrawingEffect()
+    await vi.waitFor(() => { expect(labels(calls)).toHaveLength(2) })
+    expect(calls.filter((call) => call.op === 'drawImage').map((call) => call.args.slice(1))).toEqual([[10, 20, 30, 40]])
+  })
+
   it('effect cleanup prevents stale adapter results and placeholders from drawing', async () => {
     let finish!: (result: ReturnType<typeof sceneToRenderResult>) => void
     registerRendererAdapter({ pluginId: 'test.preview', run: () => new Promise((resolve) => { finish = resolve }) })
     const { calls, cleanup } = renderDrawingEffect()
-    if (typeof cleanup === 'function') cleanup()
     await vi.waitFor(() => { expect(finish).toBeTypeOf('function') })
+    if (typeof cleanup === 'function') cleanup()
     finish({ commands: [] })
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(labels(calls)).toEqual([])
