@@ -34,8 +34,7 @@ import {
   resolveImageCandidates,
   type TeamColoringMode,
 } from './recipe'
-import { loadEnabledPluginData, selectRendererAdapter } from '../../plugins/runtimeData'
-import type { RenderCommandType } from '../../plugins/manifest'
+import { selectEnabledRendererAdapter } from '../../plugins/rendererSelection'
 import { registeredAdapterIds } from '../../plugins/adapterRegistry'
 import { runRendererAdapter } from '../../plugins/adapterRegistry'
 import {
@@ -483,9 +482,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       // 注册实现不代表启用；从持久化声明读取能力，读取失败时保持本地预览可用。
       const raw = await getBridge().store.get('plugins').catch(() => null)
       if (!alive) return
-      const adapter = selectRendererAdapter(
-        loadEnabledPluginData(raw).rendererAdapters, registeredAdapterIds(), BUILTIN_PREVIEW_ADAPTER_ID,
-      )
+      const adapter = selectEnabledRendererAdapter(raw, registeredAdapterIds(), BUILTIN_PREVIEW_ADAPTER_ID)
       if (!adapter) {
         drawLocalComposite()
         setRenderPath({ pluginId: null, usedFallback: false })
@@ -494,7 +491,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       const execution = await runRendererAdapter(adapter.pluginId, scene, sceneToRenderResult(scene), {
         resources: sceneResources(scene),
         adapter: {
-          allowedCommands: adapter.allowedCommands as RenderCommandType[],
+          allowedCommands: adapter.allowedCommands,
           resourceIds: adapter.resourceIds,
           maxCommands: adapter.maxCommands,
           maxResponseBytes: adapter.maxResponseBytes,
