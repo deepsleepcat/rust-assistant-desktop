@@ -61,4 +61,14 @@ describe('桌面应用发行边界', () => {
     expect(filePatterns.some((pattern) => pattern === '.agents/**' || pattern.startsWith('.agents/'))).toBe(false)
     expect(filePatterns.some((pattern) => pattern === 'assets/ai/**' || pattern.startsWith('assets/ai/'))).toBe(false)
   })
+
+  // M42：examples/ 是给用户看的可复制示例，不是运行时资源。
+  // 打进包里既没必要，也会让「宿主不含任何引擎相关可执行物」这句话变得难以自证。
+  it('M42：示例 DLC 目录不进入发行包，且包内不含任何引擎渲染程序', () => {
+    const filePatterns = packageJson.build?.files ?? []
+    expect(filePatterns.some((pattern) => pattern === 'examples/**' || pattern.startsWith('examples/'))).toBe(false)
+    expect(filePatterns.some((pattern) => pattern.startsWith('ENGINE-DLC'))).toBe(false)
+    // 发行包里不该出现任何 DLC 清单/入口（它们只应由用户自己放进 userData/engine-dlc）
+    expect(filePatterns.some((pattern) => /dlc\.json|engine-dlc/i.test(pattern))).toBe(false)
+  })
 })

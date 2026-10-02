@@ -21,6 +21,7 @@ import {
   registerCommunityAuthIpc,
   registerCommunityIpc,
   registerDialogIpc,
+  registerEngineDlcIpc,
   registerFsIpc,
   registerGameIpc,
   registerGitIpc,
@@ -84,7 +85,7 @@ beforeEach(async () => {
       showSaveDialog: async () => ({ canceled: true, filePath: '' }),
       showMessageBox: async () => ({ response: 0, checkboxChecked: false }),
     },
-    shell: { trashItem: async () => undefined },
+    shell: { trashItem: async () => undefined, openPath: async () => '' },
     app: { getVersion: () => '0.0.0-test', getPath: (n) => (n === 'userData' ? tmp : tmp) },
     updater: {
       checkForUpdates: async () => undefined,
@@ -118,7 +119,7 @@ describe('IPC 通道完整性', () => {
     expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
   })
 
-  it('十二个域注册函数覆盖全部 82 个通道，无遗漏无重复', () => {
+  it('十三个域注册函数覆盖全部 86 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerCommunityIpc(ctx, ipc)
@@ -132,6 +133,7 @@ describe('IPC 通道完整性', () => {
     registerGameIpc(ctx, ipc)
     registerAppIpc(ctx, ipc)
     registerAiIpc(ctx, ipc)
+    registerEngineDlcIpc(ctx, ipc)
 
     const expected = [
       // store + 受限社区代理 + 主进程设备认证
@@ -158,9 +160,11 @@ describe('IPC 通道完整性', () => {
       'app:info', 'app:flush-done', 'app:checkUpdate', 'app:downloadUpdate', 'app:installUpdate',
       // ai
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
+      // M42 引擎渲染 DLC（宿主只提供插座，引擎由用户自备放进指定目录）
+      'dlc:list', 'dlc:openDir', 'dlc:grant', 'dlc:render',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(82)
+    expect(channels.size).toBe(86)
   })
 })
 
@@ -433,7 +437,7 @@ describe('fs 通道（路径安全边界）', () => {
 
   it('delete 走回收站（shell.trashItem 被调用）', async () => {
     const trash = vi.fn(async () => undefined)
-    ctx.shell = { trashItem: trash }
+    ctx.shell = { trashItem: trash, openPath: async () => '' }
     const { channels, ipc } = createFakeIpc()
     registerFsIpc(ctx, ipc)
     ctx.roots.add(normalizePath(tmp))
