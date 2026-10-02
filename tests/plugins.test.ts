@@ -254,7 +254,7 @@ describe('M40 pure plugin lifecycle and conflict state', () => {
           name: 'Safe plugin',
           capabilities: ['translations', 'rules'],
           translations: { en: { customKey: 'Custom' } },
-          rules: { formatVersion: 1, name: 'rules', rules: [{ id: 'safe-rule', title: 'Safe', check: { type: 'required-key', key: 'name' } }] },
+          rules: { formatVersion: 1, name: 'rules', rules: [{ id: 'safe-rule', title: 'Safe', section: 'core', key: 'name', check: { type: 'required-key' } }] },
           resources: [],
         },
       }, {

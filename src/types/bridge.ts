@@ -80,8 +80,24 @@ export interface PluginImportSelection {
   files: ReadonlyArray<PluginFile>
 }
 
+/** 插件自带资源内容：图片给 data URL（可直接喂 <img>/Canvas），文本给原文 */
+export interface PluginResourceImage {
+  kind: 'image'
+  dataUrl: string
+}
+export interface PluginResourceText {
+  kind: 'text'
+  text: string
+}
+export type PluginResourcePayload = PluginResourceImage | PluginResourceText
+
 export interface PluginApi {
+  /** 对话框选择后由主进程验证、检查冲突并原子提交安装与资源授权；用户取消返回 null */
   importLocal(): Promise<PluginImportSelection | null>
+  /** 卸载插件时注销主进程的目录信任锚（未登记视为幂等） */
+  forgetLocal(pluginId: string): Promise<void>
+  /** 读取导入时已逐项验证的声明资源；白名单与真实路径守卫同时限制访问 */
+  readResource(pluginId: string, relPath: string): Promise<PluginResourcePayload>
 }
 
 /** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */

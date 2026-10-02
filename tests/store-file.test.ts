@@ -1,7 +1,8 @@
 /**
  * 主进程 JSON 存储测试：加载/原子写/串行化/退出冲刷。
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs/promises'
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -42,6 +43,79 @@ describe('electron/store JSON 存储', () => {
       const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
       expect(raw.good).toEqual({ ok: true })
     } finally {
+      rmSync(path.dirname(file), { recursive: true, force: true })
+    }
+  })
+
+  it.each(['k', 'other'])('durable 写盘期间普通 set(%s) 不丢更新', async (key) => {
+    const file = makeTempFile()
+    const store = createStore(file)
+    await store.ready()
+    let release!: () => void
+    let entered!: () => void
+    const paused = new Promise<void>((resolve) => { release = resolve })
+    const started = new Promise<void>((resolve) => { entered = resolve })
+    const originalWrite = fs.writeFile.bind(fs)
+    const write = vi.spyOn(fs, 'writeFile').mockImplementationOnce(async (...args) => {
+      entered()
+      await paused
+      return originalWrite(...args)
+    })
+    try {
+      const durable = store.setDurable('k', 'older')
+      await started
+      await store.set(key, 'newer')
+      release()
+      await durable
+      await store.flush()
+      const expected = key === 'k' ? { k: 'newer' } : { k: 'older', other: 'newer' }
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(expected)
+      for (const [name, value] of Object.entries(expected)) expect(store.get(name)).toBe(value)
+      // A later durable call can supersede the ordinary set normally.
+      await store.setDurable('k', 'latest')
+      expect(store.get('k')).toBe('latest')
+      expect(JSON.parse(readFileSync(file, 'utf8')).k).toBe('latest')
+    } finally {
+      release()
+      write.mockRestore()
+      await store.flush()
+      rmSync(path.dirname(file), { recursive: true, force: true })
+    }
+  })
+
+  it('durable 交错失败保留普通 set，后续 durable 和 flush 队列继续成功', async () => {
+    const file = makeTempFile()
+    const store = createStore(file)
+    await store.ready()
+    await store.setDurable('k', 'initial')
+    let release!: () => void
+    let entered!: () => void
+    const paused = new Promise<void>((resolve) => { release = resolve })
+    const started = new Promise<void>((resolve) => { entered = resolve })
+    const write = vi.spyOn(fs, 'writeFile').mockImplementationOnce(async () => {
+      entered()
+      await paused
+      throw new Error('controlled write failure')
+    })
+    try {
+      const durable = store.setDurable('k', 'older')
+      const rejected = expect(durable).rejects.toThrow('controlled write failure')
+      await started
+      await store.set('k', 'newer')
+      await store.set('other', 'kept')
+      const next = store.setDurable('after', 'success')
+      release()
+      await rejected
+      await next
+      await store.flush()
+      expect(store.get('k')).toBe('newer')
+      expect(store.get('other')).toBe('kept')
+      expect(store.get('after')).toBe('success')
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ k: 'newer', other: 'kept', after: 'success' })
+    } finally {
+      release()
+      write.mockRestore()
+      await store.flush()
       rmSync(path.dirname(file), { recursive: true, force: true })
     }
   })

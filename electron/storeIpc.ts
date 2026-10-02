@@ -7,6 +7,7 @@ import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
 import { MEDIA_ALLOWLIST_KEY, MEDIA_MIGRATED_KEY } from './mediaPolicy'
 import { ANCHOR_MIGRATED_KEY, PROJECT_ROOTS_KEY } from './projectTrust'
+import { installedPluginState, PLUGIN_DIRS_KEY, savePluginState } from './pluginTrust'
 
 /** 只能由主进程持有的存储键。凭据本身已加密，但也不向渲染层暴露密文。 */
 const MAIN_PROCESS_ONLY_STORE_KEYS = new Set([
@@ -16,6 +17,8 @@ const MAIN_PROCESS_ONLY_STORE_KEYS = new Set([
   MEDIA_MIGRATED_KEY,
   COMMUNITY_AUTH_CREDENTIAL_KEY,
   DEEPSEEK_CREDENTIAL_KEY,
+  // 插件目录信任锚：若允许渲染层写入，就能把任意系统文件目录伪造成插件目录再读出来
+  PLUGIN_DIRS_KEY,
 ])
 
 /** 本地状态存储：store:get / store:set（保留键与大小上限由主进程强制执行） */
@@ -23,7 +26,7 @@ export function registerStoreIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   ipc('store:get', (_event, key: string) => {
     if (typeof key !== 'string') throw new Error('存储键无效')
     if (MAIN_PROCESS_ONLY_STORE_KEYS.has(key)) throw new Error('不允许读取系统保留键')
-    return ctx.store.get(key)
+    return key === 'plugins' ? installedPluginState(ctx) : ctx.store.get(key)
   })
 
   ipc('store:set', async (_event, key: string, value: unknown) => {
@@ -47,6 +50,7 @@ export function registerStoreIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     if (size > limit) throw new Error(`写入的数据过大（超过 ${Math.round(limit / 1024 / 1024)}MB），已拒绝保存`)
     // L-10：媒体信任只来自对话框/自写文件（见 addAllowedMedia），
     // 设置路径的恢复在启动时由 restoreMediaAllowlist + registerMediaFromSettings 完成
-    await ctx.store.set(key, value)
+    if (key === 'plugins') await savePluginState(ctx, value)
+    else await ctx.store.set(key, value)
   })
 }
