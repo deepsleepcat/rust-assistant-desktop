@@ -161,6 +161,44 @@ describe('M41 executePreviewCommands（宿主落画）', () => {
     expect(calls.filter((c) => c.op === 'drawImage')).toHaveLength(0)
   })
 
+  it.each(['drawTile', 'imageRef'] as const)('%s 的声明 path 经 adapter 校验后绘制，并保留宿主效果', async (type) => {
+    const scene = buildPreviewScene({ canvasWidth: 100, canvasHeight: 100, teamColorMode: 'pureGreen', draws: [draw({ effect: 'shadow' }), draw()] })
+    registerRendererAdapter({
+      pluginId: 'test.path',
+      run: () => ({ commands: [
+        { type, path: 'preview/image0.png', x: 1, y: 2, width: 3, height: 4, alpha: 0.4 },
+        { type, path: 'PREVIEW\\\\./IMAGE1.PNG', x: 5, y: 6, width: 7, height: 8 },
+      ] }),
+    })
+    const execution = await runRendererAdapter('test.path', scene, sceneToRenderResult(scene), { resources: sceneResources(scene) })
+    expect(execution.usedFallback).toBe(false)
+    const { ctx, calls } = fakeCanvas()
+    const resolved: string[] = []
+    executePreviewCommands(ctx, execution.result, scene, (ref) => { resolved.push(ref); return imageFor(ref) })
+    expect(resolved).toEqual(['body.png', 'body.png'])
+    const images = calls.filter((call) => call.op === 'drawImage')
+    expect(images).toHaveLength(2)
+    expect(images[0].filter).toBe('grayscale(1) brightness(0.2)')
+    expect(images[0].alpha).toBe(0.4)
+    expect(images[0].args.slice(-4)).toEqual([1, 2, 3, 4])
+    expect(images[1].filter).toBe('grayscale(1) sepia(1) hue-rotate(75deg) saturate(5)')
+    expect(images[1].args.slice(-4)).toEqual([5, 6, 7, 8])
+  })
+
+  it.each(['preview/image99.png', '../preview/image0.png', 'body.png', 'file:///body.png'])('未声明或非法 path %s 不访问图像且 adapter 回退', async (path) => {
+    const scene = buildPreviewScene({ canvasWidth: 10, canvasHeight: 10, teamColorMode: 'disabled', draws: [draw()] })
+    const result = { commands: [{ type: 'drawTile' as const, path, x: 0, y: 0, width: 1, height: 1 }] }
+    registerRendererAdapter({ pluginId: 'test.path', run: () => result })
+    const execution = await runRendererAdapter('test.path', scene, sceneToRenderResult(scene), { resources: sceneResources(scene) })
+    expect(execution.usedFallback).toBe(true)
+    expect(execution.reason).toBe('invalid-result')
+    const { ctx, calls } = fakeCanvas()
+    const resolved: string[] = []
+    executePreviewCommands(ctx, result, scene, (ref) => { resolved.push(ref); return imageFor(ref) })
+    expect(resolved).toEqual([])
+    expect(calls).toEqual([])
+  })
+
   it('teamColor + pureGreen：drawImage 时滤镜为灰阶+棕+色相转绿', () => {
     const scene = buildPreviewScene({ canvasWidth: 100, canvasHeight: 100, teamColorMode: 'pureGreen', draws: [draw()] })
     const { ctx, calls } = fakeCanvas()

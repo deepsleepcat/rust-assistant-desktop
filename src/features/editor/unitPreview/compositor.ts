@@ -12,7 +12,7 @@
  * 插件无法注入滤镜、混合模式或任意绘制 API——它只能引用资源 id。
  */
 import type { RenderCommand, RenderResult } from '../../plugins/renderer'
-import type { PluginResource } from '../../plugins/manifest'
+import { normalizePluginRelativePath, type PluginResource } from '../../plugins/manifest'
 import { registerRendererAdapter } from '../../plugins/adapterRegistry'
 import type { TeamColoringMode } from './recipe'
 
@@ -77,7 +77,7 @@ export interface BuildPreviewSceneInput {
   draws: ReadonlyArray<PreviewDrawInput>
 }
 
-/** 为校验层准备的资源表：renderer.ts 只校验 id/kind，path 用安全占位名 */
+/** 为校验层准备的资源表：path 为场景资源的安全别名，落画时映射回同一资源，不直接读文件。 */
 export function sceneResources(scene: PreviewScene): PluginResource[] {
   return scene.resources.map((resource, index) => ({
     id: resource.id,
@@ -181,8 +181,9 @@ export function executePreviewCommands(
   scene: PreviewScene,
   resolveImage: (ref: string) => CanvasImageSource | null,
 ): void {
-  const refById = new Map(scene.resources.map((resource) => [resource.id, resource.ref]))
-  const effectById = new Map(scene.resources.map((resource) => [resource.id, resource.effect]))
+  const resourceById = new Map(scene.resources.map((resource) => [resource.id, resource]))
+  // path 是校验层声明的别名，不是文件路径；复用相同规范化规则，仅映射到场景资源。
+  const resourceByPath = new Map(sceneResources(scene).map((resource) => [resource.path.toLowerCase(), resourceById.get(resource.id)!]))
   const mode = scene.teamColorMode
 
   for (const command of result.commands) {
@@ -195,11 +196,13 @@ export function executePreviewCommands(
       continue
     }
 
-    const id: string | undefined = command.resourceId
-    const ref = id === undefined ? undefined : refById.get(id)
-    const image = ref === undefined ? null : resolveImage(ref)
-    if (!image) continue
-    const effect: PreviewEffect = id === undefined ? 'none' : (effectById.get(id) ?? 'none')
+    const path = command.path === undefined ? null : normalizePluginRelativePath(command.path)
+    const resource = command.resourceId === undefined
+      ? (path === null ? undefined : resourceByPath.get(path.toLowerCase()))
+      : resourceById.get(command.resourceId)
+    const image = resource === undefined ? null : resolveImage(resource.ref)
+    if (!image || !resource) continue
+    const effect = resource.effect
 
     // imageRef 允许省略几何——省略时无法确定目标矩形，按未命中跳过
     if (command.type === 'imageRef') {

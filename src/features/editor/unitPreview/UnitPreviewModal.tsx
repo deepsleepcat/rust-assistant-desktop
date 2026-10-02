@@ -362,13 +362,17 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
 
     // 有插件：先组建冻结场景（纯数据）再交给扩展点执行
     const draws: PreviewDrawInput[] = []
+    const missingItems: typeof items = []
     for (const item of items) {
       let imgKey = item.image
       if (item.kind === 'body' && recipe.imageFrames?.length) {
         imgKey = recipe.imageFrames[clampedFrame] ?? item.image
       }
       const img = imgKey ? images.get(imgKey) : undefined
-      if (!img || !imgKey) continue
+      if (!img || !imgKey) {
+        missingItems.push(item)
+        continue
+      }
       const directionRect = isDirectional && item.sourceMode === 'bodyFrames'
         ? directionSourceRect(recipe.direction!, directionIdx, img.naturalWidth, img.naturalHeight)
         : undefined
@@ -417,6 +421,10 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         return
       }
       executePreviewCommands(ctx, execution.result, scene, (ref) => images.get(ref) ?? null)
+      // 缺图提示由宿主覆盖在插件结果之上，按配方顺序绘制，避免被插件图像遮住。
+      for (const item of missingItems) {
+        drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
+      }
       setRenderPath({ pluginId: execution.executedPluginId, usedFallback: false })
     })()
     return () => {
