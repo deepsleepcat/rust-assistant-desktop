@@ -31,11 +31,18 @@ function makeLink(target: string, link: string): boolean {
 
 describe('electron/paths 链接逃逸校验', () => {
   it('isPathInside/normalizePath 基础行为', () => {
-    expect(isPathInside('C:\\mod', 'C:\\mod\\units\\a.ini')).toBe(true)
-    expect(isPathInside('C:\\mod', 'C:\\mod2\\a.ini')).toBe(false)
+    // 盘符路径只对 Windows 语义成立：isPathInside 走 path.resolve + path.sep，
+    // POSIX 上把 'C:\\mod' 解析成 '<cwd>/C:\mod'，前缀永远匹配不上。
+    // 原先这两条断言没有 isWin 守卫（同用例下方 normalizePath 分支却有），
+    // 在非 Windows 上恒定失败、掩盖真实回归——这里按平台各测同义行为。
     if (isWin) {
+      expect(isPathInside('C:\\mod', 'C:\\mod\\units\\a.ini')).toBe(true)
+      expect(isPathInside('C:\\mod', 'C:\\mod2\\a.ini')).toBe(false)
       expect(normalizePath('C:\\Mod\\A') === normalizePath('c:\\mod\\a')).toBe(true)
     } else {
+      // POSIX 同义行为：根内放行；仅前缀相同但不是子路径时必须拒绝
+      expect(isPathInside('/mod', '/mod/units/a.ini')).toBe(true)
+      expect(isPathInside('/mod', '/mod2/a.ini')).toBe(false)
       expect(normalizePath('/Mod/A') === normalizePath('/mod/a')).toBe(false)
     }
   })

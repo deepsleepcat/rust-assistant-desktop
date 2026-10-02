@@ -15,6 +15,7 @@ import {
   type PluginManifest,
 } from '../src/features/plugins'
 import { loadEnabledPluginData } from '../src/features/plugins/runtimeData'
+import { selectEnabledRendererAdapter } from '../src/features/plugins/rendererSelection'
 import {
   registerRendererAdapter,
   registeredAdapterIds,
@@ -58,6 +59,43 @@ function validManifest(): PluginManifest {
 function errorsOf(result: { ok: boolean; errors?: string[] }): string[] {
   return result.ok ? [] : result.errors ?? []
 }
+
+describe('enabled renderer declaration selection', () => {
+  const select = (manifest: unknown, enabled: unknown = true, registered = ['terrain.tools']) =>
+    selectEnabledRendererAdapter({ plugins: [{ enabled, manifest }] }, registered, 'builtin.unitpreview')
+
+  it('returns validated constraints only for an enabled registered renderer', () => {
+    expect(select(VALID_MANIFEST_INPUT, true, ['TERRAIN.TOOLS'])).toEqual({ pluginId: 'terrain.tools', ...VALID_MANIFEST_INPUT.rendererAdapter })
+    expect(select(VALID_MANIFEST_INPUT, true, [])).toBeNull()
+    expect(select({ ...VALID_MANIFEST_INPUT, id: 'builtin.unitpreview' }, true, ['BUILTIN.UNITPREVIEW'])).toBeNull()
+  })
+
+  it.each([false, undefined, 1, 'true'])('requires enabled===true (%s)', (enabled) => {
+    expect(selectEnabledRendererAdapter({ plugins: [{ enabled, manifest: VALID_MANIFEST_INPUT }] }, ['terrain.tools'], 'builtin.unitpreview')).toBeNull()
+  })
+
+  it.each([
+    { ...VALID_MANIFEST_INPUT, capabilities: ['translations'] },
+    { ...VALID_MANIFEST_INPUT, resources: [{ id: 'atlas', path: '../outside.png', kind: 'image' }] },
+    { ...VALID_MANIFEST_INPUT, rendererAdapter: { ...VALID_MANIFEST_INPUT.rendererAdapter, allowedCommands: ['execute'] } },
+    { ...VALID_MANIFEST_INPUT, rendererAdapter: { ...VALID_MANIFEST_INPUT.rendererAdapter, resourceIds: ['undeclared'] } },
+    { ...VALID_MANIFEST_INPUT, rendererAdapter: { ...VALID_MANIFEST_INPUT.rendererAdapter, maxCommands: 257 } },
+    { ...VALID_MANIFEST_INPUT, rendererAdapter: { ...VALID_MANIFEST_INPUT.rendererAdapter, maxResponseBytes: 262145 } },
+  ])('rejects persisted declarations rejected by the canonical validator (%j)', (manifest) => {
+    expect(validatePluginManifest(manifest).ok).toBe(false)
+    expect(select(manifest)).toBeNull()
+  })
+
+  it('skips malformed entries and ineligible declarations in persisted order', () => {
+    const raw = { plugins: [null, [], { enabled: true, manifest: { ...VALID_MANIFEST_INPUT, version: 'bad' } },
+      { enabled: true, manifest: { ...VALID_MANIFEST_INPUT, id: 'unregistered' } },
+      { enabled: true, manifest: VALID_MANIFEST_INPUT }] }
+    expect(selectEnabledRendererAdapter(raw, ['terrain.tools'], 'builtin.unitpreview')?.pluginId).toBe('terrain.tools')
+    for (const value of [null, [], { plugins: null }, { plugins: [] }]) {
+      expect(selectEnabledRendererAdapter(value, ['terrain.tools'], 'builtin.unitpreview')).toBeNull()
+    }
+  })
+})
 
 describe('M40 plugin manifest and import validation', () => {
   it('accepts the declarative manifest shape and normalizes it', () => {
@@ -254,7 +292,7 @@ describe('M40 pure plugin lifecycle and conflict state', () => {
           name: 'Safe plugin',
           capabilities: ['translations', 'rules'],
           translations: { en: { customKey: 'Custom' } },
-          rules: { formatVersion: 1, name: 'rules', rules: [{ id: 'safe-rule', title: 'Safe', check: { type: 'required-key', key: 'name' } }] },
+          rules: { formatVersion: 1, name: 'rules', rules: [{ id: 'safe-rule', title: 'Safe', section: 'core', key: 'name', check: { type: 'required-key' } }] },
           resources: [],
         },
       }, {

@@ -17,6 +17,9 @@ import * as create from '../electron/modCreate'
 import * as unit from '../electron/modUnit'
 import { normalizeRepairRelativePath, isRepairSourceFile } from '../electron/modTranslationRepair'
 
+/** 盘符绝对路径语义只在 Windows 成立（见下方路径校验用例） */
+const isWin = process.platform === 'win32'
+
 /** façade 的再导出必须与域实现同一引用（防止 re-export 遗漏或双实现漂移） */
 describe('modTools façade 再导出同一性', () => {
   const identity: Array<[string, unknown, unknown]> = [
@@ -76,7 +79,11 @@ describe('翻译修复路径校验（拆分后补直接单测）', () => {
     expect(normalizeRepairRelativePath('units\\a.template')).toBe('units/a.template')
   })
   it('拒绝绝对路径、穿越段、NUL、空串与超长路径', () => {
-    expect(() => normalizeRepairRelativePath('C:/x.ini')).toThrow('修复文件路径无效')
+    // 盘符绝对路径的拒绝依赖 path.isAbsolute：POSIX 上 'C:/x.ini' 不是绝对路径，
+    // 生产侧不抛错（属平台语义，非本 PR 改动范围）。这里按平台各测同义行为，
+    // 避免该断言在非 Windows 恒定失败、掩盖真实回归。
+    if (isWin) expect(() => normalizeRepairRelativePath('C:/x.ini')).toThrow('修复文件路径无效')
+    else expect(() => normalizeRepairRelativePath('/x.ini')).toThrow('修复文件路径无效')
     expect(() => normalizeRepairRelativePath('../x.ini')).toThrow('修复文件路径无效')
     expect(() => normalizeRepairRelativePath('a/../b.ini')).toThrow('修复文件路径无效')
     expect(() => normalizeRepairRelativePath('a//b.ini')).toThrow('修复文件路径无效')

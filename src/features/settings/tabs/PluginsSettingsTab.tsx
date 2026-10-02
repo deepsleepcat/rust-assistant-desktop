@@ -3,11 +3,8 @@ import { AppIcon } from '../../../components/AppIcon'
 import { getBridge } from '../../../services/bridge'
 import {
   createPluginState,
-  findPluginConflicts,
-  installPlugin,
   removePlugin,
   setPluginEnabled,
-  validatePluginConflicts,
   validatePluginManifest,
   type InstalledPlugin,
   type PluginManifest,
@@ -60,8 +57,8 @@ export function PluginsSettingsTab() {
   }, [bridge])
 
   const persist = async (next: PluginState) => {
-    setState(next)
     await bridge.store.set(PLUGINS_STORE_KEY, serializePluginState(next))
+    setState(next)
   }
 
   const importLocal = async () => {
@@ -74,17 +71,7 @@ export function PluginsSettingsTab() {
     try {
       const selection = await bridge.plugins.importLocal()
       if (!selection) return
-      const conflicts = findPluginConflicts(selection.manifest, state.plugins.map((plugin) => plugin.manifest))
-      if (conflicts.length > 0) {
-        setMessage(`插件冲突：${conflicts.map((item) => item.value).join('、')}`)
-        return
-      }
-      const checked = validatePluginConflicts(selection.manifest, state.plugins.map((plugin) => plugin.manifest))
-      if (!checked.ok) {
-        setMessage(checked.errors.join('；'))
-        return
-      }
-      await persist(installPlugin(state, selection.manifest))
+      setState(readPluginState(await bridge.store.get(PLUGINS_STORE_KEY)))
       setMessage(`已导入插件：${selection.manifest.name}`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))
@@ -110,6 +97,8 @@ export function PluginsSettingsTab() {
     setMessage(null)
     try {
       await persist(removePlugin(state, plugin.manifest.id))
+      // store:set 已在同一快照中卸载并撤销授权；保留显式清理接口的幂等调用。
+      await bridge.plugins?.forgetLocal(plugin.manifest.id).catch(() => undefined)
       setMessage(`已卸载插件：${plugin.manifest.name}`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))

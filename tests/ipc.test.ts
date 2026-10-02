@@ -15,12 +15,15 @@ import { normalizePath } from '../electron/paths'
 import { createSecureCredentials, DEEPSEEK_CREDENTIAL_KEY } from '../electron/secureCredentials'
 import {
   createFeedbackChannel,
+  ENGINE_DLC_ENABLED_KEY,
+  PLUGIN_DIRS_KEY,
   createIpcContext,
   registerAiIpc,
   registerAppIpc,
   registerCommunityAuthIpc,
   registerCommunityIpc,
   registerDialogIpc,
+  registerEngineDlcIpc,
   registerFsIpc,
   registerGameIpc,
   registerGitIpc,
@@ -84,7 +87,7 @@ beforeEach(async () => {
       showSaveDialog: async () => ({ canceled: true, filePath: '' }),
       showMessageBox: async () => ({ response: 0, checkboxChecked: false }),
     },
-    shell: { trashItem: async () => undefined },
+    shell: { trashItem: async () => undefined, openPath: async () => '' },
     app: { getVersion: () => '0.0.0-test', getPath: (n) => (n === 'userData' ? tmp : tmp) },
     updater: {
       checkForUpdates: async () => undefined,
@@ -118,7 +121,7 @@ describe('IPC 通道完整性', () => {
     expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
   })
 
-  it('十二个域注册函数覆盖全部 82 个通道，无遗漏无重复', () => {
+  it('十四个域注册函数覆盖全部 88 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerCommunityIpc(ctx, ipc)
@@ -132,6 +135,7 @@ describe('IPC 通道完整性', () => {
     registerGameIpc(ctx, ipc)
     registerAppIpc(ctx, ipc)
     registerAiIpc(ctx, ipc)
+    registerEngineDlcIpc(ctx, ipc)
 
     const expected = [
       // store + 受限社区代理 + 主进程设备认证
@@ -142,7 +146,7 @@ describe('IPC 通道完整性', () => {
       // git
       'git:info', 'git:log', 'git:status', 'git:conflicts', 'git:diff', 'git:restore',
       // dialog + project
-      'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots', 'plugin:importLocal',
+      'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots', 'plugin:importLocal', 'plugin:forgetLocal', 'plugin:readResource',
       // fs + media
       'fs:readDir', 'project:searchFiles', 'fs:readFile', 'fs:stat', 'fs:writeFile', 'fs:createFile', 'fs:createFolder', 'fs:rename', 'fs:delete',
       'image:readAsDataUrl', 'media:readAsDataUrl',
@@ -158,9 +162,14 @@ describe('IPC 通道完整性', () => {
       'app:info', 'app:flush-done', 'app:checkUpdate', 'app:downloadUpdate', 'app:installUpdate',
       // ai
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
+      // M42 引擎渲染 DLC（宿主只提供插座，引擎由用户自备放进指定目录）
+      'dlc:list', 'dlc:openDir', 'dlc:grant', 'dlc:render',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(82)
+    expect(channels.size).toBe(88)
+    const combined = createFakeIpc()
+    registerIpc(ctx, combined.ipc)
+    expect([...combined.channels.keys()].sort()).toEqual([...expected].sort())
   })
 })
 
@@ -334,6 +343,10 @@ describe('store 通道', () => {
     await expect(invoke(channels, 'store:set', 'mediaAllowlist', ['C:\\x'])).rejects.toThrow('不允许写入系统保留键')
     await expect(invoke(channels, 'store:set', 'communityAuthCredentialV1', 'ciphertext')).rejects.toThrow('不允许写入系统保留键')
     await expect(invoke(channels, 'store:get', 'communityAuthCredentialV1')).rejects.toThrow('不允许读取系统保留键')
+    for (const key of [PLUGIN_DIRS_KEY, ENGINE_DLC_ENABLED_KEY]) {
+      await expect(invoke(channels, 'store:get', key)).rejects.toThrow('不允许读取系统保留键')
+      await expect(invoke(channels, 'store:set', key, {})).rejects.toThrow('不允许写入系统保留键')
+    }
   })
 
   it('超限值拒绝写入（10MB 上限；workspace 键放宽 50MB）', async () => {
@@ -433,7 +446,7 @@ describe('fs 通道（路径安全边界）', () => {
 
   it('delete 走回收站（shell.trashItem 被调用）', async () => {
     const trash = vi.fn(async () => undefined)
-    ctx.shell = { trashItem: trash }
+    ctx.shell = { trashItem: trash, openPath: async () => '' }
     const { channels, ipc } = createFakeIpc()
     registerFsIpc(ctx, ipc)
     ctx.roots.add(normalizePath(tmp))

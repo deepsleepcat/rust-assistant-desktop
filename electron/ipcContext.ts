@@ -9,6 +9,7 @@ import { COMMUNITY_AUTH_CREDENTIAL_KEY, DEEPSEEK_CREDENTIAL_KEY, type SecureCred
 import type { CommunityAuthService } from './communityAuth'
 import { createKnowledgePack } from './knowledgePack'
 import type { AiApprovalResponse } from '../src/types/ai'
+import type { EngineDlcGrant } from './engineDlcTrust'
 
 export type { RegisterHandler } from './ipcTypes'
 
@@ -22,6 +23,10 @@ export interface IpcContext {
   roots: Set<string>
   /** 允许读取的媒体路径集合（仅对话框/自写文件来源） */
   media: Set<string>
+  /** 已登记信任的插件目录（插件 id → 根目录绝对路径，规范化后）；仅导入流程写入 */
+  pluginDirs: Map<string, string>
+  /** M42 引擎渲染 DLC 的授权集合（DLC id → 授权时的入口指纹）；仅授权流程写入 */
+  engineDlc: { enabled: Map<string, EngineDlcGrant> }
   /** 打包/优化/全局操作互斥（批量 IO，防并发互相覆盖） */
   packing: { active: boolean }
   /** 背景音乐源（会话内登记，mod:create 只接受集合内文件） */
@@ -49,8 +54,8 @@ export interface IpcContext {
   }
   /** Electron 对话框（测试注入假实现） */
   dialog: Pick<Dialog, 'showOpenDialog' | 'showSaveDialog' | 'showMessageBox'>
-  /** 系统能力（测试注入假实现） */
-  shell: Pick<Shell, 'trashItem'>
+  /** 系统能力（测试注入假实现）。openPath 用于「打开 DLC 目录」（只读操作，无写风险） */
+  shell: Pick<Shell, 'trashItem' | 'openPath'>
   /** 应用信息（测试注入假实现） */
   app: Pick<App, 'getVersion' | 'getPath'>
   /** 自动更新（依赖 electron-updater，测试注入假实现） */
@@ -64,6 +69,12 @@ export interface IpcContext {
   windows: {
     getAllWindows: () => Array<{ isDestroyed(): boolean; destroy(): void }>
   }
+  /**
+   * M42：执行 .js/.mjs/.cjs 入口的引擎 DLC 时用的 JS 运行时。
+   * 生产环境是 Electron 自己的二进制（配合 ELECTRON_RUN_AS_NODE=1 以纯 Node 方式运行）；
+   * 测试可注入真实 node 路径——Android/Termux 上 process.execPath 指向动态链接器而非 node。
+   */
+  nodeRuntime: string
   /** 设备配对认证（主进程私有令牌；渲染层只拿公开状态） */
   communityAuth: CommunityAuthService | null
   /** DeepSeek API Key（safeStorage 加密存储；渲染层只拿「已配置」状态，永不见 Key 本身） */
@@ -79,13 +90,18 @@ export function createIpcContext(deps: {
   app: IpcContext['app']
   updater: IpcContext['updater']
   windows: IpcContext['windows']
+  /** M42：跑 .js 入口 DLC 的 JS 运行时；缺省用当前进程可执行文件（生产=Electron 二进制） */
+  nodeRuntime?: string
   communityAuth?: CommunityAuthService | null
   deepSeekCredentials?: SecureCredentials | null
 }): IpcContext {
   return {
     ...deps,
+    nodeRuntime: deps.nodeRuntime ?? process.execPath,
     roots: new Set<string>(),
     media: new Set<string>(),
+    pluginDirs: new Map<string, string>(),
+    engineDlc: { enabled: new Map<string, EngineDlcGrant>() },
     packing: { active: false },
     musicSources: new Set<string>(),
     importedDirs: new Set<string>(),
