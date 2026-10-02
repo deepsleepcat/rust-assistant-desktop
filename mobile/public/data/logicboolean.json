@@ -1,0 +1,832 @@
+{
+  "data": [
+    {
+      "name": "true",
+      "type": "bool",
+      "description": "真",
+      "example": "autoTrigger: true"
+    },
+    {
+      "name": "false",
+      "type": "bool",
+      "description": "假",
+      "example": "autoTrigger: false"
+    },
+    {
+      "name": "if",
+      "type": "LogicBoolean",
+      "description": "如果",
+      "example": "isActive: if self.hasFlag(id=1)"
+    },
+    {
+      "name": "and",
+      "type": "bool",
+      "description": "与",
+      "example": "autoTrigger: if self.isInWater and self.energy>=1"
+    },
+    {
+      "name": "or",
+      "type": "bool",
+      "description": "或",
+      "example": "autoTrigger: if (self.energy>=2 or self.ammo>=1) and self.isFlying"
+    },
+    {
+      "name": "not",
+      "type": "bool",
+      "description": "非",
+      "example": "if not self.isOverLiquid"
+    },
+    {
+      "name": "<",
+      "type": "bool",
+      "description": "小于",
+      "example": "isLocked: if self.ammo < 1"
+    },
+    {
+      "name": ">",
+      "type": "bool",
+      "description": "大于",
+      "example": "autoTrigger: if self.isInWater and self.energy>=1"
+    },
+    {
+      "name": "<=",
+      "type": "bool",
+      "description": "小于或等于",
+      "example": "requireConditional: if numberOfUnitsInTeam(withTag=\"fish\") >= 10"
+    },
+    {
+      "name": ">=",
+      "type": "bool",
+      "description": "大于或等于",
+      "example": "requireConditional: if numberOfUnitsInTeam(withTag=\"fish\") <= 11"
+    },
+    {
+      "name": "==",
+      "type": "bool",
+      "description": "等于",
+      "example": "hidden: if memory.tail == 0"
+    },
+    {
+      "name": "!=",
+      "type": "bool",
+      "description": "不等于",
+      "example": "isVisible: if memory.message != parent.readUnitMemory(name=\"stateMessage\", type=\"string\")"
+    },
+    {
+      "name": "+",
+      "type": "same type",
+      "description": "加",
+      "example": "setUnitMemory: stockpile = self.ammo + customTarget1.resource.reserve"
+    },
+    {
+      "name": "-",
+      "type": "same type",
+      "description": "减",
+      "example": "setUnitMemory: stockpile = self.ammo - customTarget2.resource.reserve"
+    },
+    {
+      "name": "/",
+      "type": "same type",
+      "description": "除",
+      "example": "setUnitMemory: damageMultiplierBuffer = memory.population / memory.death"
+    },
+    {
+      "name": "*",
+      "type": "same type",
+      "description": "乘",
+      "example": "setUnitMemory: reserveCash = memory.population * self.resource.credits"
+    },
+    {
+      "name": "%",
+      "type": "same type",
+      "description": "取模",
+      "example": "setUnitMemory: isEvenX = select(self.x % 2, true, false)"
+    },
+    {
+      "name": "self.isUnderwater()",
+      "type": "bool",
+      "description": "在水下",
+      "example": "autoTrigger: if self.isUnderwater()"
+    },
+    {
+      "name": "self.isAtGroundHeight()",
+      "type": "bool",
+      "description": "在地面高度",
+      "example": "autoTrigger: if thisActionTarget.isAtGroundHeight()"
+    },
+    {
+      "name": "self.isFlying()",
+      "type": "bool",
+      "description": "在飞行",
+      "example": "isActive: if self.isFlying()"
+    },
+    {
+      "name": "self.isMoving()",
+      "type": "bool",
+      "description": "在移动",
+      "example": "isLocked: if self.isMoving()"
+    },
+    {
+      "name": "self.isReversing()",
+      "type": "bool",
+      "description": "在倒车",
+      "example": "isLockedAlt2: if self.isReversing()"
+    },
+    {
+      "name": "self.isAtTopSpeed()",
+      "type": "bool",
+      "description": "达到最高速度",
+      "example": "autoTrigger: if self.isAtTopSpeed()"
+    },
+    {
+      "name": "self.isInWater()",
+      "type": "bool",
+      "description": "在水中",
+      "example": "isLocked: if not self.isInWater()"
+    },
+    {
+      "name": "self.isOverwater()",
+      "type": "bool",
+      "description": "在水上",
+      "example": "isLocked: if not self.isOverwater()"
+    },
+    {
+      "name": "self.isOverLiquid()",
+      "type": "bool",
+      "description": "在液体上",
+      "example": "isLocked: if not self.isOverLiquid()"
+    },
+    {
+      "name": "self.isOverClift()",
+      "type": "bool",
+      "description": "在悬崖上",
+      "example": "isLocked: if not self.isOverClift()"
+    },
+    {
+      "name": "self.isOverPassableTile()",
+      "type": "bool",
+      "description": "在可通过格上",
+      "example": "isLockedAlt: if self.isOverPassableTile(type=OVER_CLIFF_WATER)"
+    },
+    {
+      "name": "self.isOverOpenLand()",
+      "type": "bool",
+      "description": "在开阔地上",
+      "example": "hidden: if not self.isOverOpenLand()"
+    },
+    {
+      "name": "self.hasResources()",
+      "type": "bool",
+      "description": "有资源",
+      "example": "isActive self.hasResources(credits=1, energy=2)"
+    },
+    {
+      "name": "self.resource()",
+      "type": "float / bool",
+      "description": "资源",
+      "example": "isActive: self.resource(type=gold) >= 10"
+    },
+    {
+      "name": "self.resource.RESOURCE_TYPE",
+      "type": "float",
+      "description": "资源类型",
+      "example": "addResourcesWithLogic: hp += self.resource.gold"
+    },
+    {
+      "name": "self.isResourceLargerThan",
+      "type": "bool",
+      "description": "资源更大于",
+      "example": "autoTrigger: self.isResourceLargerThan(source=oil, compareTarget=sauce, byMoreThan=100, multiplyTargetBy=0.2)"
+    },
+    {
+      "name": "self.hp()",
+      "type": "float / bool",
+      "description": "生命值",
+      "example": "addResourcesWithLogic: energy += select(self.hp > self.energy, 10, 3)"
+    },
+    {
+      "name": "self.maxHp()",
+      "type": "float / bool",
+      "description": "最大生命值",
+      "example": "setResourcesWithLogic: sauce = self.maxHp * self.energy"
+    },
+    {
+      "name": "self.height()",
+      "type": "float / bool",
+      "description": "高度",
+      "example": "imageScale: 1 + (self.height * 0.1)"
+    },
+    {
+      "name": "self.ammo()",
+      "type": "int / bool",
+      "description": "弹药",
+      "example": "isLocked: if self.ammo < 1"
+    },
+    {
+      "name": "self.isAmmoEmpty()",
+      "type": "bool",
+      "description": "弹药为空",
+      "example": "isLockedAlt: self.isAmmoEmpty()"
+    },
+    {
+      "name": "self.ammoIncludingQueued()",
+      "type": "int / bool",
+      "description": "包括队列的弹药",
+      "example": "isLocked: if self.ammoIncludingQueued(lessThan=12)"
+    },
+    {
+      "name": "self.energy()",
+      "type": "float / bool",
+      "description": "能量",
+      "example": "isVisible: if self.energy() > 50"
+    },
+    {
+      "name": "self.energyIncludingQueued()",
+      "type": "float / bool",
+      "description": "包括队列的能量",
+      "example": "isVisible: if self.energyIncludingQueued()"
+    },
+    {
+      "name": "self.isEnergyFull()",
+      "type": "bool",
+      "description": "能量满",
+      "example": "isLocked: if self.isEnergyFull()"
+    },
+    {
+      "name": "self.isEnergyEmpty()",
+      "type": "bool",
+      "description": "能量空",
+      "example": "isActive: if self.isEnergyEmpty()"
+    },
+    {
+      "name": "self.maxEnergy()",
+      "type": "float / bool",
+      "description": "最大能量",
+      "example": "isLocked: if memory.kills < self.maxEnergy()"
+    },
+    {
+      "name": "self.isEnergyRecharging()",
+      "type": "bool",
+      "description": "能量正在充能",
+      "example": "text: Reload %{select(self.isEnergyRecharging(), \"\", \"[ready\"}"
+    },
+    {
+      "name": "self.shield()",
+      "type": "float / bool",
+      "description": "护盾",
+      "example": "isActive: if self.shield() == 0"
+    },
+    {
+      "name": "self.maxShield()",
+      "type": "float / bool",
+      "description": "最大护盾",
+      "example": "isLockedAlt2: if self.energy <= self.maxShield()/2"
+    },
+    {
+      "name": "self.kills()",
+      "type": "int / bool",
+      "description": "击杀数",
+      "example": "setUnitMemory: score = self.kills()*3"
+    },
+    {
+      "name": "self.queueSize()",
+      "type": "int / bool",
+      "description": "队列大小",
+      "example": "isLocked: if self.queueSize() >= 4"
+    },
+    {
+      "name": "self.id()",
+      "type": "int",
+      "description": "ID",
+      "example": "setUnitMemory: UID = self.id()"
+    },
+    {
+      "name": "self.teamId()",
+      "type": "int",
+      "description": "队伍ID",
+      "example": "switchToteam: lastDamagedBy.teamId()"
+    },
+    {
+      "name": "self.teamName()",
+      "type": "string",
+      "description": "队伍名称",
+      "example": "showMessageToAllPlayers: %{attacking.teamName()} dominated %{thisActionTarget.teamName()}"
+    },
+    {
+      "name": "self.playerName()",
+      "type": "string",
+      "description": "玩家名称",
+      "example": "showQuickWarLogToAllPlayers: %{self.playerName()} destroyed %{thisActionTarget.playerName()}'s %{thisActionTarget}"
+    },
+    {
+      "name": "self.x()",
+      "type": "float",
+      "description": "X坐标",
+      "example": "description: [Position]\\n[X]: %{self.x}\\n[Y]: %{self.y}\\n[Z]: %{self.z}\\n[D]: %{self.dir}"
+    },
+    {
+      "name": "self.y()",
+      "type": "float",
+      "description": "Y坐标",
+      "example": "description: [Position]\\n[X]: %{self.x}\\n[Y]: %{self.y}\\n[Z]: %{self.z}\\n[D]: %{self.dir}"
+    },
+    {
+      "name": "self.z()",
+      "type": "float",
+      "description": "Z坐标",
+      "example": "description: [Position]\\n[X]: %{self.x}\\n[Y]: %{self.y}\\n[Z]: %{self.z}\\n[D]: %{self.dir}"
+    },
+    {
+      "name": "self.dir()",
+      "type": "float",
+      "description": "方向",
+      "example": "description: [Position]\\n[X]: %{self.x}\\n[Y]: %{self.y}\\n[Z]: %{self.z}\\n[D]: %{self.dir}"
+    },
+    {
+      "name": "self.priceCredits()",
+      "type": "float",
+      "description": "价格信用点",
+      "example": "addResourcesWithLogic: credits = attacking.priceCredits"
+    },
+    {
+      "name": "self.builtAmount()",
+      "type": "float",
+      "description": "建造进度",
+      "example": "stack_indexCount: int(12 * (self.builtAmount * 0.1))"
+    },
+    {
+      "name": "self.completed()",
+      "type": "bool",
+      "description": "已完成",
+      "example": "autoTrigger: if self.completed()"
+    },
+    {
+      "name": "self.speed()",
+      "type": "float",
+      "description": "速度",
+      "example": "isLockedAlt: if self.speed < 2"
+    },
+    {
+      "name": "self.maxMoveSpeed()",
+      "type": "float",
+      "description": "最大移动速度",
+      "example": "autoTrigger: if memory.defaultSpeed < self.maxMoveSpeed"
+    },
+    {
+      "name": "self.hasFlag()",
+      "type": "bool",
+      "description": "有标志",
+      "example": "autoTrigger: if self.hasFlag(id=1)"
+    },
+    {
+      "name": "self.tags()",
+      "type": "bool",
+      "description": "标签",
+      "example": "autoTrigger: if self.tags(includes='fish')"
+    },
+    {
+      "name": "self.globalTeamTags()",
+      "type": "bool",
+      "description": "全局队伍标签",
+      "example": "autoTrigger: if self.globalTeamTags(includes='animal')"
+    },
+    {
+      "name": "self.transportingCount()",
+      "type": "int",
+      "description": "运输数量",
+      "example": "text: Load - %{self.transportingCount()}"
+    },
+    {
+      "name": "self.numberOfAttachedUnits()",
+      "type": "int / bool",
+      "description": "附加单位数量",
+      "example": "text: Cores - %{self.numberOfAttachedUnits()}"
+    },
+    {
+      "name": "self.isAttacking()",
+      "type": "bool",
+      "description": "正在攻击",
+      "example": "setUnitStats: moveSpeed=select(self.isAttacking, 4, 2)"
+    },
+    {
+      "name": "self.hasActiveWaypoint()",
+      "type": "bool",
+      "description": "有活动路径点",
+      "example": "text: Waypoint - %{self.hasActiveWaypoint(type='move')}"
+    },
+    {
+      "name": "self.numberOfQueuedWaypoints()",
+      "type": "int / bool",
+      "description": "队列路径点数量",
+      "example": "text: Waypoint Queue - %{self.numberOfQueuedWaypoints(type='attackMove') >= 2}"
+    },
+    {
+      "name": "self.transportingUnitWithTags()",
+      "type": "bool",
+      "description": "运输带标签的单位",
+      "example": "requireConditional: if self.transportingUnitWithTags(includes='human')"
+    },
+    {
+      "name": "self.hasParent()",
+      "type": "bool",
+      "description": "有父级",
+      "example": "isVisible: if self.hasParent"
+    },
+    {
+      "name": "self.hasTakenDamage()",
+      "type": "float / bool",
+      "description": "受到伤害",
+      "example": "isActive: if self.hasTakenDamage(withinSeconds=1)"
+    },
+    {
+      "name": "self.timeAlive()",
+      "type": "float / bool",
+      "description": "存活时间",
+      "example": "isLocked: if self.timeAlive() > 100"
+    },
+    {
+      "name": "self.lastConverted()",
+      "type": "float / bool",
+      "description": "上次转换",
+      "example": "isLockedAlt2: if self.lastConverted()"
+    },
+    {
+      "name": "self.customTimer()",
+      "type": "float / bool",
+      "description": "自定义计时器",
+      "example": "autoTrigger: if self.customTimer() > 120"
+    },
+    {
+      "name": "self.isOnNeutralTeam()",
+      "type": "bool",
+      "description": "在中立队伍",
+      "example": ""
+    },
+    {
+      "name": "self.numberOfUnitsInTeam()",
+      "type": "int / bool",
+      "description": "队伍中单位数量",
+      "example": "isLocked: if numberOfUnitsInTeam(withTag='techUnlockBuilding', lessThan=5)"
+    },
+    {
+      "name": "self.numberOfUnitsInAllyTeam()",
+      "type": "int / bool",
+      "description": "盟友队伍中单位数量",
+      "example": "description: TEAM %{self.teamName}\\n\\nTank Population: %{self.numberOfUnitsInAllyTeam()}"
+    },
+    {
+      "name": "self.numberOfUnitsInAllyNotOwnTeam()",
+      "type": "int / bool",
+      "description": "仅盟友队伍中单位数量",
+      "example": "isActive: if self.numberOfUnitsInAllyNotOwnTeam() > 100"
+    },
+    {
+      "name": "self.numberOfUnitsInEnemyTeam()",
+      "type": "int / bool",
+      "description": "敌方队伍中单位数量",
+      "example": "autoTrigger: if self.numberOfUnitsInEnemyTeam(withinRange=500) > 0"
+    },
+    {
+      "name": "numberOfUnitsInNeutralTeam()",
+      "type": "int / bool",
+      "description": "中立队伍中单位数量",
+      "example": "isVisible: if memory.deadzone.numberOfUnitsInNeutralTeam() >= 10"
+    },
+    {
+      "name": "numberOfUnitsInAggressiveTeam()",
+      "type": "int / bool",
+      "description": "攻击性队伍中单位数量",
+      "example": "isVisible: if memory.deadzone.numberOfUnitsInAggressiveTeam() >= 30"
+    },
+    {
+      "name": "numberOfUnitsInAllTeams()",
+      "type": "int / bool",
+      "description": "所有队伍中单位数量",
+      "example": "text: Birds: %{numberOfUnitsInAllTeams(withTag=\"bird\")}"
+    },
+    {
+      "name": "self.hasUnitInTeam()",
+      "type": "bool",
+      "description": "队伍中有单位",
+      "example": "isLocked: if self.hasUnitInTeam(withTag=\"fish\")"
+    },
+    {
+      "name": "self.noUnitInTeam()",
+      "type": "bool",
+      "description": "队伍中无单位",
+      "example": "isLocked: if self.noUnitInTeam(withTag=\"infected\")"
+    },
+    {
+      "name": "self.isControlledByAI()",
+      "type": "bool",
+      "description": "由AI控制",
+      "example": "text: Robot? %{select(self.isControlledByAI(), \"Yes\", \"No\")}"
+    },
+    {
+      "name": "self.readUnitMemory()",
+      "type": "any type",
+      "description": "读取单位内存",
+      "example": "isActive: if parent.readUnitMemory('boostTarget', type='unit') == self"
+    },
+    {
+      "name": "thisActionTarget",
+      "type": "unit / marker",
+      "description": "此动作目标",
+      "example": ""
+    },
+    {
+      "name": "thisActionIndex",
+      "type": "int",
+      "description": "此动作索引",
+      "example": "alsoTriggerActionRepeat: thisActionIndex"
+    },
+    {
+      "name": "eventSource",
+      "type": "unit / marker",
+      "description": "事件源",
+      "example": ""
+    },
+    {
+      "name": "attachment",
+      "type": "unit",
+      "description": "附件",
+      "example": "setCustomTarget2: self.attachment(withTag='x').lastDamagedBy.getAsMarker()"
+    },
+    {
+      "name": "transporting",
+      "type": "unit",
+      "description": "运输中",
+      "example": "autoTrigger: if self.transporting(slot=0).hasResources(gold=100)"
+    },
+    {
+      "name": "attacking",
+      "type": "unit",
+      "description": "攻击中",
+      "example": "isLocked: if attacking.tags(includes='bug') and attacking.hp < 20"
+    },
+    {
+      "name": "lastDamagedBy",
+      "type": "unit",
+      "description": "最后伤害来源",
+      "example": "teleportTo: lastDamagedBy"
+    },
+    {
+      "name": "parent",
+      "type": "unit",
+      "description": "父级",
+      "example": "autoTrigger: if parent.energy > 100"
+    },
+    {
+      "name": "activeWaypointTarget",
+      "type": "unit",
+      "description": "活动路径点目标",
+      "example": "isActive: if distanceBetween(self, activeWaypointTarget) < 100"
+    },
+    {
+      "name": "customTarget1",
+      "type": "unit",
+      "description": "自定义目标1",
+      "example": "isLocked: if parent.customTarget1 == self"
+    },
+    {
+      "name": "customTarget2",
+      "type": "unit",
+      "description": "自定义目标2",
+      "example": "fireTurretXAtGround_withPosition: customTarget2"
+    },
+    {
+      "name": "nearestUnit",
+      "type": "unit",
+      "description": "最近单位",
+      "example": "setCustomTarget1: nearestUnit(withTag=\"derrick\")"
+    },
+    {
+      "name": "globalSearchForFirstUnit",
+      "type": "unit",
+      "description": "全局搜索第一个单位",
+      "example": "self.globalSearchForFirstUnit(withTag='gameController', relation='neutral')"
+    },
+    {
+      "name": "nullUnit",
+      "type": "unit",
+      "description": "空单位",
+      "example": "isLockedAlt2: if self.parent == nullUnit"
+    },
+    {
+      "name": "getAsMarker",
+      "type": "marker",
+      "description": "获取为标记",
+      "example": "lastDamagedBy.getAsMarker()"
+    },
+    {
+      "name": "getOffsetAbsolute",
+      "type": "marker",
+      "description": "获取绝对偏移",
+      "example": "addWaypoint_target_fromReference: unitref getOffsetAbsolute(self.x, self.y+1000, self.z)"
+    },
+    {
+      "name": "getOffsetRelative",
+      "type": "marker",
+      "description": "获取相对偏移",
+      "example": "self.getOffsetRelative(y=100).nearestUnit(withinRange=70, withTag='mouse') != null"
+    },
+    {
+      "name": "readUnitMemory",
+      "type": "all arguments",
+      "description": "读取全局单位内存",
+      "example": "self.readUnitMemory('ammoType', type='string'), parent.readUnitMemory(''attachmentArray\", type=\"unit[ ]\", index=5), attacking.readUnitMemory(\"wishlist\", type=\"string[ ]\")[12]"
+    },
+    {
+      "name": "memory.NAME",
+      "type": "self only",
+      "description": "内存名称",
+      "example": "autoTrigger: if memory.experience > 100"
+    },
+    {
+      "name": "memory.NAME.size",
+      "type": "int",
+      "description": "内存名称大小",
+      "example": "setUnitMemory: squadSize = memory.squad.size"
+    },
+    {
+      "name": "memory.NAME.contains(query)",
+      "type": "bool",
+      "description": "内存名称包含",
+      "example": "autoTrigger: if memory.savedCoord.contains(lastDamagedBy.customTarget1.customTarget1)"
+    },
+    {
+      "name": "distance(x1, y1, x2, y2)",
+      "type": "float",
+      "description": "距离",
+      "example": "isLocked: if distance(self.x, self.y, thisActionTarget.x, thisActionTarget.y) > 350"
+    },
+    {
+      "name": "distanceSquared(x1, y1, x2, y2)",
+      "type": "float",
+      "description": "距离平方",
+      "example": "isLocked: if distanceSquared(self.x, self.y, thisActionTarget.x, thisActionTarget.y) > 19"
+    },
+    {
+      "name": "distanceBetween(unit1, unit2)",
+      "type": "float",
+      "description": "之间距离",
+      "example": "isLocked: if distanceBetween(self, memory.antenna) > 1000"
+    },
+    {
+      "name": "distanceBetweenSquared(unit1, unit2)",
+      "type": "float",
+      "description": "之间距离平方",
+      "example": "isLocked: if distanceBetweenSquared(self, memory.antenna) > 100"
+    },
+    {
+      "name": "game.nukesEnabled()",
+      "type": "bool",
+      "description": "游戏启用核武器",
+      "example": "isActive: if not game.nukesEnabled()"
+    },
+    {
+      "name": "int(x)",
+      "type": "int",
+      "description": "整数",
+      "example": "stack_indexCount: int(12 * (self.builtAmount * 0.1))"
+    },
+    {
+      "name": "select(bool, textA, textB)",
+      "type": "any",
+      "description": "选择",
+      "example": "setUnitMemory: isEvenX = select(self.x % 2, true, false)"
+    },
+    {
+      "name": "debug(logicBoolean)",
+      "type": "string",
+      "description": "调试",
+      "example": "description: [DEBUG] %{debug(self.x > self.y)}"
+    },
+    {
+      "name": "str(x)",
+      "type": "string",
+      "description": "字符串",
+      "example": "str(self.energy)+'x' == '100x'"
+    },
+    {
+      "name": "substring(text,start,end)",
+      "type": "string",
+      "description": "子字符串",
+      "example": "substring('hello',0,2) == 'he'"
+    },
+    {
+      "name": "length(string)",
+      "type": "int",
+      "description": "长度",
+      "example": "length(memory.sms)"
+    },
+    {
+      "name": "squareRoot(num)",
+      "type": "float",
+      "description": "平方根",
+      "example": "squareRoot(self.x + self.y)"
+    },
+    {
+      "name": "min(num1, num2)",
+      "type": "float",
+      "description": "最小值",
+      "example": "damage = min(self.hp, self.energy)"
+    },
+    {
+      "name": "max(num1, num2)",
+      "type": "float",
+      "description": "最大值",
+      "example": "max(5, 10) == 10"
+    },
+    {
+      "name": "createMarker(x, y, [height], [teamId], [dir])",
+      "type": "marker",
+      "description": "创建标记",
+      "example": "fireTurretXAtGround_withTarget: createMarker(self.x + 500, self.y + 500)"
+    },
+    {
+      "name": "eventData(name, type, [default])",
+      "type": "any type",
+      "description": "事件数据",
+      "example": "text: %{eventData(name=\"msg\", type=\"string\")}"
+    },
+    {
+      "name": "sin(angle)",
+      "type": "float",
+      "description": "正弦",
+      "example": "sin(10) = 0.173"
+    },
+    {
+      "name": "cos(angle)",
+      "type": "float",
+      "description": "余弦",
+      "example": "cos(60) = 0.5"
+    },
+    {
+      "name": "rnd(min, max)",
+      "type": "float",
+      "description": "随机",
+      "example": "rnd(666, 888)"
+    },
+    {
+      "name": "lowercase(string)",
+      "type": "string",
+      "description": "小写",
+      "example": "lowercase(\"Spaghetti Macaroni Lasagna\") -> \"spaghetti macaroni lasagna\""
+    },
+    {
+      "name": "uppercase(string)",
+      "type": "string",
+      "description": "大写",
+      "example": "uppercase(\"fish dish wish\") -> \"FISH DISH WISH\""
+    },
+    {
+      "name": "direction(x1, y1, x2, y2)",
+      "type": "float",
+      "description": "方向",
+      "example": "direction(self.x, self.y, attacking.x, attacking.y)"
+    },
+    {
+      "name": "directionBetween(unit1, unit2)",
+      "type": "float",
+      "description": "之间方向",
+      "example": "directionBetween(self, lastDamagedBy)"
+    },
+    {
+      "name": "self.isInMap()",
+      "type": "bool",
+      "description": "在地图中",
+      "example": "autoTrigger: if not self.isInMap()"
+    },
+    {
+      "name": "game.mapWidth()",
+      "type": "float",
+      "description": "游戏地图宽度",
+      "example": "fireTurretXAtGround_withTarget: createMarker(rnd(0, game.mapWidth), rnd(0, game.mapHeight))"
+    },
+    {
+      "name": "game.mapHeight()",
+      "type": "float",
+      "description": "游戏地图高度",
+      "example": "fireTurretXAtGround_withTarget: createMarker(rnd(0, game.mapWidth), rnd(0, game.mapHeight))"
+    },
+    {
+      "name": "self.teamDefeatedTech()",
+      "type": "bool",
+      "description": "队伍技术失败",
+      "example": "autoTrigger: if attacking.teamDefeatedTech()"
+    },
+    {
+      "name": "self.teamWipedOut()",
+      "type": "bool",
+      "description": "队伍被歼灭",
+      "example": "autoTrigger: if self.teamWipedOut()"
+    },
+    {
+      "name": "self.teamVictory()",
+      "type": "bool",
+      "description": "队伍胜利",
+      "example": "autoTrigger: if self.teamVictory()"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">"rust-assistant-phone"</string>
+    <string name="main_activity_title">"rust-assistant-phone"</string>
+</resources>
