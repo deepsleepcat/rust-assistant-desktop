@@ -110,6 +110,10 @@ export function PluginsSettingsTab() {
     setMessage(null)
     try {
       await persist(removePlugin(state, plugin.manifest.id))
+      // M41：同步注销主进程的插件目录信任锚。不注销的话锚值会随卸载无限增长，
+      // 且已卸载插件的目录仍保持「可被 readResource 读取」的状态。
+      // 锚值清理失败不阻断卸载流程（插件已从列表移除，残留锚值只影响资源读取）。
+      await bridge.plugins?.forgetLocal(plugin.manifest.id).catch(() => undefined)
       setMessage(`已卸载插件：${plugin.manifest.name}`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error))
