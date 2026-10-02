@@ -23,6 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 
+# Keep mobile documentation despite the desktop repository ignore rule
+!docs/
+!docs/**
+
 # Local tooling, credentials and Android build artifacts
 .zcode/
 .mimosa/
