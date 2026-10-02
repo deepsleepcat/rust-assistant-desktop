@@ -7,6 +7,7 @@ import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
 import { MEDIA_ALLOWLIST_KEY, MEDIA_MIGRATED_KEY } from './mediaPolicy'
 import { ANCHOR_MIGRATED_KEY, PROJECT_ROOTS_KEY } from './projectTrust'
+import { PLUGIN_DIRS_KEY } from './pluginTrust'
 
 /** 只能由主进程持有的存储键。凭据本身已加密，但也不向渲染层暴露密文。 */
 const MAIN_PROCESS_ONLY_STORE_KEYS = new Set([
@@ -16,6 +17,8 @@ const MAIN_PROCESS_ONLY_STORE_KEYS = new Set([
   MEDIA_MIGRATED_KEY,
   COMMUNITY_AUTH_CREDENTIAL_KEY,
   DEEPSEEK_CREDENTIAL_KEY,
+  // 插件目录信任锚：若允许渲染层写入，就能把任意系统文件目录伪造成插件目录再读出来
+  PLUGIN_DIRS_KEY,
 ])
 
 /** 本地状态存储：store:get / store:set（保留键与大小上限由主进程强制执行） */

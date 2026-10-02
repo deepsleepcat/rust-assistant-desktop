@@ -22,6 +22,8 @@ export interface IpcContext {
   roots: Set<string>
   /** 允许读取的媒体路径集合（仅对话框/自写文件来源） */
   media: Set<string>
+  /** 已登记信任的插件目录（插件 id → 根目录绝对路径，规范化后）；仅导入流程写入 */
+  pluginDirs: Map<string, string>
   /** 打包/优化/全局操作互斥（批量 IO，防并发互相覆盖） */
   packing: { active: boolean }
   /** 背景音乐源（会话内登记，mod:create 只接受集合内文件） */
@@ -86,6 +88,7 @@ export function createIpcContext(deps: {
     ...deps,
     roots: new Set<string>(),
     media: new Set<string>(),
+    pluginDirs: new Map<string, string>(),
     packing: { active: false },
     musicSources: new Set<string>(),
     importedDirs: new Set<string>(),

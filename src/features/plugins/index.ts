@@ -60,3 +60,12 @@ export {
 } from './state'
 
 export { CHECK_TYPES, type CustomCheckType, type CustomRule, type CustomRuleSet } from '../editor/semanticChecks/ruleSchema'
+
+export {
+  loadEnabledPluginData,
+  selectRendererAdapter,
+  type EnabledPluginData,
+  type EnabledRendererAdapter,
+  type PluginRule,
+  type PluginCheckType,
+} from './runtimeData'

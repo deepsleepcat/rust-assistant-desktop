@@ -24,6 +24,21 @@ export interface EnabledPluginData {
   aliases: Array<{ alias: string; code: string }>
   enumExplanations: Record<string, Record<string, string>>
   rules: PluginRule[]
+  /** M41：已启用插件声明的渲染器扩展点（宿主据此判断「有没有插件可接管渲染」） */
+  rendererAdapters: EnabledRendererAdapter[]
+}
+
+/** 一个已启用插件声明的渲染器扩展点 */
+export interface EnabledRendererAdapter {
+  pluginId: string
+  pluginName: string
+  /** 插件自带的图像资源（渲染器可引用；实际读盘由 plugin:readResource 按需进行） */
+  resources: Array<{ id: string; path: string }>
+  /** 插件声明的能力边界：允许的指令类型与预算（宿主据此收窄校验，插件不能自行放宽） */
+  allowedCommands: string[]
+  resourceIds: string[]
+  maxCommands: number
+  maxResponseBytes: number
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -94,9 +109,49 @@ function readRules(value: unknown, output: EnabledPluginData['rules']): void {
   }
 }
 
+/** 插件声明里可用的绘制指令类型（与 renderer.ts 的指令词汇表一致；此处不 import 以保持本层零依赖） */
+const RENDER_COMMANDS = new Set(['drawTile', 'fillRect', 'imageRef'])
+
+/** 读取一个插件的渲染器声明；形状不合法则跳过（不产生半成品适配器） */
+function readRendererAdapter(manifest: Record<string, unknown>, output: EnabledRendererAdapter[]): void {
+  const raw = manifest.rendererAdapter
+  if (!isRecord(raw)) return
+  if (raw.formatVersion !== 1 || raw.kind !== 'canvas-2d') return
+  const rawCommands = Array.isArray(raw.allowedCommands) ? raw.allowedCommands : []
+  const allowedCommands = rawCommands.filter((item): item is string => typeof item === 'string' && RENDER_COMMANDS.has(item))
+  // 一条允许指令都没有的声明等于不能画任何东西，视为无效声明
+  if (allowedCommands.length === 0) return
+  const maxCommands = raw.maxCommands
+  const maxResponseBytes = raw.maxResponseBytes
+  if (typeof maxCommands !== 'number' || !Number.isInteger(maxCommands) || maxCommands < 1) return
+  if (typeof maxResponseBytes !== 'number' || !Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) return
+
+  const resources: Array<{ id: string; path: string }> = []
+  if (Array.isArray(manifest.resources)) {
+    for (const item of manifest.resources) {
+      if (!isRecord(item) || !safeText(item.id, 64) || !safeText(item.path, 240)) continue
+      if (item.kind !== 'image') continue
+      resources.push({ id: item.id, path: item.path })
+    }
+  }
+  const knownIds = new Set(resources.map((resource) => resource.id))
+  const rawIds = Array.isArray(raw.resourceIds) ? raw.resourceIds : []
+  const resourceIds = rawIds.filter((id): id is string => typeof id === 'string' && knownIds.has(id))
+
+  output.push({
+    pluginId: (manifest.id as string).toLowerCase(),
+    pluginName: typeof manifest.name === 'string' ? manifest.name : (manifest.id as string),
+    resources,
+    allowedCommands,
+    resourceIds,
+    maxCommands,
+    maxResponseBytes,
+  })
+}
+
 /** Read only enabled, persisted declarations. This layer has no bridge, filesystem, or execution dependency. */
 export function loadEnabledPluginData(raw: unknown): EnabledPluginData {
-  const result: EnabledPluginData = { translations: [], aliases: [], enumExplanations: {}, rules: [] }
+  const result: EnabledPluginData = { translations: [], aliases: [], enumExplanations: {}, rules: [], rendererAdapters: [] }
   if (!isRecord(raw) || !Array.isArray(raw.plugins)) return result
   for (const item of raw.plugins) {
     if (!isRecord(item) || item.enabled !== true || !validatePersistedManifest(item.manifest)) continue
@@ -104,6 +159,26 @@ export function loadEnabledPluginData(raw: unknown): EnabledPluginData {
     readAliases(item.manifest.fieldAliases, result.aliases)
     readEnumExplanations(item.manifest.enumExplanations, result.enumExplanations)
     readRules(item.manifest.rules, result.rules)
+    readRendererAdapter(item.manifest, result.rendererAdapters)
   }
   return result
+}
+
+/**
+ * 挑选可接管预览渲染的插件适配器（M41，纯函数，供预览侧消费）。
+ *
+ * 两个条件缺一不可：
+ * 1. 插件已启用且声明了 rendererAdapter（由 loadEnabledPluginData 筛出）；
+ * 2. 宿主为它的 pluginId **注册了实现**——声明只是「想接管」，实现才是「能接管」。
+ *
+ * 内置适配器的 id 必须排除：它是回退实现，不是插件。
+ */
+export function selectRendererAdapter(
+  adapters: ReadonlyArray<EnabledRendererAdapter>,
+  registeredAdapterIds: ReadonlyArray<string>,
+  builtinAdapterId: string,
+): EnabledRendererAdapter | null {
+  const registered = new Set(registeredAdapterIds.map((id) => id.toLowerCase()))
+  const builtin = builtinAdapterId.toLowerCase()
+  return adapters.find((adapter) => adapter.pluginId !== builtin && registered.has(adapter.pluginId)) ?? null
 }

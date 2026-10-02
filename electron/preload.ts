@@ -30,6 +30,8 @@ const api: BridgeApi = {
   },
   plugins: {
     importLocal: () => ipcRenderer.invoke('plugin:importLocal'),
+    forgetLocal: (pluginId: string) => ipcRenderer.invoke('plugin:forgetLocal', pluginId),
+    readResource: (pluginId: string, relPath: string) => ipcRenderer.invoke('plugin:readResource', pluginId, relPath),
   },
   community: {
     request: (request) => ipcRenderer.invoke('community:request', request),
