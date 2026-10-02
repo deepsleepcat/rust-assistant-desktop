@@ -31,6 +31,12 @@ const api: BridgeApi = {
   plugins: {
     importLocal: () => ipcRenderer.invoke('plugin:importLocal'),
   },
+  engineDlc: {
+    list: () => ipcRenderer.invoke('dlc:list'),
+    openDir: () => ipcRenderer.invoke('dlc:openDir'),
+    grant: (dlcId: string, enabled: boolean) => ipcRenderer.invoke('dlc:grant', dlcId, enabled),
+    render: (request) => ipcRenderer.invoke('dlc:render', request),
+  },
   community: {
     request: (request) => ipcRenderer.invoke('community:request', request),
   },

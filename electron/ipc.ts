@@ -9,7 +9,7 @@
  * - projectTrust    项目根信任锚（登记/恢复/词法+真实路径校验）
  * - mediaPolicy     媒体允许集合（登记/恢复/data URL 读取）
  * - *Ipc 域文件     各通道注册（store/community/communityAuth/knowledge/git/
- *                   plugin/dialog/fs/mod/game/app/ai）
+ *                   plugin/dialog/fs/mod/game/app/ai/engineDlc）
  */
 import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
@@ -25,18 +25,23 @@ import { registerModIpc } from './modIpc'
 import { registerGameIpc } from './gameIpc'
 import { registerAppIpc } from './appIpc'
 import { registerAiIpc } from './aiIpc'
+import { registerEngineDlcIpc } from './engineDlcIpc'
 
 // ── 兼容 re-export（main.ts / tests 既有导入路径不变）─────────────────
 export type { RegisterHandler } from './ipcTypes'
 export { createIpcContext, type IpcContext } from './ipcContext'
 export { ANCHOR_MIGRATED_KEY, PROJECT_ROOTS_KEY, registerRoot, restoreProjectRoots } from './projectTrust'
 export { MEDIA_ALLOWLIST_KEY, MEDIA_MIGRATED_KEY, registerMediaFromSettings, restoreMediaAllowlist } from './mediaPolicy'
+// M42 引擎渲染 DLC：授权锚（主进程独占键）与启动恢复
+export { ENGINE_DLC_ENABLED_KEY, restoreEngineDlcGrants } from './engineDlcTrust'
+export { ENGINE_DLC_DIRNAME, ENGINE_DLC_PROTOCOL_VERSION, engineDlcDir } from './engineDlc'
 export { createFeedbackChannel } from './aiIpc'
 export { registerAiIpc } from './aiIpc'
 export { registerAppIpc } from './appIpc'
 export { registerCommunityAuthIpc } from './communityAuthIpc'
 export { registerCommunityIpc } from './communityIpc'
 export { registerDialogIpc } from './dialogIpc'
+export { registerEngineDlcIpc } from './engineDlcIpc'
 export { registerFsIpc } from './fsIpc'
 export { registerGameIpc } from './gameIpc'
 export { registerGitIpc } from './gitIpc'
@@ -59,4 +64,5 @@ export function registerIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   registerGameIpc(ctx, ipc)
   registerAppIpc(ctx, ipc)
   registerAiIpc(ctx, ipc)
+  registerEngineDlcIpc(ctx, ipc)
 }
