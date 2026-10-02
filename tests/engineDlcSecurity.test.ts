@@ -226,14 +226,18 @@ describe('PR4 path, PNG and lifecycle regressions', () => {
 
   it.each(['cancel', 'revoke', 'destroy', 'foreignCancel'])('stops a real process tree on %s and cleans temp files', async (action) => {
     const pidFile = path.join(tmp, 'grandchild.pid')
-    const script = `const {spawn}=require('node:child_process'); const child=spawn(process.execPath,['-e', 'setInterval(()=>{},1000)'], {stdio:'ignore'}); require('node:fs').writeFileSync(${JSON.stringify(pidFile)},String(child.pid)); setInterval(()=>{},1000)`
+    const workDirFile = path.join(tmp, 'render-work-dir.json')
+    const script = `const {spawn}=require('node:child_process'); const fs=require('node:fs'); const a=process.argv; const workDir=require('node:path').dirname(a[a.indexOf('--output')+1]); const child=spawn(process.execPath,['-e', 'setInterval(()=>{},1000)'], {stdio:'ignore'}); fs.writeFileSync(${JSON.stringify(workDirFile)},JSON.stringify({workDir,parentPid:process.pid})); fs.writeFileSync(${JSON.stringify(pidFile)},String(child.pid)); setInterval(()=>{},1000)`
     const { request } = await fixture(script)
     const sender = Object.assign(new EventEmitter(), { id: 42, isDestroyed: () => false })
     const handler = handlers.get('dlc:render') as unknown as (event: unknown, payload: unknown) => Promise<unknown>
-    const before = (await fs.readdir(os.tmpdir())).filter((name) => name.startsWith('ra-dlc-')).sort()
     const running = handler({ sender }, { ...request, requestId: 'in-flight' })
     await vi.waitFor(async () => { expect(await fs.readFile(pidFile, 'utf8')).toMatch(/^[0-9]+$/) }, { timeout: 5000 })
     const pid = Number(await fs.readFile(pidFile, 'utf8'))
+    const { workDir, parentPid } = JSON.parse(await fs.readFile(workDirFile, 'utf8')) as { workDir: string; parentPid: number }
+    expect(path.basename(workDir)).toMatch(/^ra-dlc-/)
+    expect((await fs.stat(workDir)).isDirectory()).toBe(true)
+    expect(JSON.parse(await fs.readFile(path.join(workDir, 'request.json'), 'utf8')).unitFile).toBe(request.unitFile)
     if (action === 'foreignCancel') {
       const stranger = Object.assign(new EventEmitter(), { id: 99, isDestroyed: () => false })
       await handler({ sender: stranger }, { cancel: true, requestId: 'in-flight' })
@@ -244,8 +248,11 @@ describe('PR4 path, PNG and lifecycle regressions', () => {
     if (action === 'revoke') await invoke('dlc:grant', 'demo', false)
     if (action === 'destroy') sender.emit('destroyed')
     expect(await running).toMatchObject({ ok: false, reason: expect.stringContaining('取消') })
-    await vi.waitFor(() => { expect(() => process.kill(pid, 0)).toThrow() }, { timeout: 5000 })
-    expect((await fs.readdir(os.tmpdir())).filter((name) => name.startsWith('ra-dlc-')).sort()).toEqual(before)
+    await vi.waitFor(() => {
+      expect(() => process.kill(pid, 0)).toThrow()
+      expect(() => process.kill(parentPid, 0)).toThrow()
+    }, { timeout: 5000 })
+    await expect(fs.stat(workDir)).rejects.toMatchObject({ code: 'ENOENT' })
   }, 15000)
 
   it('bounds concurrency and starts only the latest queued request for an owner', async () => {
