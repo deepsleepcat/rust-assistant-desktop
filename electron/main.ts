@@ -9,7 +9,7 @@ import { createStore } from './store'
 import { getHistory, initAiHistory } from './aiHistory'
 import { createKnowledgePack } from './knowledgePack'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
-import { createIpcContext, registerIpc, registerMediaFromSettings, restoreMediaAllowlist, restorePluginDirs, restoreProjectRoots } from './ipc'
+import { createIpcContext, registerIpc, registerMediaFromSettings, restoreEngineDlcGrants, restoreMediaAllowlist, restorePluginDirs, restoreProjectRoots } from './ipc'
 import { createCommunityAuth } from './communityAuth'
 import { createSecureCredentials, DEEPSEEK_CREDENTIAL_KEY } from './secureCredentials'
 import { migrateLegacySettingsCredentials } from './legacyMigrations'
@@ -111,6 +111,8 @@ app.whenReady().then(async () => {
   restoreProjectRoots(ctx)
   // 插件目录信任锚：资源读取以它为基准，渲染层不可写（见 storeIpc 的保留键）
   restorePluginDirs(ctx)
+  // M42 引擎渲染 DLC 授权锚：只有授权过的 DLC 才会被执行（渲染层不可写，见 storeIpc 保留键）
+  restoreEngineDlcGrants(ctx)
   registerMediaFromSettings(ctx, store.get('settings'))
   createWindow()
 

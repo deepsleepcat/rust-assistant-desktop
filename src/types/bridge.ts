@@ -100,6 +100,61 @@ export interface PluginApi {
   readResource(pluginId: string, relPath: string): Promise<PluginResourcePayload>
 }
 
+// ── M42 引擎渲染 DLC ──────────────────────────────────────────────────
+// 宿主只提供「插座」：用户自己把渲染 DLC 放进 <userData>/engine-dlc/，
+// 授权后可被单位预览调用。以下接口没有任何字段能让渲染层指定可执行文件或路径。
+
+/** 目录里一个 DLC 的展示与可用状态（不含任何路径：路径只存在于主进程） */
+export interface EngineDlcEntry {
+  id: string
+  name: string
+  version: string
+  description: string
+  /** 用户是否已授权运行（授权记录存在且入口指纹仍匹配） */
+  enabled: boolean
+  /** 授权记录仍存在（损坏或已移除的 DLC 也能撤销）。 */
+  granted?: boolean
+  /** 是否可直接用于渲染（清单合法 + 入口存在 + 已授权） */
+  runnable: boolean
+  /** 不可用原因（仅当 runnable=false） */
+  problem?: string
+}
+
+export interface EngineDlcListResult {
+  /** 指定目录的绝对路径（用于界面展示「把 DLC 放到这里」） */
+  dir: string
+  dlcs: EngineDlcEntry[]
+}
+
+/** 引擎渲染请求：只描述「要画什么」，不含任何可执行文件信息 */
+export interface EngineDlcRenderRequest {
+  requestId?: string
+  unitFile: string
+  unitContent: string
+  projectRoot: string
+  gamePath: string
+  frame: number
+  direction: number
+  animationState: 'idle' | 'moving' | 'attack'
+  showWreck: boolean
+  width: number
+  height: number
+}
+
+export type EngineDlcRenderResult = { ok: true; dataUrl: string } | { ok: false; reason: string }
+
+export interface EngineDlcApi {
+  /** 列出指定目录里的 DLC 及各自状态 */
+  list(): Promise<EngineDlcListResult>
+  /** 在系统文件管理器里打开指定目录（不存在则创建） */
+  openDir(): Promise<{ ok: boolean; message?: string; dir: string }>
+  /** 授权/撤销某个 DLC 的运行许可（授权会弹主进程系统确认框） */
+  grant(dlcId: string, enabled: boolean): Promise<{ ok: boolean; enabled?: boolean; name?: string; message?: string }>
+  /** 调用已授权的引擎 DLC 渲染一张单位预览图 */
+  render(request: EngineDlcRenderRequest): Promise<EngineDlcRenderResult>
+  cancel(requestId: string): Promise<EngineDlcRenderResult>
+}
+
 /** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */
 export interface CommunityRequest {
   url: string
@@ -167,6 +222,8 @@ export interface BridgeApi {
   }
   store: StoreApi
   plugins?: PluginApi
+  /** M42 引擎渲染 DLC（宿主只提供插座，引擎由用户自备放进指定目录） */
+  engineDlc?: EngineDlcApi
   community?: {
     request(request: CommunityRequest): Promise<CommunityResponse>
   }

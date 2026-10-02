@@ -8,6 +8,7 @@ import type { RegisterHandler } from './ipcTypes'
 import { MEDIA_ALLOWLIST_KEY, MEDIA_MIGRATED_KEY } from './mediaPolicy'
 import { ANCHOR_MIGRATED_KEY, PROJECT_ROOTS_KEY } from './projectTrust'
 import { installedPluginState, PLUGIN_DIRS_KEY, savePluginState } from './pluginTrust'
+import { ENGINE_DLC_ENABLED_KEY } from './engineDlcTrust'
 
 /** 只能由主进程持有的存储键。凭据本身已加密，但也不向渲染层暴露密文。 */
 const MAIN_PROCESS_ONLY_STORE_KEYS = new Set([
@@ -19,6 +20,9 @@ const MAIN_PROCESS_ONLY_STORE_KEYS = new Set([
   DEEPSEEK_CREDENTIAL_KEY,
   // 插件目录信任锚：若允许渲染层写入，就能把任意系统文件目录伪造成插件目录再读出来
   PLUGIN_DIRS_KEY,
+  // M42 引擎 DLC 授权锚：若允许渲染层写入，被 XSS 的界面就能自行授予自己
+  // 「执行任意本机程序」的权限——授权确认框也就白弹了
+  ENGINE_DLC_ENABLED_KEY,
 ])
 
 /** 本地状态存储：store:get / store:set（保留键与大小上限由主进程强制执行） */

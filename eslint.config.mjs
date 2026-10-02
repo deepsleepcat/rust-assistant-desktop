@@ -24,4 +24,12 @@ export default tseslint.config(
     files: ['scripts/**/*.mjs', '.agents/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
+  {
+    // examples/ 是给用户复制的示例 DLC：独立的 CommonJS 小程序，不是本项目源码。
+    // 仍然纳入 lint（防止示例随时间腐烂），但按 Node 脚本对待：
+    // 给 node 全局、允许 require（.cjs 里 require 正是正确写法）。
+    files: ['examples/**/*.{js,cjs,mjs}'],
+    languageOptions: { ecmaVersion: 2022, sourceType: 'commonjs', globals: globals.node },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
 )

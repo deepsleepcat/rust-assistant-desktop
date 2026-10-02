@@ -8,6 +8,7 @@
  * - AI（ai）           提供者/Key（safeStorage）/模型/用量 → tabs/AiSettingsTab
  * - 社区（community）   配对登录/邮箱认证 → tabs/CommunitySettingsTab
  * - 游戏（game）        GameSettingsTab（独立文件）
+ * - 引擎 DLC（engineDlc）M42 引擎渲染 DLC 的目录与授权 → tabs/EngineDlcSettingsTab
  * - 关于（about）       版本/知识包/更新 → tabs/AboutSettingsTab
  * - SettingNavItem（文件尾部）左侧导航项
  */
@@ -22,6 +23,7 @@ import { LayoutSettingsTab } from './tabs/LayoutSettingsTab'
 import { AiSettingsTab } from './tabs/AiSettingsTab'
 import { CommunitySettingsTab } from './tabs/CommunitySettingsTab'
 import { PluginsSettingsTab } from './tabs/PluginsSettingsTab'
+import { EngineDlcSettingsTab } from './tabs/EngineDlcSettingsTab'
 import { AboutSettingsTab } from './tabs/AboutSettingsTab'
 
 export function SettingsModal() {
@@ -45,6 +47,7 @@ export function SettingsModal() {
           <SettingNavItem active={tab === 'community'} onClick={() => switchTab('community')} icon={<AppIcon name="share" size={14} />} label="社区" />
           <SettingNavItem active={tab === 'plugins'} onClick={() => switchTab('plugins')} icon={<AppIcon name="box" size={14} />} label="插件" />
           <SettingNavItem active={tab === 'game'} onClick={() => switchTab('game')} icon={<AppIcon name="tower" size={14} />} label="游戏" />
+          <SettingNavItem active={tab === 'engineDlc'} onClick={() => switchTab('engineDlc')} icon={<AppIcon name="box" size={14} />} label="引擎 DLC" />
           <SettingNavItem active={tab === 'coming'} onClick={() => switchTab('coming')} icon={<AppIcon name="clock" size={14} />} label="计划中" />
           <SettingNavItem active={tab === 'about'} onClick={() => switchTab('about')} icon={<AppIcon name="info" size={14} />} label="关于" />
         </nav>
@@ -59,6 +62,7 @@ export function SettingsModal() {
           {tab === 'community' && <CommunitySettingsTab />}
           {tab === 'plugins' && <PluginsSettingsTab />}
           {tab === 'game' && <GameSettingsTab />}
+          {tab === 'engineDlc' && <EngineDlcSettingsTab />}
 
           {tab === 'coming' && (
             <div className="setting-section">
