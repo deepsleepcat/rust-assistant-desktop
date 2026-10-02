@@ -8,6 +8,12 @@
  * - CORE: → 游戏 assets/units/ 下资源（readGameAssetImage）
  * - SHARED: → 游戏共享图库 assets/units/shared/ 下资源（readGameAssetImage）
  * - 缺图一律占位（灰块 + 名称），不报错不崩溃；加载失败原因分类提示。
+ *
+ * M42 引擎渲染路径（可选增强，默认不用）：
+ * 用户把自己准备的渲染 DLC 放进指定目录并授权后，本模态可改用「引擎渲染」——
+ * 由主进程调用该 DLC 拿回一张 PNG 显示。它只是**多一条路**：没装 DLC、没授权、
+ * 或渲染失败时，一律回退到上面的本地合成，行为与从前完全一致（零回归）。
+ * 界面这一层不接触任何可执行文件路径：只说「画什么」，用哪个 DLC 由主进程决定。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getBridge } from '../../../services/bridge'
@@ -28,6 +34,18 @@ import {
   resolveImageCandidates,
   type TeamColoringMode,
 } from './recipe'
+import { selectEnabledRendererAdapter } from '../../plugins/rendererSelection'
+import { registeredAdapterIds } from '../../plugins/adapterRegistry'
+import { runRendererAdapter } from '../../plugins/adapterRegistry'
+import {
+  BUILTIN_PREVIEW_ADAPTER_ID,
+  buildPreviewScene,
+  executePreviewCommands,
+  sceneResources,
+  sceneToRenderResult,
+  type PreviewDrawInput,
+  type PreviewEffect,
+} from './compositor'
 
 interface Props {
   file: string
@@ -122,10 +140,11 @@ async function fetchImage(
 }
 
 /** 队伍着色模式渲染（M34：Canvas 近似官方 GLSL shader 效果）。
+ * M41 起由两条路径共用：本地合成路径直接调用；指令路径由 compositor 按场景声明的
+ * effect 施加同一组滤镜，保证两条路径着色一致。
  * - pureGreen：灰阶 → 棕 → 色相转到绿（官方 pureGreenTeamColor.frag 的近似）
- * - hueShift：整体色相偏移到默认队伍绿 120°（官方 hueShiftTeamColor.frag 的近似；
- *   预览无队伍概念，固定用「我方」绿色）
- * - hueAdd：绘制后以 'color' 混合模式叠加绿色（保留原图亮度，官方 hueAddTeamColor.frag 近似）
+ * - hueShift：整体色相偏移到默认队伍绿 120°
+ * - hueAdd：绘制后以 'color' 混合模式叠加绿色（调用方处理，需图像区域矩形）
  */
 function applyTeamColor(ctx: CanvasRenderingContext2D, mode: TeamColoringMode): void {
   if (mode === 'pureGreen') {
@@ -146,12 +165,28 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const [showSight, setShowSight] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [failed, setFailed] = useState<Array<{ image: string; reason: FailReason }>>([])
+  // M41：当前实际走的渲染路径（用于界面标注「精确渲染（插件）」/「本地渲染（内置）」）
+  const [renderPath, setRenderPath] = useState<{ pluginId: string | null; usedFallback: boolean; reason?: string }>({
+    pluginId: null,
+    usedFallback: false,
+  })
   // M34 动画播放：播放中 / 当前动画状态（待机/移动/攻击）/ 多向动画朝向
   const [playing, setPlaying] = useState(true)
   const [animState, setAnimState] = useState<'idle' | 'moving' | 'attack'>('idle')
   const [directionIdx, setDirectionIdx] = useState(0)
   const elapsedRef = useRef(0)
   const lastTsRef = useRef<number | null>(null)
+
+  // ── M42 引擎渲染路径（可选）：没有已授权的 DLC 时整块保持关闭，行为与从前一致 ──
+  /** 可用的引擎 DLC 名字；null = 没有可用 DLC（此时界面不显示任何引擎相关控件） */
+  const [engineDlcName, setEngineDlcName] = useState<string | null>(null)
+  /** 用户是否选择了引擎渲染 */
+  const [engineMode, setEngineMode] = useState(false)
+  /** 引擎渲染产出的 PNG（data URL） */
+  const [engineImage, setEngineImage] = useState<string | null>(null)
+  /** 引擎渲染的进行中/回退说明（null = 一切正常） */
+  const [engineNote, setEngineNote] = useState<string | null>(null)
+  const engineSeqRef = useRef(0)
 
   // 中文显示层：传回译函数才能解析 [图像组]/主体图像 等中文节键（与单位表单一致）
   const recipe = useMemo(() => parseGraphicsRecipe(content, zhToEn), [content, zhToEn])
@@ -174,8 +209,9 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
 
   // M34 播放器：rAF 累计时长 → animationFrameNumber 计算当前帧。
   // 帧区间/速度/往返（animation_idle/moving/attack_*）按配方播放；无配置时整序列循环。
+  // M42：引擎模式下停摆——每帧都会启动一个子进程，绝不能跟着 60fps 走。
   useEffect(() => {
-    if (!playing || animFrameCount <= 1) return
+    if (!playing || animFrameCount <= 1 || engineMode) return
     let raf = 0
     const loop = (ts: number) => {
       if (lastTsRef.current == null) lastTsRef.current = ts
@@ -194,7 +230,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       cancelAnimationFrame(raf)
       lastTsRef.current = null
     }
-  }, [playing, animState, animFrameCount, recipe.animations])
+  }, [playing, animState, animFrameCount, recipe.animations, engineMode])
 
   /** 切换动画状态：重置播放计时（避免状态切换瞬间跳帧） */
   const switchAnimState = (s: 'idle' | 'moving' | 'attack') => {
@@ -203,6 +239,73 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     setFrame(0)
     setPlaying(true)
   }
+
+  // M42：进弹窗时问一次主进程「有没有可用的引擎 DLC」。
+  // 没有（未安装/未授权/清单不合法）就整块关掉——界面连开关都不显示。
+  useEffect(() => {
+    const api = getBridge().engineDlc
+    if (!api) return
+    let alive = true
+    void api
+      .list()
+      .then((result) => {
+        if (!alive) return
+        const ready = result.dlcs.find((item) => item.runnable)
+        setEngineDlcName(ready ? ready.name || ready.id : null)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // M42：引擎模式下按「当前视图参数」渲染一张图。
+  // 每次渲染都会启动一个子进程，所以**不跟动画播放联动**（播放循环在引擎模式下停摆，
+  // 见上面 rAF 的 engineMode 守卫）——只在参数真正变化时请求一次。
+  useEffect(() => {
+    const api = getBridge().engineDlc
+    if (!engineMode || !api || !engineDlcName) return
+    const seq = ++engineSeqRef.current
+    const requestId = crypto.randomUUID()
+    let alive = true
+    void (async () => {
+      await Promise.resolve()
+      if (!alive) return
+      setEngineImage(null)
+      setEngineNote('正在用引擎渲染…')
+      try {
+        const result = await api.render({
+          requestId,
+          unitFile: file,
+          unitContent: content,
+          projectRoot: rootPath,
+          gamePath: gamePath ?? '',
+          frame: clampedFrame,
+          direction: directionIdx,
+          animationState: animState,
+          showWreck,
+          width: 560,
+          height: 420,
+        })
+        if (!alive || seq !== engineSeqRef.current) return
+        if (result.ok) {
+          setEngineImage(result.dataUrl)
+          setEngineNote(null)
+        } else {
+          setEngineImage(null)
+          setEngineNote(`引擎渲染失败，已回退 Canvas 预览：${result.reason}`)
+        }
+      } catch (error) {
+        if (!alive || seq !== engineSeqRef.current) return
+        setEngineImage(null)
+        setEngineNote(`引擎渲染失败，已回退 Canvas 预览：${error instanceof Error ? error.message : String(error)}`)
+      }
+    })()
+    return () => {
+      alive = false
+      void api.cancel(requestId).catch(() => undefined)
+    }
+  }, [engineMode, engineDlcName, file, content, rootPath, gamePath, clampedFrame, directionIdx, animState, showWreck])
 
   // 加载全部引用图像（主体多帧/阴影/炮塔/残骸去重）
   useEffect(() => {
@@ -239,12 +342,18 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     }
   }, [file, rootPath, gamePath, recipe, turrets])
 
-  // 绘制
+  // M41 渲染器插件化（方案乙·零回归双路径）：
+  // - 无插件，或插件执行失败 → 走本文件内的 drawLocalComposite()，与改动前逐像素一致；
+  // - 插件执行成功 → 走 rendererAdapter 受限指令路径落地。
+  // 两条路径着色规则共用 applyTeamColor / compositor，避免规则漂移。
+  // 安全边界：插件只能引用场景声明的资源 id；effect 由宿主在场景资源上声明，
+  //           插件无法注入滤镜、混合模式或任意绘制 API。
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    let alive = true
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     // 棋盘格背景（透明底可见）
     const SIZE = 12
@@ -255,6 +364,8 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       }
     }
     if (!recipe.image || !mainImgOrNull) {
+      // 这里不 setState：effect 体内同步 setState 会触发级联渲染（react-hooks/set-state-in-effect）。
+      // 初始状态已是「本地内置」，缺主体图时界面无需改标。
       drawPlaceholder(ctx, canvas.width / 2, canvas.height / 2, '未配置主体图像')
       return
     }
@@ -264,7 +375,10 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     const cy = canvas.height / 2
     const items = computeDrawLayout(recipe, turrets).filter((i) => (i.kind === 'wreck' ? showWreck : true))
     const teamMode = recipe.teamColoringMode
+    // AUTO 阴影才做剪影；文件型阴影（imageShadow 非 AUTO）不套滤镜也不随队伍着色
+    const autoShadow = Boolean(recipe.imageShadow && /^AUTO/i.test(recipe.imageShadow))
     if (showSight) {
+      // 视野圈（虚线圆）无法用受限指令表达，保留为宿主绘制
       const sight = computeSightGeometry(recipe, canvas.width, canvas.height, zoom)
       if (sight) {
         ctx.save()
@@ -280,42 +394,126 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         ctx.restore()
       }
     }
+
+    /** 本地合成（内置渲染器本体）：改动前的绘制循环原样保留，保证零回归 */
+    const drawLocalComposite = (): void => {
+      for (const item of items) {
+        // 多帧引用（a.png;b.png）：主体按帧号切换整图；其余（阴影/炮塔）用首帧或原引用
+        let imgKey = item.image
+        if (item.kind === 'body' && recipe.imageFrames?.length) {
+          imgKey = recipe.imageFrames[clampedFrame] ?? item.image
+        }
+        const img = imgKey ? images.get(imgKey) : undefined
+        if (!img || !imgKey) {
+          drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
+          continue
+        }
+        // 源矩形：方向块只作用于主体/自动阴影；炮塔始终使用自身整图。
+        const directionRect = isDirectional && item.sourceMode === 'bodyFrames'
+          ? directionSourceRect(recipe.direction!, directionIdx, img.naturalWidth, img.naturalHeight)
+          : undefined
+        const geometry = computeDrawGeometry(item, img.naturalWidth, img.naturalHeight, fi, clampedFrame, scale, directionRect)
+        const { sx, sy, sw, sh } = geometry.source
+        const { dx, dy, dw, dh } = geometry.destination
+        const drawX = cx + dx
+        const drawY = cy + dy
+        ctx.save()
+        ctx.globalAlpha = item.alpha
+        if (item.kind === 'shadow' && autoShadow) {
+          // AUTO 阴影：主图剪影（黑色半透明）——不随队伍着色
+          ctx.filter = 'grayscale(1) brightness(0.2)'
+        } else if (item.kind !== 'shadow' && teamMode !== 'disabled') {
+          applyTeamColor(ctx, teamMode)
+        }
+        ctx.drawImage(img, sx, sy, sw, sh, drawX, drawY, dw, dh)
+        // hueAdd：'color' 混合模式叠加队伍绿（保留亮度，近似官方色相叠加）
+        if (item.kind !== 'shadow' && teamMode === 'hueAdd') {
+          ctx.globalCompositeOperation = 'color'
+          ctx.fillStyle = '#00c800'
+          ctx.fillRect(drawX, drawY, dw, dh)
+        }
+        ctx.restore()
+      }
+    }
+
+    // 有插件：先组建冻结场景（纯数据）再交给扩展点执行
+    const draws: PreviewDrawInput[] = []
+    const missingItems: typeof items = []
     for (const item of items) {
-      // 多帧引用（a.png;b.png）：主体按帧号切换整图；其余（阴影/炮塔）用首帧或原引用
       let imgKey = item.image
       if (item.kind === 'body' && recipe.imageFrames?.length) {
         imgKey = recipe.imageFrames[clampedFrame] ?? item.image
       }
       const img = imgKey ? images.get(imgKey) : undefined
       if (!img || !imgKey) {
-        drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
+        missingItems.push(item)
         continue
       }
-      // 源矩形：方向块只作用于主体/自动阴影；炮塔始终使用自身整图。
       const directionRect = isDirectional && item.sourceMode === 'bodyFrames'
         ? directionSourceRect(recipe.direction!, directionIdx, img.naturalWidth, img.naturalHeight)
         : undefined
       const geometry = computeDrawGeometry(item, img.naturalWidth, img.naturalHeight, fi, clampedFrame, scale, directionRect)
       const { sx, sy, sw, sh } = geometry.source
       const { dx, dy, dw, dh } = geometry.destination
-      const drawX = cx + dx
-      const drawY = cy + dy
-      ctx.save()
-      ctx.globalAlpha = item.alpha
-      if (item.kind === 'shadow' && recipe.imageShadow && /^AUTO/i.test(recipe.imageShadow)) {
-        // AUTO 阴影：主图剪影（黑色半透明）——不随队伍着色；AUTO_ANIMATED 同属自动剪影
-        ctx.filter = 'grayscale(1) brightness(0.2)'
-      } else if (item.kind !== 'shadow' && teamMode !== 'disabled') {
-        applyTeamColor(ctx, teamMode)
+      const effect: PreviewEffect = item.kind === 'shadow'
+        ? (autoShadow ? 'shadow' : 'none')
+        : teamMode === 'disabled' ? 'none' : 'teamColor'
+      draws.push({
+        ref: imgKey,
+        offsetX: dx,
+        offsetY: dy,
+        width: dw,
+        height: dh,
+        sourceX: sx,
+        sourceY: sy,
+        sourceWidth: sw,
+        sourceHeight: sh,
+        alpha: item.alpha,
+        effect,
+      })
+    }
+    const scene = buildPreviewScene({
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      teamColorMode: teamMode,
+      draws,
+    })
+    void (async () => {
+      // 注册实现不代表启用；从持久化声明读取能力，读取失败时保持本地预览可用。
+      const raw = await getBridge().store.get('plugins').catch(() => null)
+      if (!alive) return
+      const adapter = selectEnabledRendererAdapter(raw, registeredAdapterIds(), BUILTIN_PREVIEW_ADAPTER_ID)
+      if (!adapter) {
+        drawLocalComposite()
+        setRenderPath({ pluginId: null, usedFallback: false })
+        return
       }
-      ctx.drawImage(img, sx, sy, sw, sh, drawX, drawY, dw, dh)
-      // hueAdd：'color' 混合模式叠加队伍绿（保留亮度，近似官方色相叠加）
-      if (item.kind !== 'shadow' && teamMode === 'hueAdd') {
-        ctx.globalCompositeOperation = 'color'
-        ctx.fillStyle = '#00c800'
-        ctx.fillRect(drawX, drawY, dw, dh)
+      const execution = await runRendererAdapter(adapter.pluginId, scene, sceneToRenderResult(scene), {
+        resources: sceneResources(scene),
+        adapter: {
+          allowedCommands: adapter.allowedCommands,
+          resourceIds: adapter.resourceIds,
+          maxCommands: adapter.maxCommands,
+          maxResponseBytes: adapter.maxResponseBytes,
+        },
+      })
+      if (!alive) return
+      if (execution.usedFallback) {
+        // 插件不可用 → 回退本地合成本体。刻意不使用指令形式的结果：本地合成与指令表达
+        // 在缺图占位等边界上有顺序差异，直接重跑原循环才能保证「回退后与无插件逐像素一致」。
+        drawLocalComposite()
+        setRenderPath({ pluginId: null, usedFallback: true, reason: execution.reason })
+        return
       }
-      ctx.restore()
+      executePreviewCommands(ctx, execution.result, scene, (ref) => images.get(ref) ?? null)
+      // 缺图提示由宿主覆盖在插件结果之上，按配方顺序绘制，避免被插件图像遮住。
+      for (const item of missingItems) {
+        drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
+      }
+      setRenderPath({ pluginId: execution.executedPluginId, usedFallback: false })
+    })()
+    return () => {
+      alive = false
     }
   }, [images, frameInfo, clampedFrame, showWreck, showSight, zoom, recipe, turrets, mainImgOrNull, isDirectional, directionIdx])
 
@@ -323,6 +521,13 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const gameMissing = failed.filter((f) => f.reason === 'game-missing')
   const localMissing = failed.filter((f) => f.reason === 'local-missing')
   const totalFrames = frameInfo.count
+  // M41：渲染路径标注（用户必须能分辨看到的图是谁画的）
+  const usingPluginAdapter = renderPath.pluginId !== null && renderPath.pluginId !== BUILTIN_PREVIEW_ADAPTER_ID
+  const renderPathText = usingPluginAdapter
+    ? `渲染路径：插件 ${renderPath.pluginId}`
+    : renderPath.usedFallback
+      ? `渲染路径：本地内置（已回退：${renderPath.reason ?? '未知原因'}）`
+      : '渲染路径：本地内置'
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -333,8 +538,35 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         </div>
         <div className="modal-body vdiff-body">
           <div className="unitprev-toolbar">
-            <span className="vdiff-hint">按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染</span>
+            <span className="vdiff-hint">
+              {engineMode && engineImage
+                ? `引擎渲染：${engineDlcName}（静态帧，不跟随动画播放）`
+                : '按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染'}
+            </span>
+            {(!engineMode || !engineImage) && (
+              <span className="vdiff-hint" title="渲染器插件化（M41）：插件只能引用场景声明的资源与受限绘制指令，不执行任何插件代码">
+                {renderPathText}
+              </span>
+            )}
             <span className="grow" />
+            {engineDlcName && (
+              <button
+                className={`btn${engineMode ? ' primary' : ''}`}
+                style={{ padding: '2px 10px', fontSize: 11.5 }}
+                title={`用「${engineDlcName}」渲染当前视图（失败自动回退内置合成）`}
+                aria-label="切换引擎渲染"
+                onClick={() => {
+                  // 切回内置时清掉引擎残留：否则会停留在上一张引擎图上
+                  if (engineMode) {
+                    setEngineImage(null)
+                    setEngineNote(null)
+                  }
+                  setEngineMode((v) => !v)
+                }}
+              >
+                <AppIcon name="sparkle" size={12} /> 引擎渲染
+              </button>
+            )}
             <button
               className={`btn${showSight ? ' primary' : ''}`}
               style={{ padding: '2px 10px', fontSize: 11.5 }}
@@ -398,8 +630,23 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
             <button className="icon-btn" title="放大" onClick={() => setZoom((z) => Math.min(4, z + 0.25))}>+</button>
           </div>
           <div className="unitprev-canvas-wrap">
-            <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" />
+            {/* M42：引擎渲染有结果时用 <img> 直接显示引擎的成品图（它已是「游戏里的样子」，
+                不再叠加我们自己的视野圈等分析层）；否则显示本地合成的 canvas */}
+            <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" style={{ display: engineMode && engineImage ? 'none' : undefined }} />
+            {engineMode && engineImage && (
+              <img
+                src={engineImage}
+                alt="引擎渲染结果"
+                className="unitprev-canvas"
+                style={{ width: 560 * zoom, height: 420 * zoom }}
+                onError={() => {
+                  setEngineImage(null)
+                  setEngineNote('引擎图片无法显示，已回退 Canvas 预览')
+                }}
+              />
+            )}
           </div>
+          {engineNote && <div className="lint-evidence">{engineNote}</div>}
           {noGamePath.length > 0 && (
             <div className="lint-evidence">
               游戏内置引用（{noGamePath.map((f) => f.image).join('、')}）需在 设置 → 游戏 配置铁锈战争安装目录后才能加载

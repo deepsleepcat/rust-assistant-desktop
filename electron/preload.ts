@@ -30,6 +30,15 @@ const api: BridgeApi = {
   },
   plugins: {
     importLocal: () => ipcRenderer.invoke('plugin:importLocal'),
+    forgetLocal: (pluginId: string) => ipcRenderer.invoke('plugin:forgetLocal', pluginId),
+    readResource: (pluginId: string, relPath: string) => ipcRenderer.invoke('plugin:readResource', pluginId, relPath),
+  },
+  engineDlc: {
+    list: () => ipcRenderer.invoke('dlc:list'),
+    openDir: () => ipcRenderer.invoke('dlc:openDir'),
+    grant: (dlcId: string, enabled: boolean) => ipcRenderer.invoke('dlc:grant', dlcId, enabled),
+    render: (request) => ipcRenderer.invoke('dlc:render', request),
+    cancel: (requestId) => ipcRenderer.invoke('dlc:render', { cancel: true, requestId }),
   },
   community: {
     request: (request) => ipcRenderer.invoke('community:request', request),

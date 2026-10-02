@@ -26,16 +26,23 @@ import {
 } from '../electron/rustAgentTools'
 
 let root: string
+/** root 的独占父目录（见 beforeEach 注释：让「父目录不含逃逸文件」类断言可判定） */
+let tempParent: string
 
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), 'ra-tools-'))
+  // root 的父级必须是本用例独占的目录：此前直接用 os.tmpdir() 作为父级，
+  // 而「路径穿越拒绝」用例断言的是 path.dirname(root) 中不含 evil.txt——
+  // 落在共享临时目录上时，任何历史残留的同名文件都会让该断言误报（本机实测踩到）。
+  tempParent = await fs.mkdtemp(path.join(os.tmpdir(), 'ra-tools-parent-'))
+  root = path.join(tempParent, 'root')
+  await fs.mkdir(root)
   initAiHistory(path.join(root, 'ai-history.json'))
   setAgentRoot(root)
 })
 
 afterEach(async () => {
   clearSnapshotInfo()
-  await fs.rm(root, { recursive: true, force: true })
+  await fs.rm(tempParent, { recursive: true, force: true })
 })
 
 /** 工具执行结果里的文本内容（content[0].text） */

@@ -9,6 +9,8 @@ import { randomUUID } from 'node:crypto'
 export interface JsonStore {
   get(key: string): unknown
   set(key: string, value: unknown): Promise<void>
+  /** Commit one value atomically on disk before publishing it in memory; rejects on failure. */
+  setDurable(key: string, value: unknown): Promise<void>
   /** 首次加载完成（供启动时序：等磁盘数据就绪后再读取） */
   ready(): Promise<void>
   /** 立即把内存数据落盘（应用退出前调用，防止防抖窗口内的写入丢失） */
@@ -23,6 +25,8 @@ export function createStore(filePath: string): JsonStore {
   // L5：串行化写盘——防抖写与 flush 并发时，后发起的写必须等前一次完成，
   // 避免旧快照的 rename 后完成而覆盖新数据
   let writeChain: Promise<void> = Promise.resolve()
+  // Ordinary sets publish immediately; durable writes must not overwrite a later set.
+  const setVersions = new Map<string, number>()
 
   async function load(): Promise<void> {
     try {
@@ -88,8 +92,30 @@ export function createStore(filePath: string): JsonStore {
         console.error('[store] 拒绝写入不可序列化的值:', err)
         return
       }
+      setVersions.set(key, (setVersions.get(key) ?? 0) + 1)
       data[key] = value
       persist()
+    },
+    async setDurable(key: string, value: unknown): Promise<void> {
+      if (!loaded && loading) await loading
+      // Detach caller-owned data before waiting in the write queue.
+      const detached = JSON.parse(JSON.stringify(value)) as unknown
+      const setVersion = setVersions.get(key) ?? 0
+      const operation = writeChain.then(async () => {
+        const snapshot = JSON.stringify({ ...data, [key]: detached }, null, 2)
+        const tmp = `${filePath}.${randomUUID()}.tmp`
+        try {
+          await fs.writeFile(tmp, snapshot, 'utf8')
+          await fs.rename(tmp, filePath)
+          if ((setVersions.get(key) ?? 0) === setVersion) data[key] = detached
+        } catch (error) {
+          await fs.rm(tmp, { force: true }).catch(() => undefined)
+          throw error
+        }
+      })
+      // Failure must not poison subsequent saves, but the caller still receives it.
+      writeChain = operation.catch(() => undefined)
+      await operation
     },
     async ready(): Promise<void> {
       if (!loaded && loading) await loading
