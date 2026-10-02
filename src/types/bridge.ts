@@ -96,6 +96,8 @@ export interface EngineDlcEntry {
   description: string
   /** 用户是否已授权运行（授权记录存在且入口指纹仍匹配） */
   enabled: boolean
+  /** 授权记录仍存在（损坏或已移除的 DLC 也能撤销）。 */
+  granted?: boolean
   /** 是否可直接用于渲染（清单合法 + 入口存在 + 已授权） */
   runnable: boolean
   /** 不可用原因（仅当 runnable=false） */
@@ -110,6 +112,7 @@ export interface EngineDlcListResult {
 
 /** 引擎渲染请求：只描述「要画什么」，不含任何可执行文件信息 */
 export interface EngineDlcRenderRequest {
+  requestId?: string
   unitFile: string
   unitContent: string
   projectRoot: string
@@ -133,6 +136,7 @@ export interface EngineDlcApi {
   grant(dlcId: string, enabled: boolean): Promise<{ ok: boolean; enabled?: boolean; name?: string; message?: string }>
   /** 调用已授权的引擎 DLC 渲染一张单位预览图 */
   render(request: EngineDlcRenderRequest): Promise<EngineDlcRenderResult>
+  cancel(requestId: string): Promise<EngineDlcRenderResult>
 }
 
 /** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */

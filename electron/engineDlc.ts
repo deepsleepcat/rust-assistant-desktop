@@ -21,7 +21,9 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { PNG } from 'pngjs'
+import { inflateSync } from 'node:zlib'
+import { executeEngineDlc } from './engineDlcProcess'
 import { assertNoLinkEscape, isPathInside, normalizePath } from './paths'
 
 /** 指定目录名（位于 userData 下，由主进程拼装；渲染层无权指定） */
@@ -102,6 +104,8 @@ export interface EngineDlcListEntry {
   description: string
   /** 用户是否已授权运行（授权记录存在且入口指纹仍匹配） */
   enabled: boolean
+  /** Grant record exists, including stale or broken installations; permits revocation. */
+  granted?: boolean
   /** 是否可直接用于渲染（清单合法 + 入口存在 + 已授权） */
   runnable: boolean
   /** 不可用原因（仅当 runnable=false） */
@@ -262,6 +266,7 @@ export async function scanEngineDlcDir(root: string): Promise<{ dir: string; ite
 export function toEngineDlcList(
   items: ReadonlyArray<EngineDlcScanItem>,
   allowed: ReadonlySet<string>,
+  granted: ReadonlySet<string> = allowed,
 ): EngineDlcListEntry[] {
   return items.map((item) => {
     if (!item.dlc) {
@@ -271,6 +276,7 @@ export function toEngineDlcList(
         version: '',
         description: '',
         enabled: false,
+        granted: granted.has(item.dirName),
         runnable: false,
         problem: item.problem ?? '清单不合法',
       }
@@ -283,8 +289,9 @@ export function toEngineDlcList(
       version,
       description,
       enabled,
+      granted: granted.has(id),
       runnable: enabled,
-      ...(enabled ? {} : { problem: '尚未启用（需在设置里授权运行）' }),
+      ...(enabled ? {} : { problem: granted.has(id) ? '授权已失效（程序或配置变化）；可撤销后重新授权' : '尚未启用（需在设置里授权运行）' }),
     }
   })
 }
@@ -311,30 +318,75 @@ export interface EngineDlcRunDeps {
   execPath?: string
   platform?: NodeJS.Platform
   tmpRoot?: string
+  signal?: AbortSignal
+  beforeSpawn?: () => Promise<boolean>
 }
 
 /** PNG 文件头（8 字节）：输出必须是真 PNG，拒绝任意字节流当图片 */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
-function isPng(buffer: Buffer): boolean {
-  return buffer.length > PNG_SIGNATURE.length && buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)
+export function isPng(buffer: Buffer): boolean {
+  if (buffer.length < 33 || !buffer.subarray(0, 8).equals(PNG_SIGNATURE)) return false
+  if (buffer.readUInt32BE(8) !== 13 || buffer.toString('ascii', 12, 16) !== 'IHDR') return false
+  const width = buffer.readUInt32BE(16)
+  const height = buffer.readUInt32BE(20)
+  if (!width || !height || width > 4096 || height > 4096 || width * height > 16_777_216) return false
+  const depth = buffer[24]
+  const color = buffer[25]
+  const legalDepths: Record<number, readonly number[]> = { 0: [1, 2, 4, 8, 16], 2: [8, 16], 3: [1, 2, 4, 8], 4: [8, 16], 6: [8, 16] }
+  if (!legalDepths[color]?.includes(depth) || buffer[26] !== 0 || buffer[27] !== 0 || buffer[28] > 1) return false
+  const channels: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }
+  const bitsPerPixel = channels[color] * depth
+  const passes = buffer[28] === 1
+    ? [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4], [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]]
+    : [[0, 0, 1, 1]]
+  let scanlineBytes = 0
+  for (const [startX, startY, stepX, stepY] of passes) {
+    const passWidth = Math.max(0, Math.ceil((width - startX) / stepX))
+    const passHeight = Math.max(0, Math.ceil((height - startY) / stepY))
+    if (passWidth && passHeight) scanlineBytes += (Math.ceil(passWidth * bitsPerPixel / 8) + 1) * passHeight
+  }
+  try {
+    // pngjs bounds ordinary inflation, but its interlaced path uses plain inflateSync.
+    // Preflight ALL IDAT bytes with a pixel-derived hard limit before either decoder path.
+    const chunks: Buffer[] = []
+    const seen = new Set<string>()
+    let chunkCount = 0
+    let ended = false
+    for (let offset = 8; offset < buffer.length;) {
+      if (++chunkCount > 4096 || offset + 12 > buffer.length) return false
+      const length = buffer.readUInt32BE(offset)
+      const type = buffer.toString('ascii', offset + 4, offset + 8)
+      if (length > buffer.length - offset - 12) return false
+      if (['IHDR', 'PLTE', 'tRNS', 'gAMA', 'IEND'].includes(type)) {
+        if (seen.has(type)) return false
+        seen.add(type)
+      }
+      if (type === 'IHDR' && (offset !== 8 || length !== 13)) return false
+      if (type === 'PLTE' && (!length || length > 768 || length % 3 !== 0)) return false
+      if (type === 'tRNS' && length > 256) return false
+      if (type === 'gAMA' && length !== 4) return false
+      if (type === 'IDAT') chunks.push(buffer.subarray(offset + 8, offset + 8 + length))
+      offset += length + 12
+      if (type === 'IEND') {
+        if (length !== 0 || offset !== buffer.length) return false
+        ended = true
+      }
+    }
+    if (!ended || !chunks.length) return false
+    const inflated = inflateSync(Buffer.concat(chunks), { maxOutputLength: scanlineBytes })
+    if (inflated.length !== scanlineBytes) return false
+    const decoded = PNG.sync.read(buffer, { checkCRC: true })
+    return decoded.width === width && decoded.height === height && decoded.data.length === width * height * 4
+  } catch {
+    return false
+  }
 }
 
 /** 首尾去空白 + 截断：stderr 只用来给用户看线索，不能无限塞进对话框 */
 function trimDetail(text: string): string {
   const cleaned = text.replace(/\s+/g, ' ').trim()
   return cleaned.length > 200 ? `${cleaned.slice(0, 200)}…` : cleaned
-}
-
-/** 超时杀进程：Windows 下只杀直接子进程会留下 JVM 之类的孙进程，用 taskkill /T 连带整棵树 */
-function killTree(child: ChildProcess, platform: NodeJS.Platform): void {
-  const pid = child.pid
-  if (!pid) return
-  if (platform === 'win32') {
-    execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => undefined)
-    return
-  }
-  child.kill('SIGKILL')
 }
 
 /**
@@ -400,46 +452,13 @@ export async function runEngineDlcRender(
       outputPath,
     ]
 
-    const outcome = await new Promise<{ code: number | null; signal: NodeJS.Signals | null; timedOut: boolean; stderr: string }>(
-      (resolve) => {
-        let stderr = ''
-        let settled = false
-        const finish = (value: { code: number | null; signal: NodeJS.Signals | null; timedOut: boolean }): void => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          resolve({ ...value, stderr })
-        }
-
-        let child: ChildProcess
-        try {
-          child = spawn(command, argv, {
-            cwd: dlc.dir,
-            shell: false,
-            windowsHide: true,
-            stdio: ['ignore', 'ignore', 'pipe'],
-            ...(isScript ? { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } } : {}),
-          })
-        } catch (err) {
-          resolve({ code: null, signal: null, timedOut: false, stderr: err instanceof Error ? err.message : String(err) })
-          return
-        }
-
-        const timer = setTimeout(() => {
-          killTree(child, platform)
-          finish({ code: null, signal: null, timedOut: true })
-        }, dlc.timeoutMs)
-
-        child.stderr?.on('data', (chunk: Buffer) => {
-          if (stderr.length < ENGINE_DLC_LIMITS.maxStderrBytes) stderr += chunk.toString('utf8')
-        })
-        child.on('error', (err) => {
-          stderr += err.message
-          finish({ code: null, signal: null, timedOut: false })
-        })
-        child.on('close', (code, signal) => finish({ code, signal, timedOut: false }))
-      },
-    )
+    if (deps.signal?.aborted) return { ok: false, reason: '引擎渲染已取消' }
+    if (deps.beforeSpawn && !(await deps.beforeSpawn())) return { ok: false, reason: '授权或执行配置已变化，请重新授权' }
+    const outcome = await executeEngineDlc({
+      command, argv, cwd: dlc.dir, script: isScript, timeoutMs: dlc.timeoutMs,
+      platform, signal: deps.signal, workDir,
+    })
+    if (outcome.cancelled) return { ok: false, reason: '引擎渲染已取消' }
 
     if (outcome.timedOut) return { ok: false, reason: `引擎渲染超时（${Math.round(dlc.timeoutMs / 1000)} 秒），已终止` }
     if (outcome.code !== 0) {
@@ -452,17 +471,32 @@ export async function runEngineDlcRender(
 
     let buffer: Buffer
     try {
-      const st = await fs.stat(outputPath)
+      const handle = await fs.open(outputPath, 'r')
+      try {
+      const st = await handle.stat()
       if (!st.isFile()) return { ok: false, reason: '引擎渲染未产出图片文件' }
       if (st.size === 0) return { ok: false, reason: '引擎渲染产出的图片为空' }
       if (st.size > ENGINE_DLC_LIMITS.maxOutputBytes) {
         return { ok: false, reason: `引擎渲染结果过大（${Math.round(st.size / 1024 / 1024)} MB），已拒绝` }
       }
-      buffer = await fs.readFile(outputPath)
+      const bounded = Buffer.alloc(st.size + 1)
+      let total = 0
+      while (total < bounded.length) {
+        const { bytesRead } = await handle.read(bounded, total, bounded.length - total, total)
+        if (!bytesRead) break
+        total += bytesRead
+      }
+      if (total > st.size) return { ok: false, reason: '引擎渲染结果读取期间变化，已拒绝' }
+      buffer = bounded.subarray(0, total)
+      } finally {
+        await handle.close()
+      }
     } catch {
       return { ok: false, reason: '引擎渲染未产出图片文件（DLC 需把 PNG 写到 --output 指定路径）' }
     }
 
+    if (buffer.length > ENGINE_DLC_LIMITS.maxOutputBytes) return { ok: false, reason: '引擎渲染结果过大，已拒绝' }
+    if (deps.signal?.aborted) return { ok: false, reason: '引擎渲染已取消' }
     if (!isPng(buffer)) return { ok: false, reason: '引擎渲染的输出不是 PNG 图片' }
 
     return { ok: true, dataUrl: `data:image/png;base64,${buffer.toString('base64')}` }

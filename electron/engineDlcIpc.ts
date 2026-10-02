@@ -23,8 +23,10 @@ import {
   scanEngineDlcDir,
   toEngineDlcList,
   type ResolvedEngineDlc,
+  type EngineDlcRenderResult,
 } from './engineDlc'
-import { grantEngineDlc, isEngineDlcAllowed, revokeEngineDlc } from './engineDlcTrust'
+import { grantEngineDlc, isEngineDlcAllowed, revokeEngineDlc, snapshotEngineDlc, sameEngineDlcGrant } from './engineDlcTrust'
+import { EngineDlcHost } from './engineDlcHost'
 
 /** 界面传来的布尔值一律重新收敛（IPC 参数不可信） */
 function asBoolean(value: unknown): boolean {
@@ -41,6 +43,9 @@ function asInt(value: unknown, min: number, max: number): number | null {
 export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   /** 指定目录（userData 由主进程提供，渲染层无法影响其位置） */
   const rootOf = (): string => engineDlcDir(ctx.app.getPath('userData'))
+  const host = new EngineDlcHost()
+  const owners = new Set<number>()
+  let grantEpoch = 0
 
   /** 扫描 + 授权判定：返回界面列表与「当前可用于渲染的 DLC」 */
   const survey = async (): Promise<{ dir: string; dlcs: ReturnType<typeof toEngineDlcList>; active: ResolvedEngineDlc | null }> => {
@@ -54,7 +59,12 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       allowed.add(item.dlc.id)
       active ??= item.dlc // 按目录名排序后的第一个可用项，结果稳定可预期
     }
-    return { dir, dlcs: toEngineDlcList(items, allowed), active }
+    const granted = new Set(ctx.engineDlc.enabled.keys())
+    const scanned = new Set(items.map((item) => item.dirName))
+    for (const id of granted) {
+      if (!scanned.has(id)) items.push({ dirName: id, dlc: null, problem: 'DLC 已移除，仍可撤销授权' })
+    }
+    return { dir, dlcs: toEngineDlcList(items, allowed, granted), active }
   }
 
   ipc('dlc:list', async () => {
@@ -72,16 +82,18 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
 
   /** 授权/撤销。授权必须先过系统确认框；撤销不需要（回收权限永远安全）。 */
   ipc('dlc:grant', async (_event, dlcId: unknown, enabled: unknown) => {
-    if (typeof dlcId !== 'string' || !dlcId) return { ok: false, message: 'DLC 标识无效' }
+    if (typeof dlcId !== 'string' || !/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,62}[A-Za-z0-9])?$/.test(dlcId)) return { ok: false, message: 'DLC 标识无效' }
+    const epoch = ++grantEpoch
+    if (!asBoolean(enabled)) {
+      revokeEngineDlc(ctx, dlcId)
+      host.cancelAll()
+      return { ok: true, enabled: false }
+    }
     const root = rootOf()
     await fs.mkdir(root, { recursive: true })
     const read = await readEngineDlcDir(path.join(root, dlcId), dlcId)
     if (!read.ok) return { ok: false, message: read.problem }
-
-    if (!asBoolean(enabled)) {
-      revokeEngineDlc(ctx, dlcId)
-      return { ok: true, enabled: false }
-    }
+    const snapshot = await snapshotEngineDlc(ctx, read.dlc)
 
     const size = await fs.stat(read.dlc.entryPath).then((st) => st.size).catch(() => null)
     // 授权=允许在本机执行该程序：用系统对话框确认（渲染层伪造不了对话框）
@@ -91,7 +103,10 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       message: `允许「${read.dlc.name}」在本机运行？`,
       detail:
         '授权后，单位预览可以调用这个程序渲染图片。\n\n' +
-        `入口：${read.dlc.entryPath}\n` +
+        `入口：${snapshot.entry}\n` +
+        `参数（JSON）：${JSON.stringify(read.dlc.args)}\n` +
+        `工作目录：${read.dlc.dir}\n超时：${read.dlc.timeoutMs} ms\n` +
+        `脚本运行时：${ctx.nodeRuntime}\nSHA256：${snapshot.fingerprint}\n` +
         `大小：${size === null ? '未知' : `${Math.round(size / 1024)} KB`}\n\n` +
         '它会以你的用户权限运行，能读写你能读写的一切。请只授权你信任的来源。' +
         '程序文件若被替换，需要重新授权。',
@@ -102,7 +117,11 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     })
     if (response !== 1) return { ok: false, message: '已取消授权' }
 
-    await grantEngineDlc(ctx, read.dlc)
+    const current = await readEngineDlcDir(path.join(root, dlcId), dlcId)
+    if (!current.ok || !sameEngineDlcGrant(snapshot, await snapshotEngineDlc(ctx, current.dlc)) || grantEpoch !== epoch) {
+      return { ok: false, message: '确认期间程序或配置已变化，请重新授权' }
+    }
+    await grantEngineDlc(ctx, current.dlc, snapshot)
     return { ok: true, enabled: true, name: read.dlc.name }
   })
 
@@ -110,7 +129,7 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
    * 引擎渲染：主进程挑 DLC、写请求、跑子进程、读回 PNG。
    * 收的参数只有「要画什么」，没有任何字段能指定可执行文件。
    */
-  ipc('dlc:render', async (_event, payload: unknown) => {
+  const render = async (signal: AbortSignal, payload: unknown): Promise<EngineDlcRenderResult> => {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return { ok: false, reason: '渲染参数无效' }
     }
@@ -123,8 +142,16 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
 
     const unitFile = input.unitFile
     if (typeof unitFile !== 'string' || !unitFile) return { ok: false, reason: '单位文件路径为空' }
-    const absUnit = path.resolve(unitFile)
-    if (!isPathInside(normalizedRoot, absUnit)) return { ok: false, reason: '单位文件不在项目目录内，已拒绝' }
+    const lexicalUnit = path.resolve(unitFile)
+    if (!isPathInside(normalizedRoot, lexicalUnit)) return { ok: false as const, reason: '单位文件不在项目目录内，已拒绝' }
+    let absUnit: string
+    try {
+      const realRoot = await fs.realpath(normalizedRoot)
+      absUnit = await fs.realpath(lexicalUnit)
+      if (!isPathInside(realRoot, absUnit)) return { ok: false as const, reason: '单位文件链接指向项目目录外，已拒绝' }
+    } catch {
+      return { ok: false as const, reason: '无法校验单位文件真实路径，已拒绝' }
+    }
 
     const frame = asInt(input.frame, 0, 10_000)
     const direction = asInt(input.direction, 0, 3599)
@@ -155,7 +182,34 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
         width,
         height,
       },
-      { execPath: ctx.nodeRuntime },
+      {
+        execPath: ctx.nodeRuntime, signal,
+        beforeSpawn: async () => {
+          if (signal.aborted) return false
+          const fresh = await readEngineDlcDir(active.dir, active.id)
+          if (!fresh.ok || !(await isEngineDlcAllowed(ctx, fresh.dlc))) return false
+          const sameConfig = sameEngineDlcGrant(await snapshotEngineDlc(ctx, active), await snapshotEngineDlc(ctx, fresh.dlc))
+          const realRoot = await fs.realpath(normalizedRoot)
+          return !signal.aborted && sameConfig && isPathInside(realRoot, await fs.realpath(absUnit))
+        },
+      },
     )
+  }
+
+  ipc('dlc:render', async (event: Electron.IpcMainInvokeEvent | undefined, payload: unknown) => {
+    const owner = event?.sender?.id ?? 0
+    if (event?.sender?.isDestroyed()) return { ok: false, reason: '预览窗口已关闭' }
+    if (event?.sender && !owners.has(owner)) {
+      owners.add(owner)
+      event.sender.once('destroyed', () => { host.cancel(owner); owners.delete(owner) })
+    }
+    const input = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+    const requestId = typeof input.requestId === 'string' ? input.requestId : 'legacy'
+    if (requestId.length > 128) return { ok: false, reason: '请求标识无效' }
+    if (input.cancel === true) {
+      host.cancel(owner, requestId)
+      return { ok: false, reason: '引擎渲染已取消' }
+    }
+    return host.run(owner, requestId, (signal) => render(signal, payload))
   })
 }

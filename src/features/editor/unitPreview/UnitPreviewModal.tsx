@@ -248,11 +248,16 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     const api = getBridge().engineDlc
     if (!engineMode || !api || !engineDlcName) return
     const seq = ++engineSeqRef.current
+    const requestId = crypto.randomUUID()
     let alive = true
     void (async () => {
+      await Promise.resolve()
+      if (!alive) return
+      setEngineImage(null)
       setEngineNote('正在用引擎渲染…')
       try {
         const result = await api.render({
+          requestId,
           unitFile: file,
           unitContent: content,
           projectRoot: rootPath,
@@ -280,6 +285,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     })()
     return () => {
       alive = false
+      void api.cancel(requestId).catch(() => undefined)
     }
   }, [engineMode, engineDlcName, file, content, rootPath, gamePath, clampedFrame, directionIdx, animState, showWreck])
 
@@ -501,15 +507,18 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
           <div className="unitprev-canvas-wrap">
             {/* M42：引擎渲染有结果时用 <img> 直接显示引擎的成品图（它已是「游戏里的样子」，
                 不再叠加我们自己的视野圈等分析层）；否则显示本地合成的 canvas */}
-            {engineMode && engineImage ? (
+            <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" style={{ display: engineMode && engineImage ? 'none' : undefined }} />
+            {engineMode && engineImage && (
               <img
                 src={engineImage}
                 alt="引擎渲染结果"
                 className="unitprev-canvas"
                 style={{ width: 560 * zoom, height: 420 * zoom }}
+                onError={() => {
+                  setEngineImage(null)
+                  setEngineNote('引擎图片无法显示，已回退内置合成')
+                }}
               />
-            ) : (
-              <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" />
             )}
           </div>
           {engineNote && <div className="lint-evidence">{engineNote}</div>}

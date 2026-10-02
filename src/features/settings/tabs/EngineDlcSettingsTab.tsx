@@ -78,7 +78,7 @@ export function EngineDlcSettingsTab() {
     setMessage(null)
     // 授权会弹系统确认框（主进程弹，界面伪造不了）；取消不算失败，只提示一句
     try {
-      const result = await api.grant(entry.id, !entry.enabled)
+      const result = await api.grant(entry.id, !(entry.granted ?? entry.enabled))
       if (!result.ok) setMessage(result.message ?? '操作未完成')
       else setMessage(result.enabled ? `已授权：${result.name ?? entry.id}` : `已撤销授权：${entry.name || entry.id}`)
       await refresh()
@@ -152,11 +152,11 @@ export function EngineDlcSettingsTab() {
                   </div>
                 </span>
                 <button
-                  className={`btn${entry.enabled ? '' : ' primary'}`}
-                  disabled={busy !== null || (!entry.enabled && !entry.runnable && !entry.problem)}
+                  className={`btn${(entry.granted ?? entry.enabled) ? '' : ' primary'}`}
+                  disabled={busy !== null || (!(entry.granted ?? entry.enabled) && !entry.runnable && !entry.problem)}
                   onClick={() => void toggle(entry)}
                 >
-                  {busy === entry.id ? '处理中…' : entry.enabled ? '撤销授权' : '授权运行'}
+                  {busy === entry.id ? '处理中…' : (entry.granted ?? entry.enabled) ? '撤销授权' : '授权运行'}
                 </button>
               </div>
             ))}

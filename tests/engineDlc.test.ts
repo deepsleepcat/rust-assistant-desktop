@@ -15,6 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { createRequire } from 'node:module'
+import { PNG } from 'pngjs'
 import { createStore } from '../electron/store'
 import { createKnowledgePack } from '../electron/knowledgePack'
 import { initAiHistory, getHistory } from '../electron/aiHistory'
@@ -95,16 +97,27 @@ async function writeDlc(
   return dir
 }
 
+const PNG_WRITER = `
+const { PNG } = require(${JSON.stringify(createRequire(import.meta.url).resolve('pngjs'))})
+function pngText(text) {
+  const bytes = Buffer.from(text)
+  const png = new PNG({width: Math.max(1, Math.ceil(bytes.length / 4)), height: 1})
+  bytes.copy(png.data)
+  return PNG.sync.write(png)
+}
+`
+function decodePngText(dataUrl: string): string {
+  return PNG.sync.read(Buffer.from(dataUrl.split(',')[1], 'base64')).data.toString('utf8').replace(/\0+$/, '')
+}
+
 /** 标准脚本：读 --request 指的 JSON，往 --output 写一张 PNG */
 const GOOD_SCRIPT = `
+${PNG_WRITER}
 const fs = require('node:fs')
 const args = process.argv.slice(2)
 const get = (flag) => args[args.indexOf(flag) + 1]
 const request = JSON.parse(fs.readFileSync(get('--request'), 'utf8'))
-fs.writeFileSync(get('--output'), Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from(String(request.unitFile)),
-]))
+fs.writeFileSync(get('--output'), pngText(String(request.unitFile)))
 `
 
 beforeEach(async () => {
@@ -317,14 +330,14 @@ describe('M42 DLC 子进程调用协议（runEngineDlcRender）', () => {
     if (!result.ok) return
     expect(result.dataUrl?.startsWith('data:image/png;base64,')).toBe(true)
     // 脚本把 request 里的 unitFile 写进了图片：证明请求真的送达了
-    const decoded = Buffer.from(result.dataUrl!.split(',')[1], 'base64')
-    expect(decoded.subarray(8).toString('utf8')).toBe(request.unitFile)
+    expect(decodePngText(result.dataUrl)).toBe(request.unitFile)
   })
 
   it('请求 JSON 里带有协议版本、视图参数与输出路径', async () => {
     await writeDlc(
       'echo',
       `
+${PNG_WRITER}
 const fs = require('node:fs')
 const args = process.argv.slice(2)
 const get = (flag) => args[args.indexOf(flag) + 1]
@@ -333,16 +346,14 @@ const echoes = [
   request.protocolVersion, request.view.frame, request.view.animationState,
   request.view.showWreck, request.size.width, request.outputPath === get('--output'),
 ].join('|')
-fs.writeFileSync(get('--output'), Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from(echoes),
-]))
+fs.writeFileSync(get('--output'), pngText(echoes))
 `,
     )
     const dlc = await resolve('echo')
     const result = await runEngineDlcRender(dlc, { ...request, frame: 3, animationState: 'attack', showWreck: true }, { execPath: nodeRuntime })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    const decoded = Buffer.from(result.dataUrl!.split(',')[1], 'base64').subarray(8).toString('utf8')
+    const decoded = decodePngText(result.dataUrl)
     expect(decoded).toBe('1|3|attack|true|560|true')
   })
 
@@ -350,13 +361,11 @@ fs.writeFileSync(get('--output'), Buffer.concat([
     await writeDlc(
       'withargs',
       `
+${PNG_WRITER}
 const fs = require('node:fs')
 const args = process.argv.slice(2)
 const get = (flag) => args[args.indexOf(flag) + 1]
-fs.writeFileSync(get('--output'), Buffer.concat([
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  Buffer.from(args[args.indexOf('--lib') + 1] || 'MISSING'),
-]))
+fs.writeFileSync(get('--output'), pngText(args[args.indexOf('--lib') + 1] || 'MISSING'))
 `,
       { args: ['--lib', 'engine.dll'] },
     )
@@ -364,7 +373,7 @@ fs.writeFileSync(get('--output'), Buffer.concat([
     const result = await runEngineDlcRender(dlc, request, { execPath: nodeRuntime })
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(Buffer.from(result.dataUrl!.split(',')[1], 'base64').subarray(8).toString('utf8')).toBe('engine.dll')
+    expect(decodePngText(result.dataUrl)).toBe('engine.dll')
   })
 
   it('退出码非零判失败，并把 stderr 带回来', async () => {
@@ -459,7 +468,7 @@ describe('M42 DLC 授权锚与 IPC 边界', () => {
     expect(result.dlcs).toHaveLength(1)
     expect(result.dlcs[0]).toMatchObject({ id: 'demo', enabled: false, runnable: false })
     // 列表项没有任何路径字段（entryPath/entry/dir 都不该出现）
-    expect(Object.keys(result.dlcs[0]).sort()).toEqual(['description', 'enabled', 'id', 'name', 'problem', 'runnable', 'version'])
+    expect(Object.keys(result.dlcs[0]).sort()).toEqual(['description', 'enabled', 'granted', 'id', 'name', 'problem', 'runnable', 'version'])
     expect(JSON.stringify(result.dlcs)).not.toContain('render.cjs')
   })
 
@@ -468,6 +477,7 @@ describe('M42 DLC 授权锚与 IPC 边界', () => {
     const channels = registerAll()
     const registered = path.join(tmp, 'proj')
     await fs.mkdir(registered, { recursive: true })
+    await fs.writeFile(path.join(registered, 'tank.ini'), '[graphics]')
     ctx.roots.add(normalizePath(registered))
     const result = await invoke<{ ok: boolean; reason?: string }>(channels, 'dlc:render', {
       unitFile: path.join(registered, 'tank.ini'),
@@ -558,6 +568,7 @@ describe('M42 DLC 授权锚与 IPC 边界', () => {
     await invoke(channels, 'dlc:grant', 'demo', true)
     const registered = path.join(tmp, 'proj')
     await fs.mkdir(registered, { recursive: true })
+    await fs.writeFile(path.join(registered, 'tank.ini'), '[graphics]')
     ctx.roots.add(normalizePath(registered))
     const result = await invoke<{ ok: boolean; reason?: string }>(channels, 'dlc:render', {
       unitFile: path.join(tmp, 'outside.ini'),
@@ -581,6 +592,7 @@ describe('M42 DLC 授权锚与 IPC 边界', () => {
     await invoke(channels, 'dlc:grant', 'demo', true)
     const registered = path.join(tmp, 'proj')
     await fs.mkdir(registered, { recursive: true })
+    await fs.writeFile(path.join(registered, 'tank.ini'), '[graphics]')
     ctx.roots.add(normalizePath(registered))
     const base = {
       unitFile: path.join(registered, 'tank.ini'),
@@ -606,6 +618,7 @@ describe('M42 DLC 授权锚与 IPC 边界', () => {
     await invoke(channels, 'dlc:grant', 'demo', true)
     const registered = path.join(tmp, 'proj')
     await fs.mkdir(registered, { recursive: true })
+    await fs.writeFile(path.join(registered, 'tank.ini'), '[graphics]')
     ctx.roots.add(normalizePath(registered))
     const result = await invoke<{ ok: boolean; dataUrl?: string }>(channels, 'dlc:render', {
       unitFile: path.join(registered, 'tank.ini'),
