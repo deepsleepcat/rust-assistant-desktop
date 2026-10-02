@@ -20,7 +20,9 @@ Rusted Warfare 模组随身编辑器（第一版 · 本地轻量版）。
 ## 开发
 
 ```bash
-npm install
+npm ci                        # 在 mobile/ 目录安装锁定的依赖
+npm run check                 # TypeScript 类型检查 + 单元测试
+npm run build                 # 前端生产构建（不生成 APK）
 npm run tauri android dev      # Android 开发（需要模拟器/真机）
 npm test                       # vitest 单元测试（290 个用例）
 npx tauri android build -d -t aarch64 -t x86_64   # 出 debug APK
@@ -28,7 +30,8 @@ npx tauri android build -d -t aarch64 -t x86_64   # 出 debug APK
 
 ### Android 构建环境（Windows）
 
-- JDK 17（Temurin）、Android SDK（platform-tools、platforms;android-35、build-tools;35.0.0、NDK 27.1）
+- Node.js 22.12+（与自动检查环境一致）
+- JDK 17（Temurin）、Android SDK（platform-tools、platforms;android-36、build-tools;36.0.0、NDK 27.1）；当前 Android 工程的 compileSdk / targetSdk 为 36
 - Rust stable + targets：`rustup target add aarch64-linux-android x86_64-linux-android`
 - 模拟器加速：AEHD 驱动（`sdkmanager "extras;google;Android_Emulator_Hypervisor_Driver"`）
 - 环境变量：`ANDROID_HOME`、`ANDROID_SDK_ROOT`（AVD 建议放非系统盘：`ANDROID_AVD_HOME`）

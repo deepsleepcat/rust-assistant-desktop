@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "check": "npm run typecheck && npm test",
     "tauri": "tauri"
   },
   "dependencies": {
