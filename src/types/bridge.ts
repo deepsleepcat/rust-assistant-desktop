@@ -92,11 +92,11 @@ export interface PluginResourceText {
 export type PluginResourcePayload = PluginResourceImage | PluginResourceText
 
 export interface PluginApi {
-  /** 通过系统对话框导入本地 manifest.json 或插件目录；用户取消返回 null */
+  /** 对话框选择后由主进程验证、检查冲突并原子提交安装与资源授权；用户取消返回 null */
   importLocal(): Promise<PluginImportSelection | null>
   /** 卸载插件时注销主进程的目录信任锚（未登记视为幂等） */
   forgetLocal(pluginId: string): Promise<void>
-  /** 读取插件自带资源（只读已登记插件目录内的文件；越界/未登记一律拒绝） */
+  /** 读取导入时已逐项验证的声明资源；白名单与真实路径守卫同时限制访问 */
   readResource(pluginId: string, relPath: string): Promise<PluginResourcePayload>
 }
 

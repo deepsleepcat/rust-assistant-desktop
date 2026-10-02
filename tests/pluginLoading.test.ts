@@ -11,7 +11,7 @@
  * 安全边界是本文件的主角：插件目录锚值若可被渲染层伪造，就等于任意文件读取通道，
  * 所以第 1、2 层要覆盖到拒绝路径而不是只测成功路径。
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -24,6 +24,8 @@ import { createKnowledgePack } from '../electron/knowledgePack'
 // 按具体模块导入可让本文件零 Electron 依赖，任何环境都能跑。
 import { createIpcContext, type IpcContext } from '../electron/ipcContext'
 import type { RegisterHandler } from '../electron/ipcTypes'
+import { normalizePath } from '../electron/paths'
+import { registerStoreIpc } from '../electron/storeIpc'
 import { registerPluginIpc } from '../electron/pluginIpc'
 import { PLUGIN_DIRS_KEY, registerPluginDir, restorePluginDirs, pluginDirOf, unregisterPluginDir } from '../electron/pluginTrust'
 import { loadEnabledPluginData, selectRendererAdapter } from '../src/features/plugins/runtimeData'
@@ -93,9 +95,9 @@ afterEach(async () => {
 })
 
 describe('M41 插件目录信任锚（pluginTrust）', () => {
-  it('登记后可查到，且 id 大小写不敏感', () => {
-    registerPluginDir(ctx, 'Demo.Atlas', pluginDir)
-    expect(pluginDirOf(ctx, 'demo.atlas')).toBe(pluginDir.replace(/\\/g, '/'))
+  it('登记后可查到，且 id 大小写不敏感', async () => {
+    await registerPluginDir(ctx, 'Demo.Atlas', pluginDir)
+    expect(pluginDirOf(ctx, 'demo.atlas')).toBe(normalizePath(pluginDir))
     expect(pluginDirOf(ctx, 'DEMO.ATLAS')).not.toBeNull()
   })
 
@@ -104,27 +106,27 @@ describe('M41 插件目录信任锚（pluginTrust）', () => {
   })
 
   it('登记会持久化锚值，重启后 restorePluginDirs 能恢复', async () => {
-    registerPluginDir(ctx, 'demo.atlas', pluginDir)
+    await registerPluginDir(ctx, 'demo.atlas', pluginDir, ['atlas.png', 'data.json', 'big.png', 'link.png', 'nope.png', 'evil.exe'])
     await ctx.store.flush()
     // 模拟重启：新建一个空上下文，从同一份 store 恢复
     const fresh = { ...ctx, pluginDirs: new Map<string, string>() }
     restorePluginDirs(fresh)
-    expect(fresh.pluginDirs.get('demo.atlas')).toBe(pluginDir.replace(/\\/g, '/'))
+    expect(fresh.pluginDirs.get('demo.atlas')).toBe(normalizePath(pluginDir))
   })
 
-  it('注销后不再可查（插件卸载路径）', () => {
-    registerPluginDir(ctx, 'demo.atlas', pluginDir)
-    unregisterPluginDir(ctx, 'demo.atlas')
+  it('注销后不再可查（插件卸载路径）', async () => {
+    await registerPluginDir(ctx, 'demo.atlas', pluginDir, ['atlas.png', 'data.json', 'big.png', 'link.png', 'nope.png', 'evil.exe'])
+    await unregisterPluginDir(ctx, 'demo.atlas')
     expect(pluginDirOf(ctx, 'demo.atlas')).toBe(null)
   })
 
-  it('注销未登记的 id 是幂等的', () => {
-    expect(() => unregisterPluginDir(ctx, 'ghost.plugin')).not.toThrow()
+  it('注销未登记的 id 是幂等的', async () => {
+    await expect(unregisterPluginDir(ctx, 'ghost.plugin')).resolves.toBeUndefined()
   })
 
-  it('锚值异常（非对象）时按「无插件」处理，不抛错', () => {
+  it('锚值异常（非对象）时按「无插件」处理，不抛错', async () => {
     const broken = { ...ctx, pluginDirs: new Map<string, string>() }
-    ctx.store.set(PLUGIN_DIRS_KEY, 'not-an-object')
+    await ctx.store.set(PLUGIN_DIRS_KEY, 'not-an-object')
     expect(() => restorePluginDirs(broken)).not.toThrow()
     expect(broken.pluginDirs.size).toBe(0)
   })
@@ -137,7 +139,7 @@ describe('M41 插件资源读取（plugin:readResource）', () => {
     const fake = createFakeIpc()
     registerPluginIpc(ctx, fake.ipc)
     channels = fake.channels
-    registerPluginDir(ctx, 'demo.atlas', pluginDir)
+    await registerPluginDir(ctx, 'demo.atlas', pluginDir, ['atlas.png', 'data.json', 'big.png', 'link.png', 'nope.png', 'evil.exe'])
     await fs.writeFile(path.join(pluginDir, 'atlas.png'), TINY_PNG)
     await fs.writeFile(path.join(pluginDir, 'data.json'), '{"a":1}', 'utf8')
   })
@@ -199,9 +201,8 @@ describe('M41 插件资源读取（plugin:readResource）', () => {
     const link = path.join(pluginDir, 'link.png')
     try {
       await fs.symlink(outside, link)
-    } catch {
-      // 环境不支持符号链接（如部分挂载）：明确跳过而不是静默通过
-      return
+    } catch (error) {
+      throw new Error('环境无法创建符号链接，测试未覆盖', { cause: error })
     }
     await expect(invoke(channels, 'plugin:readResource', 'demo.atlas', 'link.png')).rejects.toThrow()
   })
@@ -251,7 +252,7 @@ describe('M41 插件导入入口（plugin:importLocal）', () => {
     expect(selection.manifest.id).toBe('import.demo')
     expect(selection.files.length).toBeGreaterThanOrEqual(2)
     // 关键：导入即登记锚值——后续 readResource 才有基准
-    expect(pluginDirOf(ctx, 'import.demo')).toBe(pluginDir.replace(/\\/g, '/'))
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(pluginDir))
   })
 
   it('用户取消对话框 → 返回 null，不登记任何锚值', async () => {
@@ -294,10 +295,157 @@ describe('M41 插件导入入口（plugin:importLocal）', () => {
   it('导入单个 manifest.json 文件：以其同级目录为插件根登记锚值', async () => {
     const manifestPath = path.join(pluginDir, 'manifest.json')
     await fs.writeFile(manifestPath, JSON.stringify(MANIFEST), 'utf8')
+    await fs.writeFile(path.join(pluginDir, 'atlas.png'), TINY_PNG)
     stubDialog([manifestPath])
     const selection = await invoke<{ source: string }>(channels, 'plugin:importLocal')
     expect(selection.source).toBe('json')
-    expect(pluginDirOf(ctx, 'import.demo')).toBe(pluginDir.replace(/\\/g, '/'))
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(pluginDir))
+  })
+
+  async function importFixture(root = pluginDir, single = true) {
+    await fs.mkdir(root, { recursive: true })
+    await fs.writeFile(path.join(root, 'manifest.json'), JSON.stringify(MANIFEST))
+    await fs.writeFile(path.join(root, 'atlas.png'), TINY_PNG)
+    stubDialog([single ? path.join(root, 'manifest.json') : root])
+    return invoke(channels, 'plugin:importLocal')
+  }
+
+  it.each([true, false])('只允许已声明资源，导入模式 single=%s', async (single) => {
+    await fs.writeFile(path.join(pluginDir, 'unrelated.txt'), 'private')
+    await importFixture(pluginDir, single)
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'unrelated.txt')).rejects.toThrow('白名单')
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'manifest.json')).rejects.toThrow('白名单')
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png')).resolves.toMatchObject({ kind: 'image' })
+  })
+
+  it('单清单缺资源或资源超限时拒绝，不安装也不登记', async () => {
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(MANIFEST))
+    stubDialog([path.join(pluginDir, 'manifest.json')])
+    await expect(invoke(channels, 'plugin:importLocal')).rejects.toThrow()
+    await fs.writeFile(path.join(pluginDir, 'atlas.png'), Buffer.alloc(8 * 1024 * 1024 + 1))
+    await expect(invoke(channels, 'plugin:importLocal')).rejects.toThrow()
+    expect(ctx.store.get(PLUGIN_DIRS_KEY)).toBeUndefined()
+    expect(ctx.pluginDirs.size).toBe(0)
+  })
+
+  it('同 ID 冲突与存储失败均不污染 A 的持久授权', async () => {
+    await importFixture()
+    const original = ctx.store.get(PLUGIN_DIRS_KEY)
+    await expect(importFixture(path.join(tmp, 'plugin-b'))).rejects.toThrow('冲突')
+    expect(ctx.store.get(PLUGIN_DIRS_KEY)).toEqual(original)
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(pluginDir))
+    const failing = vi.spyOn(ctx.store, 'setDurable').mockRejectedValueOnce(new Error('disk failure'))
+    registerStoreIpc(ctx, (name, handler) => channels.set(name, handler))
+    await expect(invoke(channels, 'store:set', 'plugins', { plugins: [] })).rejects.toThrow('disk failure')
+    failing.mockRestore()
+    expect(ctx.store.get(PLUGIN_DIRS_KEY)).toEqual(original)
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png')).resolves.toMatchObject({ kind: 'image' })
+    await ctx.store.flush()
+    const reopened = createStore(path.join(tmp, 'state.json'))
+    await reopened.ready()
+    const fresh = { ...ctx, store: reopened, pluginDirs: new Map<string, string>() }
+    restorePluginDirs(fresh)
+    expect(pluginDirOf(fresh, 'import.demo')).toBe(normalizePath(pluginDir))
+    expect(reopened.get(PLUGIN_DIRS_KEY)).toEqual(original)
+  })
+
+  it('旧目录级授权不恢复，重新验证同一已安装声明后可恢复白名单', async () => {
+    await importFixture()
+    registerStoreIpc(ctx, (name, handler) => channels.set(name, handler))
+    const state = await invoke(channels, 'store:get', 'plugins')
+    await ctx.store.set('plugins', state)
+    await ctx.store.set(PLUGIN_DIRS_KEY, { 'import.demo': pluginDir })
+    restorePluginDirs(ctx)
+    expect(ctx.pluginDirs.size).toBe(0)
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png')).rejects.toThrow('未登记')
+    await expect(importFixture()).resolves.toBeTruthy()
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png')).resolves.toMatchObject({ kind: 'image' })
+  })
+
+  it('无效持久化配置与声明变更不保留资源授权', async () => {
+    await importFixture()
+    registerStoreIpc(ctx, (name, handler) => channels.set(name, handler))
+    const original = ctx.store.get(PLUGIN_DIRS_KEY)
+    await expect(invoke(channels, 'store:set', 'plugins', { plugins: [{ enabled: true, manifest: { ...MANIFEST, capabilities: ['rules'] } }] })).rejects.toThrow('无效')
+    expect(ctx.store.get(PLUGIN_DIRS_KEY)).toEqual(original)
+    await invoke(channels, 'store:set', 'plugins', { plugins: [{ enabled: false, manifest: MANIFEST }] })
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png')).resolves.toMatchObject({ kind: 'image' })
+    await invoke(channels, 'store:set', 'plugins', { plugins: [{ enabled: true, manifest: { ...MANIFEST, version: '2.0.0' } }] })
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png')).rejects.toThrow('未登记')
+  })
+
+  it('资源父目录被 junction 替换后拒绝外部文件', async () => {
+    const sub = path.join(pluginDir, 'images')
+    const outside = path.join(tmp, 'outside')
+    await fs.mkdir(sub)
+    await fs.mkdir(outside)
+    await fs.writeFile(path.join(sub, 'atlas.png'), TINY_PNG)
+    await fs.writeFile(path.join(outside, 'atlas.png'), TINY_PNG)
+    const manifest = { ...MANIFEST, resources: [{ id: 'atlas', path: 'images/atlas.png', kind: 'image' }] }
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(manifest))
+    stubDialog([pluginDir])
+    await invoke(channels, 'plugin:importLocal')
+    await fs.rm(sub, { recursive: true })
+    await fs.symlink(outside, sub, process.platform === 'win32' ? 'junction' : 'dir')
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'images/atlas.png')).rejects.toThrow('真实路径逃逸')
+  })
+
+  it('安装提交失败不留下新插件或授权，失败后可重试', async () => {
+    const failing = vi.spyOn(ctx.store, 'setDurable').mockRejectedValueOnce(new Error('disk failure'))
+    await expect(importFixture()).rejects.toThrow('disk failure')
+    failing.mockRestore()
+    expect(ctx.pluginDirs.size).toBe(0)
+    expect(ctx.store.get(PLUGIN_DIRS_KEY)).toBeUndefined()
+    await expect(importFixture()).resolves.toBeTruthy()
+  })
+
+  it('真实磁盘 rename 失败不改变已安装授权与原磁盘快照，恢复后可继续提交', async () => {
+    await importFixture()
+    registerStoreIpc(ctx, (name, handler) => channels.set(name, handler))
+    const original = ctx.store.get(PLUGIN_DIRS_KEY)
+    const diskPath = path.join(tmp, 'state.json')
+    const backupPath = path.join(tmp, 'backup.json')
+    await ctx.store.flush()
+    await fs.rename(diskPath, backupPath)
+    await fs.mkdir(diskPath) // rename of the temporary JSON over a directory must fail.
+    await expect(invoke(channels, 'store:set', 'plugins', { plugins: [] })).rejects.toThrow()
+    expect(ctx.store.get(PLUGIN_DIRS_KEY)).toEqual(original)
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(pluginDir))
+    expect(JSON.parse(await fs.readFile(backupPath, 'utf8'))[PLUGIN_DIRS_KEY]).toEqual(original)
+    await fs.rmdir(diskPath)
+    await fs.rename(backupPath, diskPath)
+    await invoke(channels, 'store:set', 'plugins', { plugins: [] })
+    expect(pluginDirOf(ctx, 'import.demo')).toBeNull()
+    expect(JSON.parse(await fs.readFile(diskPath, 'utf8'))[PLUGIN_DIRS_KEY].state.plugins).toEqual([])
+  })
+
+  it('串行化并发同 ID 安装，只有一个成功', async () => {
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(MANIFEST))
+    await fs.writeFile(path.join(pluginDir, 'atlas.png'), TINY_PNG)
+    stubDialog([pluginDir])
+    const results = await Promise.allSettled([invoke(channels, 'plugin:importLocal'), invoke(channels, 'plugin:importLocal')])
+    expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected'])
+  })
+
+  it('卸载状态提交同时撤销资源授权，renderer 不能伪造保留键', async () => {
+    await importFixture()
+    registerStoreIpc(ctx, (name, handler) => channels.set(name, handler))
+    await expect(invoke(channels, 'store:set', PLUGIN_DIRS_KEY, {})).rejects.toThrow('保留键')
+    await expect(invoke(channels, 'store:get', PLUGIN_DIRS_KEY)).rejects.toThrow('保留键')
+    await invoke(channels, 'store:set', 'plugins', { plugins: [] })
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png')).rejects.toThrow('未登记')
+    await invoke(channels, 'plugin:forgetLocal', 'import.demo')
+    await expect(invoke(channels, 'plugin:forgetLocal', '')).rejects.toThrow('标识无效')
+  })
+
+  it('真实 junction 替换资源祖先和根目录均拒绝', async () => {
+    const outside = path.join(tmp, 'outside')
+    await fs.mkdir(outside)
+    await fs.writeFile(path.join(outside, 'atlas.png'), TINY_PNG)
+    await importFixture()
+    await fs.rename(pluginDir, path.join(tmp, 'original'))
+    await fs.symlink(outside, pluginDir, process.platform === 'win32' ? 'junction' : 'dir')
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png')).rejects.toThrow('真实路径逃逸')
   })
 
   it('导入非 manifest.json 的单文件 → 拒绝', async () => {
@@ -393,10 +541,22 @@ describe('M41 渲染器声明暴露（loadEnabledPluginData.rendererAdapters）'
     expect(loadEnabledPluginData(wrap(true, float)).rendererAdapters).toHaveLength(0)
   })
 
-  it('resourceIds 引用了未声明的资源时被剔除（不能引用不存在的图）', () => {
+  it('resourceIds 引用了未声明的资源时整体拒绝', () => {
     const bad = { ...validManifest, rendererAdapter: { ...validManifest.rendererAdapter, resourceIds: ['atlas', 'ghost'] } }
     const data = loadEnabledPluginData(wrap(true, bad))
-    expect(data.rendererAdapters[0].resourceIds).toEqual(['atlas'])
+    expect(data.rendererAdapters).toEqual([])
+  })
+
+  it.each([
+    { ...validManifest, capabilities: ['rules'] },
+    { ...validManifest, resources: [{ id: 'atlas', path: '../atlas.png', kind: 'image' }] },
+    { ...validManifest, rendererAdapter: { ...validManifest.rendererAdapter, allowedCommands: ['drawTile', 'runShell'] } },
+    { ...validManifest, rendererAdapter: { ...validManifest.rendererAdapter, maxCommands: 999999 } },
+    { ...validManifest, rendererAdapter: { ...validManifest.rendererAdapter, maxResponseBytes: 999999999 } },
+  ])('无效持久化声明不能暴露或选中 %#', (manifest) => {
+    const data = loadEnabledPluginData(wrap(true, manifest))
+    expect(data.rendererAdapters).toEqual([])
+    expect(selectRendererAdapter(data.rendererAdapters, ['demo.atlas'], 'builtin')).toBeNull()
   })
 
   it('含禁用字段的 manifest 整体被拒（沿用既有的禁用键检查）', () => {

@@ -1,11 +1,4 @@
-const FORBIDDEN_KEYS = new Set([
-  '__proto__', 'prototype', 'constructor', 'script', 'scripts', 'exec', 'execute',
-  'command', 'commands', 'runtime', 'node', 'network', 'url', 'uri', 'endpoint',
-  'fetch', 'eval', 'code', 'handler', 'binary', 'executable', 'process',
-  'child_process', 'filesystem', 'fs', 'readfile', 'writefile', 'spawn', 'shell',
-  'require', 'import', 'dependency', 'dependencies', 'package', 'packages',
-])
-const CAPABILITIES = new Set(['translations', 'fieldAliases', 'enumExplanations', 'rules', 'rendererAdapter'])
+import { validatePluginManifest, type PluginManifest } from './manifest'
 const CHECK_TYPES = new Set(['numeric-range', 'required-key', 'forbidden-value', 'regex-match', 'enum-value'])
 export type PluginCheckType = 'numeric-range' | 'required-key' | 'forbidden-value' | 'regex-match' | 'enum-value'
 
@@ -45,25 +38,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function hasForbiddenKey(value: unknown, seen = new Set<object>()): boolean {
-  if (!value || typeof value !== 'object') return false
-  if (seen.has(value)) return true
-  seen.add(value)
-  if (Array.isArray(value)) return value.some((item) => hasForbiddenKey(item, seen))
-  if (!isRecord(value)) return true
-  return Object.entries(value).some(([key, child]) => FORBIDDEN_KEYS.has(key.toLowerCase()) || hasForbiddenKey(child, seen))
-}
-
 function safeText(value: unknown, max: number): value is string {
   // eslint-disable-next-line no-control-regex -- 控制字符在声明式数据里不可见且易被滥用，必须拒绝
   return typeof value === 'string' && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value)
-}
-
-function validatePersistedManifest(value: unknown): value is Record<string, unknown> {
-  if (!isRecord(value) || hasForbiddenKey(value)) return false
-  if (value.manifestVersion !== 1 || !safeText(value.id, 64) || !safeText(value.version, 64) || !safeText(value.name, 128)) return false
-  if (!Array.isArray(value.capabilities) || value.capabilities.length === 0 || value.capabilities.some((item) => typeof item !== 'string' || !CAPABILITIES.has(item))) return false
-  return true
 }
 
 function readTranslations(value: unknown, output: EnabledPluginData['translations']): void {
@@ -109,43 +86,18 @@ function readRules(value: unknown, output: EnabledPluginData['rules']): void {
   }
 }
 
-/** 插件声明里可用的绘制指令类型（与 renderer.ts 的指令词汇表一致；此处不 import 以保持本层零依赖） */
-const RENDER_COMMANDS = new Set(['drawTile', 'fillRect', 'imageRef'])
-
-/** 读取一个插件的渲染器声明；形状不合法则跳过（不产生半成品适配器） */
-function readRendererAdapter(manifest: Record<string, unknown>, output: EnabledRendererAdapter[]): void {
-  const raw = manifest.rendererAdapter
-  if (!isRecord(raw)) return
-  if (raw.formatVersion !== 1 || raw.kind !== 'canvas-2d') return
-  const rawCommands = Array.isArray(raw.allowedCommands) ? raw.allowedCommands : []
-  const allowedCommands = rawCommands.filter((item): item is string => typeof item === 'string' && RENDER_COMMANDS.has(item))
-  // 一条允许指令都没有的声明等于不能画任何东西，视为无效声明
-  if (allowedCommands.length === 0) return
-  const maxCommands = raw.maxCommands
-  const maxResponseBytes = raw.maxResponseBytes
-  if (typeof maxCommands !== 'number' || !Number.isInteger(maxCommands) || maxCommands < 1) return
-  if (typeof maxResponseBytes !== 'number' || !Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) return
-
-  const resources: Array<{ id: string; path: string }> = []
-  if (Array.isArray(manifest.resources)) {
-    for (const item of manifest.resources) {
-      if (!isRecord(item) || !safeText(item.id, 64) || !safeText(item.path, 240)) continue
-      if (item.kind !== 'image') continue
-      resources.push({ id: item.id, path: item.path })
-    }
-  }
-  const knownIds = new Set(resources.map((resource) => resource.id))
-  const rawIds = Array.isArray(raw.resourceIds) ? raw.resourceIds : []
-  const resourceIds = rawIds.filter((id): id is string => typeof id === 'string' && knownIds.has(id))
-
+/** Manifest has already passed the canonical validator. */
+function readRendererAdapter(manifest: PluginManifest, output: EnabledRendererAdapter[]): void {
+  const adapter = manifest.rendererAdapter
+  if (!adapter) return
   output.push({
-    pluginId: (manifest.id as string).toLowerCase(),
-    pluginName: typeof manifest.name === 'string' ? manifest.name : (manifest.id as string),
-    resources,
-    allowedCommands,
-    resourceIds,
-    maxCommands,
-    maxResponseBytes,
+    pluginId: manifest.id.toLowerCase(),
+    pluginName: manifest.name,
+    resources: manifest.resources.filter((resource) => resource.kind === 'image').map(({ id, path }) => ({ id, path })),
+    allowedCommands: [...adapter.allowedCommands],
+    resourceIds: [...adapter.resourceIds],
+    maxCommands: adapter.maxCommands,
+    maxResponseBytes: adapter.maxResponseBytes,
   })
 }
 
@@ -154,12 +106,15 @@ export function loadEnabledPluginData(raw: unknown): EnabledPluginData {
   const result: EnabledPluginData = { translations: [], aliases: [], enumExplanations: {}, rules: [], rendererAdapters: [] }
   if (!isRecord(raw) || !Array.isArray(raw.plugins)) return result
   for (const item of raw.plugins) {
-    if (!isRecord(item) || item.enabled !== true || !validatePersistedManifest(item.manifest)) continue
-    readTranslations(item.manifest.translations, result.translations)
-    readAliases(item.manifest.fieldAliases, result.aliases)
-    readEnumExplanations(item.manifest.enumExplanations, result.enumExplanations)
-    readRules(item.manifest.rules, result.rules)
-    readRendererAdapter(item.manifest, result.rendererAdapters)
+    if (!isRecord(item) || item.enabled !== true) continue
+    const checked = validatePluginManifest(item.manifest)
+    if (!checked.ok) continue
+    const manifest = checked.value
+    readTranslations(manifest.translations, result.translations)
+    readAliases(manifest.fieldAliases, result.aliases)
+    readEnumExplanations(manifest.enumExplanations, result.enumExplanations)
+    readRules(manifest.rules, result.rules)
+    readRendererAdapter(manifest, result.rendererAdapters)
   }
   return result
 }

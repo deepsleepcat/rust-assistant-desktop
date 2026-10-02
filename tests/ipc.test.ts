@@ -118,7 +118,7 @@ describe('IPC 通道完整性', () => {
     expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
   })
 
-  it('十二个域注册函数覆盖全部 82 个通道，无遗漏无重复', () => {
+  it('十二个域注册函数覆盖全部 84 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerCommunityIpc(ctx, ipc)
@@ -142,7 +142,7 @@ describe('IPC 通道完整性', () => {
       // git
       'git:info', 'git:log', 'git:status', 'git:conflicts', 'git:diff', 'git:restore',
       // dialog + project
-      'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots', 'plugin:importLocal',
+      'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots', 'plugin:importLocal', 'plugin:forgetLocal', 'plugin:readResource',
       // fs + media
       'fs:readDir', 'project:searchFiles', 'fs:readFile', 'fs:stat', 'fs:writeFile', 'fs:createFile', 'fs:createFolder', 'fs:rename', 'fs:delete',
       'image:readAsDataUrl', 'media:readAsDataUrl',
@@ -160,7 +160,7 @@ describe('IPC 通道完整性', () => {
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(82)
+    expect(channels.size).toBe(84)
   })
 })
 
