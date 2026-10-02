@@ -72,7 +72,7 @@ beforeEach(async () => {
       showSaveDialog: async () => ({ canceled: true, filePath: '' }),
       showMessageBox: async () => ({ response: 0, checkboxChecked: false }),
     },
-    shell: { trashItem: async () => undefined },
+    shell: { trashItem: async () => undefined, openPath: async () => '' },
     app: { getVersion: () => '0.0.0-test', getPath: (n) => (n === 'userData' ? tmp : tmp) },
     updater: {
       checkForUpdates: async () => undefined,
