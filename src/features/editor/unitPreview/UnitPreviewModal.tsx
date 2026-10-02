@@ -28,6 +28,17 @@ import {
   resolveImageCandidates,
   type TeamColoringMode,
 } from './recipe'
+import { registeredAdapterIds } from '../../plugins/adapterRegistry'
+import { runRendererAdapter } from '../../plugins/adapterRegistry'
+import {
+  BUILTIN_PREVIEW_ADAPTER_ID,
+  buildPreviewScene,
+  executePreviewCommands,
+  sceneResources,
+  sceneToRenderResult,
+  type PreviewDrawInput,
+  type PreviewEffect,
+} from './compositor'
 
 interface Props {
   file: string
@@ -122,10 +133,11 @@ async function fetchImage(
 }
 
 /** 队伍着色模式渲染（M34：Canvas 近似官方 GLSL shader 效果）。
+ * M41 起由两条路径共用：本地合成路径直接调用；指令路径由 compositor 按场景声明的
+ * effect 施加同一组滤镜，保证两条路径着色一致。
  * - pureGreen：灰阶 → 棕 → 色相转到绿（官方 pureGreenTeamColor.frag 的近似）
- * - hueShift：整体色相偏移到默认队伍绿 120°（官方 hueShiftTeamColor.frag 的近似；
- *   预览无队伍概念，固定用「我方」绿色）
- * - hueAdd：绘制后以 'color' 混合模式叠加绿色（保留原图亮度，官方 hueAddTeamColor.frag 近似）
+ * - hueShift：整体色相偏移到默认队伍绿 120°
+ * - hueAdd：绘制后以 'color' 混合模式叠加绿色（调用方处理，需图像区域矩形）
  */
 function applyTeamColor(ctx: CanvasRenderingContext2D, mode: TeamColoringMode): void {
   if (mode === 'pureGreen') {
@@ -146,6 +158,11 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const [showSight, setShowSight] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [failed, setFailed] = useState<Array<{ image: string; reason: FailReason }>>([])
+  // M41：当前实际走的渲染路径（用于界面标注「精确渲染（插件）」/「本地渲染（内置）」）
+  const [renderPath, setRenderPath] = useState<{ pluginId: string | null; usedFallback: boolean; reason?: string }>({
+    pluginId: null,
+    usedFallback: false,
+  })
   // M34 动画播放：播放中 / 当前动画状态（待机/移动/攻击）/ 多向动画朝向
   const [playing, setPlaying] = useState(true)
   const [animState, setAnimState] = useState<'idle' | 'moving' | 'attack'>('idle')
@@ -239,12 +256,18 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     }
   }, [file, rootPath, gamePath, recipe, turrets])
 
-  // 绘制
+  // M41 渲染器插件化（方案乙·零回归双路径）：
+  // - 无插件，或插件执行失败 → 走本文件内的 drawLocalComposite()，与改动前逐像素一致；
+  // - 插件执行成功 → 走 rendererAdapter 受限指令路径落地。
+  // 两条路径着色规则共用 applyTeamColor / compositor，避免规则漂移。
+  // 安全边界：插件只能引用场景声明的资源 id；effect 由宿主在场景资源上声明，
+  //           插件无法注入滤镜、混合模式或任意绘制 API。
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    let alive = true
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     // 棋盘格背景（透明底可见）
     const SIZE = 12
@@ -255,6 +278,8 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       }
     }
     if (!recipe.image || !mainImgOrNull) {
+      // 这里不 setState：effect 体内同步 setState 会触发级联渲染（react-hooks/set-state-in-effect）。
+      // 初始状态已是「本地内置」，缺主体图时界面无需改标。
       drawPlaceholder(ctx, canvas.width / 2, canvas.height / 2, '未配置主体图像')
       return
     }
@@ -264,7 +289,10 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     const cy = canvas.height / 2
     const items = computeDrawLayout(recipe, turrets).filter((i) => (i.kind === 'wreck' ? showWreck : true))
     const teamMode = recipe.teamColoringMode
+    // AUTO 阴影才做剪影；文件型阴影（imageShadow 非 AUTO）不套滤镜也不随队伍着色
+    const autoShadow = Boolean(recipe.imageShadow && /^AUTO/i.test(recipe.imageShadow))
     if (showSight) {
+      // 视野圈（虚线圆）无法用受限指令表达，保留为宿主绘制
       const sight = computeSightGeometry(recipe, canvas.width, canvas.height, zoom)
       if (sight) {
         ctx.save()
@@ -280,42 +308,127 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         ctx.restore()
       }
     }
+
+    /** 本地合成（内置渲染器本体）：改动前的绘制循环原样保留，保证零回归 */
+    const drawLocalComposite = (): void => {
+      for (const item of items) {
+        // 多帧引用（a.png;b.png）：主体按帧号切换整图；其余（阴影/炮塔）用首帧或原引用
+        let imgKey = item.image
+        if (item.kind === 'body' && recipe.imageFrames?.length) {
+          imgKey = recipe.imageFrames[clampedFrame] ?? item.image
+        }
+        const img = imgKey ? images.get(imgKey) : undefined
+        if (!img || !imgKey) {
+          drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
+          continue
+        }
+        // 源矩形：方向块只作用于主体/自动阴影；炮塔始终使用自身整图。
+        const directionRect = isDirectional && item.sourceMode === 'bodyFrames'
+          ? directionSourceRect(recipe.direction!, directionIdx, img.naturalWidth, img.naturalHeight)
+          : undefined
+        const geometry = computeDrawGeometry(item, img.naturalWidth, img.naturalHeight, fi, clampedFrame, scale, directionRect)
+        const { sx, sy, sw, sh } = geometry.source
+        const { dx, dy, dw, dh } = geometry.destination
+        const drawX = cx + dx
+        const drawY = cy + dy
+        ctx.save()
+        ctx.globalAlpha = item.alpha
+        if (item.kind === 'shadow' && autoShadow) {
+          // AUTO 阴影：主图剪影（黑色半透明）——不随队伍着色
+          ctx.filter = 'grayscale(1) brightness(0.2)'
+        } else if (item.kind !== 'shadow' && teamMode !== 'disabled') {
+          applyTeamColor(ctx, teamMode)
+        }
+        ctx.drawImage(img, sx, sy, sw, sh, drawX, drawY, dw, dh)
+        // hueAdd：'color' 混合模式叠加队伍绿（保留亮度，近似官方色相叠加）
+        if (item.kind !== 'shadow' && teamMode === 'hueAdd') {
+          ctx.globalCompositeOperation = 'color'
+          ctx.fillStyle = '#00c800'
+          ctx.fillRect(drawX, drawY, dw, dh)
+        }
+        ctx.restore()
+      }
+    }
+
+    // 宿主注册的插件实现（内置 id 除外）。没有 → 本地合成，状态即初始值，无需 setState。
+    const registered = registeredAdapterIds()
+    const pluginId = registered.find((id) => id !== BUILTIN_PREVIEW_ADAPTER_ID) ?? null
+    if (!pluginId) {
+      drawLocalComposite()
+      return () => {
+        alive = false
+      }
+    }
+
+    // 有插件：先组建冻结场景（纯数据）再交给扩展点执行
+    const draws: PreviewDrawInput[] = []
+    const missingItems: typeof items = []
     for (const item of items) {
-      // 多帧引用（a.png;b.png）：主体按帧号切换整图；其余（阴影/炮塔）用首帧或原引用
       let imgKey = item.image
       if (item.kind === 'body' && recipe.imageFrames?.length) {
         imgKey = recipe.imageFrames[clampedFrame] ?? item.image
       }
       const img = imgKey ? images.get(imgKey) : undefined
       if (!img || !imgKey) {
-        drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
+        missingItems.push(item)
         continue
       }
-      // 源矩形：方向块只作用于主体/自动阴影；炮塔始终使用自身整图。
       const directionRect = isDirectional && item.sourceMode === 'bodyFrames'
         ? directionSourceRect(recipe.direction!, directionIdx, img.naturalWidth, img.naturalHeight)
         : undefined
       const geometry = computeDrawGeometry(item, img.naturalWidth, img.naturalHeight, fi, clampedFrame, scale, directionRect)
       const { sx, sy, sw, sh } = geometry.source
       const { dx, dy, dw, dh } = geometry.destination
-      const drawX = cx + dx
-      const drawY = cy + dy
-      ctx.save()
-      ctx.globalAlpha = item.alpha
-      if (item.kind === 'shadow' && recipe.imageShadow && /^AUTO/i.test(recipe.imageShadow)) {
-        // AUTO 阴影：主图剪影（黑色半透明）——不随队伍着色；AUTO_ANIMATED 同属自动剪影
-        ctx.filter = 'grayscale(1) brightness(0.2)'
-      } else if (item.kind !== 'shadow' && teamMode !== 'disabled') {
-        applyTeamColor(ctx, teamMode)
+      const effect: PreviewEffect = item.kind === 'shadow'
+        ? (autoShadow ? 'shadow' : 'none')
+        : teamMode === 'disabled' ? 'none' : 'teamColor'
+      draws.push({
+        ref: imgKey,
+        offsetX: dx,
+        offsetY: dy,
+        width: dw,
+        height: dh,
+        sourceX: sx,
+        sourceY: sy,
+        sourceWidth: sw,
+        sourceHeight: sh,
+        alpha: item.alpha,
+        effect,
+      })
+    }
+    const scene = buildPreviewScene({
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height,
+      teamColorMode: teamMode,
+      draws,
+    })
+    void (async () => {
+      const execution = await runRendererAdapter(pluginId, scene, sceneToRenderResult(scene), {
+        resources: sceneResources(scene),
+        adapter: {
+          allowedCommands: ['drawTile', 'fillRect', 'imageRef'],
+          resourceIds: scene.resources.map((resource) => resource.id),
+          maxCommands: 256,
+          maxResponseBytes: 256 * 1024,
+        },
+      })
+      if (!alive) return
+      if (execution.usedFallback) {
+        // 插件不可用 → 回退本地合成本体。刻意不使用指令形式的结果：本地合成与指令表达
+        // 在缺图占位等边界上有顺序差异，直接重跑原循环才能保证「回退后与无插件逐像素一致」。
+        drawLocalComposite()
+        setRenderPath({ pluginId: null, usedFallback: true, reason: execution.reason })
+        return
       }
-      ctx.drawImage(img, sx, sy, sw, sh, drawX, drawY, dw, dh)
-      // hueAdd：'color' 混合模式叠加队伍绿（保留亮度，近似官方色相叠加）
-      if (item.kind !== 'shadow' && teamMode === 'hueAdd') {
-        ctx.globalCompositeOperation = 'color'
-        ctx.fillStyle = '#00c800'
-        ctx.fillRect(drawX, drawY, dw, dh)
+      executePreviewCommands(ctx, execution.result, scene, (ref) => images.get(ref) ?? null)
+      // 缺图提示由宿主覆盖在插件结果之上，按配方顺序绘制，避免被插件图像遮住。
+      for (const item of missingItems) {
+        drawPlaceholder(ctx, cx + item.cx * scale, cy + item.cy * scale, item.placeholder, item.kind === 'turret' ? 28 : 34)
       }
-      ctx.restore()
+      setRenderPath({ pluginId: execution.executedPluginId, usedFallback: false })
+    })()
+    return () => {
+      alive = false
     }
   }, [images, frameInfo, clampedFrame, showWreck, showSight, zoom, recipe, turrets, mainImgOrNull, isDirectional, directionIdx])
 
@@ -323,6 +436,13 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const gameMissing = failed.filter((f) => f.reason === 'game-missing')
   const localMissing = failed.filter((f) => f.reason === 'local-missing')
   const totalFrames = frameInfo.count
+  // M41：渲染路径标注（用户必须能分辨看到的图是谁画的）
+  const usingPluginAdapter = renderPath.pluginId !== null && renderPath.pluginId !== BUILTIN_PREVIEW_ADAPTER_ID
+  const renderPathText = usingPluginAdapter
+    ? `渲染路径：插件 ${renderPath.pluginId}`
+    : renderPath.usedFallback
+      ? `渲染路径：本地内置（已回退：${renderPath.reason ?? '未知原因'}）`
+      : '渲染路径：本地内置'
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -333,7 +453,10 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         </div>
         <div className="modal-body vdiff-body">
           <div className="unitprev-toolbar">
-            <span className="vdiff-hint">按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染</span>
+            <span className="vdiff-hint">按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色）</span>
+            <span className="vdiff-hint" title="渲染器插件化（M41）：插件只能引用场景声明的资源与受限绘制指令，不执行任何插件代码">
+              {renderPathText}
+            </span>
             <span className="grow" />
             <button
               className={`btn${showSight ? ' primary' : ''}`}
