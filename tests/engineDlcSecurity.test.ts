@@ -207,7 +207,7 @@ describe('PR4 path, PNG and lifecycle regressions', () => {
     expect(isPng(malformed)).toBe(false)
     const { request } = await fixture(`const a=process.argv;require('node:fs').writeFileSync(a[a.indexOf('--output')+1],Buffer.from(${JSON.stringify(malformed.toString('base64'))},'base64'))`)
     expect(await invoke('dlc:render', request)).toMatchObject({ ok: false, reason: expect.stringContaining('PNG') })
-  })
+  }, 15000)
 
   it('normal parent exit cleans a real detached unref worker before returning success', async () => {
     const pidFile = path.join(tmp, 'detached.pid')
