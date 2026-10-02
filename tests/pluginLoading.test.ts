@@ -207,6 +207,128 @@ describe('M41 插件资源读取（plugin:readResource）', () => {
   })
 })
 
+describe('M41 插件导入入口（plugin:importLocal）', () => {
+  const MANIFEST = {
+    manifestVersion: 1,
+    id: 'import.demo',
+    version: '1.0.0',
+    name: '导入演示插件',
+    capabilities: ['rendererAdapter'],
+    resources: [{ id: 'atlas', path: 'atlas.png', kind: 'image' }],
+    rendererAdapter: {
+      formatVersion: 1,
+      kind: 'canvas-2d',
+      allowedCommands: ['drawTile'],
+      resourceIds: ['atlas'],
+      maxCommands: 32,
+      maxResponseBytes: 32768,
+    },
+  }
+
+  /** 让对话框「选中」某个路径；canceled 模拟用户取消 */
+  function stubDialog(filePaths: string[], canceled = false): void {
+    ctx.dialog.showOpenDialog = (async () => ({ canceled, filePaths })) as typeof ctx.dialog.showOpenDialog
+  }
+
+  let channels: Map<string, (...args: never[]) => unknown>
+
+  beforeEach(async () => {
+    const fake = createFakeIpc()
+    registerPluginIpc(ctx, fake.ipc)
+    channels = fake.channels
+  })
+
+  it('导入插件目录：校验通过、登记信任锚、返回清单与文件清单', async () => {
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(MANIFEST), 'utf8')
+    await fs.writeFile(path.join(pluginDir, 'atlas.png'), TINY_PNG)
+    stubDialog([pluginDir])
+
+    const selection = await invoke<{ source: string; manifest: { id: string }; files: unknown[] }>(
+      channels, 'plugin:importLocal',
+    )
+    expect(selection).not.toBeNull()
+    expect(selection.source).toBe('directory')
+    expect(selection.manifest.id).toBe('import.demo')
+    expect(selection.files.length).toBeGreaterThanOrEqual(2)
+    // 关键：导入即登记锚值——后续 readResource 才有基准
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(pluginDir.replace(/\\/g, '/'))
+  })
+
+  it('用户取消对话框 → 返回 null，不登记任何锚值', async () => {
+    stubDialog([], true)
+    const selection = await invoke(channels, 'plugin:importLocal')
+    expect(selection).toBe(null)
+    expect(ctx.pluginDirs.size).toBe(0)
+  })
+
+  it('目录根下缺少 manifest.json → 拒绝，且不登记锚值', async () => {
+    stubDialog([pluginDir])
+    await expect(invoke(channels, 'plugin:importLocal')).rejects.toThrow('插件目录根下必须有 manifest.json')
+    expect(ctx.pluginDirs.size).toBe(0)
+  })
+
+  it('manifest 不合法（缺 name）→ 拒绝并给出中文原因，且不登记锚值', async () => {
+    const bad = { ...MANIFEST, name: undefined }
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(bad), 'utf8')
+    stubDialog([pluginDir])
+    await expect(invoke(channels, 'plugin:importLocal')).rejects.toThrow()
+    expect(ctx.pluginDirs.size).toBe(0)
+  })
+
+  it('manifest 含禁用字段（script）→ 拒绝（沿用既有的禁用键检查）', async () => {
+    const evil = { ...MANIFEST, script: 'rm -rf /' }
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(evil), 'utf8')
+    stubDialog([pluginDir])
+    await expect(invoke(channels, 'plugin:importLocal')).rejects.toThrow()
+    expect(ctx.pluginDirs.size).toBe(0)
+  })
+
+  it('插件目录含脚本/可执行文件 → 拒绝（目录收集阶段就拦住）', async () => {
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(MANIFEST), 'utf8')
+    await fs.writeFile(path.join(pluginDir, 'payload.js'), 'alert(1)', 'utf8')
+    stubDialog([pluginDir])
+    await expect(invoke(channels, 'plugin:importLocal')).rejects.toThrow()
+    expect(ctx.pluginDirs.size).toBe(0)
+  })
+
+  it('导入单个 manifest.json 文件：以其同级目录为插件根登记锚值', async () => {
+    const manifestPath = path.join(pluginDir, 'manifest.json')
+    await fs.writeFile(manifestPath, JSON.stringify(MANIFEST), 'utf8')
+    stubDialog([manifestPath])
+    const selection = await invoke<{ source: string }>(channels, 'plugin:importLocal')
+    expect(selection.source).toBe('json')
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(pluginDir.replace(/\\/g, '/'))
+  })
+
+  it('导入非 manifest.json 的单文件 → 拒绝', async () => {
+    const other = path.join(pluginDir, 'other.json')
+    await fs.writeFile(other, JSON.stringify(MANIFEST), 'utf8')
+    stubDialog([other])
+    await expect(invoke(channels, 'plugin:importLocal')).rejects.toThrow('只能导入名为 manifest.json 的插件清单')
+  })
+
+  it('导入后的插件可以立即读到资源（导入 → 读取闭环）', async () => {
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(MANIFEST), 'utf8')
+    await fs.writeFile(path.join(pluginDir, 'atlas.png'), TINY_PNG)
+    stubDialog([pluginDir])
+    await invoke(channels, 'plugin:importLocal')
+
+    const payload = await invoke<PluginResourcePayload>(channels, 'plugin:readResource', 'import.demo', 'atlas.png')
+    expect(payload.kind).toBe('image')
+  })
+
+  it('卸载（forgetLocal）后不再能读该插件资源', async () => {
+    await fs.writeFile(path.join(pluginDir, 'manifest.json'), JSON.stringify(MANIFEST), 'utf8')
+    await fs.writeFile(path.join(pluginDir, 'atlas.png'), TINY_PNG)
+    stubDialog([pluginDir])
+    await invoke(channels, 'plugin:importLocal')
+    await invoke(channels, 'plugin:forgetLocal', 'import.demo')
+
+    await expect(invoke(channels, 'plugin:readResource', 'import.demo', 'atlas.png'))
+      .rejects.toThrow('该插件未登记来源目录')
+  })
+})
+
 describe('M41 渲染器声明暴露（loadEnabledPluginData.rendererAdapters）', () => {
   const validManifest = {
     manifestVersion: 1,
