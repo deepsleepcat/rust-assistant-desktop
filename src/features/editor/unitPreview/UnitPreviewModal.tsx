@@ -8,6 +8,12 @@
  * - CORE: → 游戏 assets/units/ 下资源（readGameAssetImage）
  * - SHARED: → 游戏共享图库 assets/units/shared/ 下资源（readGameAssetImage）
  * - 缺图一律占位（灰块 + 名称），不报错不崩溃；加载失败原因分类提示。
+ *
+ * M42 引擎渲染路径（可选增强，默认不用）：
+ * 用户把自己准备的渲染 DLC 放进指定目录并授权后，本模态可改用「引擎渲染」——
+ * 由主进程调用该 DLC 拿回一张 PNG 显示。它只是**多一条路**：没装 DLC、没授权、
+ * 或渲染失败时，一律回退到上面的本地合成，行为与从前完全一致（零回归）。
+ * 界面这一层不接触任何可执行文件路径：只说「画什么」，用哪个 DLC 由主进程决定。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getBridge } from '../../../services/bridge'
@@ -153,6 +159,17 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const elapsedRef = useRef(0)
   const lastTsRef = useRef<number | null>(null)
 
+  // ── M42 引擎渲染路径（可选）：没有已授权的 DLC 时整块保持关闭，行为与从前一致 ──
+  /** 可用的引擎 DLC 名字；null = 没有可用 DLC（此时界面不显示任何引擎相关控件） */
+  const [engineDlcName, setEngineDlcName] = useState<string | null>(null)
+  /** 用户是否选择了引擎渲染 */
+  const [engineMode, setEngineMode] = useState(false)
+  /** 引擎渲染产出的 PNG（data URL） */
+  const [engineImage, setEngineImage] = useState<string | null>(null)
+  /** 引擎渲染的进行中/回退说明（null = 一切正常） */
+  const [engineNote, setEngineNote] = useState<string | null>(null)
+  const engineSeqRef = useRef(0)
+
   // 中文显示层：传回译函数才能解析 [图像组]/主体图像 等中文节键（与单位表单一致）
   const recipe = useMemo(() => parseGraphicsRecipe(content, zhToEn), [content, zhToEn])
   const turrets = useMemo(() => parsePreviewTurrets(content, zhToEn), [content, zhToEn])
@@ -174,8 +191,9 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
 
   // M34 播放器：rAF 累计时长 → animationFrameNumber 计算当前帧。
   // 帧区间/速度/往返（animation_idle/moving/attack_*）按配方播放；无配置时整序列循环。
+  // M42：引擎模式下停摆——每帧都会启动一个子进程，绝不能跟着 60fps 走。
   useEffect(() => {
-    if (!playing || animFrameCount <= 1) return
+    if (!playing || animFrameCount <= 1 || engineMode) return
     let raf = 0
     const loop = (ts: number) => {
       if (lastTsRef.current == null) lastTsRef.current = ts
@@ -194,7 +212,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
       cancelAnimationFrame(raf)
       lastTsRef.current = null
     }
-  }, [playing, animState, animFrameCount, recipe.animations])
+  }, [playing, animState, animFrameCount, recipe.animations, engineMode])
 
   /** 切换动画状态：重置播放计时（避免状态切换瞬间跳帧） */
   const switchAnimState = (s: 'idle' | 'moving' | 'attack') => {
@@ -203,6 +221,67 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     setFrame(0)
     setPlaying(true)
   }
+
+  // M42：进弹窗时问一次主进程「有没有可用的引擎 DLC」。
+  // 没有（未安装/未授权/清单不合法）就整块关掉——界面连开关都不显示。
+  useEffect(() => {
+    const api = getBridge().engineDlc
+    if (!api) return
+    let alive = true
+    void api
+      .list()
+      .then((result) => {
+        if (!alive) return
+        const ready = result.dlcs.find((item) => item.runnable)
+        setEngineDlcName(ready ? ready.name || ready.id : null)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // M42：引擎模式下按「当前视图参数」渲染一张图。
+  // 每次渲染都会启动一个子进程，所以**不跟动画播放联动**（播放循环在引擎模式下停摆，
+  // 见上面 rAF 的 engineMode 守卫）——只在参数真正变化时请求一次。
+  useEffect(() => {
+    const api = getBridge().engineDlc
+    if (!engineMode || !api || !engineDlcName) return
+    const seq = ++engineSeqRef.current
+    let alive = true
+    void (async () => {
+      setEngineNote('正在用引擎渲染…')
+      try {
+        const result = await api.render({
+          unitFile: file,
+          unitContent: content,
+          projectRoot: rootPath,
+          gamePath: gamePath ?? '',
+          frame: clampedFrame,
+          direction: directionIdx,
+          animationState: animState,
+          showWreck,
+          width: 560,
+          height: 420,
+        })
+        if (!alive || seq !== engineSeqRef.current) return
+        if (result.ok) {
+          setEngineImage(result.dataUrl)
+          setEngineNote(null)
+        } else {
+          setEngineImage(null)
+          setEngineNote(`引擎渲染失败，已回退内置合成：${result.reason}`)
+        }
+      } catch (error) {
+        if (!alive || seq !== engineSeqRef.current) return
+        setEngineImage(null)
+        setEngineNote(`引擎渲染失败，已回退内置合成：${error instanceof Error ? error.message : String(error)}`)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [engineMode, engineDlcName, file, content, rootPath, gamePath, clampedFrame, directionIdx, animState, showWreck])
 
   // 加载全部引用图像（主体多帧/阴影/炮塔/残骸去重）
   useEffect(() => {
@@ -333,8 +412,30 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         </div>
         <div className="modal-body vdiff-body">
           <div className="unitprev-toolbar">
-            <span className="vdiff-hint">按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染</span>
+            <span className="vdiff-hint">
+              {engineMode
+                ? `引擎渲染：${engineDlcName}（静态帧，不跟随动画播放）`
+                : '按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染'}
+            </span>
             <span className="grow" />
+            {engineDlcName && (
+              <button
+                className={`btn${engineMode ? ' primary' : ''}`}
+                style={{ padding: '2px 10px', fontSize: 11.5 }}
+                title={`用「${engineDlcName}」渲染当前视图（失败自动回退内置合成）`}
+                aria-label="切换引擎渲染"
+                onClick={() => {
+                  // 切回内置时清掉引擎残留：否则会停留在上一张引擎图上
+                  if (engineMode) {
+                    setEngineImage(null)
+                    setEngineNote(null)
+                  }
+                  setEngineMode((v) => !v)
+                }}
+              >
+                <AppIcon name="sparkle" size={12} /> 引擎渲染
+              </button>
+            )}
             <button
               className={`btn${showSight ? ' primary' : ''}`}
               style={{ padding: '2px 10px', fontSize: 11.5 }}
@@ -398,8 +499,20 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
             <button className="icon-btn" title="放大" onClick={() => setZoom((z) => Math.min(4, z + 0.25))}>+</button>
           </div>
           <div className="unitprev-canvas-wrap">
-            <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" />
+            {/* M42：引擎渲染有结果时用 <img> 直接显示引擎的成品图（它已是「游戏里的样子」，
+                不再叠加我们自己的视野圈等分析层）；否则显示本地合成的 canvas */}
+            {engineMode && engineImage ? (
+              <img
+                src={engineImage}
+                alt="引擎渲染结果"
+                className="unitprev-canvas"
+                style={{ width: 560 * zoom, height: 420 * zoom }}
+              />
+            ) : (
+              <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" />
+            )}
           </div>
+          {engineNote && <div className="lint-evidence">{engineNote}</div>}
           {noGamePath.length > 0 && (
             <div className="lint-evidence">
               游戏内置引用（{noGamePath.map((f) => f.image).join('、')}）需在 设置 → 游戏 配置铁锈战争安装目录后才能加载
