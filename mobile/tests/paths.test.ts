@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basename, extname, isRustConfigFile, truncateMiddle } from '../src/utils/paths'
+import { basename, decideOpenMode, extname, isRustConfigFile, truncateMiddle } from '../src/utils/paths'
 import { isAbsolutePath, normalizeOpenPath } from '../src/utils/projectPath'
 import { pathStartsWith, replacePathPrefix } from '../src/utils/pathPrefix'
 
@@ -30,6 +30,18 @@ describe('路径工具', () => {
     expect(out.length).toBeLessThanOrEqual(40)
     expect(out).toContain('…')
     expect(truncateMiddle('短路径.txt')).toBe('短路径.txt')
+  })
+
+  it('打开方式判定：配置文件进编辑器，其余走只读预览', () => {
+    expect(decideOpenMode('rifleman.ini')).toBe('editor')
+    expect(decideOpenMode('mod-info.txt')).toBe('editor')
+    expect(decideOpenMode('custom.template')).toBe('editor')
+    // 图片/音频等绝不能按文本打开（旧实现会把 png 当 UTF-8 读成乱码）
+    expect(decideOpenMode('tank.png')).toBe('asset')
+    expect(decideOpenMode('shot.jpeg')).toBe('asset')
+    expect(decideOpenMode('boom.ogg')).toBe('asset')
+    expect(decideOpenMode('README.md')).toBe('asset')
+    expect(decideOpenMode('data.json')).toBe('asset')
   })
 })
 

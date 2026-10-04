@@ -32,8 +32,21 @@ import {
 } from '@tauri-apps/plugin-fs'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import { basename, extname } from '../utils/paths'
+import { isPathInsideRoot, validateEntryName } from '../utils/entryName'
+import { updateModInfoText, type ModInfoUpdate } from '../features/modTools/modInfo'
 
 const BOM = new Uint8Array([0xef, 0xbb, 0xbf])
+
+/**
+ * 项目内路径校验：所有文件通道入口都必须过这一关。
+ * WebView 侧虽然只能访问应用私有目录，但 UI/工具传错路径（`..` 逃逸、
+ * 拼错的绝对路径）会写到项目外，因此按项目根再收一道边界。
+ */
+function assertInsideProject(rootPath: string, targetPath: string): void {
+  if (!isPathInsideRoot(rootPath, targetPath)) {
+    throw new Error('路径超出项目目录范围')
+  }
+}
 
 let basePromise: Promise<string> | null = null
 export function appBaseDir(): Promise<string> {
@@ -92,6 +105,102 @@ function sanitizeName(name: string): string {
   return cleaned || '未命名项目'
 }
 
+/**
+ * 是否运行在 Tauri 宿主中（浏览器预览下文件通道不可用）。
+ * getBridge() 内部用同一判定，这里提到模块级供导入等独立入口复用。
+ */
+function isTauriHost(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+}
+
+/**
+ * 在 appData/projects 下取一个尚未占用的目录路径。
+ * 导入 / 示例项目重名时自动追加序号，而不是覆盖别人的同名项目。
+ */
+export async function uniqueProjectDir(baseName: string): Promise<string> {
+  const safe = sanitizeName(baseName)
+  let candidate = safe
+  for (let index = 1; index < 1000; index += 1) {
+    const dir = await appPath('projects', candidate)
+    if (!(await exists(dir))) return dir
+    candidate = `${safe}${index + 1}`
+  }
+  return appPath('projects', `${safe}_${Date.now().toString(36)}`)
+}
+
+/**
+ * 删除整个项目目录（仅项目页调用）。
+ * 文件操作通道里的 project.delete 会拒绝删项目根，这里是唯一合法的整项目删除入口；
+ * 因此必须自己守住边界——只允许删除 appData/projects 下的**子目录**。
+ */
+export async function deleteProject(rootPath: string): Promise<void> {
+  const projectsDir = await appPath('projects')
+  const target = rootPath.replace(/\/+$/, '')
+  if (!isPathInsideRoot(projectsDir, target) || target === projectsDir.replace(/\/+$/, '')) {
+    throw new Error('拒绝删除项目目录以外的路径')
+  }
+  await remove(target, { recursive: true })
+}
+
+/**
+ * 写项目内二进制文件（示例项目的占位图片等）。
+ * 文本内容一律走 project.writeFile（带 BOM 与编码处理），这里只用于字节流。
+ */
+export async function writeProjectBinary(rootPath: string, filePath: string, bytes: Uint8Array): Promise<void> {
+  assertInsideProject(rootPath, filePath)
+  await fsWriteFile(filePath, bytes)
+}
+
+export type ImportKind = 'auto' | 'archive' | 'folder'
+
+export interface ImportResult {
+  rootPath: string
+  name: string
+  /** 解压导入的文件数（目录导入不返回） */
+  files?: number
+}
+
+/**
+ * 导入模组（手机版扩展入口，不属于 BridgeApi 契约）。
+ *
+ * - `archive`：只接受 .rwmod / .zip，解压进应用私有目录；
+ * - `folder`：只接受目录（SAF 目录树），整目录拷进应用私有目录；
+ * - `auto`：不限类型（旧行为，供 mod.import() 复用）。
+ *
+ * 用户取消返回 null（不是错误）；失败时清理本次产生的不完整目录，绝不触碰源文件。
+ */
+export async function importMod(kind: ImportKind = 'auto'): Promise<ImportResult | null> {
+  if (!isTauriHost()) return null
+  const selected = await open(
+    kind === 'folder' ? { multiple: false, directory: true } : { multiple: false },
+  )
+  if (!selected || typeof selected !== 'string') return null
+
+  const isZipPath = /\.(rwmod|zip)$/i.test(selected)
+  // Android 的 SAF 选择器未必遵守 filters，这里按扩展名再判一次
+  if (kind === 'archive' && !isZipPath) throw new Error('请选择 .rwmod 或 .zip 模组包')
+  if (kind === 'folder' && isZipPath) throw new Error('请选择模组文件夹，而不是压缩包')
+
+  const rawName = isZipPath
+    ? basename(selected).replace(/\.(rwmod|zip)$/i, '')
+    : basename(selected.replace(/\/+$/, ''))
+  const dest = await uniqueProjectDir(rawName || (isZipPath ? '导入模组' : '导入项目'))
+
+  try {
+    if (isZipPath) {
+      const bytes = await fsReadFile(selected)
+      const files = await extractZip(bytes, dest)
+      return { rootPath: dest, name: basename(dest), files }
+    }
+    await copyDirRecursive(selected, dest)
+    return { rootPath: dest, name: basename(dest) }
+  } catch (err) {
+    // 导入失败清理半成品目录，避免项目列表里留下打不开的脏项目
+    await remove(dest, { recursive: true }).catch(() => {})
+    throw err
+  }
+}
+
 /** 内置模板列表（public/data/templates/*.json，fetch 打包资源）。
  * 注意：tauri asset 协议对不存在的文件返回 200 + 非 JSON 内容，因此
  * manifest 与单个模板的 json() 解析都必须容错（单个失败跳过，不中断整个列表）。 */
@@ -135,19 +244,27 @@ async function fetchBuiltinTemplates(): Promise<TemplateMeta[]> {
 /** 全局存储：appData/app-state.json，原子写 + 防抖 */
 function createStore(): StoreApi {
   let cache: Record<string, unknown> | null = null
+  /** 首次读取共享同一个 Promise：并发 get/set 各自读一次会让后完成的那次覆盖前一次的写入 */
+  let loading: Promise<Record<string, unknown>> | null = null
   let timer: ReturnType<typeof setTimeout> | null = null
   let writing: Promise<void> = Promise.resolve()
 
   async function load(): Promise<Record<string, unknown>> {
     if (cache) return cache
-    try {
-      const file = await appPath('app-state.json')
-      const raw = await readTextFile(file)
-      cache = JSON.parse(raw) as Record<string, unknown>
-    } catch {
-      cache = {}
+    if (!loading) {
+      loading = (async () => {
+        try {
+          const file = await appPath('app-state.json')
+          const raw = await readTextFile(file)
+          return JSON.parse(raw) as Record<string, unknown>
+        } catch {
+          return {}
+        }
+      })()
     }
-    return cache
+    const data = await loading
+    cache = data
+    return data
   }
 
   async function persist(): Promise<void> {
@@ -310,43 +427,73 @@ function createMobileBridge(): BridgeApi {
         return { ok: true, path: target }
       },
       async registerRoots() {},
-      async readDir(_rootPath, dirPath) {
+      async readDir(rootPath, dirPath, showHidden = false) {
+        assertInsideProject(rootPath, dirPath)
         const entries = await fsReadDir(dirPath)
-        const out = entries.map((e) => ({ ...toDirEntry(e), path: `${dirPath}/${e.name}` }))
+        const out = entries
+          // 隐藏文件开关：默认隐藏以 . 开头的条目（.nomedia、.DS_Store 等）
+          .filter((e) => showHidden || !e.name.startsWith('.'))
+          .map((e) => ({ ...toDirEntry(e), path: `${dirPath}/${e.name}` }))
         return out.sort((a, b) => (a.isDirectory === b.isDirectory ? a.name.localeCompare(b.name) : a.isDirectory ? -1 : 1))
       },
-      async stat(_rootPath, filePath) {
+      async stat(rootPath, filePath) {
+        assertInsideProject(rootPath, filePath)
         const s = await stat(filePath)
         return { mtimeMs: s.mtime ? s.mtime.getTime() : 0, size: s.size }
       },
-      async readFile(_rootPath, filePath) {
+      async readFile(rootPath, filePath) {
+        assertInsideProject(rootPath, filePath)
         const bytes = await fsReadFile(filePath)
         const { content, hasBom } = decodeUtf8(bytes)
         const s = await stat(filePath).catch(() => null)
         return { content, hasBom, mtimeMs: s?.mtime ? s.mtime.getTime() : 0, size: bytes.length }
       },
-      async writeFile(_rootPath, filePath, content, opts) {
+      async writeFile(rootPath, filePath, content, opts) {
+        assertInsideProject(rootPath, filePath)
         await fsWriteFile(filePath, encodeUtf8(content, opts.hasBom))
       },
-      async createFile(_rootPath, dirPath, name) {
-        await writeTextFile(`${dirPath}/${name}`, '')
+      async createFile(rootPath, dirPath, name) {
+        assertInsideProject(rootPath, dirPath)
+        const check = validateEntryName(name)
+        if (!check.ok) throw new Error(check.error)
+        const target = `${dirPath}/${name.trim()}`
+        // 拒绝覆盖：createFile 语义是「新建空文件」，同名时清空别人的内容
+        if (await exists(target)) throw new Error(`已存在同名文件：${name.trim()}`)
+        await writeTextFile(target, '')
       },
-      async createFolder(_rootPath, dirPath, name) {
-        await mkdir(`${dirPath}/${name}`, { recursive: true })
+      async createFolder(rootPath, dirPath, name) {
+        assertInsideProject(rootPath, dirPath)
+        // AI 工具用空名创建父目录链（createFolder(root, parent, '')），保持 mkdir -p 语义
+        if (!name.trim()) {
+          await mkdir(dirPath, { recursive: true })
+          return
+        }
+        const check = validateEntryName(name)
+        if (!check.ok) throw new Error(check.error)
+        await mkdir(`${dirPath}/${name.trim()}`, { recursive: true })
       },
-      async rename(_rootPath, oldPath, newPath) {
+      async rename(rootPath, oldPath, newPath) {
+        assertInsideProject(rootPath, oldPath)
+        assertInsideProject(rootPath, newPath)
         await rename(oldPath, newPath)
       },
-      async delete(_rootPath, targetPath) {
+      async delete(rootPath, targetPath) {
+        assertInsideProject(rootPath, targetPath)
+        // 项目根只能从项目页整项目删除，不允许从文件操作里点掉
+        if (targetPath.replace(/\/+$/, '') === rootPath.replace(/\/+$/, '')) {
+          throw new Error('不能在文件操作中删除项目根目录')
+        }
         await remove(targetPath, { recursive: true })
       },
-      async readImageAsDataUrl(_rootPath, imagePath) {
+      async readImageAsDataUrl(rootPath, imagePath) {
+        assertInsideProject(rootPath, imagePath)
         const bytes = await fsReadFile(imagePath)
         const ext = extname(imagePath) || 'png'
         const mime = ext === 'jpg' ? 'jpeg' : ext.replace(/^\./, '')
         return `data:image/${mime};base64,${bytesToBase64(bytes)}`
       },
-      async readAudioAsDataUrl(_rootPath, audioPath) {
+      async readAudioAsDataUrl(rootPath, audioPath) {
+        assertInsideProject(rootPath, audioPath)
         const bytes = await fsReadFile(audioPath)
         return `data:audio/ogg;base64,${bytesToBase64(bytes)}`
       },
@@ -372,26 +519,8 @@ function createMobileBridge(): BridgeApi {
         return []
       },
       async import() {
-        if (!tauri) return null
-        // 支持目录（SAF）与 .rwmod/.zip 文件
-        const selected = await open({ multiple: false })
-        if (!selected || typeof selected !== 'string') return null
-        const isZip = /\.(rwmod|zip)$/i.test(selected)
-        if (!isZip) {
-          // 目录：拷贝进应用私有目录（与 openFolderDialog 一致）
-          const name = sanitizeName(basename(selected.replace(/\/+$/, '')) || '导入项目')
-          const dest = await appPath('projects', name)
-          const finalDest = (await exists(dest)) ? `${dest}_${Date.now().toString(36)}` : dest
-          await copyDirRecursive(selected, finalDest)
-          return { rootPath: finalDest, name: basename(finalDest) }
-        }
-        // .rwmod/.zip：解压到应用私有目录
-        const bytes = await fsReadFile(selected)
-        const name = sanitizeName(basename(selected).replace(/\.(rwmod|zip)$/i, '')) || '导入模组'
-        const dest = await appPath('projects', name)
-        const finalDest = (await exists(dest)) ? `${dest}_${Date.now().toString(36)}` : dest
-        const files = await extractZip(bytes, finalDest)
-        return { rootPath: finalDest, name: basename(finalDest), files }
+        // 旧契约入口：不限类型（UI 已改为显式选择「压缩包 / 文件夹」，见 importMod）
+        return importMod('auto')
       },
       async discardImport() {
         return { ok: true }
@@ -413,19 +542,25 @@ function createMobileBridge(): BridgeApi {
         if (items.length === 0) throw new Error('项目为空，没有可打包的文件')
         // 打包重活下沉 Worker（P3：打包 1 万文件不阻塞界面）
         const worker = new Worker(new URL('../features/modTools/packWorker.ts', import.meta.url), { type: 'module' })
-        const result = await new Promise<{ ok: true; buffer: ArrayBuffer; files: number } | { ok: false; error: string }>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error('打包超时')), 120_000)
-          worker.onmessage = (ev: MessageEvent) => {
-            clearTimeout(timer)
-            resolve(ev.data as never)
-          }
-          worker.onerror = (e) => {
-            clearTimeout(timer)
-            reject(new Error(e.message || '打包线程错误'))
-          }
-          worker.postMessage({ items, skipped })
-        })
-        worker.terminate()
+        type PackWorkerResult = { ok: true; buffer: ArrayBuffer; files: number } | { ok: false; error: string }
+        let result: PackWorkerResult
+        try {
+          result = await new Promise<PackWorkerResult>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('打包超时（文件过多或体积过大）')), 120_000)
+            // 三条出口（成功/线程错误/消息解码失败）都先清定时器，避免悬空超时在打包结束后才抛错
+            const settle = (fn: () => void) => {
+              clearTimeout(timer)
+              fn()
+            }
+            worker.onmessage = (ev: MessageEvent) => settle(() => resolve(ev.data as PackWorkerResult))
+            worker.onerror = (e) => settle(() => reject(new Error(e.message || '打包线程错误')))
+            worker.onmessageerror = () => settle(() => reject(new Error('打包线程消息解码失败')))
+            worker.postMessage({ items, skipped })
+          })
+        } finally {
+          // 无论成功、失败还是超时都回收线程（旧实现失败路径会漏掉 terminate）
+          worker.terminate()
+        }
         if (!result.ok) throw new Error(result.error)
         // 保存位置由系统对话框决定（SAF）
         const defaultName = `${basename(rootPath.replace(/\/+$/, '')) || 'mod'}.rwmod`
@@ -439,6 +574,7 @@ function createMobileBridge(): BridgeApi {
       },
       async readModInfo(rootPath) {
         const file = `${rootPath}/mod-info.txt`
+        assertInsideProject(rootPath, file)
         if (!(await exists(file))) return null
         const raw = await readTextFile(file)
         const get = (key: string): string | undefined => {
@@ -469,22 +605,33 @@ function createMobileBridge(): BridgeApi {
       },
       async writeModInfo(rootPath, data) {
         const file = `${rootPath}/mod-info.txt`
-        const lines = [
-          '# 模组信息',
-          '[mod]',
-          `title: ${data.title}`,
-          data.description !== undefined ? `description: ${data.description}` : '',
-          data.author !== undefined ? `author: ${data.author}` : '',
-          data.version !== undefined ? `version: ${data.version}` : '',
-          data.thumbnail !== undefined ? `thumbnail: ${data.thumbnail}` : '',
-          data.minVersion !== undefined ? `minVersion: ${data.minVersion}` : '',
-          data.musicFiles.length > 0 ? `music: ${data.musicFiles.join(',')}` : '',
-          data.musicExclusive ? 'musicExclusive: true' : '',
-          data.mapsFiles.length > 0 ? `maps: ${data.mapsFiles.join(',')}` : '',
-          data.mapsExtra ? 'mapsExtra: true' : '',
-          data.updateUrl ? `updateUrl: ${data.updateUrl}` : '',
-        ].filter((l) => l !== '')
-        await writeTextFile(file, lines.join('\n') + '\n')
+        assertInsideProject(rootPath, file)
+        // 保留写回：只改传入的键，注释/未知键/其它节/换行风格/BOM 原样保留
+        const updates: ModInfoUpdate[] = []
+        const put = (key: string, value: string | undefined): void => {
+          if (value !== undefined) updates.push({ key, value })
+        }
+        put('title', data.title)
+        put('description', data.description)
+        put('author', data.author)
+        put('version', data.version)
+        put('thumbnail', data.thumbnail)
+        put('minVersion', data.minVersion)
+        if (data.musicFiles.length > 0) put('music', data.musicFiles.join(','))
+        if (data.musicExclusive) put('musicExclusive', 'true')
+        if (data.mapsFiles.length > 0) put('maps', data.mapsFiles.join(','))
+        if (data.mapsExtra) put('mapsExtra', 'true')
+        put('updateUrl', data.updateUrl)
+
+        let existing = ''
+        let hasBom = false
+        if (await exists(file)) {
+          const decoded = decodeUtf8(await fsReadFile(file))
+          existing = decoded.content
+          hasBom = decoded.hasBom
+        }
+        const next = updateModInfoText(existing, updates)
+        await fsWriteFile(file, encodeUtf8(next, hasBom))
         return { ok: true }
       },
       async scanResources(rootPath) {

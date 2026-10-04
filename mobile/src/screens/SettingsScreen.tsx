@@ -75,7 +75,7 @@ export function SettingsScreen() {
         <p className="m-group-title">关于</p>
         <div className="m-switch-row">
           <span>
-            铁锈助手手机版 v0.1.0
+            铁锈工坊 v0.1.0
             <br />
             <small style={{ color: "var(--text-muted)" }}>随身模组编辑器 · 纯本地 · GPL-3.0</small>
           </span>

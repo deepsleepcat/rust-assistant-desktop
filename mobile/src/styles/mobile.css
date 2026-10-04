@@ -7,7 +7,8 @@
 .m-shell {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* 软键盘弹起时用 visualViewport 高度兜底（见 utils/viewport.ts） */
+  height: var(--app-viewport-height, 100dvh);
   background: var(--canvas);
   color: var(--text-primary);
   font-family: var(--font-ui);
@@ -346,7 +347,7 @@
 
 /* ---------- 全屏编辑器 ---------- */
 .m-editor {
-  height: 100dvh;
+  height: var(--app-viewport-height, 100dvh);
   display: flex;
   flex-direction: column;
   background: var(--editor);
@@ -408,8 +409,8 @@
   color: var(--success);
 }
 
-/* 编辑器容器：CodeMirror 填充 */
-.m-editor > div:last-child {
+/* 编辑器容器：CodeMirror 填充剩余高度（状态栏 / 工具栏不属于此规则） */
+.m-editor > .m-editor-surface {
   flex: 1;
   min-height: 0;
 }
@@ -621,4 +622,369 @@
 
 .ai-approval-actions .m-btn {
   flex: 1;
+}
+
+/* ---------- 弹层（对话框 / 操作菜单） ---------- */
+.m-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--overlay);
+}
+
+/* 平板/横屏：居中显示，不至于拉成整屏宽 */
+@media (min-width: 640px) {
+  .m-modal-mask {
+    align-items: center;
+  }
+}
+
+.m-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 80dvh;
+  overflow: auto;
+  padding: 16px;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.m-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-modal-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.m-modal-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--surface-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.m-modal-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.m-modal-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.m-modal-message {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.m-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.m-modal-actions .m-btn {
+  flex: 1;
+  min-width: 96px;
+  justify-content: center;
+}
+
+.m-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.m-modal-item:active {
+  background: var(--surface-hover);
+}
+
+.m-modal-item.danger {
+  color: var(--danger);
+}
+
+.m-btn.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---------- 文件树行内操作 ---------- */
+.file-node-row {
+  display: flex;
+  align-items: center;
+}
+
+.file-node-row .file-node {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-node-more {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: .6;
+}
+
+.file-node-more:active {
+  background: var(--surface-hover);
+  opacity: 1;
+}
+
+.file-chevron {
+  flex: none;
+  width: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.file-empty {
+  margin: 6px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ---------- 资源预览 ---------- */
+.asset-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.asset-image-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 12px;
+  overflow: auto;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.asset-image-wrap img {
+  max-width: 100%;
+  max-height: 60dvh;
+  object-fit: contain;
+}
+
+.asset-image-wrap.actual {
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.asset-image-wrap.actual img {
+  max-width: none;
+  max-height: none;
+}
+
+.asset-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.asset-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.asset-meta-key {
+  min-width: 72px;
+  color: var(--text-muted);
+}
+
+.asset-meta-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+/* ---------- 编辑器：文件名 / 错误条 / 状态栏 ---------- */
+.m-editor-filename {
+  max-width: 42vw;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.m-editor-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.m-editor-error span {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.m-editor-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-0);
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- 大纲弹层列表 ---------- */
+.outline-list {
+  flex: 1;
+  min-height: 0;
+  max-height: 50dvh;
+  overflow: auto;
+}
+
+.outline-line {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ---------- 页面级提示与忙碌遮罩 ---------- */
+.m-hint {
+  margin: 10px 14px 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+}
+
+.m-busy-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay);
+}
+
+.m-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--surface-0);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+}
+
+/* ---------- 编辑器工具栏（手机） ---------- */
+.m-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  background: var(--surface-0);
+  border-top: 1px solid var(--border);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.m-editor-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.m-tool-btn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.m-tool-btn:active {
+  background: var(--surface-active);
+}
+
+.m-tool-btn:disabled {
+  opacity: .4;
+}
+
+.m-tool-btn.symbol {
+  font-weight: 600;
+}
+
+.m-tool-sep {
+  flex: none;
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  background: var(--divider);
 }
