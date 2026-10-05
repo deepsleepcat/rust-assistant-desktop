@@ -1,0 +1,56 @@
+{
+    "name": "基础模板-坦克-陆军模板",
+    "name_en": "Base-Template(Tank)LAND",
+    "name_ja": "基本テンプレート - 戦車軍用テンプレート",
+    "name_zh_TW":"基礎模板-坦克-陸軍模板",
+    "data": "[core]\n\n\nname:基础坦克\n\ndisplayLocaleKey:tank\n\nclass: CustomUnitMetadata\nprice: 350\nmaxHp: 210\nmass: 3000\n\ntechLevel: 1\nbuildSpeed: 0.0020\n#availableInDemo: true\n\nradius: 11\ndisplayRadius: 11\n\nisBio: false\nsoftCollisionOnAll: 0\n\n[graphics]\ntotal_frames: 3\n\nimage:CORE:tanks/tank.png\nimage_wreak:CORE:tanks/tank_dead.png\nimage_turret: CORE:tanks/tank_turret.png\n\n\nimageScale:0.8\nturretImageScale:0.8\n\nimage_shadow: AUTO\nshadowOffsetX:1\nshadowOffsetY:1\n\n\nanimation_moving_start: 0\nanimation_moving_end: 2\nanimation_moving_speed: 1\n\n\ndustEffect: true\n\n[attack]\ncanAttack: true\ncanAttackFlyingUnits: false\ncanAttackLandUnits:true\ncanAttackUnderwaterUnits: false\n\nturretSize: 20\nturretTurnSpeed: 4\n\n\nmaxAttackRange: 130\nshootDelay: 75\n\n[turret_1]\n#\nx: 0\ny: 0\n\nprojectile: 1\n\nturnSpeedAcceleration: 1.0\n\nshoot_sound:tank_firing\nshoot_sound_vol:0.3\nshoot_flame:small\nshoot_light:#FFEECCCC\n\ncanShoot: true\n\n\nrecoilOffset: -2\n\n\n[projectile_1]\ndirectDamage: 25\nlife: 60\nspeed: 5\n\nframe: 1\n\ndrawSize: 1\n\n\n[movement]\n#移动类型 修改这里即可改变单位的移动方式\nmovementType: LAND\nmoveSpeed: 1.1\nmoveAccelerationSpeed: 0.07\nmoveDecelerationSpeed: 0.17\n\nmaxTurnSpeed: 4.1\nturnAcceleration: 0.25\n\nmoveSlidingMode :false\nmoveIgnoringBody:false",
+    "language": "ALL",
+    "icon":  "\/template\/tank-template-icon.png",
+    "attachFile": [
+        "\/resource\/tank.png",
+        "\/resource\/tank_dead.png",
+        "\/resource\/tank_turret.png"
+    ],
+    "action": [
+        {
+            "name": "名称",
+            "name_en": "name",
+            "name_ja": "名前",
+            "name_zh_TW":"名稱",
+            "key": "name",
+            "section": "core",
+            "type": "input",
+            "tag": "name-core"
+        },
+        {
+            "name": "血量",
+            "name_zh_TW":"血量",
+            "name_en": "maxHp",
+            "name_ja": "ライフバリュー",
+            "key": "maxHp",
+            "section": "core",
+            "type": "input",
+            "tag": "maxHp-core"
+        },
+        {
+            "name": "价格",
+            "name_en":"price",
+            "name_ja":"価格",
+            "name_zh_TW":"價格",
+            "key": "price",
+            "section": "core",
+            "type": "input",
+            "tag": "price-core"
+        },
+        {
+            "name": "直接伤害",
+            "name_en":"directDamage",
+            "name_ja":"直接傷害",
+            "name_zh_TW":"直接傷害",
+            "key": "directDamage",
+            "section": "projectile_1",
+            "type": "input",
+            "tag": "projectile-core"
+        }
+    ]
+}

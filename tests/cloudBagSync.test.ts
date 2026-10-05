@@ -7,7 +7,7 @@
  * - 幂等：client_op_id 每次推送生成唯一键
  */
 import { describe, expect, it, vi } from 'vitest'
-import { pushLocalTree, pullRemoteVersion, readCloudBagAnchor, judgeLocalChanged, listLocalChanges, writeCloudBagAnchor, importTreeToNewRepo, isCloudBagInternalPath, type SyncHost } from '../src/services/cloudBagSync'
+import { pushLocalTree, pullRemoteVersion, readCloudBagAnchor, readCloudBagAnchorSnapshot, migrateCloudBagAnchor, judgeLocalChanged, listLocalChanges, writeCloudBagAnchor, importTreeToNewRepo, isCloudBagInternalPath, type SyncHost } from '../src/services/cloudBagSync'
 import type { CloudBagApi, CloudBagApiError, CloudBagHeadSummary, CloudBagRepo } from '../src/services/cloudBagApi'
 import type { BridgeApi } from '../src/types/bridge'
 
@@ -21,7 +21,15 @@ function textBridge(files: Record<string, string>): BridgeApi {
         void rel
         return { content: hit[1], hasBom: false, mtimeMs: 0, size: hit[1].length }
       },
+      // 与 fs:readFileBytes 同形：文本候选一律走原始字节
+      readFileBytes: async (_root: string, abs: string) => {
+        const hit = Object.entries(files).find(([key]) => abs.replace(/\\/g, '/').endsWith(key))
+        if (!hit) throw new Error('ENOENT')
+        const bytes = new TextEncoder().encode(hit[1])
+        return { bytes: bytes.buffer as ArrayBuffer, size: bytes.byteLength, mtimeMs: 0 }
+      },
       writeFile: vi.fn(async () => undefined),
+      writeAnchor: vi.fn(async (_root: string, _abs: string, _content: string, expectedContent: string | null) => ({ written: expectedContent === null })),
       createFolder: vi.fn(async () => undefined),
       stat: async () => ({ mtimeMs: 0, size: 10 }),
     },
@@ -138,13 +146,15 @@ describe('pushLocalTree（推送全链路）', () => {
     let reads = 0
     const bridge = {
       project: {
-        readFile: async (_root: string, abs: string) => {
+        readFileBytes: async (_root: string, abs: string) => {
           reads += 1
           const hit = Object.entries(files).find(([key]) => abs.replace(/\\/g, '/').endsWith(key))
           if (!hit) throw new Error('ENOENT')
-          return { content: hit[1], hasBom: false, mtimeMs: 0, size: hit[1].length }
+          const bytes = new TextEncoder().encode(hit[1])
+          return { bytes: bytes.buffer as ArrayBuffer, size: bytes.byteLength, mtimeMs: 0 }
         },
         writeFile: vi.fn(async () => undefined),
+        writeAnchor: vi.fn(async () => ({ written: true })),
         createFolder: vi.fn(async () => undefined),
         stat: async () => ({ mtimeMs: 0, size: 10 }),
       },
@@ -165,14 +175,16 @@ describe('pushLocalTree（推送全链路）', () => {
     const reads: Record<string, number> = {}
     const bridge = {
       project: {
-        readFile: async (_root: string, abs: string) => {
+        readFileBytes: async (_root: string, abs: string) => {
           const key = Object.keys(files).find((candidate) => abs.replace(/\\/g, '/').endsWith(candidate))!
           reads[key] = (reads[key] ?? 0) + 1
           // b.ini 第一趟可读，第二趟（发布期间）不可读
           if (key === 'units/b.ini' && reads[key] >= 2) throw new Error('deleted mid-push')
-          return { content: files[key], hasBom: false, mtimeMs: 0, size: files[key].length }
+          const bytes = new TextEncoder().encode(files[key])
+          return { bytes: bytes.buffer as ArrayBuffer, size: bytes.byteLength, mtimeMs: 0 }
         },
         writeFile: vi.fn(async () => undefined),
+        writeAnchor: vi.fn(async () => ({ written: true })),
         createFolder: vi.fn(async () => undefined),
         stat: async () => ({ mtimeMs: 0, size: 10 }),
       },
@@ -194,14 +206,16 @@ describe('pushLocalTree（推送全链路）', () => {
     const reads: Record<string, number> = {}
     const bridge = {
       project: {
-        readFile: async (_root: string, abs: string) => {
+        readFileBytes: async (_root: string, abs: string) => {
           const key = Object.keys(contents).find((candidate) => abs.replace(/\\/g, '/').endsWith(candidate))!
           reads[key] = (reads[key] ?? 0) + 1
           const list = contents[key]
           const content = list[Math.min(reads[key] - 1, list.length - 1)]
-          return { content, hasBom: false, mtimeMs: 0, size: content.length }
+          const bytes = new TextEncoder().encode(content)
+          return { bytes: bytes.buffer as ArrayBuffer, size: bytes.byteLength, mtimeMs: 0 }
         },
         writeFile: vi.fn(async () => undefined),
+        writeAnchor: vi.fn(async () => ({ written: true })),
         createFolder: vi.fn(async () => undefined),
         stat: async () => ({ mtimeMs: 0, size: 10 }),
       },
@@ -259,14 +273,16 @@ describe('pushLocalTree（推送全链路）', () => {
     const reads: Record<string, number> = {}
     const bridge = {
       project: {
-        readFile: async (_root: string, abs: string) => {
+        readFileBytes: async (_root: string, abs: string) => {
           const key = Object.keys(contents).find((candidate) => abs.replace(/\\/g, '/').endsWith(candidate))!
           reads[key] = (reads[key] ?? 0) + 1
           const list = contents[key]
           const content = list[Math.min(reads[key] - 1, list.length - 1)]
-          return { content, hasBom: false, mtimeMs: 0, size: content.length }
+          const bytes = new TextEncoder().encode(content)
+          return { bytes: bytes.buffer as ArrayBuffer, size: bytes.byteLength, mtimeMs: 0 }
         },
         writeFile: vi.fn(async () => undefined),
+        writeAnchor: vi.fn(async () => ({ written: true })),
         createFolder: vi.fn(async () => undefined),
         stat: async () => ({ mtimeMs: 0, size: 10 }),
       },
@@ -347,15 +363,16 @@ describe('清单完整性 / 编码保真 / 幂等键（round 3 修复）', () =>
     expect(outcome.unsupported.sort()).toEqual(['README.md', 'data/units.json'])
   })
 
-  it('读取桥解码有损（大小不符 / GBK 等）的文本跳过并报告，且不发出任何上传请求', async () => {
+  it('非法 UTF-8 原始字节（GBK/截断序列）跳过并报告，且不发出任何上传请求', async () => {
     const calls: Array<{ path: string; body: unknown }> = []
     const api = fakeApi({}, calls)
     const bridge = {
       project: {
-        // 磁盘 4 字节、只解出 2 个替换字符 → 重编码 2 字节 ≠ 原文件字节数
-        readFile: async () => ({ content: '??', hasBom: false, mtimeMs: 0, size: 4 }),
+        // 磁盘原始字节是 GBK（非 UTF-8）：fatal 解码必须失败，绝不按替换字符改写上传
+        readFileBytes: async () => ({ bytes: Uint8Array.from([0xb2, 0xe2, 0xca, 0xd4]).buffer as ArrayBuffer, size: 4, mtimeMs: 0 }),
         stat: async () => ({ mtimeMs: 0, size: 4 }),
         writeFile: vi.fn(async () => undefined),
+        writeAnchor: vi.fn(async () => ({ written: true })),
         createFolder: vi.fn(async () => undefined),
       },
       mod: { scanResources: async () => ({ files: ['gbk.txt'], unitNames: [] }) },
@@ -369,14 +386,15 @@ describe('清单完整性 / 编码保真 / 幂等键（round 3 修复）', () =>
     expect(calls).toEqual([])
   })
 
-  it('BOM 文本按原字节上传（EF BB BF 保留），不做有损字符串往返', async () => {
+  it('BOM 文本按原始字节上传（EF BB BF 保留），不做有损字符串往返', async () => {
     const uploaded: ArrayBuffer[] = []
     const api = fakeApi({ uploadBlob: async (_slug, input) => { uploaded.push(input.bytes) } })
     const bridge = {
       project: {
-        readFile: async () => ({ content: 'x', hasBom: true, mtimeMs: 0, size: 4 }),
+        readFileBytes: async () => ({ bytes: Uint8Array.from([0xef, 0xbb, 0xbf, 0x78]).buffer as ArrayBuffer, size: 4, mtimeMs: 0 }),
         stat: async () => ({ mtimeMs: 0, size: 4 }),
         writeFile: vi.fn(async () => undefined),
+        writeAnchor: vi.fn(async () => ({ written: true })),
         createFolder: vi.fn(async () => undefined),
       },
       mod: { scanResources: async () => ({ files: ['units/a.txt'], unitNames: [] }) },
@@ -476,12 +494,32 @@ describe('pullRemoteVersion（拉取覆盖）', () => {
 
 describe('锚点读写与本地变更判定', () => {
   it('readCloudBagAnchor：损坏锚回 null', async () => {
+    const bytes = new TextEncoder().encode('not-json')
     const bridge = {
       project: {
-        readFile: async () => ({ content: 'not-json', hasBom: false, mtimeMs: 0, size: 8 }),
+        readFileBytes: async () => ({ bytes: bytes.buffer as ArrayBuffer, size: bytes.byteLength, mtimeMs: 0 }),
       },
     } as unknown as BridgeApi
     expect(await readCloudBagAnchor(bridge, 'C:\\proj')).toBeNull()
+  })
+
+  it('readCloudBagAnchorSnapshot：raw 保留 BOM（与主进程 CAS 字符串同口径），parse 仅剥 BOM', async () => {
+    // 主进程 fs:writeAnchor 用 fs.readFile(utf8) 比较，Node 不剥 BOM；快照若用 fs:readFile
+    //（会剥 BOM）当期望值，带 BOM 的锚点 CAS 将永远失败。
+    const anchorJson = JSON.stringify({ repoSlug: 'iron-curtain', baselineSeq: 4, baselineTreeDigest: 'd', lastSyncedAt: 1 })
+    const rawWithBom = `\uFEFF${anchorJson}`
+    const bytes = new TextEncoder().encode(rawWithBom)
+    const bridge = {
+      project: {
+        readFileBytes: async () => ({ bytes: bytes.buffer as ArrayBuffer, size: bytes.byteLength, mtimeMs: 0 }),
+        writeAnchor: vi.fn(async (_root: string, _path: string, _content: string, expectedContent: string | null) => ({ written: expectedContent === rawWithBom })),
+      },
+    } as unknown as BridgeApi
+    const snapshot = await readCloudBagAnchorSnapshot(bridge, 'C:\\proj')
+    expect(snapshot.raw).toBe(rawWithBom) // CAS 期望值逐字符等于主进程读到的字符串（BOM 保留）
+    expect(snapshot.anchor?.baselineSeq).toBe(4) // 解析前才剥 BOM
+    const written = await migrateCloudBagAnchor(bridge, 'C:\\proj', { ...snapshot.anchor!, baselineTreeDigest: 'migrated' }, snapshot.raw!)
+    expect(written).toBe(true)
   })
   it('judgeLocalChanged：git 不可用回 null；锚点与备份目录均不计入变更', async () => {
     const unavailable = { git: { status: async () => { throw new Error('no git') } } } as unknown as BridgeApi
@@ -535,18 +573,25 @@ describe('锚点读写与本地变更判定', () => {
     expect(await listLocalChanges(dirtyRepo, 'C:\\proj')).toEqual([{ status: 'M', path: 'units/tank.ini' }])
   })
 
-  it('writeCloudBagAnchor：先确保 .ohmytx 目录存在（父目录缺失时 fs:writeFile 会 ENOENT）', async () => {
+  it('writeCloudBagAnchor：先确保 .ohmytx 目录存在，再走串行锚点通道（无条件写）', async () => {
     const order: string[] = []
+    let calledPath = ''
+    let expected: string | null | undefined
     const bridge = {
       project: {
         createFolder: vi.fn(async () => { order.push('createFolder') }),
-        writeFile: vi.fn(async () => {
+        writeAnchor: vi.fn(async (_root: string, filePath: string, _content: string, expectedContent: string | null) => {
           if (!order.includes('createFolder')) throw new Error('ENOENT: .ohmytx 不存在')
-          order.push('writeFile')
+          order.push('writeAnchor')
+          calledPath = filePath
+          expected = expectedContent
+          return { written: true }
         }),
       },
     } as unknown as BridgeApi
     await writeCloudBagAnchor(bridge, 'C:\\proj', { repoSlug: 'iron-curtain', baselineSeq: 4, baselineTreeDigest: '', lastSyncedAt: 1 })
-    expect(order).toEqual(['createFolder', 'writeFile'])
+    expect(order).toEqual(['createFolder', 'writeAnchor'])
+    expect(calledPath.replace(/\\/g, '/')).toContain('.ohmytx/cloud.json')
+    expect(expected).toBeNull()
   })
 })

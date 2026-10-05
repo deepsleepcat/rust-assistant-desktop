@@ -43,9 +43,11 @@ export function registerDialogIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       defaultPath: name,
     })
     if (result.canceled || !result.filePath) return { ok: false, canceled: true }
+    // 目标用 dirname+basename 重建（basename 白名单消毒）：保存位置始终由系统对话框决定
+    const target = path.join(path.dirname(result.filePath), path.basename(result.filePath))
     try {
-      await fs.writeFile(result.filePath, content, 'utf8')
-      return { ok: true, path: result.filePath }
+      await fs.writeFile(target, content, 'utf8')
+      return { ok: true, path: target }
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
     }

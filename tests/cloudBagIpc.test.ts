@@ -12,7 +12,9 @@ import JSZip from 'jszip'
 
 // rename 触发点可控（默认完全透传）：用于在「移走多余文件」阶段注入一次失败，
 // 覆盖 restoreRwmod 回滚中「把已移走的文件还原」分支（该分支此前从未被执行）。
-const fsHooks = vi.hoisted(() => ({ renameFailAt: 0, renames: 0 }))
+// writeDelayMs 可注入写盘延迟（默认 0 完全透传）：让第一个恢复稳定停留在执行中，
+// 用于断言同根并发恢复的主进程互斥（第二个请求 fail-fast 拒绝）。
+const fsHooks = vi.hoisted(() => ({ renameFailAt: 0, renames: 0, writeDelayMs: 0 }))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   const patchedRename = async (
@@ -23,7 +25,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     if (fsHooks.renameFailAt > 0 && fsHooks.renames === fsHooks.renameFailAt) throw new Error('模拟移走失败')
     return actual.rename(from, to)
   }
-  return { ...actual, default: { ...actual, rename: patchedRename } }
+  const patchedWriteFile = async (
+    ...args: Parameters<typeof actual.writeFile>
+  ): Promise<void> => {
+    if (fsHooks.writeDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, fsHooks.writeDelayMs))
+    return actual.writeFile(...args)
+  }
+  return { ...actual, default: { ...actual, rename: patchedRename, writeFile: patchedWriteFile } }
 })
 import { createStore } from '../electron/store'
 import { createKnowledgePack } from '../electron/knowledgePack'
@@ -61,7 +69,7 @@ beforeEach(async () => {
       showSaveDialog: async () => ({ canceled: true, filePath: '' }),
       showMessageBox: async () => ({ response: 0, checkboxChecked: false }),
     },
-    shell: { trashItem: async () => undefined },
+    shell: { trashItem: async () => undefined, openPath: async () => '' },
     app: { getVersion: () => '0.0.0-test', getPath: (n) => (n === 'userData' ? tmp : tmp) },
     updater: {
       checkForUpdates: async () => undefined,
@@ -74,7 +82,7 @@ beforeEach(async () => {
   const frame = { url: 'file:///trusted/dist/index.html' }
   const contents = { isDestroyed: () => false, mainFrame: frame, getURL: () => frame.url }
   saveEvent = { sender: contents, senderFrame: frame }
-  ctx.cloudbagRendererUrl = frame.url
+  ctx.cloudbagRendererUrl = new URL(frame.url)
   ctx.windows.getAllWindows = () => [{ isDestroyed: () => false, destroy: () => undefined,
     webContents: contents as NonNullable<ReturnType<IpcContext['windows']['getAllWindows']>[number]['webContents']> }]
   await store.ready()
@@ -351,6 +359,52 @@ describe('cloudbag:restore（主进程恢复通道）', () => {
     ctx.roots.add(normalizePath(tmp))
     await expect(invoke(channels, 'cloudbag:restore', tmp, 'not-buffer', 1)).rejects.toThrow('模组包数据无效')
     await expect(invoke(channels, 'cloudbag:restore', tmp, bytes, 0)).rejects.toThrow('版本号无效')
+  })
+
+  it('同根恢复互斥（packing 同模式 fail-fast）：占用中拒绝、完成后放行、不同根并行不受影响', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCloudbagIpc(ctx, ipc)
+    const rootA = path.join(tmp, 'lock-a')
+    const rootB = path.join(tmp, 'lock-b')
+    await fs.mkdir(rootA)
+    await fs.mkdir(rootB)
+    ctx.roots.add(normalizePath(rootA))
+    ctx.roots.add(normalizePath(rootB))
+    const zip = await makeZip({ 'units/tank.ini': '[core]\nname: new\n' })
+    const bytes = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer
+    // 手动占用 A 根恢复锁：等价于双窗口/重入场景下另一恢复正在执行
+    ctx.cloudbagRestores.add(normalizePath(rootA))
+    await expect(invoke(channels, 'cloudbag:restore', rootA, bytes, 1)).rejects.toThrow('该项目正在恢复云书包版本')
+    // B 根与 A 根互不影响：恢复照常完成
+    const resultB = await invoke<{ written: number }>(channels, 'cloudbag:restore', rootB, bytes, 1)
+    expect(resultB.written).toBe(1)
+    // A 根释放后放行（隐式验证 handler finally 释放锁的对称性）
+    ctx.cloudbagRestores.delete(normalizePath(rootA))
+    const resultA = await invoke<{ written: number }>(channels, 'cloudbag:restore', rootA, bytes, 1)
+    expect(resultA.written).toBe(1)
+    expect(ctx.cloudbagRestores.size).toBe(0)
+  })
+
+  it('同根真实并发：第二个恢复在第一个完成前被拒，两阶段不会交错产出混合工作树', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCloudbagIpc(ctx, ipc)
+    const root = path.join(tmp, 'lock-race')
+    await fs.mkdir(root)
+    ctx.roots.add(normalizePath(root))
+    const zip = await makeZip({ 'units/tank.ini': '[core]\nname: new\n', 'units/other.ini': 'y' })
+    const bytes = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer
+    // 注入写盘延迟，让第一次恢复确定性地停留在执行中（写盘阶段每个文件各延迟一次）
+    fsHooks.writeDelayMs = 60
+    try {
+      const first = invoke<{ written: number }>(channels, 'cloudbag:restore', root, bytes, 1)
+      await new Promise((resolve) => setTimeout(resolve, 15))
+      await expect(invoke(channels, 'cloudbag:restore', root, bytes, 1)).rejects.toThrow('该项目正在恢复云书包版本')
+      const firstResult = await first
+      expect(firstResult.written).toBe(2)
+      expect(ctx.cloudbagRestores.size).toBe(0)
+    } finally {
+      fsHooks.writeDelayMs = 0
+    }
   })
 
   it('覆盖写盘：被覆盖文件先备份到 .ohmytx/backup/<no>/；.ohmytx 内条目被保护跳过', async () => {

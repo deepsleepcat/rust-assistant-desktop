@@ -80,8 +80,79 @@ export interface PluginImportSelection {
   files: ReadonlyArray<PluginFile>
 }
 
+/** 插件自带资源内容：图片给 data URL（可直接喂 <img>/Canvas），文本给原文 */
+export interface PluginResourceImage {
+  kind: 'image'
+  dataUrl: string
+}
+export interface PluginResourceText {
+  kind: 'text'
+  text: string
+}
+export type PluginResourcePayload = PluginResourceImage | PluginResourceText
+
 export interface PluginApi {
+  /** 对话框选择后由主进程验证、检查冲突并原子提交安装与资源授权；用户取消返回 null */
   importLocal(): Promise<PluginImportSelection | null>
+  /** 卸载插件时注销主进程的目录信任锚（未登记视为幂等） */
+  forgetLocal(pluginId: string): Promise<void>
+  /** 读取导入时已逐项验证的声明资源；白名单与真实路径守卫同时限制访问 */
+  readResource(pluginId: string, relPath: string): Promise<PluginResourcePayload>
+}
+
+// ── M42 引擎渲染 DLC ──────────────────────────────────────────────────
+// 宿主只提供「插座」：用户自己把渲染 DLC 放进 <userData>/engine-dlc/，
+// 授权后可被单位预览调用。以下接口没有任何字段能让渲染层指定可执行文件或路径。
+
+/** 目录里一个 DLC 的展示与可用状态（不含任何路径：路径只存在于主进程） */
+export interface EngineDlcEntry {
+  id: string
+  name: string
+  version: string
+  description: string
+  /** 用户是否已授权运行（授权记录存在且入口指纹仍匹配） */
+  enabled: boolean
+  /** 授权记录仍存在（损坏或已移除的 DLC 也能撤销）。 */
+  granted?: boolean
+  /** 是否可直接用于渲染（清单合法 + 入口存在 + 已授权） */
+  runnable: boolean
+  /** 不可用原因（仅当 runnable=false） */
+  problem?: string
+}
+
+export interface EngineDlcListResult {
+  /** 指定目录的绝对路径（用于界面展示「把 DLC 放到这里」） */
+  dir: string
+  dlcs: EngineDlcEntry[]
+}
+
+/** 引擎渲染请求：只描述「要画什么」，不含任何可执行文件信息 */
+export interface EngineDlcRenderRequest {
+  requestId?: string
+  unitFile: string
+  unitContent: string
+  projectRoot: string
+  gamePath: string
+  frame: number
+  direction: number
+  animationState: 'idle' | 'moving' | 'attack'
+  showWreck: boolean
+  width: number
+  height: number
+}
+
+export type EngineDlcRenderResult = { ok: true; dataUrl: string } | { ok: false; reason: string }
+
+export interface EngineDlcApi {
+  /** 列出指定目录里的 DLC 及各自状态 */
+  list(): Promise<EngineDlcListResult>
+  /** 在系统文件管理器里打开指定目录（不存在则创建） */
+  openDir(): Promise<{ ok: boolean; message?: string; dir: string }>
+  /** 授权/撤销某个 DLC 的运行许可（授权会弹主进程系统确认框） */
+  grant(dlcId: string, enabled: boolean): Promise<{ ok: boolean; enabled?: boolean; name?: string; message?: string }>
+  /** 调用已授权的引擎 DLC 渲染一张单位预览图 */
+  render(request: EngineDlcRenderRequest): Promise<EngineDlcRenderResult>
+  cancel(requestId: string): Promise<EngineDlcRenderResult>
 }
 
 /** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */
@@ -152,6 +223,8 @@ export interface BridgeApi {
   }
   store: StoreApi
   plugins?: PluginApi
+  /** M42 引擎渲染 DLC（宿主只提供插座，引擎由用户自备放进指定目录） */
+  engineDlc?: EngineDlcApi
   community?: {
     request(request: CommunityRequest): Promise<CommunityResponse>
   }
@@ -180,7 +253,13 @@ export interface BridgeApi {
     /** 只读元数据（mtimeMs/size）：外部修改轮询用，不传输文件内容 */
     stat(rootPath: string, filePath: string): Promise<{ mtimeMs: number; size: number }>
     readFile(rootPath: string, filePath: string): Promise<ReadFileResult>
+    /** 原始字节读取（不做任何解码；路径/大小守卫与 readFile 相同，上限 64MB）。
+     *  云书包上传/哈希用它读取文本候选：非严格 UTF-8 解码会静默改写非法序列。 */
+    readFileBytes(rootPath: string, filePath: string): Promise<{ bytes: ArrayBuffer; size: number; mtimeMs: number }>
     writeFile(rootPath: string, filePath: string, content: string, opts: { hasBom: boolean }): Promise<void>
+    /** 同步锚点条件写（仅 .ohmytx/cloud.json）：expectedContent 非 null 时仅当现有内容
+     *  完全一致才写入；主进程内串行，返回是否真正写入（false=CAS 未命中）。 */
+    writeAnchor(rootPath: string, filePath: string, content: string, expectedContent: string | null): Promise<{ written: boolean }>
     createFile(rootPath: string, dirPath: string, name: string): Promise<void>
     createFolder(rootPath: string, dirPath: string, name: string): Promise<void>
     rename(rootPath: string, oldPath: string, newPath: string): Promise<void>

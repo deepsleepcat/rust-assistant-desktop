@@ -15,6 +15,7 @@ import {
   isValidTreePath,
   judgeSyncState,
   newClientOpId,
+  syncStateAfterPush,
   parseCloudBagAnchor,
   parseModInfoManifest,
   repoDeepLink,
@@ -159,6 +160,28 @@ describe('judgeSyncState（手动同步四分态，桌面契约 §6.4）', () =>
     expect(isForeignAnchor(anchor, 'other-repo')).toBe(true)
     expect(isForeignAnchor(anchor, 'a')).toBe(false)
     expect(isForeignAnchor(null, 'a')).toBe(false)
+  })
+})
+
+describe('syncStateAfterPush（推送结果必须覆盖由缓存 head 推出的旧态）', () => {
+  it('回归：repo 详情缓存 head 过期（本地判 local-ahead）+ 服务端 version_conflict → 必须落 conflict', () => {
+    // 真实场景：锚点基线 2、远端已被网页端推进到 3、桌面 repo 详情缓存 head=2、
+    // 本地有改动 → 打开弹窗时只可能判出 local-ahead；推送 base=2 被服务端 version_conflict
+    // 拒绝（应答带 head=3）。若冲突分支不覆盖 localState，顶部会继续显示
+    // 「本地有未发布修改 / 仅本地有修改」，与下方 A/B 冲突面板自相矛盾。
+    const anchor = { repoSlug: 'a', baselineSeq: 2, baselineTreeDigest: 'x', lastSyncedAt: 0 }
+    const initial = judgeSyncState({ anchor, repoSlug: 'a', remoteHeadVersionNo: 2, localChanged: true })
+    expect(initial).toBe('local-ahead')
+    expect(syncStateAfterPush(initial, 'conflict')).toBe('conflict')
+  })
+  it('unbound/remote-ahead 收到冲突应答同样落 conflict', () => {
+    expect(syncStateAfterPush('unbound', 'conflict')).toBe('conflict')
+    expect(syncStateAfterPush('remote-ahead', 'conflict')).toBe('conflict')
+  })
+  it('pushed → clean（基线已推进）；failed/aborted 不改写现有判定', () => {
+    expect(syncStateAfterPush('local-ahead', 'pushed')).toBe('clean')
+    expect(syncStateAfterPush('local-ahead', 'failed')).toBe('local-ahead')
+    expect(syncStateAfterPush('local-ahead', 'aborted')).toBe('local-ahead')
   })
 })
 

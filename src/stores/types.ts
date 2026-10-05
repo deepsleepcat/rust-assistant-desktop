@@ -16,7 +16,8 @@ export interface CommunityAuthState {
   pairing: { userCode: string; expiresAt: number } | null
 }
 
-export type SettingsTab = 'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'community' | 'plugins' | 'game' | 'coming' | 'about'
+/** 设置面板页签。engineDlc 为 M42 引擎渲染 DLC 的目录与授权页。 */
+export type SettingsTab = 'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'community' | 'plugins' | 'game' | 'engineDlc' | 'coming' | 'about'
 
 export interface ConfirmRequest {
   title: string

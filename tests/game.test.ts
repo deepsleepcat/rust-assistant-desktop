@@ -2,11 +2,30 @@
  * M8 游戏集成测试：官方单位示例导入（复制/跳过已存在/跳过链接/回滚/mod-info 生成）。
  * 覆盖安全审查修复：不覆盖用户已有文件、不跟随符号链接、失败回滚不留半成品。
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, symlinkSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { findGameExe, importOfficialUnits, launchGame, listOfficialUnitDirs, openDir, preflightCheck, readGameAssetImage } from '../electron/game'
+import {
+  findGameExe,
+  importOfficialUnits,
+  LAUNCH_FAIL_FAST_WINDOW_MS,
+  launchGame,
+  listOfficialUnitDirs,
+  openDir,
+  preflightCheck,
+  readGameAssetImage,
+} from '../electron/game'
+
+// 只替换 spawn，execFile 等其余导出保持真实实现（本文件其他用例不受影响）；
+// mockImplementation 默认委托真实 spawn，未 mock 的用例行为与改动前一致。
+const spawnMock = vi.hoisted(() => vi.fn())
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  spawnMock.mockImplementation((...args: unknown[]) => (actual.spawn as (...a: unknown[]) => unknown)(...args))
+  return { ...actual, spawn: spawnMock }
+})
 
 function makeTmp(prefix: string): string {
   const dir = mkdtempSync(path.join(tmpdir(), prefix))
@@ -378,5 +397,99 @@ describe('M15 地图打包桥接（preflight tmx 校验）', () => {
     expect(result.issues.some((i) => i.message.includes('good.tmx'))).toBe(false)
     expect(result.issues.some((i) => i.severity === 'warning' && i.message.includes('Ground') && i.file?.includes('noground.tmx'))).toBe(true)
     expect(result.issues.some((i) => i.severity === 'error' && i.message.includes('<map> 根元素') && i.file?.includes('bad.tmx'))).toBe(true)
+  })
+})
+
+/** 伪 ChildProcess：只需实现 launchGame 用到的 once/emit/unref */
+class FakeChild extends EventEmitter {
+  unref = vi.fn()
+}
+
+/** 含 assets/units 且带 64 位 exe 的模拟游戏目录（与线上目录结构同形） */
+function makeGameDirWithExe(exeName = 'Rusted Warfare - 64.exe'): { game: string; exe: string } {
+  const game = makeFakeGameDir()
+  const exe = path.resolve(game, exeName)
+  if (!exe.startsWith(game + path.sep)) throw new Error(`越界：${exeName}`)
+  writeFileSync(exe, 'fake-exe')
+  return { game, exe }
+}
+
+describe('启动游戏：Windows GUI spawn 参数与快速失败反馈', () => {
+  it('spawn 参数锁定（windowsHide=false / stdio ignore / detached / cwd），退出码 0 不误报', async () => {
+    const { game, exe } = makeGameDirWithExe()
+    const child = new FakeChild()
+    spawnMock.mockClear()
+    spawnMock.mockImplementationOnce(() => {
+      process.nextTick(() => child.emit('spawn'))
+      process.nextTick(() => child.emit('exit', 0, null)) // 启动器转交子进程后正常退出：不应误报失败
+      return child
+    })
+    try {
+      const result = await launchGame(game)
+      expect(result).toEqual({ ok: true })
+      expect(spawnMock).toHaveBeenCalledTimes(1)
+      expect(spawnMock).toHaveBeenCalledWith(exe, [], {
+        detached: true,
+        stdio: 'ignore',
+        cwd: game,
+        windowsHide: false,
+      })
+      expect(child.unref).toHaveBeenCalledTimes(1)
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
+  })
+
+  it('启动器快速非 0 退出：不等确认窗口，立即反馈失败并带退出码', async () => {
+    const { game } = makeGameDirWithExe()
+    const child = new FakeChild()
+    spawnMock.mockClear()
+    spawnMock.mockImplementationOnce(() => {
+      process.nextTick(() => child.emit('spawn'))
+      process.nextTick(() => child.emit('exit', 5, null))
+      return child
+    })
+    try {
+      const startedAt = Date.now()
+      const result = await launchGame(game)
+      expect(result.ok).toBe(false)
+      expect(result.message).toContain('启动失败')
+      expect(result.message).toContain('退出码 5')
+      expect(Date.now() - startedAt).toBeLessThan(LAUNCH_FAIL_FAST_WINDOW_MS)
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
+  })
+
+  it('spawn 异步 error（ENOENT）：立即返回失败信息，不误报已启动', async () => {
+    const { game } = makeGameDirWithExe()
+    const child = new FakeChild()
+    spawnMock.mockClear()
+    spawnMock.mockImplementationOnce(() => {
+      process.nextTick(() => child.emit('error', new Error('spawn ENOENT')))
+      return child
+    })
+    try {
+      const result = await launchGame(game)
+      expect(result.ok).toBe(false)
+      expect(result.message).toContain('ENOENT')
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
+  })
+
+  it('spawn 同步抛错：返回失败信息而不是向调用方抛出', async () => {
+    const { game } = makeGameDirWithExe()
+    spawnMock.mockClear()
+    spawnMock.mockImplementationOnce(() => {
+      throw new Error('spawn boom')
+    })
+    try {
+      const result = await launchGame(game)
+      expect(result.ok).toBe(false)
+      expect(result.message).toContain('spawn boom')
+    } finally {
+      rmSync(game, { recursive: true, force: true })
+    }
   })
 })

@@ -155,7 +155,16 @@ export function summarizeDiff(entries: CloudBagDiffEntry[]): string {
   return parts.length > 0 ? parts.join(' · ') : '无差异'
 }
 
-/** 渲染层安全的 mod-info.txt [mod] 节解析（服务端 manifest 同形；不导入 electron/modIni 的 Node 目标） */
+/**
+ * 渲染层安全的 mod-info.txt 节解析（不导入 electron/modIni 的 Node 目标）。
+ *
+ * 注意：本函数是**比服务端更宽松的本地预检**，不是服务端 manifest 的同形实现：
+ *   - 服务端 parseCloudBagManifest 只认 section `[mod]` 与键 `title`（cloudbag_base.go）；
+ *   - 本函数额外把 section `模组` 与键 `名称` 作为别名接受（历史渲染层便利）。
+ * 因此对同一份 mod-info.txt，本函数可能识别出标题、而服务端以 manifest_parse_failed 拒绝。
+ * 当前无生产调用点（仅测试引用）；若将来接线到提交前预检，必须先由产品/契约确认这些
+ * 中文别名是否两端统一——不得假定两端同形。
+ */
 export function parseModInfoManifest(content: string): {
   title: string
   description: string
@@ -244,6 +253,20 @@ export function judgeSyncState(input: SyncJudgeInput): SyncState {
   if (input.localChanged) return 'local-ahead'
   if (remoteNewer) return 'remote-ahead'
   return 'clean'
+}
+
+/**
+ * 推送结果对四分态的覆盖（服务端权威信号优先于本地缓存 head 推出的旧判定）：
+ * - conflict → conflict：远端 head 已在 base 之上前进，而本次推送只因本地有变更才发起，
+ *   属双向修改；repo 详情缓存 head 过期时初始只会判出 local-ahead，顶部状态必须被覆盖，
+ *   否则与下方 A/B 冲突面板自相矛盾（「仅本地有修改」+ 冲突二选一面板并存）。
+ * - pushed → clean：提交已确认，基线推进到本次提交树（锚点写失败由调用方另行落 unbound）。
+ * - failed / aborted 不改写现有判定（没有新的权威信息）。
+ */
+export function syncStateAfterPush(current: SyncState, status: 'pushed' | 'conflict' | 'failed' | 'aborted'): SyncState {
+  if (status === 'pushed') return 'clean'
+  if (status === 'conflict') return 'conflict'
+  return current
 }
 
 /** 锚点是否绑定了别的仓库（UI 据此给「改绑」显式文案与确认，而不是当成普通未绑定）。 */

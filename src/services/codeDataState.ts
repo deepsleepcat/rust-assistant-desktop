@@ -279,13 +279,13 @@ export function reloadCodeData(): void {
   aliasDict.clear()
 }
 
-/** 从本地存储读取已启用插件的声明式数据（翻译/别名/枚举解释/规则） */
+/** 从本地存储读取已启用插件的声明式数据（翻译/别名/枚举解释/规则/渲染器声明） */
 async function loadEnabledPluginDataFromStore(): Promise<EnabledPluginData> {
   try {
     const raw = await (await import('./bridge')).getBridge().store.get('plugins')
     return loadEnabledPluginData(raw)
   } catch {
-    return { translations: [], aliases: [], enumExplanations: {}, rules: [] }
+    return { translations: [], aliases: [], enumExplanations: {}, rules: [], rendererAdapters: [] }
   }
 }
 

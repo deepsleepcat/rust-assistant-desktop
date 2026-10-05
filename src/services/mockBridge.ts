@@ -260,6 +260,28 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
     }
   }
 
+  /** 原始字节读取（与真桥 fs:readFileBytes 同形；BOM 按磁盘原样保留） */
+  function readFileBytes(filePath: string): { bytes: ArrayBuffer; size: number; mtimeMs: number } {
+    const node = findNode(tree, relToRoot(filePath))
+    if (!node || node.kind !== 'file') throw new Error('文件不存在：' + filePath)
+    const raw = node.hasBom && !node.content.startsWith('\uFEFF') ? `\uFEFF${node.content}` : node.content
+    const bytes = new TextEncoder().encode(raw)
+    return { bytes: bytes.buffer as ArrayBuffer, size: bytes.byteLength, mtimeMs: node.content.length }
+  }
+
+  /** 锚点条件写（与真桥 fs:writeAnchor 同形；浏览器预览没有并发写者，CAS 语义一致） */
+  function writeAnchor(filePath: string, content: string, expectedContent: string | null): { written: boolean } {
+    let current: string | null
+    try {
+      current = readFile(filePath).content
+    } catch {
+      current = null
+    }
+    if (expectedContent !== null && current !== expectedContent) return { written: false }
+    writeFile(filePath, content, { hasBom: false })
+    return { written: true }
+  }
+
   /** 只读元数据（与 readFile 的 mtimeMs/size 同源，供外部修改轮询） */
   function statFile(filePath: string): { mtimeMs: number; size: number } {
     const node = findNode(tree, relToRoot(filePath))
@@ -345,9 +367,11 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       searchFiles: async (_root, query, showHidden) => searchFiles(query, showHidden),
       stat: async (_root, filePath) => statFile(filePath),
       readFile: async (_root, filePath) => readFile(filePath),
+      readFileBytes: async (_root, filePath) => readFileBytes(filePath),
       writeFile: async (_root, filePath, content, opts) => {
         writeFile(filePath, content, opts)
       },
+      writeAnchor: async (_root, filePath, content, expectedContent) => writeAnchor(filePath, content, expectedContent),
       createFile: async (_root, dirPath, name) => createInDir(dirPath, name, { kind: 'file', content: '', hasBom: false }),
       createFolder: async (_root, dirPath, name) => createInDir(dirPath, name, { kind: 'dir', children: {} }),
       rename: async (_root, oldPath, newPath) => {

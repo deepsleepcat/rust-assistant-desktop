@@ -17,6 +17,7 @@
 - **自定义检查规则**：AI 生成检查用例可试运行并保存为项目规则（rules/ 目录，声明式、不执行脚本）
 - **声明式插件**：设置 → 插件 导入插件目录（manifest.json 声明翻译、字段别名、枚举解释、检查规则与渲染适配）；只支持声明式数据，不执行任何脚本，单个插件数据异常只影响自身
 - **单位合成预览**：按 [graphics] 配方 Canvas 合成单位预览图（帧切片/炮塔叠加/阴影/残骸，缺图占位；`CORE:`/`SHARED:` 前缀自动路由到游戏内置/共享贴图，需配置游戏路径）
+- **引擎渲染 DLC（可选）**：本软件**不提供也不下载任何游戏引擎**，只提供一个「插座」——你自己准备的渲染程序放进指定目录并授权后，单位预览可以调用它渲染，从而与游戏里完全一致；渲染失败自动回退内置合成。协议见 [ENGINE-DLC.md](ENGINE-DLC.md)，可直接复制的最小示例见 [`examples/engine-dlc-hello/`](examples/engine-dlc-hello/)
 - **模板库管理**：本地浏览/分类/导入/删除模板（内置 + 用户目录，不做在线市场）
 - **AI 用量统计**：本地记录调用次数与估算 token（数据格式文档化，供未来服务器阶段对接）
 - **Git 历史与回滚**：本地 git 历史/分支可视化、冲突预览与「选择 A/B」解决、单文件回滚（仅本地单人，无服务器）
@@ -53,9 +54,17 @@ npm run pack       # 打包便携版 exe → release/（electron-builder）
 npm run check      # 类型检查 + ESLint + 960+ 个单元测试，一键全跑
 ```
 
-## 正在开发中
+## 手机端
 
-- **手机版**：基于 Tauri Mobile 的移动端版本正在开发中。
+基于 Tauri Mobile 的 Android 客户端源码位于 [`mobile/`](mobile/)，包含模组编辑器、AI 对话、导入导出及打包功能。开发和 Android 构建步骤见 [手机端说明](mobile/README.md)，模块划分见 [手机端架构文档](mobile/docs/ARCHITECTURE.md)。
+
+桌面端与手机端分别安装依赖、运行检查和构建；手机端源码不进入 Electron 安装包。桌面端 `npm run check` 检查桌面工程，手机端检查从仓库根目录运行：
+
+```bash
+npm --prefix mobile ci
+npm --prefix mobile run check
+npm --prefix mobile run build
+```
 
 社区后端是独立的闭源服务，不随本桌面端仓库发布；本仓库只包含桌面客户端及其公开接口适配层。
 

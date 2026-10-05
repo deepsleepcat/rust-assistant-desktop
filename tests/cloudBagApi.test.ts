@@ -169,6 +169,40 @@ describe('cloudBagApi 请求形状', () => {
   })
 })
 
+describe('cloudBagApi 成员端点响应形状（cloudbag_members.go 契约）', () => {
+  it('addMember 展开后端 data.member 包裹（请求体 uid+role），不再是包装层对象', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new URL(String(input)).pathname).toBe('/api/community/cloudbag/repos/repo/members')
+      expect(init?.method).toBe('POST')
+      expect(JSON.parse(String(init?.body))).toEqual({ uid: 7, role: 'editor' })
+      // 真实形状（cloudbag_members.go CreateCloudBagMember）：cloudBagOK(c, gin.H{"member": ...})
+      return ok({ member: { userId: 7, username: 'qa-user', role: 'editor' } })
+    })
+    const api = createCloudBagApi(ENDPOINT, fetcher)
+    const member = await api.addMember('repo', { userId: 7, role: 'editor' })
+    expect(member).toEqual({ userId: 7, username: 'qa-user', role: 'editor' })
+  })
+  it('updateMember 同样展开 data.member（PUT /members/:uid，body 仅 role）', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new URL(String(input)).pathname).toBe('/api/community/cloudbag/repos/repo/members/7')
+      expect(init?.method).toBe('PUT')
+      expect(JSON.parse(String(init?.body))).toEqual({ role: 'viewer' })
+      return ok({ member: { userId: 7, role: 'viewer' } })
+    })
+    const api = createCloudBagApi(ENDPOINT, fetcher)
+    expect(await api.updateMember('repo', 7, 'viewer')).toEqual({ userId: 7, role: 'viewer' })
+  })
+  it('邀请未验证邮箱目标：后端 200 信封无 code 的业务错误按 message 透传，不冒充成功', async () => {
+    // 真实行为（cloudbag_members.go：IsVerified 不过 → cloudBagFail(200, "", "目标用户尚未完成邮箱验证")）
+    const fetcher = vi.fn(async () => envelope({ success: false, message: '目标用户尚未完成邮箱验证' }))
+    const api = createCloudBagApi(ENDPOINT, fetcher)
+    await expect(api.addMember('repo', { userId: 9, role: 'viewer' })).rejects.toMatchObject({
+      message: '目标用户尚未完成邮箱验证',
+      kind: 'invalid_response',
+    })
+  })
+})
+
 describe('cloudBagApi 信封与 code 分支（J3）', () => {
   it('业务错误 HTTP 200 + success:false + code：映射为用户文案并携带 code', async () => {
     const fetcher = vi.fn(async () => fail('quota_exceeded', { usedBytes: 100, limitBytes: 100 }))

@@ -10,12 +10,16 @@ import { createStore } from './store'
 import { getHistory, initAiHistory } from './aiHistory'
 import { createKnowledgePack } from './knowledgePack'
 import { checkForUpdates, downloadUpdate, isPackaged, quitAndInstall, setupUpdater } from './updater'
-import { createIpcContext, registerIpc, registerMediaFromSettings, restoreMediaAllowlist, restoreProjectRoots } from './ipc'
+import { createIpcContext, registerIpc, registerMediaFromSettings, restoreEngineDlcGrants, restoreMediaAllowlist, restorePluginDirs, restoreProjectRoots } from './ipc'
 import { createCommunityAuth } from './communityAuth'
 import { createSecureCredentials, DEEPSEEK_CREDENTIAL_KEY } from './secureCredentials'
 import { migrateLegacySettingsCredentials } from './legacyMigrations'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
+// 开发服务器地址显式白名单：只有本机回环的 http(s) 地址才进入 IPC 上下文，
+// 环境变量里的其余值一律视为未配置，回退到打包内的文件 URL。
+const devRendererUrl =
+  typeof devUrl === 'string' && /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:[/?#]|$)/.test(devUrl) ? devUrl : undefined
 
 const store = createStore(path.join(app.getPath('userData'), 'app-state.json'))
 // AI 修改历史（任务 2）：独立 JSON 文件，避免与主 store 共用导致每次设置变更重写大文件
@@ -42,7 +46,7 @@ const ctx = createIpcContext({
   app,
   updater: { checkForUpdates, downloadUpdate, quitAndInstall, isPackaged },
   windows: { getAllWindows: () => BrowserWindow.getAllWindows() },
-  cloudbagRendererUrl: devUrl ?? pathToFileURL(path.join(__dirname, '..', '..', 'dist', 'index.html')).href,
+  cloudbagRendererUrl: devRendererUrl ? new URL(devRendererUrl) : pathToFileURL(path.join(__dirname, '..', '..', 'dist', 'index.html')),
   communityAuth,
   deepSeekCredentials,
 })
@@ -111,6 +115,10 @@ app.whenReady().then(async () => {
   await migrateLegacySettingsCredentials(store, { community: communityCredentials, deepSeek: deepSeekCredentials })
   restoreMediaAllowlist(ctx)
   restoreProjectRoots(ctx)
+  // 插件目录信任锚：资源读取以它为基准，渲染层不可写（见 storeIpc 的保留键）
+  restorePluginDirs(ctx)
+  // M42 引擎渲染 DLC 授权锚：只有授权过的 DLC 才会被执行（渲染层不可写，见 storeIpc 保留键）
+  restoreEngineDlcGrants(ctx)
   registerMediaFromSettings(ctx, store.get('settings'))
   createWindow()
 

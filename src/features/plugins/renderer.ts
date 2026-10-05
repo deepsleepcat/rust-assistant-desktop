@@ -218,8 +218,8 @@ function validateResource(command: Record<string, unknown>, prefix: string, opti
     return
   }
   const resource = resourcesByPath.get(normalized.toLowerCase())
-  if (!resource) {
-    errors.push(`${prefix}.path 不是输入资源路径`)
+  if (!resource || !allowedIds.has(resource.id)) {
+    errors.push(`${prefix}.path 不是允许的输入资源路径`)
     return
   }
   const ext = resource.path.slice(resource.path.lastIndexOf('.')).toLowerCase()

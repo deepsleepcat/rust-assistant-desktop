@@ -477,6 +477,16 @@ export function registerCloudbagIpc(ctx: IpcContext, ipc: RegisterHandler): void
     if (!ctx.roots.has(normalized)) throw new Error('未登记的项目目录')
     if (!(rwmodBytes instanceof ArrayBuffer)) throw new Error('模组包数据无效')
     if (typeof versionNo !== 'number') throw new Error('版本号无效')
-    return restoreRwmod(Buffer.from(rwmodBytes), rootPath, versionNo)
+    // 按 root 互斥（packing 同模式的 fail-fast）：同根并发两次恢复时，「备份→写盘→
+    // 移走多余文件→失败回滚」三阶段会交错执行，产出两棵远端树的混合工作树且
+    // moved/skipped 统计互踩——UI 的 busy 守卫只覆盖单窗口，双窗口/重入不在其列。
+    // 备份目录唯一化只保证备份互不覆盖，保证不了工作树不变式，必须在主进程串行化。
+    if (ctx.cloudbagRestores.has(normalized)) throw new Error('该项目正在恢复云书包版本，请等待当前恢复完成后再试')
+    ctx.cloudbagRestores.add(normalized)
+    try {
+      return await restoreRwmod(Buffer.from(rwmodBytes), rootPath, versionNo)
+    } finally {
+      ctx.cloudbagRestores.delete(normalized)
+    }
   })
 }

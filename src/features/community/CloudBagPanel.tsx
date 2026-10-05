@@ -177,7 +177,8 @@ function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose
       await writeCloudBagAnchor(bridge, rootPath, {
         repoSlug: outcome.repo.slug,
         baselineSeq: outcome.versionNo ?? 0,
-        baselineTreeDigest: '',
+        // 首版本实际提交树摘要：写入后同步弹窗可直接比较，无需再从服务端补基线
+        baselineTreeDigest: outcome.treeDigest ?? '',
         lastSyncedAt: Math.floor(Date.now() / 1000),
       }).catch(() => undefined)
       onImported(outcome.repo.slug)

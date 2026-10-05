@@ -1,9 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactElement } from 'react'
 import type { CloudBagApi, CloudBagRepo } from '../src/services/cloudBagApi'
 
 // 组件状态/回调回归 harness；不是 DOM/原生 GUI 测试，不伪造写盘成功。
-const harness = vi.hoisted(() => ({ values: [] as unknown[], refs: [] as unknown[], index: 0, refIndex: 0, save: vi.fn() }))
+const harness = vi.hoisted(() => ({
+  values: [] as unknown[], refs: [] as unknown[], index: 0, refIndex: 0,
+  callbackIndex: 0, effectIndex: 0,
+  callbacks: [] as { deps: unknown[]; callback: unknown }[],
+  effects: [] as { deps: unknown[]; cleanup?: () => void }[],
+  pendingEffects: [] as (() => void)[], save: vi.fn(),
+}))
+function sameDeps(left: unknown[], right: unknown[]) {
+  return left.length === right.length && left.every((value, index) => Object.is(value, right[index]))
+}
 vi.mock('react', async (original) => ({
   ...await original<typeof import('react')>(),
   useState: (initial: unknown) => {
@@ -18,8 +27,23 @@ vi.mock('react', async (original) => ({
     if (!(slot in harness.refs)) harness.refs[slot] = { current: initial }
     return harness.refs[slot]
   },
-  useEffect: () => undefined,
-  useCallback: (callback: unknown) => callback,
+  useEffect: (effect: () => (() => void) | void, deps: unknown[]) => {
+    const slot = harness.effectIndex++
+    const previous = harness.effects[slot]
+    if (previous && sameDeps(previous.deps, deps)) return
+    harness.pendingEffects.push(() => {
+      previous?.cleanup?.()
+      const cleanup = effect()
+      harness.effects[slot] = { deps, cleanup: cleanup || undefined }
+    })
+  },
+  useCallback: (callback: unknown, deps: unknown[]) => {
+    const slot = harness.callbackIndex++
+    const previous = harness.callbacks[slot]
+    if (previous && sameDeps(previous.deps, deps)) return previous.callback
+    harness.callbacks[slot] = { deps, callback }
+    return callback
+  },
 }))
 vi.mock('../src/services/bridge', () => ({ getBridge: () => ({ cloudbag: { saveRwmod: harness.save } }) }))
 import { VersionsView } from '../src/features/community/CloudBagRepoVersions'
@@ -33,9 +57,12 @@ function nodes(node: unknown): ReactElement<{ children?: unknown; onClick?: () =
 const repo = { slug: 'repo', headVersionNo: 3 } as CloudBagRepo
 const version = (versionNo: number) => ({ id: versionNo, versionNo, parentVersionNo: null, message: 'v', manifest: {}, createdAt: 0 })
 
-function render(api: CloudBagApi, onChanged = vi.fn()) {
-  harness.index = harness.refIndex = 0
-  return VersionsView({ api, repo, canWrite: true, onChanged })
+function render(api: CloudBagApi, onChanged = vi.fn(), currentRepo = repo) {
+  harness.index = harness.refIndex = harness.callbackIndex = harness.effectIndex = 0
+  return VersionsView({ api, repo: currentRepo, canWrite: true, onChanged })
+}
+function flushEffects() {
+  for (const effect of harness.pendingEffects.splice(0)) effect()
 }
 function click(tree: unknown, label: string) {
   const button = nodes(tree).find((node) => node.type === 'button' && node.props.children === label)
@@ -47,11 +74,73 @@ async function settle() { for (let i = 0; i < 10; i++) await Promise.resolve() }
 beforeEach(() => {
   harness.values = [[version(1)], null, false, null, null, null]
   harness.refs = []
+  harness.callbacks = []
+  harness.effects = []
+  harness.pendingEffects = []
   harness.save.mockReset()
   vi.stubGlobal('window', { confirm: () => true })
 })
 
+afterEach(() => {
+  for (const effect of harness.effects) effect.cleanup?.()
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
 describe('VersionsView callbacks（非 GUI）', () => {
+  it('同步上传更新 head 后自动替换版本首页，不因无关元数据变化重复刷新', async () => {
+    vi.useFakeTimers()
+    const versions = vi.fn()
+      .mockResolvedValueOnce({ items: [version(2), version(1)], nextCursor: 'old-page' })
+      .mockResolvedValueOnce({ items: [version(3), version(2), version(1)], nextCursor: null })
+    const api = { versions } as unknown as CloudBagApi
+    render(api, vi.fn(), { ...repo, headVersionNo: 2 })
+    flushEffects()
+    await vi.runOnlyPendingTimersAsync()
+    expect(harness.values[0]).toEqual([version(2), version(1)])
+    render(api, vi.fn(), { ...repo, headVersionNo: 2, title: 'new title' })
+    flushEffects()
+    await vi.runOnlyPendingTimersAsync()
+    expect(versions).toHaveBeenCalledTimes(1)
+    const tree = render(api, vi.fn(), { ...repo, headVersionNo: 3 })
+    // 组件不重新挂载：保留原来 v2/v1 状态，只改变上传完成后父组件传入的 head。
+    expect(nodes(tree).some((node) => node.props.children === '加载更多版本')).toBe(true)
+    flushEffects()
+    await vi.runOnlyPendingTimersAsync()
+    expect(versions.mock.calls).toEqual([['repo', undefined], ['repo', undefined]])
+    expect(harness.values[0]).toEqual([version(3), version(2), version(1)])
+    expect(harness.values[1]).toBe(null)
+  })
+
+  it('head 更新清理旧分页请求：刷新定时器执行前旧响应也不能追加，失败可重试', async () => {
+    vi.useFakeTimers()
+    let finishPage!: (value: { items: unknown[]; nextCursor: null }) => void
+    const versions = vi.fn()
+      .mockResolvedValueOnce({ items: [version(2)], nextCursor: 'old-page' })
+      .mockImplementationOnce(() => new Promise((done) => { finishPage = done }))
+      .mockRejectedValueOnce(new Error('刷新失败'))
+      .mockResolvedValueOnce({ items: [version(3), version(2)], nextCursor: null })
+    const api = { versions } as unknown as CloudBagApi
+    render(api, vi.fn(), { ...repo, headVersionNo: 2 })
+    flushEffects()
+    await vi.runOnlyPendingTimersAsync()
+    click(render(api, vi.fn(), { ...repo, headVersionNo: 2 }), '加载更多版本')
+    render(api, vi.fn(), { ...repo, headVersionNo: 3 })
+    flushEffects()
+    finishPage({ items: [version(1)], nextCursor: null })
+    await settle()
+    expect(harness.values[0]).toEqual([version(2)])
+    await vi.runOnlyPendingTimersAsync()
+    expect(harness.values[3]).toBe('刷新失败')
+    const tree = render(api, vi.fn(), { ...repo, headVersionNo: 3 })
+    const retry = nodes(tree).find((node) => typeof (node.props as { onRetry?: unknown }).onRetry === 'function')
+    expect(retry).toBeDefined()
+    ;(retry!.props as { onRetry: () => void }).onRetry()
+    await settle()
+    expect(harness.values[0]).toEqual([version(3), version(2)])
+    expect(harness.values[3]).toBe(null)
+    expect(versions.mock.calls).toEqual([['repo', undefined], ['repo', 'old-page'], ['repo', undefined], ['repo', undefined]])
+  })
   it('下载等待桥完成；取消无成功文案；写盘失败回显错误', async () => {
     const bytes = new ArrayBuffer(22)
     const api = { exportRwmod: vi.fn(async () => ({ bytes, filename: 'test.rwmod' })) } as unknown as CloudBagApi

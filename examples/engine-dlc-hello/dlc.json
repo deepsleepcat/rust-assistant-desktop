@@ -1,0 +1,8 @@
+{
+  "dlcVersion": 1,
+  "id": "engine-dlc-hello",
+  "name": "最小示例（占位图）",
+  "version": "1.0.0",
+  "description": "不加载任何引擎，只输出一张占位 PNG，用来验证接口是否接通。",
+  "entry": "render.cjs"
+}

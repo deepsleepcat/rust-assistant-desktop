@@ -225,28 +225,52 @@ export async function findGameExe(gamePath: string): Promise<string | null> {
   return null
 }
 
-/** 启动游戏（detached 不阻塞主进程；失败返回错误信息，成功返回 null）。
+/** 启动器「快速非 0 退出」确认窗口（毫秒）。
+ * spawn 成功只代表进程创建成功：启动器仍可能因缺少 jvm.dll/依赖等立刻非 0 退出。
+ * 仅在窗口内监听非 0 退出，事件到达即上报失败（有界等待，不是轮询）；
+ * 代价是成功反馈最多延迟该时长。 */
+export const LAUNCH_FAIL_FAST_WINDOW_MS = 1200
+
+/** 启动游戏（detached 不阻塞主进程）。
  * spawn 的失败（ENOENT/EACCES/ENOEXEC）是异步 'error' 事件而非同步异常：
- * 用 Promise 包裹监听 error/spawn 两个事件，避免误报「已启动」或
- * unhandled 'error' 打崩主进程 */
+ * 用 Promise 包裹监听 error/spawn/exit 三类事件，避免误报「已启动」或
+ * unhandled 'error' 打崩主进程。
+ * Windows GUI：windowsHide 必须为 false——隐藏启动（STARTUPINFO wShowWindow=SW_HIDE）
+ * 会让 LWJGL 游戏主窗口以不可见状态创建：进程存活、游戏在读条/运行，但用户看不到窗口。 */
 export async function launchGame(gamePath: string): Promise<{ ok: boolean; message?: string }> {
   if (!(await looksLikeGameDir(gamePath))) return { ok: false, message: '不是有效的铁锈战争安装目录（缺少 assets/units）' }
   const exe = await findGameExe(gamePath)
   if (!exe) return { ok: false, message: '在游戏目录中未找到可执行文件（Rusted Warfare.exe）' }
   return new Promise((resolve) => {
     let child: ReturnType<typeof spawn>
+    let settled = false
+    let failFastTimer: ReturnType<typeof setTimeout> | undefined
+    const settle = (result: { ok: boolean; message?: string }): void => {
+      if (settled) return
+      settled = true
+      if (failFastTimer !== undefined) clearTimeout(failFastTimer)
+      resolve(result)
+    }
     try {
-      child = spawn(exe, [], { detached: true, stdio: 'ignore', cwd: gamePath, windowsHide: true })
+      child = spawn(exe, [], { detached: true, stdio: 'ignore', cwd: gamePath, windowsHide: false })
     } catch (err) {
-      resolve({ ok: false, message: `启动失败：${err instanceof Error ? err.message : String(err)}` })
+      settle({ ok: false, message: `启动失败：${err instanceof Error ? err.message : String(err)}` })
       return
     }
     child.once('error', (err) => {
-      resolve({ ok: false, message: `启动失败：${err.message}` })
+      settle({ ok: false, message: `启动失败：${err.message}` })
+    })
+    // 快速非 0 退出（含信号终止）= 启动失败。退出码 0 不误报：
+    // 启动器可能只是转交子进程后自身正常退出；窗口外的退出属于游戏正常运行期。
+    child.once('exit', (code, signal) => {
+      if (settled || code === 0) return
+      const detail = code === null ? `信号 ${signal ?? '未知'}` : `退出码 ${code}`
+      settle({ ok: false, message: `启动失败：游戏进程很快退出（${detail}）` })
     })
     child.once('spawn', () => {
       child.unref() // 不阻塞主进程退出
-      resolve({ ok: true })
+      // 短窗口内确认没有快速非 0 退出后再报成功
+      failFastTimer = setTimeout(() => settle({ ok: true }), LAUNCH_FAIL_FAST_WINDOW_MS)
     })
   })
 }

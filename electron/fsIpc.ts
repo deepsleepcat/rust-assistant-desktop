@@ -14,7 +14,33 @@ import { exists, requireInsideRoot, requireRealInsideRoot } from './projectTrust
 import { AUDIO_MIME, IMAGE_MIME, readMediaAsDataUrl } from './mediaPolicy'
 
 /** 文本文件读取上限（编辑器打开超大文件会拖垮界面） */
-const MAX_TEXT_FILE_SIZE = 64 * 1024 * 1024
+export const MAX_TEXT_FILE_SIZE = 64 * 1024 * 1024
+
+/**
+ * 字节读取上限守卫。fs:readFileBytes 在 stat 与 read 之后各校验一次：
+ * stat 与 read 之间文件可能被并发写大，只信 stat 会把超过上限的字节经 IPC 带出。
+ */
+export function assertReadBytesWithinCap(byteLength: number): void {
+  if (byteLength > MAX_TEXT_FILE_SIZE) throw new Error('文件超过 64MB，暂不支持读取')
+}
+
+/** 同步锚点（.ohmytx/cloud.json）写入上限：锚点是几十字节的元数据文件 */
+const MAX_ANCHOR_BYTES = 64 * 1024
+
+/**
+ * 锚点写入串行队列：无条件写与 compare-and-set 写共用一条链。
+ * 读-比-写若被并发写插入，迁移（旧锚点补摘要）可能把 push 刚写入的基线 #3
+ * 覆盖回 #2；在主进程内串行化后，CAS 的「读当前内容」不可能被另一次锚点写打断。
+ */
+let anchorWriteQueue: Promise<unknown> = Promise.resolve()
+
+/** 锚点只允许写到 <项目根>/.ohmytx/cloud.json（与 CLOUD_BAG_ANCHOR_PATH 同口径） */
+function assertAnchorPath(rootPath: string, filePath: string): void {
+  const expected = path.join(path.resolve(rootPath), '.ohmytx', 'cloud.json')
+  const actual = path.resolve(filePath)
+  const same = process.platform === 'win32' ? actual.toLowerCase() === expected.toLowerCase() : actual === expected
+  if (!same) throw new Error('锚点写入只允许 .ohmytx/cloud.json')
+}
 
 /** Windows 非法文件名：保留设备名（CON/NUL/AUX/COM1…）+ 非法字符 + 尾点/尾空格 */
 function assertValidName(name: string, what: string): void {
@@ -102,6 +128,21 @@ export function registerFsIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     return { content, hasBom, mtimeMs: stat.mtimeMs, size: stat.size }
   })
 
+  // 原始字节读取（云书包上传/哈希专用）：Path/size 守卫与 fs:readFile 完全一致，
+  // 但不做任何解码——非严格 UTF-8 解码会把非法序列折叠成 U+FFFD，重编码后可能与
+  // 原字节等长（41 F0 9F 98 → 41 EF BF BD），「按文本读再重编码」必然静默改写内容。
+  ipc('fs:readFileBytes', async (_event, rootPath: string, filePath: string) => {
+    await requireRealInsideRoot(ctx, rootPath, filePath)
+    const stat = await fs.stat(filePath)
+    assertReadBytesWithinCap(stat.size)
+    const buf = await fs.readFile(filePath)
+    // stat 与 read 之间文件可能被并发写大：读后必须再校一次，超限字节绝不经 IPC 带出
+    assertReadBytesWithinCap(buf.byteLength)
+    // Buffer 常是池化 ArrayBuffer 的视图：切出精确字节，避免 IPC 带出无关内存
+    const bytes = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    return { bytes, size: buf.byteLength, mtimeMs: stat.mtimeMs }
+  })
+
   // 只读元数据（mtime/size）：外部修改轮询用，避免每 3 秒全量读盘
   ipc('fs:stat', async (_event, rootPath: string, filePath: string) => {
     await requireRealInsideRoot(ctx, rootPath, filePath)
@@ -125,6 +166,42 @@ export function registerFsIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       await fs.rm(tmp, { force: true }).catch(() => undefined)
       throw err
     }
+  })
+
+  // 同步锚点条件写（CAS）：content 写入 .ohmytx/cloud.json；expectedContent 非 null 时
+  // 仅当文件当前内容与它完全一致才写入（否则返回 { written: false }）。读-比-写在
+  // 串行队列内完成，push/迁移并发时后到的写不会覆盖先到者，也不存在读后被插入的窗口。
+  ipc('fs:writeAnchor', async (_event, rootPath: string, filePath: string, content: string, expectedContent: string | null) => {
+    if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > MAX_ANCHOR_BYTES) throw new Error('锚点内容无效或过大')
+    if (expectedContent !== null && (typeof expectedContent !== 'string' || Buffer.byteLength(expectedContent, 'utf8') > MAX_ANCHOR_BYTES)) {
+      throw new Error('锚点比较内容无效或过大')
+    }
+    await requireRealInsideRoot(ctx, rootPath, filePath)
+    assertAnchorPath(rootPath, filePath)
+    const run = anchorWriteQueue.then(async () => {
+      let current: string | null = null
+      try {
+        current = await fs.readFile(filePath, 'utf8')
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+      }
+      if (expectedContent !== null && current !== expectedContent) return { written: false }
+      const dir = path.dirname(filePath)
+      await fs.mkdir(dir, { recursive: true })
+      const tmp = path.join(dir, `.${path.basename(filePath)}.ra-${randomUUID()}.tmp`)
+      assertInsideDir(dir, tmp)
+      try {
+        await fs.writeFile(tmp, content, 'utf8')
+        await fs.rename(tmp, filePath)
+      } catch (err) {
+        await fs.rm(tmp, { force: true }).catch(() => undefined)
+        throw err
+      }
+      return { written: true }
+    })
+    // 先挂队列再等待：并发调用会排在本次之后，队列自身不因失败卡死
+    anchorWriteQueue = run.then(() => undefined, () => undefined)
+    return run
   })
 
   ipc('fs:createFile', async (_event, rootPath: string, dirPath: string, name: string) => {

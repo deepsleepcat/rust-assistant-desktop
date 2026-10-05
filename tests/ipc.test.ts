@@ -15,12 +15,15 @@ import { normalizePath } from '../electron/paths'
 import { createSecureCredentials, DEEPSEEK_CREDENTIAL_KEY } from '../electron/secureCredentials'
 import {
   createFeedbackChannel,
+  ENGINE_DLC_ENABLED_KEY,
+  PLUGIN_DIRS_KEY,
   createIpcContext,
   registerAiIpc,
   registerAppIpc,
   registerCommunityAuthIpc,
   registerCommunityIpc,
   registerDialogIpc,
+  registerEngineDlcIpc,
   registerFsIpc,
   registerCloudbagIpc,
   registerGameIpc,
@@ -36,6 +39,7 @@ import {
   type IpcContext,
   type RegisterHandler,
 } from '../electron/ipc'
+import { assertReadBytesWithinCap, MAX_TEXT_FILE_SIZE } from '../electron/fsIpc'
 import type { AiApprovalResponse } from '../src/types/ai'
 
 /** 假 ipc：把通道名 → 处理器记录进 Map */
@@ -85,7 +89,7 @@ beforeEach(async () => {
       showSaveDialog: async () => ({ canceled: true, filePath: '' }),
       showMessageBox: async () => ({ response: 0, checkboxChecked: false }),
     },
-    shell: { trashItem: async () => undefined },
+    shell: { trashItem: async () => undefined, openPath: async () => '' },
     app: { getVersion: () => '0.0.0-test', getPath: (n) => (n === 'userData' ? tmp : tmp) },
     updater: {
       checkForUpdates: async () => undefined,
@@ -119,7 +123,7 @@ describe('IPC 通道完整性', () => {
     expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
   })
 
-  it('十三个域注册函数覆盖全部 83 个通道，无遗漏无重复', () => {
+  it('十四个域注册函数覆盖全部 92 个通道，无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerCommunityIpc(ctx, ipc)
@@ -134,6 +138,7 @@ describe('IPC 通道完整性', () => {
     registerCloudbagIpc(ctx, ipc)
     registerAppIpc(ctx, ipc)
     registerAiIpc(ctx, ipc)
+    registerEngineDlcIpc(ctx, ipc)
 
     const expected = [
       // store + 受限社区代理 + 主进程设备认证
@@ -144,9 +149,9 @@ describe('IPC 通道完整性', () => {
       // git
       'git:info', 'git:log', 'git:status', 'git:conflicts', 'git:diff', 'git:restore',
       // dialog + project
-      'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots', 'plugin:importLocal',
+      'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots', 'plugin:importLocal', 'plugin:forgetLocal', 'plugin:readResource',
       // fs + media
-      'fs:readDir', 'project:searchFiles', 'fs:readFile', 'fs:stat', 'fs:writeFile', 'fs:createFile', 'fs:createFolder', 'fs:rename', 'fs:delete',
+      'fs:readDir', 'project:searchFiles', 'fs:readFile', 'fs:readFileBytes', 'fs:stat', 'fs:writeFile', 'fs:writeAnchor', 'fs:createFile', 'fs:createFolder', 'fs:rename', 'fs:delete',
       'image:readAsDataUrl', 'media:readAsDataUrl',
       // mod + template
       'mod:create', 'mod:createUnit', 'mod:listTemplates', 'mod:saveFileAsTemplate', 'mod:createUnitFromTemplate',
@@ -162,9 +167,14 @@ describe('IPC 通道完整性', () => {
       'app:info', 'app:flush-done', 'app:checkUpdate', 'app:downloadUpdate', 'app:installUpdate',
       // ai
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
+      // M42 引擎渲染 DLC（宿主只提供插座，引擎由用户自备放进指定目录）
+      'dlc:list', 'dlc:openDir', 'dlc:grant', 'dlc:render',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(84)
+    expect(channels.size).toBe(92)
+    const combined = createFakeIpc()
+    registerIpc(ctx, combined.ipc)
+    expect([...combined.channels.keys()].sort()).toEqual([...expected].sort())
   })
 })
 
@@ -343,6 +353,10 @@ describe('store 通道', () => {
     await expect(invoke(channels, 'store:set', 'mediaAllowlist', ['C:\\x'])).rejects.toThrow('不允许写入系统保留键')
     await expect(invoke(channels, 'store:set', 'communityAuthCredentialV1', 'ciphertext')).rejects.toThrow('不允许写入系统保留键')
     await expect(invoke(channels, 'store:get', 'communityAuthCredentialV1')).rejects.toThrow('不允许读取系统保留键')
+    for (const key of [PLUGIN_DIRS_KEY, ENGINE_DLC_ENABLED_KEY]) {
+      await expect(invoke(channels, 'store:get', key)).rejects.toThrow('不允许读取系统保留键')
+      await expect(invoke(channels, 'store:set', key, {})).rejects.toThrow('不允许写入系统保留键')
+    }
   })
 
   it('超限值拒绝写入（10MB 上限；workspace 键放宽 50MB）', async () => {
@@ -442,7 +456,7 @@ describe('fs 通道（路径安全边界）', () => {
 
   it('delete 走回收站（shell.trashItem 被调用）', async () => {
     const trash = vi.fn(async () => undefined)
-    ctx.shell = { trashItem: trash }
+    ctx.shell = { trashItem: trash, openPath: async () => '' }
     const { channels, ipc } = createFakeIpc()
     registerFsIpc(ctx, ipc)
     ctx.roots.add(normalizePath(tmp))
@@ -450,6 +464,53 @@ describe('fs 通道（路径安全边界）', () => {
     await fs.writeFile(file, 'x', 'utf8')
     await invoke(channels, 'fs:delete', tmp, file)
     expect(trash).toHaveBeenCalledWith(file)
+  })
+
+  it('fs:readFileBytes 读取上限在 stat 与 read 后双重校验（stat/read 膨胀不经 IPC 带出）', () => {
+    expect(() => assertReadBytesWithinCap(MAX_TEXT_FILE_SIZE)).not.toThrow()
+    expect(() => assertReadBytesWithinCap(MAX_TEXT_FILE_SIZE + 1)).toThrow('64MB')
+  })
+
+  it('fs:readFileBytes：返回原始字节（非法 UTF-8 序列不被解码改写），守卫与 readFile 相同', async () => {
+    const channels = await setupRooted()
+    const raw = Uint8Array.from([0x41, 0xf0, 0x9f, 0x98]) // 'A' + 截断的 4 字节序列
+    const file = path.join(tmp, 'units', 'raw.txt')
+    await fs.writeFile(file, raw)
+    const result = await invoke<{ bytes: ArrayBuffer; size: number }>(channels, 'fs:readFileBytes', tmp, file)
+    expect([...new Uint8Array(result.bytes)]).toEqual([0x41, 0xf0, 0x9f, 0x98])
+    expect(result.size).toBe(4)
+    const outside = path.join(os.tmpdir(), 'ra-outside-' + Date.now())
+    await expect(invoke(channels, 'fs:readFileBytes', tmp, outside)).rejects.toThrow('超出项目目录范围')
+  })
+
+  it('fs:writeAnchor：CAS 命中写入、内容已变拒绝，且只允许 .ohmytx/cloud.json', async () => {
+    const channels = await setupRooted()
+    const anchorPath = path.join(tmp, '.ohmytx', 'cloud.json')
+    const first = await invoke<{ written: boolean }>(channels, 'fs:writeAnchor', tmp, anchorPath, '{"baselineSeq":2}', null)
+    expect(first.written).toBe(true)
+    // 快照仍一致 → 迁移写入成功
+    const cas = await invoke<{ written: boolean }>(channels, 'fs:writeAnchor', tmp, anchorPath, '{"baselineSeq":2,"baselineTreeDigest":"m2"}', '{"baselineSeq":2}')
+    expect(cas.written).toBe(true)
+    // 期望内容过期（同期 push 已推进到 #3）→ 拒绝且不改盘
+    const stale = await invoke<{ written: boolean }>(channels, 'fs:writeAnchor', tmp, anchorPath, '{"baselineSeq":2}', '{"baselineSeq":2}')
+    expect(stale.written).toBe(false)
+    expect(JSON.parse(await fs.readFile(anchorPath, 'utf8'))).toMatchObject({ baselineSeq: 2, baselineTreeDigest: 'm2' })
+    await expect(invoke(channels, 'fs:writeAnchor', tmp, path.join(tmp, '.ohmytx', 'other.json'), '{}', null)).rejects.toThrow('只允许')
+  })
+
+  it('fs:writeAnchor：并发下 CAS 绝不用旧基线覆盖新基线（最终保持 push 的 #3）', async () => {
+    const channels = await setupRooted()
+    const anchorPath = path.join(tmp, '.ohmytx', 'cloud.json')
+    await invoke(channels, 'fs:writeAnchor', tmp, anchorPath, '{"baselineSeq":2}', null)
+    // 同期 push（无条件写 #3）与迁移 CAS（期望 #2）同时发出：串行队列使两者不交错。
+    // 迁移先拿到队列 → 先写 #2 摘要、随后 push 写 #3；push 先到 → 迁移 CAS 读到 #3 拒绝。
+    // 两种交错下最终锚点都必须是 #3，绝不能被迁移覆盖回 #2。
+    const pushWrite = invoke<{ written: boolean }>(channels, 'fs:writeAnchor', tmp, anchorPath, '{"baselineSeq":3}', null)
+    const migration = invoke<{ written: boolean }>(channels, 'fs:writeAnchor', tmp, anchorPath, '{"baselineSeq":2,"baselineTreeDigest":"m2"}', '{"baselineSeq":2}')
+    const [pushed, migrated] = await Promise.all([pushWrite, migration])
+    expect(pushed.written).toBe(true)
+    expect(typeof migrated.written).toBe('boolean')
+    expect(JSON.parse(await fs.readFile(anchorPath, 'utf8')).baselineSeq).toBe(3)
   })
 })
 

@@ -30,6 +30,15 @@ const api: BridgeApi = {
   },
   plugins: {
     importLocal: () => ipcRenderer.invoke('plugin:importLocal'),
+    forgetLocal: (pluginId: string) => ipcRenderer.invoke('plugin:forgetLocal', pluginId),
+    readResource: (pluginId: string, relPath: string) => ipcRenderer.invoke('plugin:readResource', pluginId, relPath),
+  },
+  engineDlc: {
+    list: () => ipcRenderer.invoke('dlc:list'),
+    openDir: () => ipcRenderer.invoke('dlc:openDir'),
+    grant: (dlcId: string, enabled: boolean) => ipcRenderer.invoke('dlc:grant', dlcId, enabled),
+    render: (request) => ipcRenderer.invoke('dlc:render', request),
+    cancel: (requestId) => ipcRenderer.invoke('dlc:render', { cancel: true, requestId }),
   },
   community: {
     request: (request) => ipcRenderer.invoke('community:request', request),
@@ -55,8 +64,13 @@ const api: BridgeApi = {
     searchFiles: (rootPath: string, query: string, showHidden?: boolean) => ipcRenderer.invoke('project:searchFiles', rootPath, query, showHidden),
     stat: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:stat', rootPath, filePath),
     readFile: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:readFile', rootPath, filePath),
+    // 原始字节读取（云书包上传/哈希）：返回 ArrayBuffer，不做任何解码
+    readFileBytes: (rootPath: string, filePath: string) => ipcRenderer.invoke('fs:readFileBytes', rootPath, filePath),
     writeFile: (rootPath: string, filePath: string, content: string, opts: { hasBom: boolean }) =>
       ipcRenderer.invoke('fs:writeFile', rootPath, filePath, content, opts),
+    // 同步锚点条件写：expectedContent 非 null 时为 CAS（主进程串行），返回 { written }
+    writeAnchor: (rootPath: string, filePath: string, content: string, expectedContent: string | null) =>
+      ipcRenderer.invoke('fs:writeAnchor', rootPath, filePath, content, expectedContent),
     createFile: (rootPath: string, dirPath: string, name: string) => ipcRenderer.invoke('fs:createFile', rootPath, dirPath, name),
     createFolder: (rootPath: string, dirPath: string, name: string) => ipcRenderer.invoke('fs:createFolder', rootPath, dirPath, name),
     rename: (rootPath: string, oldPath: string, newPath: string) => ipcRenderer.invoke('fs:rename', rootPath, oldPath, newPath),

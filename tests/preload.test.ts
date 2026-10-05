@@ -34,9 +34,27 @@ describe('preload 桥契约', () => {
   it('暴露 window.rustAssistant，且各域齐全', () => {
     expect(mocks.exposeInMainWorld).toHaveBeenCalledWith('rustAssistant', expect.any(Object))
     const a = api()
-    for (const key of ['app', 'store', 'community', 'cloudbag', 'auth', 'project', 'knowledge', 'game', 'mod', 'git', 'ai']) {
+    for (const key of ['app', 'store', 'plugins', 'engineDlc', 'community', 'cloudbag', 'auth', 'project', 'knowledge', 'game', 'mod', 'git', 'ai']) {
       expect(a[key]).toBeTypeOf('object')
     }
+  })
+
+  it('M42 引擎 DLC 只映射「目录/授权/渲染」四通道，界面拿不到可执行路径', async () => {
+    const engineDlc = api().engineDlc as {
+      list: () => Promise<unknown>
+      openDir: () => Promise<unknown>
+      grant: (dlcId: string, enabled: boolean) => Promise<unknown>
+      render: (request: unknown) => Promise<unknown>
+    }
+    await engineDlc.list()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('dlc:list')
+    await engineDlc.openDir()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('dlc:openDir')
+    await engineDlc.grant('demo', true)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('dlc:grant', 'demo', true)
+    const request = { unitFile: '/p/a.ini', unitContent: '', projectRoot: '/p', gamePath: '' }
+    await engineDlc.render(request)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('dlc:render', request)
   })
 
   it('社区请求映射到受限 IPC 通道', async () => {
@@ -75,8 +93,12 @@ describe('preload 桥契约', () => {
     expect(mocks.invoke).toHaveBeenLastCalledWith('project:searchFiles', 'r', 'tank', false)
     await p.readFile('r', 'f')
     expect(mocks.invoke).toHaveBeenLastCalledWith('fs:readFile', 'r', 'f')
+    await p.readFileBytes('r', 'f')
+    expect(mocks.invoke).toHaveBeenLastCalledWith('fs:readFileBytes', 'r', 'f')
     await p.writeFile('r', 'f', 'c', { hasBom: true })
     expect(mocks.invoke).toHaveBeenLastCalledWith('fs:writeFile', 'r', 'f', 'c', { hasBom: true })
+    await p.writeAnchor('r', 'f', 'c', null)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('fs:writeAnchor', 'r', 'f', 'c', null)
     await p.saveText('t', 'n', 'c')
     expect(mocks.invoke).toHaveBeenLastCalledWith('dialog:saveText', 't', 'n', 'c')
     await p.openFolderDialog()

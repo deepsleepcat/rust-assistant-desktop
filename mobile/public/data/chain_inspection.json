@@ -1,0 +1,89 @@
+{
+  "name": "链式检查",
+  "data": [
+    {
+      "id": "canAttack",
+      "key": "canAttack",
+      "value": "true",
+      "type": "key",
+      "list": "canAttackFlyingUnits,canAttackLandUnits,canAttackUnderwaterUnits"
+    },
+    {
+      "id": "base",
+      "key": "",
+      "value": "",
+      "type": "@file",
+      "list": "core,attack,graphics,movement"
+    },
+    {
+      "id": "core-section",
+      "key": "",
+      "value": "core",
+      "type": "section",
+      "list": "name,mass,price,maxHp,radius"
+    },
+    {
+      "id": "image-section",
+      "key": "",
+      "value": "graphics",
+      "type": "section",
+      "list": "image"
+    },
+    {
+      "id": "canAttack-section",
+      "key": "",
+      "value": "attack",
+      "type": "section",
+      "list": "canAttack"
+    },
+    {
+      "id": "movement-section",
+      "key": "",
+      "value": "movement",
+      "type": "section",
+      "list": "movementType"
+    },
+    {
+      "id": "showInEditor",
+      "key": "showInEditor",
+      "value": "false",
+      "type": "key",
+      "list": "@tip(无法在沙盒编辑器内显示此单位)"
+    },
+    {
+      "id":"streamingCost",
+      "key": "streamingCost",
+      "value": "@auto",
+      "type": "key",
+      "list": "buildSpeed"
+    },
+    {
+      "id":"projectile-section",
+      "key": "",
+      "value": "projectile",
+      "type": "section",
+      "list": "life"
+    },
+    {
+      "id":"meleeEngangementDistance",
+      "key": "meleeEngangementDistance",
+      "value": "@auto",
+      "type": "key",
+      "list": "isMelee"
+    },
+    {
+      "id":"turret-section",
+      "key": "",
+      "value": "turret",
+      "type": "section",
+      "list": "x,y"
+    },
+    {
+      "id":"attachment-section",
+      "key": "",
+      "value": "attachment",
+      "type": "section",
+      "list": "x,y"
+    }
+  ]
+}

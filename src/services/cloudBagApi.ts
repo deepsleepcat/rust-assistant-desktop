@@ -617,10 +617,14 @@ export function createCloudBagApi(
     revokeRelease: async (slug: string, releaseId: number) =>
       request<null>(`/api/community/cloudbag/repos/${assertSlug(slug)}/releases/${encodeURIComponent(String(releaseId))}`, { method: 'DELETE' }),
     members: async (slug: string) => request<CloudBagPage<CloudBagMember>>(`/api/community/cloudbag/repos/${assertSlug(slug)}/members`),
+    // 成员写端点响应为 data.member 包裹（cloudbag_members.go：CreateCloudBagMember/
+    // UpdateCloudBagMember 的 cloudBagOK(c, gin.H{"member": ...})），与 repo/version/
+    // sync/share/release 同一包裹键纪律；此前未展开，调用方拿到的是 {member: {...}}
+    // 包装层而非成员对象（契约 §3.2 形状不符，渲染层恰好不消费返回值才未暴露）。
     addMember: async (slug: string, input: { userId: number; role: 'editor' | 'viewer' }) =>
-      json<CloudBagMember>(`/api/community/cloudbag/repos/${assertSlug(slug)}/members`, 'POST', { uid: input.userId, role: input.role }),
+      unwrapKey<CloudBagMember>(await json<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/members`, 'POST', { uid: input.userId, role: input.role }), 'member'),
     updateMember: async (slug: string, userId: number, role: 'editor' | 'viewer') =>
-      json<CloudBagMember>(`/api/community/cloudbag/repos/${assertSlug(slug)}/members/${encodeURIComponent(String(userId))}`, 'PUT', { role }),
+      unwrapKey<CloudBagMember>(await json<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/members/${encodeURIComponent(String(userId))}`, 'PUT', { role }), 'member'),
     removeMember: async (slug: string, userId: number) =>
       request<null>(`/api/community/cloudbag/repos/${assertSlug(slug)}/members/${encodeURIComponent(String(userId))}`, { method: 'DELETE' }),
     createShare: async (slug: string, input: { versionNo?: number; expiresInDays?: number }) =>

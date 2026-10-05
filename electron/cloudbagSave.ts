@@ -31,7 +31,7 @@ function assertTrustedSender(ctx: IpcContext, event: unknown): void {
   if (!trusted || incoming?.senderFrame !== trusted.mainFrame || !ctx.cloudbagRendererUrl) {
     throw new Error('云书包保存只允许受信应用窗口主页面调用')
   }
-  const expected = new URL(ctx.cloudbagRendererUrl)
+  const expected = ctx.cloudbagRendererUrl
   const actual = new URL(trusted.getURL())
   const frameUrl = new URL(trusted.mainFrame.url)
   expected.hash = actual.hash = frameUrl.hash = ''

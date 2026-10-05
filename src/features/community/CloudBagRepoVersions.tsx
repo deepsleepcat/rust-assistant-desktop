@@ -69,8 +69,13 @@ export function VersionsView({ api, repo, canWrite, onChanged }: { api: CloudBag
   }, [api, repo.slug])
   useEffect(() => {
     const timer = setTimeout(() => { void load(null) }, 0)
-    return () => clearTimeout(timer)
-  }, [load])
+    return () => {
+      clearTimeout(timer)
+      // head 变化后立即废弃旧分页响应，避免首页刷新前的空档追加旧页。
+      generation.current++
+    }
+    // 同步上传只刷新仓库元数据；head 变化时版本列表也必须重新请求第一页。
+  }, [load, repo.headVersionNo])
   const download = async (versionNo: number) => {
     try {
       setMessage(null)
