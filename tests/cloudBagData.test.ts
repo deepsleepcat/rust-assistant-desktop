@@ -10,6 +10,7 @@ import {
   buildCloudBagTree,
   buildLocalFilePlan,
   cloudBagGate,
+  cloudBagPathKey,
   isForeignAnchor,
   isValidTreePath,
   judgeSyncState,
@@ -174,7 +175,34 @@ describe('口径同源（主进程 electron/cloudbagTree.ts ↔ 渲染层 cloudB
     '../evil.ini', '/abs/path.ini', 'C:\\abs\\path.ini', 'units\\tank.ini', 'bad\0.ini',
     `${'a'.repeat(201)}.ini`, 'mod.rwmod', 'data.db', 'noext', 'units/', '/units/tank.ini',
     'units/tank.ini:evil', 'units/tank.ini.', 'units/tank.ini ', 'a<b.ini', 'a|b.ini', 'a?b.ini',
+    // 点文件名（后端只判 dot<0，属合法条目）与按码点计长的 astral 路径
+    '.ini', '.png', '.txt', 'sub/.ini', '.flac',
+    `${'😀'.repeat(99)}.ini`, `${'😀'.repeat(199)}.ini`,
+    // Windows 保留设备名（段本身或「设备名 + '.' 后缀」）逐段拒绝
+    'nul.ini', 'con/tank.ini', 'aux/units/x.ini', 'com1.txt', 'lpt9.ini', 'console.ini',
   ]
+  it('路径键逐码点 simple lower 与后端同源，无上下文 lower/NFC/fullfold', () => {
+    for (const [left, right] of [['A', 'a'], ['İ', 'i'], ['É', 'é'], ['Σ', 'σ'], ['K', 'k']]) {
+      expect(cloudBagPathKey(`${left}.ini`)).toBe(cloudBagPathKey(`${right}.ini`))
+      expect(mainTree.cloudBagPathKey(`${left}.ini`)).toBe(cloudBagPathKey(`${right}.ini`))
+      expect(() => buildLocalFilePlan([{ path: `${left}.ini`, size: 1 }, { path: `${right}.ini`, size: 1 }])).toThrow('路径键冲突')
+    }
+    for (const [left, right] of [['é', 'e'], ['ß', 'ss'], ['ς', 'σ'], ['e\u0301', 'é']]) {
+      expect(cloudBagPathKey(`${left}.ini`)).not.toBe(cloudBagPathKey(`${right}.ini`))
+      expect(mainTree.cloudBagPathKey(`${left}.ini`)).toBe(cloudBagPathKey(`${left}.ini`))
+      expect(buildLocalFilePlan([{ path: `${left}.ini`, size: 1 }, { path: `${right}.ini`, size: 1 }]).uploadable).toHaveLength(2)
+    }
+    expect(cloudBagPathKey('ΟΣ.ini')).toBe('οσ.ini')
+    expect(mainTree.cloudBagPathKey('ΟΣ.ini')).toBe('οσ.ini')
+  })
+  it('两端明确拒绝每个 C0 控制字符及 DEL（含目录段）', () => {
+    for (const code of [...Array.from({ length: 32 }, (_, index) => index), 127]) {
+      for (const path of [`bad${String.fromCharCode(code)}.ini`, `bad${String.fromCharCode(code)}/a.ini`]) {
+        expect(isValidTreePath(path)).toBe(false)
+        expect(mainTree.isCloudBagTreePath(path)).toBe(false)
+      }
+    }
+  })
   it('扩展名白名单逐项相同（上传侧与恢复侧不能各有一份不同的集合）', () => {
     expect([...mainTree.CLOUDBAG_ALLOWED_EXTENSIONS]).toEqual([...CLOUDBAG_ALLOWED_EXTENSIONS])
   })
@@ -186,10 +214,26 @@ describe('口径同源（主进程 electron/cloudbagTree.ts ↔ 渲染层 cloudB
     expect(isValidTreePath('units/tank.ini:evil')).toBe(false)
     expect(isValidTreePath('units/tank.ini.')).toBe(false)
     expect(isValidTreePath('units/tank.ini ')).toBe(false)
-    // 设备名由恢复侧单独的 DEVICE_NAME_RE 处理（与上传侧不同：服务端只拒段首设备名），
-    // 路径谓词本身对 'nul.ini' 放行，两侧一致即可
-    expect(mainTree.isCloudBagTreePath('nul.ini')).toBe(true)
-    expect(isValidTreePath('nul.ini')).toBe(true)
+    // Windows 保留设备名逐段拒绝（与后端 validateCloudBagPath 的 cloudBagDeviceNameRE 同口径）：
+    // 'nul.ini'、'con/tank.ini'、'aux/units/x.ini' 都必须 false；'console.ini'（非设备名）放行。
+    for (const devicePath of ['nul.ini', 'con/tank.ini', 'aux/units/x.ini', 'com1.txt', 'lpt9.ini']) {
+      expect([devicePath, isValidTreePath(devicePath)]).toEqual([devicePath, false])
+      expect([devicePath, mainTree.isCloudBagTreePath(devicePath)]).toEqual([devicePath, false])
+    }
+    expect(isValidTreePath('console.ini')).toBe(true)
+    expect(mainTree.isCloudBagTreePath('console.ini')).toBe(true)
+    // 点文件名不再是「无扩展名」：后端 validateCloudBagPath 只判 dot<0，桌面必须同样放行，
+    // 否则后端合法版本树在桌面端整次中止拉取（无绕过出口）
+    for (const dotfile of ['.ini', '.png', '.txt', '.flac', 'sub/.ini']) {
+      expect([dotfile, isValidTreePath(dotfile)]).toEqual([dotfile, true])
+      expect([dotfile, mainTree.isCloudBagTreePath(dotfile)]).toEqual([dotfile, true])
+    }
+    // 长度按码点（≤200 rune）：99 个 emoji + '.ini' = 103 码点放行；
+    // 199 个 emoji + '.ini' = 203 码点拒绝——旧 UTF-16 计数会把前者误拒
+    expect(isValidTreePath(`${'😀'.repeat(99)}.ini`)).toBe(true)
+    expect(mainTree.isCloudBagTreePath(`${'😀'.repeat(99)}.ini`)).toBe(true)
+    expect(isValidTreePath(`${'😀'.repeat(199)}.ini`)).toBe(false)
+    expect(mainTree.isCloudBagTreePath(`${'😀'.repeat(199)}.ini`)).toBe(false)
   })
   it('上传时限公式与主进程同值（15s JSON 超时不得套在 50MiB 上传上）', () => {
     expect(mainTree.CLOUD_BAG_UPLOAD_TIMEOUT_MIN_MS).toBe(CLOUD_BAG_UPLOAD_TIMEOUT_MIN_MS)
@@ -220,6 +264,19 @@ describe('cloudBagGate（离线/未登录/未验证不可互相误导）', () =>
   })
   it('已验证：全部放行', () => {
     expect(cloudBagGate('signed_in', { email: 'a@b.c', email_verified: true, status: 1 }).canWrite).toBe(true)
+  })
+  it('网络层失败（error）：单独文案，不得误导成「只是没登录」', () => {
+    const gate = cloudBagGate('error', null)
+    expect(gate).toMatchObject({ canBrowse: false, canWrite: false })
+    expect(gate.notice).toContain('连接社区服务器失败')
+    expect(gate.notice).not.toContain('登录社区账号后可使用')
+  })
+  it('检查中（checking/loading）：如实回报进行态，不得折叠成未登录引导', () => {
+    for (const status of ['checking', 'loading'] as const) {
+      const gate = cloudBagGate(status, null)
+      expect(gate).toMatchObject({ canBrowse: false, canWrite: false })
+      expect(gate.notice).toContain('正在检查')
+    }
   })
 })
 

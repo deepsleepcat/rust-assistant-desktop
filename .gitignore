@@ -36,8 +36,9 @@ Thumbs.db
 # 内部技能、研究资料和工作流脚本（仅本地，不随仓库分发）
 .agents/
 
-# 项目说明文档（仅本地，不随仓库分发）
-docs/
+# 内部说明文档仅本地；本产品跨端契约必须随交付分发。
+docs/*
+!docs/BRANDED-COMMUNITY-CLOUD-BAG-SPEC.md
 CHANGELOG.md
 
 # AI 参考/说明素材（仅本地；modding-guide.md 构建必需，保留）
@@ -62,6 +63,8 @@ scripts/capture-promo.mjs
 probe*.mjs
 scripts/ai-smoke-test.mjs
 scripts/migrate-data.mjs
+# Vite dev 的 index.html 快照临时文件（本地调试产物，不入库/不入交付）
+/dv.html
 
 # 游戏数据提取脚本（本地工具，不入库；提取产物 units.json 等数据随版本发布）
 scripts/extract-game-data.mjs

@@ -14,6 +14,10 @@ export const CLOUDBAG_ALLOWED_EXTENSIONS = [
 /** 单文件上传上限（J5：V1 无两阶段大文件上传） */
 export const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
 
+/** Windows 保留设备名（与后端 cloudbagDeviceNameRE 及 electron/cloudbagTree.ts 同口径，
+ * 逐路径段判定）：段本身或「设备名 + '.' 后缀」都不得作为路径段。 */
+const DEVICE_NAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i
+
 /** 本地同步锚点：主进程排除打包 + 恢复保护的双边契约（桌面契约 §6.4） */
 export const CLOUD_BAG_ANCHOR_PATH = '.ohmytx/cloud.json'
 
@@ -35,10 +39,18 @@ export function classifyLocalFile(path: string): LocalFileKind {
   return 'binary'
 }
 
+/** 取扩展名：与主进程 electron/cloudbagTree.ts 及后端 validateCloudBagPath 同口径——
+ * 以最后一个 '.' 为界，允许点号位于首位（`.ini`/`sub/.ini` 是后端合法条目，旧 `dot > 0`
+ * 守卫会误拒，导致含此类条目的版本树在桌面端不可拉取）。 */
 function extensionOf(path: string): string {
   const name = path.split('/').pop() ?? path
   const dot = name.lastIndexOf('.')
-  return dot > 0 ? name.slice(dot).toLowerCase() : ''
+  return dot >= 0 ? name.slice(dot).toLowerCase() : ''
+}
+
+/** 与主进程/后端 Go strings.ToLower 同源：逐码点 simple lower，不作 NFC 或 fullfold。 */
+export function cloudBagPathKey(path: string): string {
+  return Array.from(path, (rune) => rune === '\u0130' ? 'i' : rune.toLowerCase()).join('')
 }
 
 /** 树内路径校验（与后端 §1.5 同规则：posix 相对路径，拒 ..、反斜杠、NUL、盘符、超 200 rune）。
@@ -46,14 +58,17 @@ function extensionOf(path: string): string {
  * assertValidName 及主进程 `electron/cloudbagTree.ts` 同口径——`units/tank.ini:evil`
  * 在 NTFS 上会落成备用数据流（ADS），既不进文件树也会让备份/差集判定失真。 */
 export function isValidTreePath(path: string): boolean {
-  if (!path || path.length > 200) return false
+  // 长度按码点计（与后端 utf8.RuneCountInString / 主进程 isCloudBagTreePath 同口径）：
+  // UTF-16 length 会把 astral 字符按 2 计，误拒后端合法的 ≤200 rune 路径。
+  if (!path || [...path].length > 200) return false
   if (path.includes('\\') || path.includes('\0')) return false
   if (/^[A-Za-z]:/.test(path) || path.startsWith('/')) return false
   const segments = path.split('/')
   for (const segment of segments) {
     if (segment === '' || segment === '.' || segment === '..') return false
+    if (DEVICE_NAME_RE.test(segment)) return false
     // eslint-disable-next-line no-control-regex -- 控制字符在路径里不可见且易被滥用
-    if (/[<>:"|?*\x00-\x1f]/.test(segment)) return false
+    if (/[<>:"|?*\x00-\x1f\x7f]/.test(segment)) return false
     if (/[. ]$/.test(segment)) return false
   }
   return CLOUDBAG_ALLOWED_EXTENSIONS.includes(extensionOf(path) as (typeof CLOUDBAG_ALLOWED_EXTENSIONS)[number])
@@ -73,13 +88,19 @@ export interface LocalFilePlan {
 
 export function buildLocalFilePlan(files: LocalFilePlanInput[]): LocalFilePlan {
   const plan: LocalFilePlan = { uploadable: [], oversized: [], unsupported: [] }
+  const paths = new Map<string, string>()
   for (const file of files) {
     if (!isValidTreePath(file.path)) {
       plan.unsupported.push(file)
       continue
     }
     if (file.size > MAX_UPLOAD_FILE_BYTES) plan.oversized.push(file)
-    else plan.uploadable.push(file)
+    else {
+      const key = cloudBagPathKey(file.path)
+      if (paths.has(key)) throw new Error(`云书包路径键冲突：${paths.get(key)} / ${file.path}，请先重命名后发布`)
+      paths.set(key, file.path)
+      plan.uploadable.push(file)
+    }
   }
   return plan
 }
@@ -258,6 +279,15 @@ export interface GateUser {
 export function cloudBagGate(status: CommunityGateStatus, user: GateUser | null): CloudBagGate {
   if (status === 'offline') {
     return { canBrowse: false, canWrite: false, notice: '当前处于离线模式，云书包需要连接社区服务器后使用。' }
+  }
+  // 非 signed_in 状态必须各自如实回文案（桌面契约 §8:245：网络层失败单独文案），
+  // 不得把认证失败/检查中/加载中都折叠成「登录社区账号后…」——那会把网络故障
+  // 误导成「只是没登录」，用户反复登录也解决不了。
+  if (status === 'error') {
+    return { canBrowse: false, canWrite: false, notice: '连接社区服务器失败，请检查网络或社区服务器地址后重试。' }
+  }
+  if (status === 'checking' || status === 'loading') {
+    return { canBrowse: false, canWrite: false, notice: '正在检查社区登录状态，请稍候…' }
   }
   if (status !== 'signed_in') {
     return { canBrowse: false, canWrite: false, notice: '登录社区账号后可使用云书包管理你的模组仓库。' }

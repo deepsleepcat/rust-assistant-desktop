@@ -157,14 +157,14 @@ describe('IPC 通道完整性', () => {
       // game
       'game:detect', 'game:importSample', 'game:importMod', 'game:launch', 'game:openDir', 'game:preflight', 'game:readAssetImage',
       // cloudbag（云书包恢复：拉取覆盖 / 冲突放弃本地改动）
-      'cloudbag:restore',
+      'cloudbag:restore', 'cloudbag:saveRwmod',
       // app
       'app:info', 'app:flush-done', 'app:checkUpdate', 'app:downloadUpdate', 'app:installUpdate',
       // ai
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(83)
+    expect(channels.size).toBe(84)
   })
 })
 

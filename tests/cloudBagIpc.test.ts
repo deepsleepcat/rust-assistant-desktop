@@ -41,12 +41,13 @@ function createFakeIpc(): { channels: Map<string, (...args: never[]) => unknown>
 async function invoke<T>(channels: Map<string, (...args: never[]) => unknown>, channel: string, ...args: unknown[]): Promise<T> {
   const h = channels.get(channel)
   if (!h) throw new Error(`通道未注册：${channel}`)
-  return (h as (...a: unknown[]) => unknown)(undefined, ...args) as Promise<T>
+  return (h as (...a: unknown[]) => unknown)(channel === 'cloudbag:saveRwmod' ? saveEvent : undefined, ...args) as Promise<T>
 }
 
 let tmp: string
 let ctx: IpcContext
 let cleanup: () => Promise<void>
+let saveEvent: { sender: unknown; senderFrame: unknown }
 
 beforeEach(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'ra-cloudbag-'))
@@ -70,6 +71,12 @@ beforeEach(async () => {
     },
     windows: { getAllWindows: () => [] },
   })
+  const frame = { url: 'file:///trusted/dist/index.html' }
+  const contents = { isDestroyed: () => false, mainFrame: frame, getURL: () => frame.url }
+  saveEvent = { sender: contents, senderFrame: frame }
+  ctx.cloudbagRendererUrl = frame.url
+  ctx.windows.getAllWindows = () => [{ isDestroyed: () => false, destroy: () => undefined,
+    webContents: contents as NonNullable<ReturnType<IpcContext['windows']['getAllWindows']>[number]['webContents']> }]
   await store.ready()
   cleanup = async () => {
     await store.flush().catch(() => undefined)
@@ -206,12 +213,135 @@ describe('community:request 云书包下载规则表', () => {
   })
 })
 
+describe('cloudbag:saveRwmod（原生对话框授权 + 真实文件 IO）', () => {
+  async function packageBytes(): Promise<ArrayBuffer> {
+    const zip = new JSZip()
+    zip.file('tank.ini', '[core]')
+    return zip.generateAsync({ type: 'arraybuffer' })
+  }
+
+  it('foreign sender、子 frame、外部/未配置页面来源均拒绝，不能打开保存对话框', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCloudbagIpc(ctx, ipc)
+    const bytes = await packageBytes()
+    ctx.dialog.showSaveDialog = vi.fn(async () => ({ canceled: true, filePath: '' }))
+    const handler = channels.get('cloudbag:saveRwmod')! as (...args: unknown[]) => Promise<unknown>
+    for (const event of [undefined, { sender: {}, senderFrame: saveEvent.senderFrame }, { sender: saveEvent.sender, senderFrame: { url: ctx.cloudbagRendererUrl } }]) {
+      await expect(handler(event, 'test.rwmod', bytes)).rejects.toThrow('受信应用窗口')
+    }
+    const frame = saveEvent.senderFrame as { url: string }
+    frame.url = 'https://external.example/index.html'
+    await expect(handler(saveEvent, 'test.rwmod', bytes)).rejects.toThrow('页面来源')
+    frame.url = 'file:///trusted/dist/index.html'
+    ctx.cloudbagRendererUrl = null
+    await expect(handler(saveEvent, 'test.rwmod', bytes)).rejects.toThrow('受信应用窗口')
+    expect(ctx.dialog.showSaveDialog).not.toHaveBeenCalled()
+  })
+
+  it('取消不写盘；确认后完成落盘再返回路径与大小', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCloudbagIpc(ctx, ipc)
+    const bytes = await packageBytes()
+    expect(await invoke(channels, 'cloudbag:saveRwmod', 'test.rwmod', bytes)).toEqual({ canceled: true })
+    const target = path.join(tmp, 'saved.rwmod')
+    await expect(fs.stat(target)).rejects.toThrow()
+    ctx.dialog.showSaveDialog = vi.fn(async () => ({ canceled: false, filePath: target }))
+    await fs.writeFile(target, 'old')
+    expect(await invoke(channels, 'cloudbag:saveRwmod', 'test.rwmod', bytes)).toEqual({ canceled: false, filePath: target, size: bytes.byteLength })
+    expect(await fs.readFile(target)).toEqual(Buffer.from(bytes))
+    expect(ctx.dialog.showSaveDialog).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: 'test.rwmod', filters: [{ name: '铁锈战争模组包', extensions: ['rwmod'] }] }))
+    expect((await fs.readdir(tmp)).filter((name) => name.startsWith('.cloudbag-'))).toEqual([])
+  })
+
+  it('拒绝任意路径、URL、扩展名、设备名、非包数据与超限，且不打开对话框', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCloudbagIpc(ctx, ipc)
+    ctx.dialog.showSaveDialog = vi.fn(async () => ({ canceled: true, filePath: '' }))
+    const bytes = await packageBytes()
+    for (const name of ['../x.rwmod', 'C:\\x.rwmod', 'https://x/a.rwmod', 'x.exe', 'nul.rwmod', 'x\x7f.rwmod']) {
+      await expect(invoke(channels, 'cloudbag:saveRwmod', name, bytes)).rejects.toThrow('文件名无效')
+    }
+    for (const invalid of ['not-buffer', new ArrayBuffer(0), new ArrayBuffer(22), new ArrayBuffer(50 * 1024 * 1024 + 1)]) {
+      await expect(invoke(channels, 'cloudbag:saveRwmod', 'x.rwmod', invalid)).rejects.toThrow()
+    }
+    expect(ctx.dialog.showSaveDialog).not.toHaveBeenCalled()
+  })
+
+  it('对话框选择错误扩展名或目标写盘失败：抛错且不残留临时文件', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerCloudbagIpc(ctx, ipc)
+    const bytes = await packageBytes()
+    ctx.dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(tmp, 'x.exe') })
+    await expect(invoke(channels, 'cloudbag:saveRwmod', 'x.rwmod', bytes)).rejects.toThrow('.rwmod')
+    const directory = path.join(tmp, 'directory.rwmod')
+    await fs.mkdir(directory)
+    ctx.dialog.showSaveDialog = async () => ({ canceled: false, filePath: directory })
+    await expect(invoke(channels, 'cloudbag:saveRwmod', 'x.rwmod', bytes)).rejects.toThrow()
+    expect((await fs.readdir(tmp)).filter((name) => name.startsWith('.cloudbag-'))).toEqual([])
+    expect((await fs.stat(directory)).isDirectory()).toBe(true)
+  })
+})
+
 describe('cloudbag:restore（主进程恢复通道）', () => {
   function makeZip(files: Record<string, string>): Promise<Buffer> {
     const zip = new JSZip()
     for (const [name, content] of Object.entries(files)) zip.file(name, content)
     return zip.generateAsync({ type: 'nodebuffer' })
   }
+
+  it('包内 Unicode simple-lower 键冲突写盘前拒绝，非冲突组合保留', async () => {
+    for (const [left, right] of [['A', 'a'], ['İ', 'i'], ['É', 'é'], ['Σ', 'σ'], ['K', 'k'], ['ΟΣ', 'οσ']]) {
+      await expect(restoreRwmod(await makeZip({ [`${left}.ini`]: 'one', [`${right}.ini`]: 'two' }), tmp, 1)).rejects.toThrow('路径键冲突')
+    }
+    expect(await fs.readdir(tmp)).not.toContain('A.ini')
+    for (const [left, right] of [['é', 'e'], ['ß', 'ss'], ['ς', 'σ'], ['e\u0301', 'é']]) {
+      const zip = await makeZip({ [`${left}.ini`]: 'one', [`${right}.ini`]: 'two' })
+      const { validateZipEntries } = await import('../electron/cloudbagRestore')
+      expect((await validateZipEntries(zip)).entries).toHaveLength(2)
+    }
+  })
+
+  it('同 simple-lower 键但磁盘不同文件：旧本地文件移入备份，不遗留旧内容', async () => {
+    const root = path.join(tmp, 'unicode-local')
+    await fs.mkdir(root)
+    await fs.writeFile(path.join(root, 'İ.ini'), 'old')
+    const oldStat = await fs.stat(path.join(root, 'İ.ini'))
+    const result = await restoreRwmod(await makeZip({ 'i.ini': 'remote' }), root, 1)
+    expect(await fs.readFile(path.join(root, 'i.ini'), 'utf8')).toBe('remote')
+    const newStat = await fs.stat(path.join(root, 'i.ini'))
+    if (oldStat.ino !== newStat.ino) {
+      expect(result.movedList).toContain('İ.ini')
+      expect(await fs.readFile(path.join(root, result.backupDir, 'İ.ini'), 'utf8')).toBe('old')
+      await expect(fs.stat(path.join(root, 'İ.ini'))).rejects.toThrow()
+    } else {
+      expect(result.removed).toBe(0)
+      expect(await fs.readFile(path.join(root, result.backupDir, 'i.ini'), 'utf8')).toBe('old')
+    }
+  })
+
+  it('DEL 本地文件留原位且不备份；远端 DEL 条目在写盘前拒绝', async () => {
+    const root = path.join(tmp, 'del-path')
+    await fs.mkdir(root)
+    const invalidName = 'bad\x7f.ini'
+    await fs.writeFile(path.join(root, invalidName), 'local')
+    const result = await restoreRwmod(await makeZip({ 'keep.ini': 'remote' }), root, 1)
+    expect(await fs.readFile(path.join(root, invalidName), 'utf8')).toBe('local')
+    expect(result.movedList).not.toContain(invalidName)
+    await expect(fs.stat(path.join(root, result.backupDir, invalidName))).rejects.toThrow()
+    await expect(restoreRwmod(await makeZip({ [invalidName]: 'bad-remote', 'keep.ini': 'changed' }), root, 2)).rejects.toThrow()
+    expect(await fs.readFile(path.join(root, 'keep.ini'), 'utf8')).toBe('remote')
+  })
+
+  it('合法 ..name 首段允许恢复并备份，仍拒绝真正的父路径', async () => {
+    const root = path.join(tmp, 'dot-prefix')
+    await fs.mkdir(root)
+    await fs.writeFile(path.join(root, '..name.ini'), 'old')
+    const result = await restoreRwmod(await makeZip({ '..name.ini': 'new', '..assets/unit.ini': 'unit' }), root, 2)
+    expect(await fs.readFile(path.join(root, '..name.ini'), 'utf8')).toBe('new')
+    expect(await fs.readFile(path.join(root, '..assets/unit.ini'), 'utf8')).toBe('unit')
+    expect(await fs.readFile(path.join(root, result.backupDir, '..name.ini'), 'utf8')).toBe('old')
+    await expect(restoreRwmod(await makeZip({ 'C:/escape.ini': 'x' }), root, 3)).rejects.toThrow('盘符路径')
+  })
 
   it('未登记项目根拒绝；非 ArrayBuffer/非法版本号拒绝', async () => {
     const { channels, ipc } = createFakeIpc()
@@ -277,6 +407,27 @@ describe('cloudbag:restore（主进程恢复通道）', () => {
     expect(await fs.readFile(path.join(root, 'units', 'tank.ini'), 'utf8')).toBe('safe')
     expect(await fs.readdir(root)).toEqual(['units'])
     expect(await fs.readdir(path.join(root, 'units'))).toEqual(['tank.ini'])
+  })
+
+  it('树内白名单 fail-closed：白名单外扩展名条目整次中止，不写入项目根', async () => {
+    const root = path.join(tmp, 'proj-whitelist')
+    await fs.mkdir(root, { recursive: true })
+    // 后端入库已拒白名单外扩展名（正常版本树不含这些），但写入侧必须有自己的防线：
+    // 被攻陷/恶意服务端可绕过入库把任意文件写进项目根
+    for (const name of ['.gitignore', 'evil.exe', '.vscode/settings.json', 'pack.rwmod']) {
+      await expect(restoreRwmod(await makeZip({ [name]: 'x' }), root, 1)).rejects.toThrow('云书包不支持的条目')
+    }
+    expect(await fs.readdir(root)).toEqual([])
+  })
+
+  it('设备名按每个路径段判定（与后端 validateCloudBagPath 同口径）：con/aux 目录段整次中止', async () => {
+    const root = path.join(tmp, 'proj-devseg')
+    await fs.mkdir(root, { recursive: true })
+    // 旧实现只看最后一段（tank.ini/x.ini），放行 con/tank.ini → Windows 上 fs.mkdir('con') 失败
+    // → 整次恢复回滚（可用性拒绝）
+    await expect(restoreRwmod(await makeZip({ 'con/tank.ini': 'x' }), root, 1)).rejects.toThrow('系统保留文件名')
+    await expect(restoreRwmod(await makeZip({ 'aux/units/x.ini': 'x' }), root, 1)).rejects.toThrow('系统保留文件名')
+    expect(await fs.readdir(root)).toEqual([])
   })
 
   it('写盘中途失败回滚：恢复被覆盖文件、删除新建文件', async () => {
@@ -397,6 +548,35 @@ describe('cloudbag:restore（主进程恢复通道）', () => {
     expect(await fs.readFile(path.join(root, '.ohmytx', 'cloud.json'), 'utf8')).toBe('{"repoSlug":"real"}')
     expect(await fs.readFile(path.join(root, 'units', 'tank.ini'), 'utf8')).toBe('ok')
   })
+
+  // NTFS/APFS 上磁盘的 `Units/Tank.ini` 与 zip 条目 `units/tank.ini` 是同一个文件：
+  // 用大小写敏感比较会把刚写入的远端文件当成「zip 外多余文件」移进备份，导致工作树
+  // 丢掉远端树里存在的文件、备份里的用户原始内容被远端内容覆盖（本机 NTFS 实测复现）。
+  it.skipIf(process.platform !== 'win32' && process.platform !== 'darwin')(
+    '大小写不敏感文件系统：磁盘大小写与 zip 条目不同时不得移走文件、不得覆盖备份',
+    async () => {
+      const root = path.join(tmp, 'proj-case-fold')
+      await fs.mkdir(path.join(root, 'Units'), { recursive: true })
+      await fs.writeFile(path.join(root, 'Units', 'Tank.ini'), 'ORIGINAL', 'utf8')
+
+      const first = await restoreRwmod(await makeZip({ 'units/tank.ini': 'REMOTE' }), root, 11)
+      expect(first.removed).toBe(0)
+      expect(first.movedList).toEqual([])
+      // 工作树保留远端树里的这个文件（内容为远端内容）
+      expect(await fs.readFile(path.join(root, 'Units', 'Tank.ini'), 'utf8')).toBe('REMOTE')
+      // 备份仍是用户原始内容，没有被刚写入的远端内容覆盖
+      expect(await fs.readFile(path.join(root, '.ohmytx', 'backup', '11', 'units', 'tank.ini'), 'utf8')).toBe('ORIGINAL')
+
+      // 本地目录 units/ 与远端条目 Units/new.ini 同理：刚写入的新文件不得被移进备份
+      const root2 = path.join(tmp, 'proj-case-fold-2')
+      await fs.mkdir(path.join(root2, 'units'), { recursive: true })
+      const second = await restoreRwmod(await makeZip({ 'Units/new.ini': 'NEW' }), root2, 12)
+      expect(second.removed).toBe(0)
+      expect(second.movedList).toEqual([])
+      expect(await fs.readFile(path.join(root2, 'units', 'new.ini'), 'utf8')).toBe('NEW')
+      expect(await fs.access(path.join(root2, '.ohmytx', 'backup', '12')).then(() => true, () => false)).toBe(false)
+    },
+  )
 
   it('大小写变体的危险目录条目整次中止（.GIT / 嵌套 node_modules 不得写进项目根）', async () => {
     const root = path.join(tmp, 'proj-excl-case')

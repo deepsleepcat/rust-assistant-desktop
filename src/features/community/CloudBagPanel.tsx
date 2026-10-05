@@ -109,12 +109,14 @@ function CreateRepoModal({ api, onClose, onCreated }: { api: CloudBagApi; onClos
  *    zip-slip / 20000 条目 / 128MB 单文件 / 512MB 总量 / 设备名 / 失败回滚）解包出的目录。
  * 两条路都走同一条推送链路（pushLocalTree），不新增第二条上传通道。
  */
-function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose, onImported }: {
+function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose, onImported, onRepoCreated }: {
   api: CloudBagApi
   activeProjectName: string | null
   activeProjectPath: string | null
   onClose: () => void
   onImported: (slug: string) => void
+  /** 导入中途取消/失败但仓库已在服务端建成：仓库列表必须立即重取（否则关窗后仍见旧列表） */
+  onRepoCreated: () => void
 }) {
   const bridge = getBridge()
   const [source, setSource] = useState<'project' | 'rwmod'>(activeProjectPath ? 'project' : 'rwmod')
@@ -182,6 +184,9 @@ function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose
       return
     }
     const created = outcome.repo ? `（仓库「${outcome.repo.title}」已创建，可在仓库列表打开后重试「发布新版本」）` : ''
+    // 仓库已建成即刷新列表：文案说「可在仓库列表打开」，列表就不得停留在取数前的空/旧快照
+    // （onClose 只关弹窗，不会触发 CloudBagPanel 的重取 effect）。
+    if (outcome.repo) onRepoCreated()
     setError(`${outcome.status === 'aborted' ? '已取消导入' : (outcome.error ?? '导入失败')}${created}`)
   }
 
@@ -191,7 +196,12 @@ function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose
 
   return (
     <Modal title="导入到云书包" onClose={busy ? () => undefined : onClose} footer={<>
-      <button className="btn" disabled={busy} onClick={onClose}>取消</button>
+      {/* busy 期间必须保留一个协作式取消出口（与同步弹窗同一语义）：大文件树导入
+          只能等它跑完且无法取消是死路。发出取消后完成当前文件即停（IPC 不可中断）；
+          仓库已创建时会如实提示（服务端不回滚）。 */}
+      {busy
+        ? <button className="btn" onClick={() => { abortRef.current = true }} title="发出取消：完成当前文件后停止上传（传输中的单个文件不可中断）">取消导入</button>
+        : <button className="btn" onClick={onClose}>取消</button>}
       <button className="btn primary" disabled={busy} onClick={() => void submit()}>{busy ? '导入中…' : '创建仓库并导入'}</button>
     </>}>
       <div className="community-form">
@@ -323,19 +333,25 @@ export function CloudBagPanel({ onOpenLogin, onOpenSettings, onUnauthorized, ref
   // 渲染详情并发出必然失败的请求——先给出状态说明与登录入口。
   if (!gate.canBrowse) {
     const offline = communityAuth.status === 'offline'
+    const errored = communityAuth.status === 'error'
+    const checking = communityAuth.status === 'checking' || communityAuth.status === 'loading'
     // 离线重试期间渲染进行中反馈（旧实现复用 loading，离线首帧会假报「正在重试」）
     if (offline && retrying) return <PanelState kind="loading" title="正在重试连接社区服务器…" />
+    // 标题必须与真实状态一致：认证失败/检查中若仍写「尚未登录社区账号」，会与头部
+    // 徽标（连接异常/检查中）和 gate.notice（网络失败文案）三者互相矛盾。
+    const title = offline ? '离线模式' : errored ? '连接社区服务器失败' : checking ? '正在检查社区登录状态…' : '尚未登录社区账号'
     return (
       <div className="cloudbag-body">
         <PanelState
           kind="empty"
           icon="cloud"
-          title={offline ? '离线模式' : '尚未登录社区账号'}
+          title={title}
           description={gate.notice}
-          // 离线态同样给「登录社区」：否则用户只剩必然失败的「重试」，陷入软死路
+          // 离线/连接失败态同样给「登录社区」：否则用户只剩可能失败的「重试」，陷入软死路
           // （离线态粘滞，后台复检被 workspace 跳过）。
           action={<button className="btn primary" onClick={onOpenLogin}>登录社区</button>}
-          onRetry={offline ? () => void load(true) : undefined}
+          // 网络层失败（§8:245）与离线都必须有真实重试出口
+          onRetry={offline || errored ? () => void load(true) : undefined}
           retryLabel={retrying ? '重试中…' : '重试'}
         />
         {error && <div className="local-note community-warning">{error}</div>}
@@ -419,6 +435,7 @@ export function CloudBagPanel({ onOpenLogin, onOpenSettings, onUnauthorized, ref
           activeProjectName={activeProject?.name ?? null}
           activeProjectPath={activeProject?.rootPath ?? null}
           onClose={() => setImportOpen(false)}
+          onRepoCreated={() => setListRefreshKey((n) => n + 1)}
           onImported={(slug) => { setImportOpen(false); setCloudBagView({ slug, section: 'versions' }) }}
         />
       )}

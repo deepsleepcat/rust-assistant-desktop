@@ -353,13 +353,23 @@ export function CommunityPanel() {
   const onCloudBagReachability = useCallback((reachable: boolean | null) => {
     setCloudBagReach({ key: reachKey, reachable })
   }, [reachKey])
+  // 徽标必须取自 communityAuth 真实状态（桌面契约 §5:113）：仅凭云书包页签可达性回落
+  // success 会在「认证失败/检查中/未登录」时谎报「在线」——云书包页签在未登录时根本不发
+  // 请求，onReachabilityChange(null) 使 cloudBagReachable 保持 null，正文却显示「尚未登录」。
+  const authStatus = communityAuth.status
   const badge = offline
     ? { cls: 'warning', label: '离线', title: '未连接社区服务器' }
     : cloudBagDown
       ? { cls: 'warning', label: '连接异常', title: '社区服务器当前不可用：云书包请求失败（详见正文）' }
       : localMode
         ? { cls: 'info', label: '本地示例', title: '服务器不可用时展示内置示例数据' }
-        : { cls: 'success', label: '在线', title: '已连接社区服务器' }
+        : authStatus === 'error'
+          ? { cls: 'warning', label: '连接异常', title: communityAuth.error || '社区服务器当前不可用：登录状态检查失败' }
+          : authStatus === 'checking' || authStatus === 'loading'
+            ? { cls: 'info', label: '检查中', title: '正在检查社区登录状态' }
+            : authStatus === 'signed_out'
+              ? { cls: 'info', label: '未登录', title: '尚未登录社区账号；公开内容仍可浏览' }
+              : { cls: 'success', label: '在线', title: '已连接社区服务器' }
 
   return (
     <section className="community-panel panel">

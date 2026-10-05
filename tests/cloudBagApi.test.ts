@@ -29,6 +29,31 @@ function fail(code: string, data: unknown = null): Response {
 }
 
 describe('cloudBagApi 请求形状', () => {
+  it('文件预览允许 ..name，拒绝父段与绝对路径', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      expect(new URL(String(input)).searchParams.get('path')).toBe('..assets/unit.ini')
+      return new Response('unit', { headers: { 'content-type': 'text/plain' } })
+    })
+    const api = createCloudBagApi(ENDPOINT, fetcher)
+    expect(new TextDecoder().decode((await api.file('repo', 1, '..assets/unit.ini')).bytes)).toBe('unit')
+    for (const invalid of ['../unit.ini', 'units/../unit.ini', '/unit.ini', 'C:/unit.ini']) {
+      await expect(api.file('repo', 1, invalid)).rejects.toMatchObject({ kind: 'invalid_path' })
+    }
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+  it('发布/分享历史 GET 按 items 信封读取，重复加载不依赖创建会话', async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const pathname = new URL(String(input)).pathname
+      expect(init?.method ?? 'GET').toBe('GET')
+      expect(pathname).toMatch(/^\/api\/community\/cloudbag\/repos\/repo\/(releases|shares)$/)
+      return ok({ items: [{ id: 9, versionNo: 1 }] })
+    })
+    const api = createCloudBagApi(ENDPOINT, fetcher)
+    expect((await api.releases('repo')).items[0].id).toBe(9)
+    expect((await api.shares('repo')).items[0].id).toBe(9)
+    expect((await api.shares('repo')).items[0].id).toBe(9)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+  })
   it('仓库列表走 mine/q/page 查询参数，认证意图标记（不带本地令牌）', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input))

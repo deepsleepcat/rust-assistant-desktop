@@ -125,6 +125,11 @@ export interface CloudBagShare {
   url?: string
   token?: string
   expiresAt: number | null
+  versionNo?: number | null
+  maxDownloads?: number
+  downloadCount?: number
+  revokedAt?: number
+  createdAt?: number
 }
 
 /** version_conflict 应答里的远端 head 摘要（后端 cloudbag_version.go 的 headSummary 对象；
@@ -525,7 +530,7 @@ export function createCloudBagApi(
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
       try {
-        if (!path || path.includes('..') || path.includes('\\') || path.includes('\0')) {
+        if (!path || path.startsWith('/') || /^[A-Za-z]:/.test(path) || path.split('/').some((segment) => segment === '' || segment === '.' || segment === '..') || path.includes('\\') || path.includes('\0')) {
           throw new CloudBagApiError('文件路径不合法', { kind: 'invalid_path' })
         }
         const response = await fetchImpl(`${base}/api/community/cloudbag/repos/${assertSlug(slug)}/versions/${assertVersionNo(versionNo)}/file?${query({ path })}`, {
@@ -602,6 +607,7 @@ export function createCloudBagApi(
       return { versionNo }
     },
     releases: (slug: string) => request<CloudBagPage<CloudBagRelease>>(`/api/community/cloudbag/repos/${assertSlug(slug)}/releases`),
+    shares: (slug: string) => request<CloudBagPage<CloudBagShare>>(`/api/community/cloudbag/repos/${assertSlug(slug)}/shares`),
     createRelease: async (slug: string, input: { versionNo: number; name?: string; notes: string }) =>
       unwrapKey<CloudBagRelease>(await json<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/releases`, 'POST', {
         version_no: input.versionNo,
@@ -688,6 +694,7 @@ export interface CloudBagApi {
   uploadBlob(slug: string, input: BlobUploadInput, onProgress?: (sentBytes: number) => void): Promise<void>
   pushVersion(slug: string, input: PushCloudBagVersionInput): Promise<{ versionNo: number }>
   releases(slug: string): Promise<CloudBagPage<CloudBagRelease>>
+  shares(slug: string): Promise<CloudBagPage<CloudBagShare>>
   createRelease(slug: string, input: { versionNo: number; name?: string; notes: string }): Promise<CloudBagRelease>
   revokeRelease(slug: string, releaseId: number): Promise<null>
   members(slug: string): Promise<CloudBagPage<CloudBagMember>>

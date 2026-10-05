@@ -159,6 +159,8 @@ export interface BridgeApi {
   auth?: AuthApi
   /** 云书包（社区模组仓库）受限主进程能力：把服务端打包的 .rwmod 安全恢复进已登记项目。 */
   cloudbag?: {
+    /** 有限大小 .rwmod 包另存为；路径仅来自原生对话框，写盘完成才返回成功。 */
+    saveRwmod?(filename: string, bytes: ArrayBuffer): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number }>
     /** 用 export.rwmod 覆盖本地项目树（拉取版本 / 冲突「放弃本地改动」出口）。
      * 主进程负责：已存在文件的本地备份（.ohmytx/backup/<versionNo>/，同版本重复拉取改用
      * 唯一后缀目录，绝不覆盖旧备份）→ 全量校验 → 逐文件写盘 → 把 zip 外的本地多余文件

@@ -7,7 +7,7 @@
  * - 幂等：client_op_id 每次推送生成唯一键
  */
 import { describe, expect, it, vi } from 'vitest'
-import { pushLocalTree, pullRemoteVersion, readCloudBagAnchor, judgeLocalChanged, writeCloudBagAnchor, importTreeToNewRepo, isCloudBagInternalPath, type SyncHost } from '../src/services/cloudBagSync'
+import { pushLocalTree, pullRemoteVersion, readCloudBagAnchor, judgeLocalChanged, listLocalChanges, writeCloudBagAnchor, importTreeToNewRepo, isCloudBagInternalPath, type SyncHost } from '../src/services/cloudBagSync'
 import type { CloudBagApi, CloudBagApiError, CloudBagHeadSummary, CloudBagRepo } from '../src/services/cloudBagApi'
 import type { BridgeApi } from '../src/types/bridge'
 
@@ -57,6 +57,40 @@ function host(bridge: BridgeApi, api: CloudBagApi, isAborted = () => false): Syn
 }
 
 describe('pushLocalTree（推送全链路）', () => {
+  it('本地 simple-lower 路径键冲突：开会话和上传前拒绝，要求重命名', async () => {
+    const openSession = vi.fn()
+    const uploadBlob = vi.fn()
+    const outcome = await pushLocalTree(host(textBridge({ 'İ.ini': 'one', 'i.ini': 'two' }), fakeApi({ openSession, uploadBlob })), { message: '更新', baseVersionNo: 3 })
+    expect(outcome).toMatchObject({ status: 'failed', error: expect.stringContaining('路径键冲突') })
+    expect(openSession).not.toHaveBeenCalled()
+    expect(uploadBlob).not.toHaveBeenCalled()
+  })
+
+  it('最后一次上传在途取消：返回 aborted 且不提交版本', async () => {
+    let aborted = false
+    const pushVersion = vi.fn(async () => ({ versionNo: 4 }))
+    const api = fakeApi({ uploadBlob: async () => { aborted = true }, pushVersion })
+    const outcome = await pushLocalTree(host(textBridge({ 'tank.ini': '[core]' }), api, () => aborted), { message: '更新', baseVersionNo: 3 })
+    expect(outcome.status).toBe('aborted')
+    expect(pushVersion).not.toHaveBeenCalled()
+  })
+
+  it('committing 通知触发取消：请求发出前仍可中止', async () => {
+    let aborted = false
+    const pushVersion = vi.fn(async () => ({ versionNo: 4 }))
+    const syncHost = host(textBridge({ 'tank.ini': '[core]' }), fakeApi({ pushVersion }), () => aborted)
+    syncHost.onProgress = (progress) => { if (progress.phase === 'committing') aborted = true }
+    expect((await pushLocalTree(syncHost, { message: '更新', baseVersionNo: 3 })).status).toBe('aborted')
+    expect(pushVersion).not.toHaveBeenCalled()
+  })
+
+  it('提交发出后取消：返回真实版本结果而非 aborted', async () => {
+    let aborted = false
+    const api = fakeApi({ pushVersion: async () => { aborted = true; return { versionNo: 4 } } })
+    const outcome = await pushLocalTree(host(textBridge({ 'tank.ini': '[core]' }), api, () => aborted), { message: '更新', baseVersionNo: 3 })
+    expect(outcome).toMatchObject({ status: 'pushed', versionNo: 4 })
+  })
+
   it('会话 → 逐文件 blob（sha256 去重形状）→ 原子建版本，白名单外二进制跳过', async () => {
     const calls: Array<{ path: string; body: unknown }> = []
     const api = fakeApi({}, calls)
@@ -99,6 +133,163 @@ describe('pushLocalTree（推送全链路）', () => {
     expect(outcome.uploaded).toEqual(['units/tank.ini'])
   })
 
+  it('内存：逐文件两趟读取（哈希 + 上传各一次），整批字节不随 prepared 常驻', async () => {
+    const files: Record<string, string> = { 'units/a.ini': 'AA', 'units/b.ini': 'BB' }
+    let reads = 0
+    const bridge = {
+      project: {
+        readFile: async (_root: string, abs: string) => {
+          reads += 1
+          const hit = Object.entries(files).find(([key]) => abs.replace(/\\/g, '/').endsWith(key))
+          if (!hit) throw new Error('ENOENT')
+          return { content: hit[1], hasBom: false, mtimeMs: 0, size: hit[1].length }
+        },
+        writeFile: vi.fn(async () => undefined),
+        createFolder: vi.fn(async () => undefined),
+        stat: async () => ({ mtimeMs: 0, size: 10 }),
+      },
+      mod: { scanResources: async () => ({ files: Object.keys(files), unitNames: [] }) },
+      git: { status: async () => [] },
+    } as unknown as BridgeApi
+    const uploaded: string[] = []
+    const api = fakeApi({ uploadBlob: async (_slug, input) => { uploaded.push(input.path) } })
+    const outcome = await pushLocalTree(host(bridge, api), { message: 'm', baseVersionNo: 0 })
+    expect(outcome.status).toBe('pushed')
+    expect([...uploaded].sort()).toEqual(['units/a.ini', 'units/b.ini'])
+    // 每个文件被读两次：哈希一趟 + 上传一趟——上传阶段重读而非依赖整批常驻字节。
+    expect(reads).toBe(4)
+  })
+
+  it('第二趟读取失败与第一趟同口径：计入 skipped、整推仍成功且提交清单不含该文件', async () => {
+    const files: Record<string, string> = { 'units/a.ini': 'AA', 'units/b.ini': 'BB' }
+    const reads: Record<string, number> = {}
+    const bridge = {
+      project: {
+        readFile: async (_root: string, abs: string) => {
+          const key = Object.keys(files).find((candidate) => abs.replace(/\\/g, '/').endsWith(candidate))!
+          reads[key] = (reads[key] ?? 0) + 1
+          // b.ini 第一趟可读，第二趟（发布期间）不可读
+          if (key === 'units/b.ini' && reads[key] >= 2) throw new Error('deleted mid-push')
+          return { content: files[key], hasBom: false, mtimeMs: 0, size: files[key].length }
+        },
+        writeFile: vi.fn(async () => undefined),
+        createFolder: vi.fn(async () => undefined),
+        stat: async () => ({ mtimeMs: 0, size: 10 }),
+      },
+      mod: { scanResources: async () => ({ files: Object.keys(files), unitNames: [] }) },
+      git: { status: async () => [] },
+    } as unknown as BridgeApi
+    const calls: Array<{ path: string; body: unknown }> = []
+    const api = fakeApi({}, calls)
+    const outcome = await pushLocalTree(host(bridge, api), { message: 'm', baseVersionNo: 0 })
+    expect(outcome.status).toBe('pushed')
+    expect(outcome.uploaded).toEqual(['units/a.ini'])
+    expect(outcome.skippedBinary.some((item) => item.startsWith('units/b.ini'))).toBe(true)
+    const versionCall = calls.find((call) => call.path.endsWith('/versions'))
+    expect((versionCall?.body as { files: Array<{ path: string }> }).files.map((file) => file.path)).toEqual(['units/a.ini'])
+  })
+
+  it('object_hash_mismatch（文件在哈希后被改动）：重读重算 sha 后重试成功，不整推中止', async () => {
+    const contents: Record<string, string[]> = { 'units/a.ini': ['AA'], 'units/b.ini': ['BB', 'B2'] }
+    const reads: Record<string, number> = {}
+    const bridge = {
+      project: {
+        readFile: async (_root: string, abs: string) => {
+          const key = Object.keys(contents).find((candidate) => abs.replace(/\\/g, '/').endsWith(candidate))!
+          reads[key] = (reads[key] ?? 0) + 1
+          const list = contents[key]
+          const content = list[Math.min(reads[key] - 1, list.length - 1)]
+          return { content, hasBom: false, mtimeMs: 0, size: content.length }
+        },
+        writeFile: vi.fn(async () => undefined),
+        createFolder: vi.fn(async () => undefined),
+        stat: async () => ({ mtimeMs: 0, size: 10 }),
+      },
+      mod: { scanResources: async () => ({ files: Object.keys(contents), unitNames: [] }) },
+      git: { status: async () => [] },
+    } as unknown as BridgeApi
+    const blobs: Array<{ path: string; sha256: string }> = []
+    let bAttempts = 0
+    const calls: Array<{ path: string; body: unknown }> = []
+    const api = fakeApi({
+      uploadBlob: async (_slug, input) => {
+        blobs.push({ path: input.path, sha256: input.sha256 })
+        // 第一次用旧 sha 上传改动后的内容 → 服务端 object_hash_mismatch；重算 sha 后应成功
+        if (input.path === 'units/b.ini' && ++bAttempts === 1) {
+          throw Object.assign(new Error('hash mismatch'), { kind: 'object_hash_mismatch' })
+        }
+      },
+    }, calls)
+    const outcome = await pushLocalTree(host(bridge, api), { message: 'm', baseVersionNo: 0 })
+    expect(outcome.status).toBe('pushed')
+    const bBlobs = blobs.filter((item) => item.path === 'units/b.ini')
+    expect(bBlobs).toHaveLength(2)
+    expect(bBlobs[1].sha256).not.toBe(bBlobs[0].sha256)
+    const versionCall = calls.find((call) => call.path.endsWith('/versions'))
+    const files = (versionCall?.body as { files: Array<{ path: string; sha256: string }> }).files
+    expect(files.find((file) => file.path === 'units/b.ini')?.sha256).toBe(bBlobs[1].sha256)
+  })
+
+  it('object_hash_mismatch 持续不一致：计入 skipped 并继续，整推仍成功（不盲目 3 次重传）', async () => {
+    const files: Record<string, string> = { 'units/a.ini': 'AA', 'units/b.ini': 'BB' }
+    const calls: Array<{ path: string; body: unknown }> = []
+    let bAttempts = 0
+    const api = fakeApi({
+      uploadBlob: async (_slug, input) => {
+        if (input.path === 'units/b.ini') {
+          bAttempts += 1
+          throw Object.assign(new Error('hash mismatch'), { kind: 'object_hash_mismatch' })
+        }
+      },
+    }, calls)
+    const outcome = await pushLocalTree(host(textBridge(files), api), { message: 'm', baseVersionNo: 0 })
+    expect(outcome.status).toBe('pushed')
+    expect(outcome.uploaded).toEqual(['units/a.ini'])
+    expect(outcome.skippedBinary.some((item) => item.startsWith('units/b.ini'))).toBe(true)
+    // 确定性失败不再盲重试满 3 次：首次 + 重读重算后一次后即放弃
+    expect(bAttempts).toBe(2)
+    const versionCall = calls.find((call) => call.path.endsWith('/versions'))
+    expect((versionCall?.body as { files: Array<{ path: string }> }).files.map((file) => file.path)).toEqual(['units/a.ini'])
+  })
+
+  it('object_hash_mismatch 重读后文件跨过 50MiB：计入 oversized 并继续，不整推中止', async () => {
+    // pass2 读到的小内容触发 mismatch；重读（并发改写后）才跨过 50MiB → 必须走 oversized
+    const big = 'x'.repeat(50 * 1024 * 1024 + 1)
+    const contents: Record<string, string[]> = { 'units/a.ini': ['AA'], 'units/b.ini': ['BB', 'B2', big] }
+    const reads: Record<string, number> = {}
+    const bridge = {
+      project: {
+        readFile: async (_root: string, abs: string) => {
+          const key = Object.keys(contents).find((candidate) => abs.replace(/\\/g, '/').endsWith(candidate))!
+          reads[key] = (reads[key] ?? 0) + 1
+          const list = contents[key]
+          const content = list[Math.min(reads[key] - 1, list.length - 1)]
+          return { content, hasBom: false, mtimeMs: 0, size: content.length }
+        },
+        writeFile: vi.fn(async () => undefined),
+        createFolder: vi.fn(async () => undefined),
+        stat: async () => ({ mtimeMs: 0, size: 10 }),
+      },
+      mod: { scanResources: async () => ({ files: Object.keys(contents), unitNames: [] }) },
+      git: { status: async () => [] },
+    } as unknown as BridgeApi
+    const calls: Array<{ path: string; body: unknown }> = []
+    let bAttempts = 0
+    const api = fakeApi({
+      uploadBlob: async (_slug, input) => {
+        if (input.path === 'units/b.ini') {
+          bAttempts += 1
+          throw Object.assign(new Error('hash mismatch'), { kind: 'object_hash_mismatch' })
+        }
+      },
+    }, calls)
+    const outcome = await pushLocalTree(host(bridge, api), { message: 'm', baseVersionNo: 0 })
+    expect(outcome.status).toBe('pushed')
+    expect(outcome.uploaded).toEqual(['units/a.ini'])
+    expect(outcome.oversized).toContain('units/b.ini')
+    expect(bAttempts).toBe(1)
+  })
+
   it('取消：文件粒度中止，不再发出 blobs/versions 请求', async () => {
     const calls: Array<{ path: string; body: unknown }> = []
     const api = fakeApi({}, calls)
@@ -119,6 +310,29 @@ describe('pushLocalTree（推送全链路）', () => {
     const ids = calls.filter((call) => call.path.endsWith('/versions')).map((call) => (call.body as { clientOpId: string }).clientOpId)
     expect(ids).toHaveLength(2)
     expect(ids[0]).not.toBe(ids[1])
+  })
+
+  it('提交重试白名单：确定性 HTTP 失败（404）绝不重试，versions 只发一次', async () => {
+    const calls: Array<{ path: string; body: unknown }> = []
+    const api = fakeApi({ pushVersion: async () => { calls.push({ path: '/repos/iron-curtain/versions', body: {} }); throw Object.assign(new Error('HTTP 404'), { kind: 'http', status: 404 }) } }, calls)
+    const bridge = textBridge({ 'units/a.ini': '[core]\n' })
+    const outcome = await pushLocalTree(host(bridge, api), { message: 'm', baseVersionNo: 1 })
+    expect(outcome.status).toBe('failed')
+    expect(calls.filter((call) => call.path.endsWith('/versions'))).toHaveLength(1)
+  })
+
+  it('提交重试白名单：网关瞬态（503）与网络类（响应丢失）按上限重试（共 3 次尝试）', async () => {
+    const bridge = textBridge({ 'units/a.ini': '[core]\n' })
+    const calls: Array<{ path: string; body: unknown }> = []
+    const gatewayApi = fakeApi({ pushVersion: async () => { calls.push({ path: '/repos/iron-curtain/versions', body: {} }); throw Object.assign(new Error('HTTP 503'), { kind: 'http', status: 503 }) } }, calls)
+    const gatewayOutcome = await pushLocalTree(host(bridge, gatewayApi), { message: 'm', baseVersionNo: 1 })
+    expect(gatewayOutcome.status).toBe('failed')
+    expect(calls.filter((call) => call.path.endsWith('/versions'))).toHaveLength(3)
+    const networkCalls: Array<{ path: string; body: unknown }> = []
+    const networkApi = fakeApi({ pushVersion: async () => { networkCalls.push({ path: '/repos/iron-curtain/versions', body: {} }); throw Object.assign(new Error('net down'), { kind: 'network' }) } }, networkCalls)
+    const networkOutcome = await pushLocalTree(host(bridge, networkApi), { message: 'm', baseVersionNo: 1 })
+    expect(networkOutcome.status).toBe('failed')
+    expect(networkCalls.filter((call) => call.path.endsWith('/versions'))).toHaveLength(3)
   })
 })
 
@@ -293,6 +507,32 @@ describe('锚点读写与本地变更判定', () => {
       },
     } as unknown as BridgeApi
     expect(await judgeLocalChanged(realChange, 'C:\\proj')).toBe(true)
+  })
+
+  it('listLocalChanges：非 git 项目（status 空 + 无 .git）按「无法检测」回 null，不谎报干净', async () => {
+    // 复现第 1 轮缺陷：主进程 statusFiles 把 git 失败吞成空数组，渲染层据此判 clean，
+    // 非 git 项目被漏报「本地与远端一致」且无法发布第二个版本。
+    const notARepo = {
+      git: { status: async () => [] },
+      project: { stat: async () => { throw new Error('ENOENT') } },
+    } as unknown as BridgeApi
+    expect(await listLocalChanges(notARepo, 'C:\\proj')).toBeNull()
+    expect(await judgeLocalChanged(notARepo, 'C:\\proj')).toBeNull()
+    // judgeSyncState 对 null 的收敛（四分态保守方向）由 cloudBagData.test 覆盖
+  })
+
+  it('listLocalChanges：git 项目空 status（.git 存在）→ 干净空清单；非空 → 逐条清单', async () => {
+    const cleanRepo = {
+      git: { status: async () => [] },
+      project: { stat: async () => ({ mtimeMs: 0, size: 0 }) },
+    } as unknown as BridgeApi
+    expect(await listLocalChanges(cleanRepo, 'C:\\proj')).toEqual([])
+    expect(await judgeLocalChanged(cleanRepo, 'C:\\proj')).toBe(false)
+    const dirtyRepo = {
+      git: { status: async () => [{ status: 'M', path: 'units/tank.ini' }] },
+      project: { stat: async () => { throw new Error('不应被探测：status 非空') } },
+    } as unknown as BridgeApi
+    expect(await listLocalChanges(dirtyRepo, 'C:\\proj')).toEqual([{ status: 'M', path: 'units/tank.ini' }])
   })
 
   it('writeCloudBagAnchor：先确保 .ohmytx 目录存在（父目录缺失时 fs:writeFile 会 ENOENT）', async () => {

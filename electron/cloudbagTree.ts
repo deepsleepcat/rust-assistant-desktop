@@ -27,6 +27,13 @@ export const CLOUDBAG_TEXT_EXTENSIONS = ['.ini', '.template', '.txt', '.tmx', '.
 /** 单文件上传上限（J5：V1 无两阶段大文件上传；与渲染层 MAX_UPLOAD_FILE_BYTES 同值） */
 export const CLOUD_BAG_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
+/**
+ * Windows 保留设备名（与后端 cloudbagDeviceNameRE / cloudbag_base.go 同口径，逐路径段判定）：
+ * 段本身或「设备名 + '.' 后缀」都不得作为路径段——`con/tank.ini` 会让 fs.mkdir('con') 失败、
+ * `nul.ini` 在 NTFS 上指向空设备。此前谓词缺这一项，却自称与后端 validateCloudBagPath 同规则。
+ */
+const DEVICE_NAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i
+
 /** 上传时限：至少 60s，随后按保守上行速率线性放宽（与渲染层 cloudBagApi 同策略同值） */
 export const CLOUD_BAG_UPLOAD_TIMEOUT_MIN_MS = 60_000
 export const CLOUD_BAG_UPLOAD_ASSUMED_BYTES_PER_SEC = 256 * 1024
@@ -42,10 +49,22 @@ export function cloudBagUploadTimeoutMs(bytes: number): number {
   return Math.max(CLOUD_BAG_UPLOAD_TIMEOUT_MIN_MS, scaled)
 }
 
+/**
+ * 取扩展名：与后端 validateCloudBagPath（cloudbag_base.go:252-257）同口径——
+ * 以最后一个 '.' 为界，**允许点号位于首位**（`.ini` 是合法条目，后端 strings.LastIndexByte
+ * 只判 `dot < 0`）。旧的 `dot > 0` 守卫会把名为 `.ini/.png/.txt` 或 `sub/.ini` 的条目
+ * 判成「无扩展名」而拒收，桌面因此整次中止拉取一个后端完全合法的版本树（无绕过出口）。
+ */
 function extensionOf(relPath: string): string {
   const name = relPath.split('/').pop() ?? relPath
   const dot = name.lastIndexOf('.')
-  return dot > 0 ? name.slice(dot).toLowerCase() : ''
+  return dot >= 0 ? name.slice(dot).toLowerCase() : ''
+}
+
+/** 后端 Go strings.ToLower 的逐码点 simple lower；不作 NFC、去重音或 full case fold。
+ * JS 整串 lower 会把词尾 Σ 变成 ς，İ 会扩展成 i + combining dot，均与 Go 不同。 */
+export function cloudBagPathKey(relPath: string): string {
+  return Array.from(relPath, (rune) => rune === '\u0130' ? 'i' : rune.toLowerCase()).join('')
 }
 
 export function isCloudBagTextPath(relPath: string): boolean {
@@ -63,14 +82,18 @@ export function isCloudBagTextPath(relPath: string): boolean {
  * 见 electron/fsIpc.ts 的 assertValidName。
  */
 export function isCloudBagTreePath(relPath: string): boolean {
-  if (!relPath || relPath.length > 200) return false
+  // 长度按**码点**计（与后端 utf8.RuneCountInString / cloudBagPathMaxRunes 同口径）：
+  // 旧实现用 relPath.length（UTF-16 码元），99 个 emoji 之类 astral 字符会按 2 码元计，
+  // 让后端合法的 ≤200 rune 路径在桌面被拒（同样导致该版本树不可拉取）。
+  if (!relPath || [...relPath].length > 200) return false
   if (relPath.includes('\\') || relPath.includes('\0')) return false
   if (/^[A-Za-z]:/.test(relPath) || relPath.startsWith('/')) return false
   const segments = relPath.split('/')
   for (const segment of segments) {
     if (segment === '' || segment === '.' || segment === '..') return false
+    if (DEVICE_NAME_RE.test(segment)) return false
     // eslint-disable-next-line no-control-regex -- 控制字符在路径里不可见且易被滥用
-    if (/[<>:"|?*\x00-\x1f]/.test(segment)) return false
+    if (/[<>:"|?*\x00-\x1f\x7f]/.test(segment)) return false
     if (/[. ]$/.test(segment)) return false
   }
   return (CLOUDBAG_ALLOWED_EXTENSIONS as readonly string[]).includes(extensionOf(relPath))

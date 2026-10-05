@@ -62,8 +62,10 @@ export interface IpcContext {
   }
   /** 窗口访问（app:flush-done 销毁窗口用；测试注入假实现） */
   windows: {
-    getAllWindows: () => Array<{ isDestroyed(): boolean; destroy(): void }>
+    getAllWindows: () => Array<{ isDestroyed(): boolean; destroy(): void; webContents?: Pick<WebContents, 'isDestroyed' | 'mainFrame' | 'getURL'> }>
   }
+  /** 云书包保存仅接受此应用页面的受信窗口主 frame；由 main 明确提供。 */
+  cloudbagRendererUrl: string | null
   /** 设备配对认证（主进程私有令牌；渲染层只拿公开状态） */
   communityAuth: CommunityAuthService | null
   /** DeepSeek API Key（safeStorage 加密存储；渲染层只拿「已配置」状态，永不见 Key 本身） */
@@ -79,6 +81,7 @@ export function createIpcContext(deps: {
   app: IpcContext['app']
   updater: IpcContext['updater']
   windows: IpcContext['windows']
+  cloudbagRendererUrl?: string
   communityAuth?: CommunityAuthService | null
   deepSeekCredentials?: SecureCredentials | null
 }): IpcContext {
@@ -91,6 +94,7 @@ export function createIpcContext(deps: {
     importedDirs: new Set<string>(),
     lifecycle: { quitting: false, flushResolve: null, flushConfirmTimer: null, closeFlushTimer: null },
     ai: { pendingApproval: null, streamActive: false, cancel: null, feedbackReceiver: null },
+    cloudbagRendererUrl: deps.cloudbagRendererUrl ?? null,
     communityAuth: deps.communityAuth ?? null,
     deepSeekCredentials: deps.deepSeekCredentials ?? null,
   }

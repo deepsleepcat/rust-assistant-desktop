@@ -17,7 +17,8 @@ import path from 'node:path'
 import JSZip from 'jszip'
 import { assertNoLinkEscape, isPathInside, normalizePath, realRootOf } from './paths'
 import { isDangerousExcluded, isExcluded } from './modScan'
-import { CLOUD_BAG_MAX_UPLOAD_BYTES, isCloudBagTextPath, isCloudBagTreePath } from './cloudbagTree'
+import { CLOUD_BAG_MAX_UPLOAD_BYTES, cloudBagPathKey, isCloudBagTextPath, isCloudBagTreePath } from './cloudbagTree'
+import { registerCloudbagSaveIpc } from './cloudbagSave'
 import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
 
@@ -29,6 +30,11 @@ const MAX_RWMOD_BYTES = 50 * 1024 * 1024
 const ANCHOR_DIR = '.ohmytx'
 const DEVICE_NAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i
 
+/** 云书包逻辑路径键与后端一致，绝不用于落盘路径或根目录授权。 */
+function pathCompareKey(rel: string): string {
+  return cloudBagPathKey(rel)
+}
+
 export interface RestoreResult {
   written: number
   backedUp: number
@@ -37,15 +43,24 @@ export interface RestoreResult {
   /** 被移入备份的多余文件清单（相对项目根的 posix 路径，与 removed 同长）——
    * UI 逐条回显真实文件名，而不是只给一个数字让用户自己去备份目录翻 */
   movedList: string[]
-  /** 被保护跳过的条目（.ohmytx 锚点目录内，或 dist/out/*.tmp 等噪声排除清单命中） */
+  /** 被保护跳过的条目（.ohmytx 锚点目录内，或 dist/out/*.tmp 等噪声排除清单命中）；
+   * 另一种来源：应当移走的多余文件在备份目录里已有同路径内容（大小写不敏感文件系统上
+   * 两个大小写不同的路径是同一文件）——为不覆盖用户备份而放弃移走，同样在此上报 */
   skipped: string[]
   /** 本次备份落地目录（相对项目根的 posix 路径）——重复拉取同一版本号时不会覆盖旧备份 */
   backupDir: string
 }
 
+/**
+ * 树内条目：只保留相对路径与压缩包内引用，**内容不常驻内存**。
+ * 校验阶段流式解压一次只为量出真实大小（zip bomb 防线），随即丢弃；写盘阶段对同一条目
+ * 重新流式解压一次。峰值内存从「全部条目解压后总量（≤512MiB）常驻」降为
+ * 「单个文件（≤128MiB）在解压/写盘时短暂存在」——旧实现把 entries[].content 全部攒到
+ * 写盘前，注释声称防撑爆内存但总量并未释放。
+ */
 interface ZipEntry {
   rel: string
-  content: Buffer
+  source: JSZip.JSZipObject
 }
 
 /** 目标路径是否位于受限根内（含根本身）。所有动态路径进入 fs 前都必须先过这一关。 */
@@ -61,10 +76,10 @@ function withinRoot(base: string, target: string): boolean {
 function resolveInside(base: string, rel: string): string {
   const resolvedBase = path.resolve(base)
   const target = path.resolve(resolvedBase, rel)
-  // 显式边界断言（zip-slip 兜底防线）：relative 为空 = 落在根自身，以 .. 开头或为绝对路径 = 越出根，
+  // 显式边界断言（zip-slip 兜底防线）：relative 为空 = 落在根自身，首段为 .. 或为绝对路径 = 越出根，
   // 两者一律拒绝。写成 path.relative 惯用式而非前缀比较，是为了让边界校验对静态扫描显式可见。
   const relative = path.relative(resolvedBase, target)
-  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+  if (relative === '' || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error(`导入包内包含非法路径：${rel}（已中止恢复）`)
   }
   return target
@@ -160,11 +175,10 @@ export async function validateZipEntries(rwmodBuffer: Buffer): Promise<{ entries
   const entries: ZipEntry[] = []
   const skipped: string[] = []
   let total = 0
+  const caseMap = new Map<string, string>()
   for (const entry of raw) {
     const rel = entry.name.replace(/\\/g, '/').trim()
     if (!rel || rel === '.') continue
-    const fileName = rel.split('/').pop() ?? rel
-    if (DEVICE_NAME_RE.test(fileName)) throw new Error(`导入包内包含系统保留文件名：${rel}（已中止恢复）`)
     if (rel.split('/').some((segment) => segment === '..' || segment === '')) {
       throw new Error(`导入包内包含非法路径：${rel}（已中止恢复）`)
     }
@@ -192,24 +206,43 @@ export async function validateZipEntries(rwmodBuffer: Buffer): Promise<{ entries
       continue
     }
     // 会真正写盘的条目才做「路径段级非法字符」检查（与 electron/fsIpc.ts 的 assertValidName
-    // 同口径）：`units/tank.ini:evil` 这类条目 resolveInside 仍在根内、设备名/危险目录判定
-    // 也都放行，但在 NTFS 上会落成 `tank.ini` 的备用数据流（ADS）——写出的内容不可见、
+    // 同口径）：`units/tank.ini:evil` 这类条目 resolveInside 仍在根内、危险目录判定
+    // 也放行，但在 NTFS 上会落成 `tank.ini` 的备用数据流（ADS）——写出的内容不可见、
     // readdir 看不到，直接击穿「本地树等价远端树」的不变式与备份计数。
     // `< > " | ? *` 与尾点/尾空格同理是 Win32 的别名/裁剪面，一并拒绝。
     // 放在跳过分支之后：被跳过的噪声/锚点条目本来就不写盘，不该因此中止整次恢复。
     for (const segment of rel.split('/')) {
+      // 设备名对**每个路径段**判定（后端 validateCloudBagPath 同口径）：只查最后一段会放行
+      // `con/tank.ini`、`aux/units/x.ini` 这类条目，Windows 上 fs.mkdir('con') 必失败 →
+      // 整次恢复回滚（可用性拒绝）。服务端入库已拒，这里是纵深防线。
+      if (DEVICE_NAME_RE.test(segment)) {
+        throw new Error(`导入包内包含系统保留文件名：${rel}（已中止恢复）`)
+      }
       // eslint-disable-next-line no-control-regex -- 控制字符在路径里不可见且易被滥用
-      if (/[<>:"|?*\x00-\x1f]/.test(segment)) {
+      if (/[<>:"|?*\x00-\x1f\x7f]/.test(segment)) {
         throw new Error(`导入包内路径段包含非法字符：${rel}（已中止恢复）`)
       }
       if (/[. ]$/.test(segment)) {
         throw new Error(`导入包内路径段以点或空格结尾：${rel}（已中止恢复）`)
       }
     }
-    const content = await readEntryLimited(entry, rel, MAX_TOTAL - total)
-    total += content.byteLength
+    // 树内白名单 fail-closed（与上传侧、后端 validateCloudBagPath 同源）：会写盘的条目
+    // 还必须落在 CLOUDBAG_ALLOWED_EXTENSIONS 内。后端入库时已拒白名单外扩展名，正常
+    // 版本树不含 .gitignore/evil.exe/.vscode/settings.json/*.rwmod；但写入侧此前完全没有
+    // 这道防线——被攻陷/恶意的服务端可绕过入库把任意文件写进项目根。放在跳过分支之后：
+    // 被跳过的噪声条目（dist/*.tmp 等）本就不写盘，不因此中止整次恢复。
+    if (!isCloudBagTreePath(rel)) {
+      throw new Error(`导入包内包含云书包不支持的条目：${rel}（已中止恢复）`)
+    }
+    const key = cloudBagPathKey(rel)
+    if (caseMap.has(key)) throw new Error(`导入包内路径键冲突：${caseMap.get(key)} / ${rel}`)
+    caseMap.set(key, rel)
+    // 只流式量大小、不保留内容（见 ZipEntry 注释）：真实大小仍以实际解压字节为准，
+    // 不信任中央目录声明的 uncompressedSize（声明可被伪造，zip bomb 防线不能靠它）。
+    const measured = await readEntryLimited(entry, rel, MAX_TOTAL - total)
+    total += measured.byteLength
     if (total > MAX_TOTAL) throw new Error('导入包解压后总大小超过 512MB，已中止恢复')
-    entries.push({ rel, content })
+    entries.push({ rel, source: entry })
   }
   return { entries, skipped }
 }
@@ -318,8 +351,12 @@ export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, ver
   if (!(rwmodBuffer instanceof Buffer) || rwmodBuffer.byteLength === 0 || rwmodBuffer.byteLength > MAX_RWMOD_BYTES) {
     throw new Error('模组包无效或超过 50 MiB 限制')
   }
+  // 根授权不在此函数：restoreRwmod 只保证「给定 root 之内」的写入安全，调用方必须先完成
+  // 根登记。唯一生产调用方 registerCloudbagIpc 在下方用 ctx.roots.has(normalizePath(rootPath))
+  // 拦截，其余调用方是测试。旧实现此处 `normalizePath(path.resolve(projectRoot)) !==
+  // normalizePath(projectRoot)` 恒为假（path.resolve 幂等 + normalizePath 只是 resolve+win32
+  // 小写），是永不触发的死守卫——删除，避免被误当作授权校验。
   const root = path.resolve(projectRoot)
-  if (normalizePath(root) !== normalizePath(projectRoot)) throw new Error('项目目录无效')
 
   const { entries, skipped } = await validateZipEntries(rwmodBuffer)
   // 空 zip（合法但无文件条目）会把整个工作树「等效删除」进备份：直接拒绝，防御落在主进程。
@@ -351,20 +388,44 @@ export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, ver
   const moved: Array<{ rel: string; abs: string }> = []
   const createdDirs: string[] = []
   try {
+    // 写盘阶段逐条重新流式解压（校验阶段未保留内容）：任一时刻只有一个文件的内容
+    // 在内存中，总量上限在写盘时同样二次强制。失败的文件也纳入回滚（writeFile 可能
+    // 已截断/建出半成品）。
+    let writtenTotal = 0
     for (const entry of entries) {
       const abs = resolveInside(root, entry.rel)
       await ensureDirTracked(root, path.dirname(abs), createdDirs)
-      // 失败的文件也纳入回滚（writeFile 可能已截断/建出半成品）
       attempts.push(abs)
-      await fs.writeFile(abs, entry.content)
+      const content = await readEntryLimited(entry.source, entry.rel, MAX_TOTAL - writtenTotal)
+      writtenTotal += content.byteLength
+      await fs.writeFile(abs, content)
       written.push(abs)
     }
-    const entrySet = new Set(entries.map((entry) => entry.rel))
+    // 后端逻辑键不能当作文件系统别名：如 İ/i 的 simple lower 键相同，磁盘上
+    // 却可能是两个文件。只保留远端精确路径或实际已写入的同一文件（NTFS 大小写别名）。
+    const entrySet = new Set(entries.map((entry) => pathCompareKey(entry.rel)))
+    const exactPaths = new Set(entries.map((entry) => entry.rel))
+    const writtenIdentities = new Set<string>()
+    for (const abs of written) {
+      const stat = await fs.stat(abs)
+      writtenIdentities.add(`${stat.dev}:${stat.ino}`)
+    }
     for (const rel of await listLocalFiles(root)) {
-      if (entrySet.has(rel)) continue
+      if (exactPaths.has(rel)) continue
+      if (entrySet.has(pathCompareKey(rel))) {
+        const stat = await fs.stat(resolveInside(root, rel))
+        if (stat.ino !== 0 && writtenIdentities.has(`${stat.dev}:${stat.ino}`)) continue
+      }
       const abs = resolveInside(root, rel)
       const backupAbs = resolveInside(backupDir, rel)
       await fs.mkdir(path.dirname(backupAbs), { recursive: true })
+      // 备份目录里已有同路径内容（大小写折叠后相同；正常不可达，纯防御）：
+      // 绝不能 rename——那会用刚写入的远端内容覆盖用户的原始备份。跳过移走并上报，
+      // 宁可工作树留下一个多余文件，也不丢用户数据（覆盖语义让位于不丢数据）。
+      if (await exists(backupAbs)) {
+        skipped.push(rel)
+        continue
+      }
       await fs.rename(abs, backupAbs)
       moved.push({ rel, abs: backupAbs })
     }
@@ -409,6 +470,7 @@ async function exists(file: string): Promise<boolean> {
 
 /** IPC 注册：cloudbag:restore —— 只对已登记项目根生效（写盘边界与 fs 域一致） */
 export function registerCloudbagIpc(ctx: IpcContext, ipc: RegisterHandler): void {
+  registerCloudbagSaveIpc(ctx, ipc)
   ipc('cloudbag:restore', async (_event, rootPath: unknown, rwmodBytes: unknown, versionNo: unknown): Promise<RestoreResult> => {
     if (typeof rootPath !== 'string' || !rootPath.trim()) throw new Error('项目目录为空')
     const normalized = normalizePath(rootPath)

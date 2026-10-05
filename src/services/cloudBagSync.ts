@@ -107,8 +107,13 @@ async function readLocalFileBytes(bridge: BridgeApi, rootPath: string, relPath: 
   throw new Error(`暂不支持读取的二进制文件类型：${relPath}`)
 }
 
-/** 可重试的版本提交：仅对网络/传输层失败重试，且复用同一 client_op_id（幂等重放）。
- * 业务错误（version_conflict / quota_exceeded / forbidden …）立即上抛，绝不重试。 */
+/** 提交允许重试的 HTTP 状态白名单：仅网关/上游瞬态（502/503/504）。
+ * 401/403/404/409 等确定性失败重发只会白耗请求（响应必然相同），绝不重试。 */
+const RETRYABLE_COMMIT_HTTP_STATUS = new Set([502, 503, 504])
+
+/** 可重试的版本提交：仅对网络失败（响应丢失，幂等键重放生效）与白名单内的
+ * 网关瞬态 HTTP 状态重试，且复用同一 client_op_id（幂等重放）。
+ * 业务错误（version_conflict / quota_exceeded / forbidden / 401/404 …）立即上抛，绝不重试。 */
 async function commitVersionWithRetry(
   api: CloudBagApi,
   repoSlug: string,
@@ -121,10 +126,12 @@ async function commitVersionWithRetry(
     } catch (err) {
       lastError = err
       const kind = (err as CloudBagApiError).kind
-      // 只有「可能已到达服务端但响应丢失」的网络类失败才值得重试：
-      // 幂等键命中时服务端回放首次结果，不会产生第二个版本。
+      // 只有「可能已到达服务端但响应丢失」的网络类失败，或网关瞬态（502/503/504）
+      // 才值得重试：幂等键命中时服务端回放首次结果，不会产生第二个版本。
       // timeout 不重试：整包重发在慢上行链路上只是白耗带宽（重试前必须换新的时限判断）。
-      if (kind !== 'network' && kind !== 'http') throw err
+      if (kind !== 'network') {
+        if (kind !== 'http' || !RETRYABLE_COMMIT_HTTP_STATUS.has((err as CloudBagApiError).status)) throw err
+      }
       if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 300))
     }
   }
@@ -149,16 +156,36 @@ export async function writeCloudBagAnchor(bridge: BridgeApi, rootPath: string, a
   await bridge.project.writeFile(rootPath, joinProjectPath(rootPath, CLOUD_BAG_ANCHOR_PATH), serializeCloudBagAnchor(anchor), { hasBom: false })
 }
 
-/** 本地相对锚点基线是否有变更：优先 git status；git 不可用返回 null（未知 → UI 引导走冲突核对） */
-export async function judgeLocalChanged(bridge: BridgeApi, rootPath: string): Promise<boolean | null> {
+/** 本地相对锚点基线的改动清单（git status 口径，.ohmytx/** 自身产物已过滤）。
+ * 返回 null = 无法检测（git 不可用，或不是 git 仓库）。主进程的 statusFiles 会把
+ * git 失败吞成空数组，所以「status 为空」时必须再探测 .git 是否存在：非 git 项目
+ * 一律按「无法检测」上报，由 judgeSyncState 落 local-ahead/conflict（保守不丢数据，
+ * 绝不谎报 clean——否则非 git 项目永远无法发布第二个版本）。 */
+export async function listLocalChanges(
+  bridge: BridgeApi,
+  rootPath: string,
+): Promise<Array<{ status: string; path: string }> | null> {
   try {
     const status = await bridge.git.status(rootPath)
-    // 锚点与备份目录（.ohmytx/**）是同步机制的自身产物，不算「本地未发布修改」：
-    // 恢复会把被覆盖文件备份到 .ohmytx/backup/<no>/，按单文件精确过滤会把备份误判为改动。
-    return status.filter((item) => !isCloudBagInternalPath(item.path)).length > 0
+    if (status.length === 0) {
+      // git status 空输出 ≠ 干净：非 git 仓库时主进程 runGit 失败被吞掉（.catch(()=>'')）。
+      // .git 可能是目录（普通仓库）或文件（worktree/submodule），stat 两者都成立。
+      const hasGit = await bridge.project
+        .stat(rootPath, joinProjectPath(rootPath, '.git'))
+        .then(() => true, () => false)
+      if (!hasGit) return null
+      // .git 存在但 status 为空：干净（git 二进制缺失的极端场景仍可能漏报，属已知 V1 降级）。
+    }
+    return status.filter((item) => !isCloudBagInternalPath(item.path))
   } catch {
     return null
   }
+}
+
+/** 本地相对锚点基线是否有变更：检测不了返回 null（未知 → UI 引导走冲突核对） */
+export async function judgeLocalChanged(bridge: BridgeApi, rootPath: string): Promise<boolean | null> {
+  const changes = await listLocalChanges(bridge, rootPath)
+  return changes === null ? null : changes.length > 0
 }
 
 /** .ohmytx 目录（锚点 + 备份）内的路径：git status 与恢复语义都视为同步机制自身产物。
@@ -204,7 +231,11 @@ export async function pushLocalTree(
     unsupported.push(...plan.unsupported.filter((file) => classifyLocalFile(file.path) !== 'binary').map((file) => file.path))
 
     onProgress({ phase: 'hashing', done: 0, total: plan.uploadable.length })
-    const prepared: Array<{ path: string; sha256: string; bytes: ArrayBuffer }> = []
+    // 只保留元数据（path/sha256）：第一趟读取的文件字节在每次迭代后即出作用域，
+    // 不随 prepared 常驻。旧实现把整批字节都存在 prepared[].bytes 里，客户端又不限总量
+    // （单文件 ≤50MiB，但仓库 512MiB / 用户 2GiB），峰值可达数百 MiB 常驻渲染层。
+    // 会话需要全量清单，故上传阶段（第二趟）按文件重读；整个推送峰值 = 单文件 ≤50MiB。
+    const prepared: Array<{ path: string; sha256: string }> = []
     for (const file of plan.uploadable) {
       if (isAborted()) return { status: 'aborted', uploaded, skippedBinary, oversized, unsupported }
       try {
@@ -213,7 +244,7 @@ export async function pushLocalTree(
           oversized.push(file.path)
           continue
         }
-        prepared.push({ path: file.path, sha256: await sha256Hex(bytes), bytes })
+        prepared.push({ path: file.path, sha256: await sha256Hex(bytes) })
       } catch (err) {
         skippedBinary.push(`${file.path}（${err instanceof Error ? err.message : String(err)}）`)
       }
@@ -230,18 +261,41 @@ export async function pushLocalTree(
     })
 
     onProgress({ phase: 'uploading', done: 0, total: prepared.length })
+    // 成功上传的 {path,sha256}：提交只纳入真正上传成功的文件。第二趟读取失败/超限
+    // 与第一趟同一口径——「计入 skipped 并继续」，而不是整次发布失败：两趟策略必须对称，
+    // 否则发布期间一个文件被并发改动/删除就会让整推中止，且留下已开的会话与已传 blob。
+    const uploadedRefs: Array<{ path: string; sha256: string }> = []
     for (let index = 0; index < prepared.length; index++) {
       if (isAborted()) return { status: 'aborted', uploaded, skippedBinary, oversized, unsupported }
       const file = prepared[index]
+      // 第二趟读取本文件字节：上传完成后随本轮迭代结束而被回收，整批不常驻。
+      let bytes = await readLocalFileBytes(bridge, rootPath, file.path)
+        .catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))))
+      if (bytes instanceof Error) {
+        skippedBinary.push(`${file.path}（${bytes.message}）`)
+        onProgress({ phase: 'uploading', done: index + 1, total: prepared.length, currentPath: file.path })
+        continue
+      }
+      if (bytes.byteLength > 50 * 1024 * 1024) {
+        oversized.push(file.path)
+        onProgress({ phase: 'uploading', done: index + 1, total: prepared.length, currentPath: file.path })
+        continue
+      }
+      let sha = file.sha256
       let lastError: unknown = null
-      // 失败重试：网络类错误最多重试 2 次（object_hash_mismatch 属校验失败，同样重传一次内容）
+      let hashReread = false
+      let readFailed = false
+      // 失败重试：网络类错误最多重试 2 次。object_hash_mismatch 是**确定性失败**
+      // （同一份字节重传必然再失败），不再盲重试：重读文件并重算 sha 后重试一次
+      // （文件在 pass 1 哈希后被并发改动时 sha 会变）；仍不一致则计入 skipped 继续，
+      // 与第二趟读取失败同口径——不因单个文件变动整推中止。
       for (let attempt = 0; attempt <= 2; attempt++) {
         try {
           await api.uploadBlob(repoSlug, {
             sessionId: session.id,
             path: file.path,
-            sha256: file.sha256,
-            bytes: file.bytes,
+            sha256: sha,
+            bytes,
             fileName: safeUploadFileName(file.path),
             contentType: 'application/octet-stream',
           })
@@ -253,14 +307,55 @@ export async function pushLocalTree(
           // timeout 不重试：渲染层的超时不会取消主进程的传输，重发只会让同一份大文件
           // 在慢上行链路上再传一遍（用户白耗带宽），如实上报让用户改走网页端。
           if (kind === 'quota_exceeded' || kind === 'forbidden' || kind === 'file_too_large' || kind === 'timeout') throw err
+          if (kind === 'object_hash_mismatch') {
+            if (hashReread) break // 只重读重算一次；仍不一致则交给下面的 skipped 分支
+            hashReread = true
+            const reread = await readLocalFileBytes(bridge, rootPath, file.path)
+              .catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))))
+            if (reread instanceof Error) {
+              skippedBinary.push(`${file.path}（${reread.message}）`)
+              readFailed = true
+              break
+            }
+            // 重读后必须重做 >50MiB 判定：文件在 pass1 哈希后被并发改写并跨过上限时，
+            // 若直接交给 uploadBlob，api 层会抛 file_too_large（cloudBagApi.ts:580），
+            // 而 :309 对 file_too_large 立即 throw → 整推中止，与第二趟读取失败/超限
+            // 走 skipped 的口径相悖。这里补上，与首读同口径计入 oversized 并跳过。
+            if (reread.byteLength > 50 * 1024 * 1024) {
+              oversized.push(file.path)
+              readFailed = true
+              break
+            }
+            bytes = reread
+            sha = await sha256Hex(bytes)
+            continue
+          }
           if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 300))
         }
       }
+      if (readFailed) {
+        onProgress({ phase: 'uploading', done: index + 1, total: prepared.length, currentPath: file.path })
+        continue
+      }
       if (lastError) {
+        if ((lastError as CloudBagApiError)?.kind === 'object_hash_mismatch') {
+          skippedBinary.push(`${file.path}（内容校验不一致，已跳过）`)
+          onProgress({ phase: 'uploading', done: index + 1, total: prepared.length, currentPath: file.path })
+          continue
+        }
         throw lastError instanceof Error ? lastError : new Error(String(lastError))
       }
+      uploadedRefs.push({ path: file.path, sha256: sha })
       uploaded.push(file.path)
       onProgress({ phase: 'uploading', done: index + 1, total: prepared.length, currentPath: file.path })
+    }
+
+    // 最后一个上传 await 返回后仍须观察取消，不能越过文件循环直接建版本。
+    if (isAborted()) return { status: 'aborted', uploaded, skippedBinary, oversized, unsupported }
+
+    // 第二趟全部跳过（发布期间所有文件都不可读/超限）：与第一趟空清单同口径直接失败
+    if (uploadedRefs.length === 0) {
+      return { status: 'failed', error: '没有可上传的文件（全部被跳过或超限）', uploaded, skippedBinary, oversized, unsupported }
     }
 
     onProgress({ phase: 'committing', done: prepared.length, total: prepared.length })
@@ -268,11 +363,14 @@ export async function pushLocalTree(
     // 服务端的 uniqueIndex(repo_id,user_id,client_op_id) 幂等重放才真正生效
     // （响应丢失但版本已落库时，重试返回首次结果而不是再建一个重复版本）。
     const clientOpId = options.clientOpId ?? newClientOpId()
+    if (isAborted()) return { status: 'aborted', uploaded, skippedBinary, oversized, unsupported }
+    // 提交边界：从此处首次 pushVersion 发出起可能已落库，继续用同一幂等键
+    // 等待/重试并报告真实提交结果；提交中取消不能把已创建的版本谎报为 aborted。
     const result = await commitVersionWithRetry(api, repoSlug, {
       baseVersionNo: options.baseVersionNo,
       message: options.message,
       clientOpId,
-      files: prepared.map((file) => ({ path: file.path, sha256: file.sha256 })),
+      files: uploadedRefs,
     })
     onProgress({ phase: 'done', done: prepared.length, total: prepared.length })
     return { status: 'pushed', versionNo: result.versionNo, uploaded, skippedBinary, oversized, unsupported }

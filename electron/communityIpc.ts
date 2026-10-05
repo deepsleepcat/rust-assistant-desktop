@@ -75,8 +75,11 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
   const maxJsonBytes = 2 * 1024 * 1024
   const maxUploadBytes = 50 * 1024 * 1024
   // 上传规则表（云书包联调前置项，桌面契约 §7.2）：表驱动 {pattern, methods, maxBytes}，
-  // 新增上传端点只改表，不改校验流程。云书包 slug 形态与后端建仓规则一致
-  // （[A-Za-z0-9][A-Za-z0-9._-]{0,63}，契约 §3.2 的「全局唯一 URL 安全标识」）。
+  // 新增上传端点只改表，不改校验流程。云书包 slug 后端实际规则是
+  // ^[a-z0-9]([a-z0-9-]{1,62}[a-z0-9])?$（cloudbag_base.go：小写字母/数字/连字符，1~64 位；
+  // 大写建议由服务端自动小写化，点/下划线会被建仓拒绝）。此处的白名单正则刻意保留为
+  // 超集（含大写/点/下划线）：slug 由服务端签发、桌面端只做转发放行，收窄需要同步
+  // 迁移历史 URL，无放行风险。
   const uploadPathRules: Array<{ pattern: RegExp; methods: string[]; maxBytes: number }> = [
     { pattern: /^\/api\/community\/posts\/\d+\/resources$/, methods: ['POST'], maxBytes: maxUploadBytes },
     { pattern: /^\/api\/community\/cloudbag\/repos\/[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/blobs$/, methods: ['POST'], maxBytes: maxUploadBytes },

@@ -5,6 +5,7 @@
  */
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { createStore } from './store'
 import { getHistory, initAiHistory } from './aiHistory'
 import { createKnowledgePack } from './knowledgePack'
@@ -41,6 +42,7 @@ const ctx = createIpcContext({
   app,
   updater: { checkForUpdates, downloadUpdate, quitAndInstall, isPackaged },
   windows: { getAllWindows: () => BrowserWindow.getAllWindows() },
+  cloudbagRendererUrl: devUrl ?? pathToFileURL(path.join(__dirname, '..', '..', 'dist', 'index.html')).href,
   communityAuth,
   deepSeekCredentials,
 })

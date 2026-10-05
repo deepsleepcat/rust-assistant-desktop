@@ -35,6 +35,7 @@ const api: BridgeApi = {
     request: (request) => ipcRenderer.invoke('community:request', request),
   },
   cloudbag: {
+    saveRwmod: (filename: string, bytes: ArrayBuffer) => ipcRenderer.invoke('cloudbag:saveRwmod', filename, bytes),
     restore: (rootPath: string, rwmodBytes: ArrayBuffer, versionNo: number) =>
       ipcRenderer.invoke('cloudbag:restore', rootPath, rwmodBytes, versionNo),
   },

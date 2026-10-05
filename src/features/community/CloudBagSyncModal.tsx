@@ -6,7 +6,7 @@ import { getBridge } from '../../services/bridge'
 import type { CloudBagApi, CloudBagHeadSummary, CloudBagRepo } from '../../services/cloudBagApi'
 import { judgeSyncState, formatBytes, isForeignAnchor, newClientOpId, type CloudBagAnchor, type SyncState } from './cloudBagData'
 import {
-  judgeLocalChanged,
+  listLocalChanges,
   pullRemoteVersion,
   pushLocalTree,
   readCloudBagAnchor,
@@ -75,8 +75,15 @@ interface SyncStateView {
   pull?: PullOutcome
 }
 
-function ConflictChoice({ conflict, onPushLocal, onPullRemote, busy, error }: {
+/** 冲突 A 栏改动类型的展示顺序（git status 缩写 → 中文，其余原样显示）。 */
+const LOCAL_CHANGE_LABEL: Record<string, string> = {
+  M: '修改', A: '新增', '??': '未跟踪', D: '删除', R: '重命名',
+}
+
+function ConflictChoice({ conflict, localChanges, onPushLocal, onPullRemote, busy, error }: {
   conflict: CloudBagHeadSummary
+  /** 本地改动清单（git status 口径）；null = 无法检测（非 git 项目 / git 不可用） */
+  localChanges: Array<{ status: string; path: string }> | null
   onPushLocal: () => void
   onPullRemote: () => void
   busy: boolean
@@ -88,21 +95,38 @@ function ConflictChoice({ conflict, onPushLocal, onPullRemote, busy, error }: {
   const headDetail = conflict.headSummary
   return (
     <div className="cloudbag-conflict" role="group" aria-label="同步冲突选择">
+      {/* 契约 §6.7：A（本地变更）/ B（远端 head）双栏文件级差异清单 + 差异文件数摘要 */}
       <div className="cloudbag-conflict-col">
         <div className="community-section-title">A · 本地变更</div>
-        <div className="local-note">本地工作树相对基线有修改，尚未上传。</div>
+        {localChanges === null
+          ? <div className="local-note">本地改动清单不可用（非 git 项目或 git 不可用）：无法逐文件核对，请以本地工作树的实际内容为准。</div>
+          : localChanges.length === 0
+            ? <div className="local-note">本地相对基线未检测到修改。</div>
+            : <>
+              <div className="local-note">本地共 {localChanges.length} 个改动文件（相对锚点基线）。</div>
+              <div className="cloudbag-diff-list">{localChanges.slice(0, 50).map((file) => (
+                <div className="cloudbag-diff-row" key={`a:${file.status}:${file.path}`}>
+                  <span>{file.path}</span>
+                  <span className="post-card-meta">{LOCAL_CHANGE_LABEL[file.status] ?? file.status}</span>
+                </div>
+              ))}</div>
+              {localChanges.length > 50 && <div className="local-note">本地清单较长，此处只显示前 50 条。</div>}
+            </>}
       </div>
       <div className="cloudbag-conflict-col">
         <div className="community-section-title">B · 远端 head（#{conflict.headVersionNo}）</div>
         {headDetail && <div className="local-note">{headDetail.message || '（无版本说明）'} · {headDetail.fileCount} 文件 · {headDetail.totalSize > 0 ? `${headDetail.totalSize} 字节` : '大小未知'}</div>}
-        {headFiles.length === 0
-          ? <div className="local-note">远端已有新版本，共 0 个文件条目。</div>
-          : <div className="cloudbag-diff-list">{headFiles.slice(0, 50).map((file) => (
-            <div className="cloudbag-diff-row" key={`${file.path}:${file.sha256.slice(0, 8)}`}>
-              <span>{file.path}</span>
-              <span className="post-card-meta">{file.sha256.slice(0, 8)}</span>
-            </div>
-          ))}</div>}
+        {/* 摘要缺失 ≠ 远端树为空：本地判定进入冲突而无服务端摘要时，「0 个文件」是误导 */}
+        {!headDetail
+          ? <div className="local-note">远端版本摘要不可用，无法展示文件级差异（可先拉取该版本再核对）。</div>
+          : headFiles.length === 0
+            ? <div className="local-note">远端 head 清单为空（0 个文件条目）。</div>
+            : <div className="cloudbag-diff-list">{headFiles.slice(0, 50).map((file) => (
+              <div className="cloudbag-diff-row" key={`${file.path}:${file.sha256.slice(0, 8)}`}>
+                <span>{file.path}</span>
+                <span className="post-card-meta">{file.sha256.slice(0, 8)}</span>
+              </div>
+            ))}</div>}
         {headDetail?.truncated && <div className="local-note">远端清单较长，此处只显示前 {headFiles.length} 条（摘要已截断）。</div>}
       </div>
       {error && <div className="community-warning">{error}</div>}
@@ -127,6 +151,8 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
   const [anchor, setAnchor] = useState<CloudBagAnchor | null>(null)
   const [syncState, setSyncState] = useState<SyncStateView | null>(null)
   const [conflict, setConflict] = useState<CloudBagHeadSummary | null>(null)
+  /** 本地改动清单（A 栏）：undefined=未加载，null=无法检测（非 git/git 不可用），数组=git status 清单 */
+  const [localChanges, setLocalChanges] = useState<Array<{ status: string; path: string }> | null | undefined>(undefined)
   const [localState, setLocalState] = useState<SyncState>('unbound')
   const [message, setMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -143,11 +169,15 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
       const loaded = await readCloudBagAnchor(bridge, rootPath).catch(() => null)
       if (!alive) return
       setAnchor(loaded)
-      const changed = await judgeLocalChanged(bridge, rootPath).catch(() => null)
+      // 一次取数两用：清单（冲突 A 栏）+ 是否有改动（四分态判定）。
+      // listLocalChanges 返回 null = 无法检测（非 git 项目 / git 不可用），
+      // judgeSyncState 会保守落 local-ahead/conflict，绝不谎报 clean。
+      const changes = await listLocalChanges(bridge, rootPath).catch(() => null)
       if (!alive) return
+      setLocalChanges(changes)
       // repoSlug 必须参与判定：锚点绑定的是仓库 A 时，用仓库 B 的 head 比较基线会得到
       // clean / remote-ahead 这类假状态，并允许把 B 的树覆盖进绑定 A 的项目（静默改绑）。
-      setLocalState(judgeSyncState({ anchor: loaded, repoSlug: repo.slug, remoteHeadVersionNo: repo.headVersionNo, localChanged: changed }))
+      setLocalState(judgeSyncState({ anchor: loaded, repoSlug: repo.slug, remoteHeadVersionNo: repo.headVersionNo, localChanged: changes === null ? null : changes.length > 0 }))
     })()
     return () => { alive = false }
   }, [bridge, rootPath, repo.headVersionNo, repo.slug])
@@ -185,6 +215,9 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
           setAnchor(nextAnchor)
           setLocalState('clean')
           setMessage(`已发布新版本 #${outcome.versionNo}（${outcome.uploaded.length} 个文件）。`)
+          // 成功后必须重取本地清单：基线已推进到新版本，旧清单（可能是提交前的
+          // local-ahead 改动，或 null=无法检测）已陈旧，不刷新会与 clean 状态并存。
+          void listLocalChanges(bridge, rootPath).then(setLocalChanges).catch(() => setLocalChanges(null))
         },
         (anchorError: unknown) => {
           // 服务端已成功，但本地锚点没落盘：基线丢失，必须显式告知而不是假成功
@@ -196,6 +229,10 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
       onChanged()
     } else if (outcome.status === 'conflict') {
       setConflict(outcome.conflict ?? { headVersionNo: repo.headVersionNo })
+      // 冲突面板出现后不能残留「正在提交版本…」的陈旧进度文案（按钮实际已可用）
+      setSyncState((current) => (current ? { ...current, phase: null } : current))
+      // A 栏取推送时刻的最新本地清单：判定与推送之间用户可能又改了文件
+      void listLocalChanges(bridge, rootPath).then((changes) => setLocalChanges(changes))
     } else if (outcome.status === 'failed') {
       setError(outcome.error ?? '推送失败')
     } else if (outcome.status === 'aborted') {
@@ -230,6 +267,8 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
         () => {
           setAnchor(nextAnchor)
           setLocalState('clean')
+          // 同推送分支：拉取后本地树已被远端覆盖，重取清单避免陈旧改动/未知态与 clean 并存。
+          void listLocalChanges(bridge, rootPath).then(setLocalChanges).catch(() => setLocalChanges(null))
           const backupNote = outcome.backupDir && ((outcome.backedUp ?? 0) > 0 || (outcome.removed ?? 0) > 0)
             ? `备份在 ${outcome.backupDir}/（同一版本重复拉取会落到带时间戳的新目录，不覆盖旧备份）。`
             : ''
@@ -303,13 +342,22 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
 
   return (
     <Modal wide title={<span><AppIcon name="cloud" size={15} /> 云书包同步 · {repo.title}</span>} onClose={onClose} footer={<>
-      <button className="btn" disabled={busy} onClick={() => { abortRef.current = true }}>取消同步</button>
+      {/* 协作式取消必须随时可点：busy 时禁用会让取消永远无法发出（运行中恰被禁用）。
+          语义是「发出取消后完成当前文件即停」（IPC 发出后不可中断），空闲时点击无害
+          （下一次 run 会重置标记）。 */}
+      <button className="btn" onClick={() => { abortRef.current = true }} title="发出取消：完成当前文件后停止上传/下载（传输中的单个文件不可中断）">取消同步</button>
       <button className="btn" onClick={onClose}>关闭</button>
     </>}>
       <div className="local-note">{summary} · 本地项目：{projectName} · 状态：{stateLabel[localState]}</div>
       {/* 四分态（契约 §6.4）约束动作而不只是显示：仅本地变→引导发布；仅远端新→拉取；
           双向变→二选一；clean→无动作。 */}
       <div className="local-note" role="status">{stateHint}</div>
+      {/* 非 git 项目 / git 不可用：改动检测结果未知，四分态按「可能有修改」保守处理，必须明示而不是谎报「一致」。
+          clean 例外：刚刚成功的推送/拉取已把基线推进到该版本、本地树即所提交/所拉取的树，
+          此时再挂「可能有未发布修改」的保守提示会与 clean 自相矛盾。 */}
+      {anchor && !foreignAnchor && localChanges === null && localState !== 'unbound' && localState !== 'clean' && (
+        <div className="local-note">本地改动无法自动检测（非 git 项目或 git 不可用）：已按「可能有未发布修改」保守处理，请以本地工作树实际内容为准。</div>
+      )}
       {!conflictView && (
         <div className="cloudbag-unsupported-row">
           <button
@@ -342,6 +390,7 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
             : syncState.phase === 'downloading' ? '正在下载 .rwmod…'
             : syncState.phase === 'restoring' ? '正在恢复到本地项目…'
             : syncState.phase === 'done' ? '同步完成' : ''}
+          {syncState.running && syncState.phase !== null && <div className="local-note">需要停止时点「取消同步」：完成当前文件后停止（传输中的单个文件不可中断）。</div>}
         </div>
       )}
       {syncState?.push && (syncState.push.skippedBinary.length > 0 || syncState.push.oversized.length > 0 || syncState.push.unsupported.length > 0) && (
@@ -370,6 +419,7 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
       {conflictView && (
         <ConflictChoice
           conflict={conflictView}
+          localChanges={localChanges ?? null}
           busy={busy}
           error={error}
           onPushLocal={() => requestPush(conflictView.headVersionNo, '以远端新版本为基础发布')}
