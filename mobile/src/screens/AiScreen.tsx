@@ -8,6 +8,7 @@ import type { AiChatMessage } from "../types/ai"
 import { runAgentChat } from "../features/ai/aiClient"
 import { AppIcon } from "../components/AppIcon"
 import { formatRelativeTime } from "../utils/conversation"
+import { joinProjectPath } from "../utils/projectPath"
 
 interface UiMessage {
   id: string
@@ -85,6 +86,20 @@ export function AiScreen() {
                 : x,
             ),
           )
+          // AI 写盘命中「当前正在编辑的文件」时，编辑器里的内容已经过期：
+          // 打上冲突哨兵，用户下次保存会先看到「重新载入 / 仍然覆盖」而不是静默覆盖 AI 的改动
+          if (ev.ok && (ev.name === 'writeFile' || ev.name === 'applyDiff')) {
+            try {
+              const rel = String((ev.args as { path?: unknown })?.path ?? '')
+              const state = useWorkspace.getState()
+              const session = state.editorSession
+              if (rel && session && session.path === joinProjectPath(session.rootPath, rel)) {
+                state.markEditorExternallyChanged()
+              }
+            } catch {
+              // 路径不规范（含盘符等）只是判定不出冲突，绝不能据此打断对话循环
+            }
+          }
         },
         approveWrite,
         isAborted: () => abortRef.current,

@@ -30,6 +30,15 @@ export function isPreviewableAudio(p: string): boolean {
   return ['.ogg', '.mp3', '.wav', '.m4a', '.flac'].includes(extname(p))
 }
 
+/**
+ * 点击文件树条目时的打开方式。
+ * 只有铁锈配置文件进编辑器；图片、音频等一律走只读资源预览——
+ * 旧实现把任何文件都按 UTF-8 读进编辑器，打开 png 就是乱码，误保存还会写坏文件。
+ */
+export function decideOpenMode(name: string): 'editor' | 'asset' {
+  return isRustConfigFile(name) ? 'editor' : 'asset'
+}
+
 /** 截断长路径用于展示（省略号计入长度） */
 export function truncateMiddle(p: string, max = 60): string {
   if (p.length <= max) return p

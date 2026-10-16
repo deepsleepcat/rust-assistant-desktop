@@ -1,11 +1,12 @@
 /**
- * 铁锈助手手机版 · 应用外壳：
+ * 铁锈工坊 · 应用外壳：
  * 主题（跟随系统/深浅色）+ 底部导航 5 Tab（项目 / 模板 / 检查 / AI / 设置）。
  * 编辑页为全屏模态（从项目进入），不占底部导航。
  */
 import { useEffect } from "react";
 import { useWorkspace, type MobileTab } from "./stores/workspace";
 import { AppIcon, type AppIconName } from "./components/AppIcon";
+import { useViewportHeight } from "./utils/viewport";
 import { ProjectsScreen } from "./screens/ProjectsScreen";
 import { EditorScreen } from "./screens/EditorScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
@@ -51,17 +52,18 @@ function Splash() {
   return (
     <div className="m-splash">
       <AppIcon name="tower" size={44} />
-      <p>铁锈助手 · 手机版</p>
+      <p>铁锈工坊</p>
     </div>
   )
 }
 
 function App() {
   useTheme()
+  useViewportHeight()
   const ready = useWorkspace((s) => s.ready)
   const activeTab = useWorkspace((s) => s.activeTab)
   const setActiveTab = useWorkspace((s) => s.setActiveTab)
-  const editorFile = useWorkspace((s) => s.editorFile)
+  const editorSession = useWorkspace((s) => s.editorSession)
 
   useEffect(() => {
     void useWorkspace.getState().init()
@@ -70,7 +72,7 @@ function App() {
   if (!ready) return <Splash />
 
   // 编辑器全屏模态：不显示底部导航
-  if (editorFile) return <EditorScreen />
+  if (editorSession) return <EditorScreen />
 
   return (
     <div className="m-shell">
