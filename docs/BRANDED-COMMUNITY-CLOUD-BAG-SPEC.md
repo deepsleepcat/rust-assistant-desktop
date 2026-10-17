@@ -1,6 +1,6 @@
 # 铁锈工坊品牌社区 + 云书包 —— 桌面端实现契约
 
-- 仓库：`W:/mao/tx/ohmytx`（分支 `feat/branded-community-cloud-bag` @ 13d642e）
+- 仓库：`W:/mao/tx/ohmytx项目/ohmytx`（分支 `feat/branded-community-cloud-bag` @ 13d642e）
 - 配对后端契约：`ohmytxhouduan/docs/CLOUD-BAG-API-DATA-CONTRACT.md`（同分支，两侧字段逐字一致，改一侧必须同 PR 记录改另一侧）
 - 本文档是**设计契约**：定义本轮「真实实现」与「后续能力」的硬边界。禁止假按钮、禁止静态占位数据、禁止指向不存在路由的链接。
 - 证据锚点均为本会话实际读取核实过的代码行。
