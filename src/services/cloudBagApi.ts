@@ -32,6 +32,46 @@ export function cloudBagUploadTimeoutMs(bytes: number): number {
 }
 
 export type CloudBagVisibility = 'private' | 'public' | 'link'
+export type CloudBagRepoType = 'mod' | 'collection' | 'asset'
+
+export interface CloudBagModuleManifest {
+  path: string
+  title: string
+  description: string
+  thumbnail: string
+  version: string
+  author: string
+  update: string
+  minVersion: string
+  fileCount: number
+  totalSize: number
+  brokenRefs: string[]
+  brokenRefsTruncated?: boolean
+}
+
+export interface CloudBagIssue {
+  id: number
+  repoId: number
+  number: number
+  authorUserId: number
+  title: string
+  body: string
+  state: 'open' | 'closed'
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CloudBagIssueComment {
+  id: number
+  repoId: number
+  issueId: number
+  authorUserId: number
+  body: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CloudBagStarState { starCount: number; starred: boolean }
 
 export interface CloudBagRepo {
   id: number
@@ -39,6 +79,7 @@ export interface CloudBagRepo {
   title: string
   description: string
   visibility: CloudBagVisibility
+  repoType: CloudBagRepoType
   tags: string[]
   headVersionNo: number
   fileCount: number
@@ -47,6 +88,9 @@ export interface CloudBagRepo {
   postId: number | null
   quota: { usedBytes: number; limitBytes: number }
   myRole: 'owner' | 'editor' | 'viewer' | null
+  starCount?: number
+  starred?: boolean
+  openIssueCount?: number
   updatedAt: number // unix 秒
 }
 
@@ -64,6 +108,9 @@ export interface CloudBagManifest {
   author: string
   update: string
   minVersion: string
+  repoType?: CloudBagRepoType
+  assetKinds?: string[]
+  modules?: CloudBagModuleManifest[]
   /** 警告性：树内引用缺失列表（不阻断） */
   brokenRefs: string[]
 }
@@ -164,6 +211,7 @@ export interface CloudBagPage<T> {
 
 export interface CreateCloudBagRepoInput {
   title: string
+  repoType?: CloudBagRepoType
   /** 标识建议：服务端命名为 slug（后端 cloudBagRepoRequest.Slug，与网页端逐字一致），
    * 撞名或非法时由服务端自动生成——占位符已写明「最终以服务端生成为准」。 */
   slugSuggestion?: string
@@ -486,9 +534,10 @@ export function createCloudBagApi(
 
   return {
     endpoint: base,
-    repos: (options: { mine?: boolean; q?: string; tag?: string; sort?: string; page?: number; pageSize?: number } = {}) =>
+    repos: (options: { mine?: boolean; starred?: boolean; q?: string; tag?: string; sort?: string; page?: number; pageSize?: number } = {}) =>
       request<CloudBagPage<CloudBagRepo>>(`/api/community/cloudbag/repos?${query({
         mine: options.mine ? 1 : undefined,
+        starred: options.starred ? 1 : undefined,
         q: options.q,
         tag: options.tag,
         sort: options.sort,
@@ -500,6 +549,7 @@ export function createCloudBagApi(
     createRepo: async (input: CreateCloudBagRepoInput) =>
       unwrapKey<CloudBagRepo>(await json<unknown>('/api/community/cloudbag/repos', 'POST', {
         title: input.title,
+        ...(input.repoType ? { repo_type: input.repoType } : {}),
         // 键名 slug（不是 slug_suggestion）：后端结构体只认 slug，未知键被
         // encoding/json 静默忽略 → 用户填写的标识永不生效。
         ...(input.slugSuggestion ? { slug: input.slugSuggestion } : {}),
@@ -606,6 +656,17 @@ export function createCloudBagApi(
       if (typeof versionNo !== 'number') throw new CloudBagApiError('版本提交响应缺少版本号', { kind: 'invalid_response' })
       return { versionNo }
     },
+    star: (slug: string) => request<CloudBagStarState>(`/api/community/cloudbag/repos/${assertSlug(slug)}/star`),
+    setStar: (slug: string, starred: boolean) => request<CloudBagStarState>(`/api/community/cloudbag/repos/${assertSlug(slug)}/star`, { method: starred ? 'POST' : 'DELETE' }),
+    issues: (slug: string, options: { state?: 'open' | 'closed' | 'all'; q?: string; page?: number } = {}) => request<CloudBagPage<CloudBagIssue> & { openCount: number }>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues?${query({ state: options.state ?? 'open', q: options.q, page: options.page ?? 1, page_size: 20 })}`),
+    issue: async (slug: string, number: number) => unwrapKey<CloudBagIssue>(await request<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues/${assertVersionNo(number)}`), 'issue'),
+    createIssue: async (slug: string, input: { title: string; body: string; clientOpId: string }) => unwrapKey<CloudBagIssue>(await json<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues`, 'POST', { title: input.title, body: input.body, client_op_id: input.clientOpId }), 'issue'),
+    updateIssue: async (slug: string, number: number, input: { title?: string; body?: string; state?: 'open' | 'closed' }) => unwrapKey<CloudBagIssue>(await json<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues/${assertVersionNo(number)}`, 'PUT', input), 'issue'),
+    deleteIssue: (slug: string, number: number) => request<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues/${assertVersionNo(number)}`, { method: 'DELETE' }),
+    issueComments: (slug: string, number: number, page = 1) => request<CloudBagPage<CloudBagIssueComment>>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues/${assertVersionNo(number)}/comments?${query({ page, page_size: 20 })}`),
+    createIssueComment: async (slug: string, number: number, input: { body: string; clientOpId: string }) => unwrapKey<CloudBagIssueComment>(await json<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues/${assertVersionNo(number)}/comments`, 'POST', { body: input.body, client_op_id: input.clientOpId }), 'comment'),
+    updateIssueComment: async (slug: string, number: number, id: number, body: string) => unwrapKey<CloudBagIssueComment>(await json<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues/${assertVersionNo(number)}/comments/${assertVersionNo(id)}`, 'PUT', { body }), 'comment'),
+    deleteIssueComment: (slug: string, number: number, id: number) => request<unknown>(`/api/community/cloudbag/repos/${assertSlug(slug)}/issues/${assertVersionNo(number)}/comments/${assertVersionNo(id)}`, { method: 'DELETE' }),
     releases: (slug: string) => request<CloudBagPage<CloudBagRelease>>(`/api/community/cloudbag/repos/${assertSlug(slug)}/releases`),
     shares: (slug: string) => request<CloudBagPage<CloudBagShare>>(`/api/community/cloudbag/repos/${assertSlug(slug)}/shares`),
     createRelease: async (slug: string, input: { versionNo: number; name?: string; notes: string }) =>
@@ -633,11 +694,12 @@ export function createCloudBagApi(
         ...(input.expiresInDays !== undefined ? { expires_in_days: input.expiresInDays } : {}),
       }), 'share'),
     revokeShare: (shareId: number) => request<null>(`/api/community/cloudbag/shares/${encodeURIComponent(String(shareId))}`, { method: 'DELETE' }),
-    exportRwmod: async (slug: string, versionNo: number): Promise<CloudBagDownload> => {
+    exportRwmod: async (slug: string, versionNo: number, modulePath?: string): Promise<CloudBagDownload> => {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS)
       try {
-        const response = await fetchImpl(`${base}/api/community/cloudbag/repos/${assertSlug(slug)}/versions/${assertVersionNo(versionNo)}/export.rwmod`, {
+        const exportQuery = modulePath === undefined ? '' : `?${query({ module: modulePath })}`
+        const response = await fetchImpl(`${base}/api/community/cloudbag/repos/${assertSlug(slug)}/versions/${assertVersionNo(versionNo)}/export.rwmod${exportQuery}`, {
           headers: { Accept: '*/*' },
           signal: controller.signal,
           authenticated: true,
@@ -684,7 +746,7 @@ export function createCloudBagApi(
 
 export interface CloudBagApi {
   endpoint: string
-  repos(options?: { mine?: boolean; q?: string; tag?: string; sort?: string; page?: number; pageSize?: number }): Promise<CloudBagPage<CloudBagRepo>>
+  repos(options?: { mine?: boolean; starred?: boolean; q?: string; tag?: string; sort?: string; page?: number; pageSize?: number }): Promise<CloudBagPage<CloudBagRepo>>
   repo(slug: string): Promise<CloudBagRepo>
   createRepo(input: CreateCloudBagRepoInput): Promise<CloudBagRepo>
   updateRepo(slug: string, input: UpdateCloudBagRepoInput): Promise<CloudBagRepo>
@@ -697,6 +759,17 @@ export interface CloudBagApi {
   openSession(slug: string, input: { opType: 'push' | 'restore'; baseVersionNo: number; files: Array<{ path: string; sha256: string }> }): Promise<CloudBagSyncSession>
   uploadBlob(slug: string, input: BlobUploadInput, onProgress?: (sentBytes: number) => void): Promise<void>
   pushVersion(slug: string, input: PushCloudBagVersionInput): Promise<{ versionNo: number }>
+  star(slug: string): Promise<CloudBagStarState>
+  setStar(slug: string, starred: boolean): Promise<CloudBagStarState>
+  issues(slug: string, options?: { state?: 'open' | 'closed' | 'all'; q?: string; page?: number }): Promise<CloudBagPage<CloudBagIssue> & { openCount: number }>
+  issue(slug: string, number: number): Promise<CloudBagIssue>
+  createIssue(slug: string, input: { title: string; body: string; clientOpId: string }): Promise<CloudBagIssue>
+  updateIssue(slug: string, number: number, input: { title?: string; body?: string; state?: 'open' | 'closed' }): Promise<CloudBagIssue>
+  deleteIssue(slug: string, number: number): Promise<unknown>
+  issueComments(slug: string, number: number, page?: number): Promise<CloudBagPage<CloudBagIssueComment>>
+  createIssueComment(slug: string, number: number, input: { body: string; clientOpId: string }): Promise<CloudBagIssueComment>
+  updateIssueComment(slug: string, number: number, id: number, body: string): Promise<CloudBagIssueComment>
+  deleteIssueComment(slug: string, number: number, id: number): Promise<unknown>
   releases(slug: string): Promise<CloudBagPage<CloudBagRelease>>
   shares(slug: string): Promise<CloudBagPage<CloudBagShare>>
   createRelease(slug: string, input: { versionNo: number; name?: string; notes: string }): Promise<CloudBagRelease>
@@ -707,5 +780,5 @@ export interface CloudBagApi {
   removeMember(slug: string, userId: number): Promise<null>
   createShare(slug: string, input: { versionNo?: number; expiresInDays?: number }): Promise<CloudBagShare>
   revokeShare(shareId: number): Promise<null>
-  exportRwmod(slug: string, versionNo: number): Promise<CloudBagDownload>
+  exportRwmod(slug: string, versionNo: number, modulePath?: string): Promise<CloudBagDownload>
 }

@@ -6,6 +6,7 @@
  * - 顶部工具栏：刷新、新建文件、新建文件夹
  */
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { FileSort, TreeNode } from '../../types/domain'
 import type { ProjectSearchResult } from '../../types/bridge'
 import { getBridge } from '../../services/bridge'
@@ -13,6 +14,7 @@ import { useWorkspaceStore } from '../../stores/workspace'
 import { pathStartsWith } from '../../stores/slices/projectSlice'
 import { FileTypeIcon, FolderIcon, IconChevronRight } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
+import { BilingualLabel } from '../../components/BilingualLabel'
 import { PromptModal } from '../../components/Modal'
 import { PanelState } from '../../components/PanelState'
 
@@ -51,8 +53,27 @@ export function ProjectPanel() {
   const [dialog, setDialog] = useState<null | { kind: 'file' | 'folder'; parent: string }>(null)
   const [renaming, setRenaming] = useState<null | TreeNode>(null)
   const [modMenu, setModMenu] = useState(false)
+  const modMenuButton = useRef<HTMLButtonElement>(null)
+  const [modMenuPosition, setModMenuPosition] = useState({ left: 0, top: 0 })
+
+  useEffect(() => {
+    if (!modMenu) return
+    const dismiss = () => setModMenu(false)
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { dismiss(); modMenuButton.current?.focus() }
+    }
+    window.addEventListener('resize', dismiss)
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('resize', dismiss); window.removeEventListener('keydown', onKey) }
+  }, [modMenu])
+
+  const toggleModMenu = () => {
+    const rect = modMenuButton.current?.getBoundingClientRect()
+    if (rect) setModMenuPosition({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 248)), top: rect.bottom + 4 })
+    setModMenu((open) => !open)
+  }
   // M37：搜索为本地短暂视图状态，不写入 workspace；结果来自受限主进程递归扫描。
-  const [searchOpen, setSearchOpen] = useState(false)
+  const searchOpen = true
   const [searchQuery, setSearchQuery] = useState('')
   /** 结果所属项目根：用户切项目时不展示旧项目的异步搜索结果。 */
   const [searchRootPath, setSearchRootPath] = useState<string | null>(null)
@@ -63,7 +84,6 @@ export function ProjectPanel() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const treeRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const searchButtonRef = useRef<HTMLButtonElement>(null)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchSeqRef = useRef(0)
 
@@ -126,19 +146,13 @@ export function ProjectPanel() {
   const closeSearch = () => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
     searchSeqRef.current++
-    setSearchOpen(false)
     setSearchQuery('')
     setSearchRootPath(null)
     setSearchContextKey('')
     setSearchResult({ entries: [], truncated: false })
     setSearchState('idle')
     setSearchError(null)
-    setTimeout(() => searchButtonRef.current?.focus(), 0)
-  }
-
-  const openSearch = () => {
-    setSearchOpen(true)
-    setTimeout(() => searchInputRef.current?.focus(), 0)
+    searchInputRef.current?.focus()
   }
 
   // M29：文件树键盘导航（roving tabindex：方向键在行间移动；行内 Enter/空格/左右键处理打开/展开）
@@ -183,7 +197,7 @@ export function ProjectPanel() {
 
   return (
     <section className="panel" style={{ flex: 1, minHeight: 0 }}>
-      <div className="panel-header">
+      <div className="panel-header project-panel-toolbar">
         <IconFolderOpen2 size={13} />
         {searchOpen ? (
           <div className="project-search-wrap" role="search">
@@ -221,16 +235,6 @@ export function ProjectPanel() {
         ) : (
           <span className="project-panel-name" title={project.name}>{project.name}</span>
         )}
-        <button
-          ref={searchButtonRef}
-          className={`icon-btn${searchOpen ? ' active' : ''}`}
-          title="搜索项目文件"
-          aria-label="搜索项目文件"
-          aria-expanded={searchOpen}
-          onClick={() => (searchOpen ? closeSearch() : openSearch())}
-        >
-          <AppIcon name="search" size={13} />
-        </button>
         <select
           className="sort-select"
           value={settings.fileSort}
@@ -260,26 +264,26 @@ export function ProjectPanel() {
           <AppIcon name="folder" size={14} />
         </button>
         <div className="mod-tools-wrap">
-          <button className="icon-btn" title="模组工具" onClick={() => setModMenu((v) => !v)}>
+          <button ref={modMenuButton} className="icon-btn" title="模组工具" aria-expanded={modMenu} onClick={toggleModMenu}>
             <AppIcon name="tools" size={13} />
           </button>
-          {modMenu && (
+          {modMenu && createPortal(
             <>
-              <div className="mod-tools-menu">
-                <button onClick={() => { setModDialog('createMod'); setModMenu(false) }}>模组自述文件</button>
-                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setUnitLibraryOpen(true) }}>单位库</button>
-                <button onClick={() => { setModDialog('createUnit'); setModMenu(false) }}>新建单位</button>
-                <button className="mod-action-import" onClick={() => { setModMenu(false); void importModProject() }}><AppIcon name="import" size={16} />导入模组</button>
-                <button className="mod-action-pack" onClick={() => { setModMenu(false); void packModProject() }}><AppIcon name="archive" size={16} />打包模组</button>
-                <button onClick={() => { setModMenu(false); void checkModProject() }}>检查模组</button>
-                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setModReportOpen(true) }}>质量报告</button>
-                <button onClick={() => { setModMenu(false); setModDialog('optimize') }}>优化模组</button>
-                <button onClick={() => { setModMenu(false); setModDialog('translationRepair') }}>修复中文翻译</button>
-                <button onClick={() => { setModMenu(false); setModDialog('globalOp') }}>全局操作</button>
-                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setCodeTableOpen(true) }}>浏览代码表</button>
+              <div className="mod-tools-menu project-tools-popover" aria-label="模组工具箱" style={{ left: modMenuPosition.left, top: modMenuPosition.top, maxHeight: `calc(100vh - ${modMenuPosition.top + 8}px)` }}>
+                <button onClick={() => { setModDialog('createMod'); setModMenu(false) }}><BilingualLabel zh="模组自述文件" en="Mod information" /></button>
+                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setUnitLibraryOpen(true) }}><BilingualLabel zh="单位库" en="Unit library" /></button>
+                <button onClick={() => { setModDialog('createUnit'); setModMenu(false) }}><BilingualLabel zh="新建单位" en="New unit" /></button>
+                <button className="mod-action-import" onClick={() => { setModMenu(false); void importModProject() }}><BilingualLabel zh="导入模组" en="Import mod" /></button>
+                <button className="mod-action-pack" onClick={() => { setModMenu(false); void packModProject() }}><BilingualLabel zh="打包模组" en="Pack mod" /></button>
+                <button onClick={() => { setModMenu(false); void checkModProject() }}><BilingualLabel zh="检查模组" en="Check mod" /></button>
+                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setModReportOpen(true) }}><BilingualLabel zh="质量报告" en="Quality report" /></button>
+                <button onClick={() => { setModMenu(false); setModDialog('optimize') }}><BilingualLabel zh="优化模组" en="Optimize mod" /></button>
+                <button onClick={() => { setModMenu(false); setModDialog('translationRepair') }}><BilingualLabel zh="修复中文翻译" en="Repair translated source" /></button>
+                <button onClick={() => { setModMenu(false); setModDialog('globalOp') }}><BilingualLabel zh="全局操作" en="Global operations" /></button>
+                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setCodeTableOpen(true) }}><BilingualLabel zh="浏览代码表" en="Code reference" /></button>
               </div>
-              <div className="mod-tools-mask" onClick={() => setModMenu(false)} />
-            </>
+              <div className="mod-tools-mask project-tools-mask" onClick={() => setModMenu(false)} />
+            </>, document.body,
           )}
         </div>
       </div>

@@ -11,6 +11,50 @@ import { pushLocalTree, pullRemoteVersion, readCloudBagAnchor, readCloudBagAncho
 import type { CloudBagApi, CloudBagApiError, CloudBagHeadSummary, CloudBagRepo } from '../src/services/cloudBagApi'
 import type { BridgeApi } from '../src/types/bridge'
 
+describe('upload rate limit recovery', () => {
+  it('waits then retries the same file without creating another session', async () => {
+    vi.useFakeTimers()
+    try {
+      const calls: Array<{ path: string; body: unknown }> = []
+      let attempts = 0
+      const uploadBlob = vi.fn(async () => {
+        if (++attempts === 1) throw Object.assign(new Error('rate limited'), { status: 429, kind: 'http' })
+      })
+      const resultPromise = pushLocalTree(host(textBridge({ 'unit.ini': '[core]\\nname: test' }), fakeApi({ uploadBlob }, calls)), { message: 'retry', baseVersionNo: 3 })
+      await vi.waitFor(() => expect(uploadBlob).toHaveBeenCalledTimes(1))
+      await vi.advanceTimersByTimeAsync(62000)
+      expect((await resultPromise).status).toBe('pushed')
+      expect(uploadBlob).toHaveBeenCalledTimes(2)
+      expect(uploadBlob.mock.calls[0]).toEqual(uploadBlob.mock.calls[1])
+      expect(calls.filter((call) => call.path.endsWith('/sessions'))).toHaveLength(1)
+    } finally { vi.useRealTimers() }
+  })
+})
+
+describe('strict complete-tree import', () => {
+  it('retains unrelated remote files and replaces matching destination paths', async () => {
+    const calls: Array<{ path: string; body: unknown }> = []
+    const bridge = textBridge({ 'unit.ini': '[core]\nname: new' })
+    const retained = [
+      { path: 'other.ini', sha256: 'a'.repeat(64), size: 5 },
+      { path: 'mods/unit.ini', sha256: 'b'.repeat(64), size: 6 },
+    ]
+    const result = await pushLocalTree(host(bridge, fakeApi({}, calls)), { message: 'merge', baseVersionNo: 3, strict: true, pathPrefix: 'mods', retainedFiles: retained })
+    expect(result.status).toBe('pushed')
+    const commit = calls.find((call) => call.path.endsWith('/versions'))?.body as { files: Array<{ path: string; sha256: string }> }
+    expect(commit.files.map((file) => file.path).sort()).toEqual(['mods/unit.ini', 'other.ini'])
+    expect(commit.files.find((file) => file.path === 'other.ini')?.sha256).toBe('a'.repeat(64))
+    expect(commit.files.find((file) => file.path === 'mods/unit.ini')?.sha256).not.toBe('b'.repeat(64))
+  })
+  it('does not create a version when the source changes after scanning', async () => {
+    const calls: Array<{ path: string; body: unknown }> = []
+    const bridge = textBridge({ 'unit.ini': '[core]\nname: new' })
+    const result = await pushLocalTree(host(bridge, fakeApi({}, calls)), { message: 'merge', baseVersionNo: 3, strict: true, expectedDigest: '0'.repeat(64) })
+    expect(result.status).toBe('failed')
+    expect(calls.some((call) => call.path.endsWith('/versions'))).toBe(false)
+  })
+})
+
 function textBridge(files: Record<string, string>): BridgeApi {
   return {
     project: {
@@ -107,7 +151,8 @@ describe('pushLocalTree（推送全链路）', () => {
     expect(outcome.status).toBe('pushed')
     expect(outcome.versionNo).toBe(4)
     expect(outcome.uploaded.sort()).toEqual(['mod-info.txt', 'units/tank.ini'])
-    expect(outcome.skippedBinary.some((item) => item.startsWith('data.bin'))).toBe(true)
+    expect(outcome.unsupported).toContain('data.bin')
+    expect(outcome.skippedBinary).toEqual([])
     expect(calls.map((call) => call.path)).toEqual([
       '/repos/iron-curtain/sessions',
       '/repos/iron-curtain/blobs',

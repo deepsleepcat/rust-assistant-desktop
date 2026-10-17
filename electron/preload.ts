@@ -7,6 +7,7 @@ import type { BridgeApi } from '../src/types/bridge'
 
 const api: BridgeApi = {
   platform: process.platform,
+  windowControl: (action) => ipcRenderer.send('window:control', action),
   appInfo: () => ipcRenderer.invoke('app:info'),
   app: {
     checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
@@ -44,9 +45,17 @@ const api: BridgeApi = {
     request: (request) => ipcRenderer.invoke('community:request', request),
   },
   cloudbag: {
+    readWavForUpload: (rootPath: string, filePath: string) => ipcRenderer.invoke('cloudbag:readWavForUpload', rootPath, filePath),
     saveRwmod: (filename: string, bytes: ArrayBuffer) => ipcRenderer.invoke('cloudbag:saveRwmod', filename, bytes),
-    restore: (rootPath: string, rwmodBytes: ArrayBuffer, versionNo: number) =>
-      ipcRenderer.invoke('cloudbag:restore', rootPath, rwmodBytes, versionNo),
+    watch: (rootPath: string, enabled: boolean) => ipcRenderer.invoke('cloudbag:watch', rootPath, enabled),
+    onChanged: (listener: (event: { rootPath: string; error?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { rootPath: string; error?: string }) => listener(payload)
+      ipcRenderer.on('cloudbag:changed', handler)
+      return () => { ipcRenderer.removeListener('cloudbag:changed', handler) }
+    },
+    snapshot: (rootPath: string) => ipcRenderer.invoke('cloudbag:snapshot', rootPath),
+    restore: (rootPath: string, rwmodBytes: ArrayBuffer, versionNo: number, expectedSnapshot?: string) =>
+      expectedSnapshot === undefined ? ipcRenderer.invoke('cloudbag:restore', rootPath, rwmodBytes, versionNo) : ipcRenderer.invoke('cloudbag:restore', rootPath, rwmodBytes, versionNo, expectedSnapshot),
   },
   auth: {
     status: () => ipcRenderer.invoke('auth:status'),
@@ -103,9 +112,14 @@ const api: BridgeApi = {
     import: (kind: 'archive' | 'folder') => ipcRenderer.invoke('mod:import', kind),
     discardImport: (rootPath: string) => ipcRenderer.invoke('mod:discardImport', rootPath),
     createUnit: (rootPath: string, params: unknown) => ipcRenderer.invoke('mod:createUnit', rootPath, params),
-    pack: (rootPath: string, options?: unknown) => ipcRenderer.invoke('mod:pack', rootPath, options),
-    packAndDeploy: (rootPath: string, options: unknown, gamePath: string, overwrite: boolean) =>
-      ipcRenderer.invoke('mod:packAndDeploy', rootPath, options, gamePath, overwrite),
+    onPackProgress: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: import('../src/types/modPack').ModPackProgressEvent) => callback(progress)
+      ipcRenderer.on('mod:pack-progress', listener)
+      return () => ipcRenderer.removeListener('mod:pack-progress', listener)
+    },
+    pack: (rootPath: string, options?: unknown, requestId?: string) => ipcRenderer.invoke('mod:pack', rootPath, options, requestId),
+    packAndDeploy: (rootPath: string, options: unknown, gamePath: string, overwrite: boolean, requestId?: string) =>
+      ipcRenderer.invoke('mod:packAndDeploy', rootPath, options, gamePath, overwrite, requestId),
     check: (rootPath: string) => ipcRenderer.invoke('mod:check', rootPath),
     readModInfo: (rootPath: string) => ipcRenderer.invoke('mod:readModInfo', rootPath),
     writeModInfo: (rootPath: string, data: unknown) => ipcRenderer.invoke('mod:writeModInfo', rootPath, data),

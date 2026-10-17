@@ -1,201 +1,101 @@
-/**
- * M29 工作区三栏布局：
- * - 主三栏（左项目区 / 编辑器 / 右 AI 区）两条垂直分隔条可拖动、可键盘调整、双击恢复默认；
- * - 左/右栏整体可折叠（折叠 = --wb-* 变量归零，槽位保留，从折叠边拖分隔条可重新展开）；
- * - 窗口变窄自动进入 medium（压缩三栏）/ compact（左/右栏变抽屉，浮动开关打开）；
- *   紧凑模式不覆盖用户保存的宽度与折叠偏好；
- * - 拖动期间只更新局部 CSS 变量（不持久化），松开才写 settings。
- */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { SplitHandle } from './SplitHandle'
+import { AppIcon } from './AppIcon'
 import { WORKBENCH_CONSTRAINTS, WORKBENCH_DEFAULTS, fitWorkbench, layoutMode } from '../utils/layout'
 import { useFocusTrap } from '../utils/focusTrap'
+import { useEscapeHandler } from '../utils/modalStack'
 
 interface WorkbenchLayoutProps {
   left: ReactNode
   editor: ReactNode
-  right: ReactNode
 }
 
-export function WorkbenchLayout({ left, editor, right }: WorkbenchLayoutProps) {
-  const settings = useWorkspaceStore((s) => s.settings)
-  const drawerSide = useWorkspaceStore((s) => s.drawerSide)
-  const setDrawerSide = useWorkspaceStore((s) => s.setDrawerSide)
-  const updateSettings = useWorkspaceStore((s) => s.updateSettings)
-
+/** Project/file rail and editor keep their DOM positions at every window size. */
+export function WorkbenchLayout({ left, editor }: WorkbenchLayoutProps) {
+  const settings = useWorkspaceStore((state) => state.settings)
+  const drawerSide = useWorkspaceStore((state) => state.drawerSide)
+  const setDrawerSide = useWorkspaceStore((state) => state.setDrawerSide)
+  const updateSettings = useWorkspaceStore((state) => state.updateSettings)
   const wrapRef = useRef<HTMLDivElement>(null)
-  const drawerRef = useRef<HTMLDivElement>(null)
+  const projectRef = useRef<HTMLElement>(null)
   const [width, setWidth] = useState(0)
   const [liveLeft, setLiveLeft] = useState<number | null>(null)
-  const [liveRight, setLiveRight] = useState<number | null>(null)
 
-  // 容器宽度监听
   useEffect(() => {
-    const el = wrapRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setWidth(el.clientWidth))
-    ro.observe(el)
-    setWidth(el.clientWidth)
-    return () => ro.disconnect()
+    const element = wrapRef.current
+    if (!element) return
+    const resizeObserver = new ResizeObserver(() => {
+      if (element.clientWidth > 0) setWidth(element.clientWidth)
+    })
+    resizeObserver.observe(element)
+    if (element.clientWidth > 0) setWidth(element.clientWidth)
+    return () => resizeObserver.disconnect()
   }, [])
 
   const mode = layoutMode(width)
+  const compact = mode === 'compact'
   const leftCollapsed = settings.layout.leftCollapsed
-  const rightCollapsed = settings.layout.rightCollapsed
-
-  // 把保存的宽度适配到当前容器（折叠传入 0 → fitWorkbench 保持 0）
+  const drawerOpen = compact && drawerSide === 'left'
   const fitted = useMemo(
-    () =>
-      fitWorkbench(
-        { left: leftCollapsed ? 0 : settings.leftWidth, right: rightCollapsed ? 0 : settings.rightWidth },
-        width,
-      ),
-    [width, settings.leftWidth, settings.rightWidth, leftCollapsed, rightCollapsed],
+    () => fitWorkbench({ left: leftCollapsed ? 0 : settings.leftWidth, right: 0 }, width),
+    [leftCollapsed, settings.leftWidth, width],
   )
+  const constraints = WORKBENCH_CONSTRAINTS
+  const leftMax = Math.max(constraints.minLeft, width - constraints.minEditor - 8)
 
-  const c = WORKBENCH_CONSTRAINTS
-  // 拖动边界：保证编辑器至少 minEditor（用另一侧当前值计算；扣除分隔条命中区——
-  // 双侧展开扣 16，单侧折叠只扣一条 8）
-  const splitterTotal = leftCollapsed || rightCollapsed ? 8 : 16
-  const leftMax = Math.max(c.minLeft, width - c.minEditor - splitterTotal - (rightCollapsed ? 0 : fitted.right))
-  const rightMax = Math.max(c.minRight, width - c.minEditor - splitterTotal - (leftCollapsed ? 0 : fitted.left))
-
-  const commitLeft = useCallback(
-    (v: number) => {
-      setLiveLeft(null)
-      const s = useWorkspaceStore.getState()
-      const collapsed = s.settings.layout.leftCollapsed
-      updateSettings(
-        collapsed ? { leftWidth: v, layout: { ...s.settings.layout, leftCollapsed: false } } : { leftWidth: v },
-      )
-    },
-    [updateSettings],
-  )
-  const commitRight = useCallback(
-    (v: number) => {
-      setLiveRight(null)
-      const s = useWorkspaceStore.getState()
-      const collapsed = s.settings.layout.rightCollapsed
-      updateSettings(
-        collapsed ? { rightWidth: v, layout: { ...s.settings.layout, rightCollapsed: false } } : { rightWidth: v },
-      )
-    },
-    [updateSettings],
-  )
+  const commitLeft = useCallback((value: number) => {
+    setLiveLeft(null)
+    const state = useWorkspaceStore.getState()
+    updateSettings({ leftWidth: value, layout: { ...state.settings.layout, leftCollapsed: false } })
+  }, [updateSettings])
   const resetLeft = useCallback(() => commitLeft(WORKBENCH_DEFAULTS.left), [commitLeft])
-  const resetRight = useCallback(() => commitRight(WORKBENCH_DEFAULTS.right), [commitRight])
 
-  // 离开 compact 时清掉抽屉
   useEffect(() => {
-    if (mode !== 'compact' && drawerSide) setDrawerSide(null)
-  }, [mode, drawerSide, setDrawerSide])
-
-  // 标题栏/状态栏窄屏收缩钩子（CSS 选择器挂在 body.ra-compact）
+    if (!compact && drawerSide || drawerSide === 'right') setDrawerSide(null)
+  }, [compact, drawerSide, setDrawerSide])
   useEffect(() => {
-    document.body.classList.toggle('ra-compact', mode === 'compact')
-    return () => {
-      document.body.classList.toggle('ra-compact', false)
-    }
-  }, [mode])
+    document.body.classList.toggle('ra-compact', compact)
+    return () => document.body.classList.remove('ra-compact')
+  }, [compact])
+  useEffect(() => () => {
+    // Hiding the editor via Activity must also release its transient drawer.
+    if (useWorkspaceStore.getState().drawerSide) useWorkspaceStore.getState().setDrawerSide(null)
+  }, [])
 
-  // 抽屉 Escape 关闭
-  useEffect(() => {
-    if (!drawerSide) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawerSide(null)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [drawerSide, setDrawerSide])
-  useFocusTrap(drawerRef, drawerSide !== null)
-
-  const style = {
-    '--wb-left': `${liveLeft ?? fitted.left}px`,
-    '--wb-right': `${liveRight ?? fitted.right}px`,
-  } as CSSProperties
-
-  const attrs = {
-    'data-mode': mode,
-    'data-left': leftCollapsed ? 'collapsed' : 'expanded',
-    'data-right': rightCollapsed ? 'collapsed' : 'expanded',
-  }
-
-  const leftNode = (
-    <aside className="wb-left sidebar" aria-hidden={mode !== 'compact' && leftCollapsed}>
-      {left}
-    </aside>
-  )
-  const rightNode = (
-    <aside className="wb-right" aria-hidden={mode !== 'compact' && rightCollapsed}>
-      {right}
-    </aside>
-  )
+  useEscapeHandler(() => setDrawerSide(null), drawerOpen)
+  useFocusTrap(projectRef, drawerOpen)
+  const projectHidden = compact ? !drawerOpen : leftCollapsed
+  const style = { '--wb-left': `${liveLeft ?? fitted.left}px` } as CSSProperties
 
   return (
-    <>
-      <div className="workbench" ref={wrapRef} style={style} {...attrs}>
-        {mode === 'compact' ? (
-          editor
-        ) : (
-          <>
-            {leftNode}
-            <SplitHandle
-              orientation="vertical"
-              value={fitted.left}
-              min={c.minLeft}
-              max={leftMax}
-              label="调整项目区宽度"
-              onDrag={(v) => setLiveLeft(v)}
-              onDragEnd={commitLeft}
-              onReset={resetLeft}
-            />
-            <section className="wb-editor">{editor}</section>
-            <SplitHandle
-              orientation="vertical"
-              value={fitted.right}
-              min={c.minRight}
-              max={rightMax}
-              label="调整 AI 对话区宽度"
-              onDrag={(v) => setLiveRight(v)}
-              onDragEnd={commitRight}
-              onReset={resetRight}
-            />
-            {rightNode}
-          </>
-        )}
-      </div>
-
-      {/* 紧凑模式：左/右栏抽屉（同一时间只开一个；不覆盖持久化偏好）。
-          遮罩/backdrop 只在抽屉打开时拦截点击；无抽屉时 overlay 本身透传（chips 可点） */}
-      {mode === 'compact' && (
-        <div className="wb-drawer-overlay" style={drawerSide ? undefined : { pointerEvents: 'none' }}>
-          {drawerSide && <div className="wb-drawer-backdrop" onClick={() => setDrawerSide(null)} />}
-          {drawerSide && (
-            <div
-              ref={drawerRef}
-              className="wb-drawer"
-              data-side={drawerSide === 'right' ? 'right' : 'left'}
-              role="dialog"
-              aria-modal="true"
-              aria-label={drawerSide === 'right' ? 'AI 对话区' : '工作台与项目区'}
-            >
-              {drawerSide === 'right' ? right : left}
-            </div>
-          )}
-          {/* 浮动开关：同侧抽屉打开时隐藏（避免叠压抽屉头部） */}
-          {drawerSide !== 'left' && (
-            <button className="wb-chip" style={{ position: 'absolute', left: 8, top: 8 }} title="打开工作台与项目区" aria-label="打开工作台与项目区" onClick={() => setDrawerSide('left')}>
-              工作台
-            </button>
-          )}
-          {drawerSide !== 'right' && (
-            <button className="wb-chip" style={{ position: 'absolute', right: 8, top: 8 }} title="打开 AI 对话区" aria-label="打开 AI 对话区" onClick={() => setDrawerSide('right')}>
-              AI 对话
-            </button>
-          )}
+    <div className="workbench desktop-workbench" ref={wrapRef} style={style}
+      data-mode={mode} data-left={leftCollapsed ? 'collapsed' : 'expanded'} data-drawer={drawerOpen ? 'open' : 'closed'}>
+      {drawerOpen && <div className="wb-project-backdrop" onClick={() => setDrawerSide(null)} aria-hidden="true" />}
+      <aside ref={projectRef} className="wb-left sidebar" aria-label="项目与文件"
+        role={drawerOpen ? 'dialog' : undefined} aria-modal={drawerOpen || undefined}
+        aria-hidden={projectHidden} inert={projectHidden}>
+        <div className="wb-project-drawer-head">
+          <span>项目与文件 <small lang="en">Projects & files</small></span>
+          <button type="button" className="icon-btn" aria-label="关闭项目与文件" title="关闭项目与文件 / Close projects and files" onClick={() => setDrawerSide(null)}><AppIcon name="close" size={16} /></button>
         </div>
+        {left}
+      </aside>
+      <SplitHandle orientation="vertical" value={fitted.left} min={constraints.minLeft} max={leftMax}
+        label="调整项目区宽度 / Resize projects" onDrag={setLiveLeft} onDragEnd={commitLeft} onReset={resetLeft} />
+      <section className="wb-editor" inert={drawerOpen}>
+        {editor}
+      </section>
+      {(compact && !drawerOpen || !compact && leftCollapsed) && (
+        <button type="button" className="wb-project-toggle" title="打开项目与文件 / Open projects and files" aria-label="打开项目与文件"
+          aria-expanded={drawerOpen} onClick={() => {
+            if (compact) setDrawerSide('left')
+            else {
+              const state = useWorkspaceStore.getState()
+              updateSettings({ layout: { ...state.settings.layout, leftCollapsed: false } })
+            }
+          }}><AppIcon name="menu" size={16} /><span>项目</span></button>
       )}
-    </>
+    </div>
   )
 }

@@ -5,6 +5,26 @@
  */
 
 /* ── 面板骨架 ─────────────────────────────────────── */
+.cloudbag-repository-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; align-items: start; }
+.cloudbag-repository-main { min-width: 0; }
+.cloudbag-file-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--divider); }
+.cloudbag-file-toolbar > span { color: var(--text-secondary); font-size: 12px; }
+.cloudbag-file-toolbar > button { margin-left: auto; }
+.cloudbag-repository-about { min-width: 0; border-left: 1px solid var(--divider); padding-left: 20px; }
+.cloudbag-repository-about section { padding: 4px 0 18px; margin-bottom: 16px; border-bottom: 1px solid var(--divider); }
+.cloudbag-repository-about h3, .cloudbag-readme h3 { font-size: 13px; margin: 8px 0 12px; }
+.cloudbag-repository-about p { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.cloudbag-repository-about dl > div { display: flex; justify-content: space-between; gap: 12px; margin: 10px 0; font-size: 12px; }
+.cloudbag-repository-about dt { color: var(--text-secondary); }
+.cloudbag-repository-about dd { margin: 0; }
+.cloudbag-repository-about .btn { margin: 4px 6px 4px 0; }
+.cloudbag-readme { margin-top: 20px; }
+.cloudbag-readme pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.8; }
+@media (max-width: 1000px) {
+  .cloudbag-repository-layout { grid-template-columns: minmax(0, 1fr); }
+  .cloudbag-repository-about { border-left: 0; border-top: 1px solid var(--divider); padding: 16px 0 0; }
+}
+
 .community-panel {
   flex: 1;
   min-width: 0;
@@ -324,7 +344,20 @@ body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .comment-row p { margin: 5px 0 0; white-space: pre-wrap; line-height: 1.65; }
 .comment-compose { display: flex; gap: 8px; margin-top: 8px; }
 .comment-compose input { flex: 1; }
-.community-form { display: flex; flex-direction: column; gap: 10px; }
+.community-form { display: flex; flex-direction: column; gap: 14px; }
+.community-form input, .community-form select { min-height: 38px; padding: 8px 11px; font-size: 13px; }
+.community-form textarea { padding: 10px 11px; font-size: 13px; }
+.community-form label { display: flex; flex-direction: column; gap: 7px; }
+.community-form > .btn, .community-form > .btn-sm { align-self: flex-start; width: auto; }
+.cloudbag-section > .community-form { max-width: 640px; }
+.post-card-foot { flex-wrap: wrap; }
+.post-card-foot .btn-sm { flex: 0 0 auto; min-width: max-content; white-space: nowrap; height: auto; min-height: 28px; padding: 5px 10px; line-height: 1.3; }
+.cloudbag-diff-row { justify-content: flex-start; }
+.community-nickname { flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.community-nickname label { display: flex; flex: 1 1 240px; flex-direction: column; gap: 7px; }
+.community-nickname input { min-height: 38px; padding: 8px 11px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; }
+.community-nickname > .btn { flex: none; min-height: 38px; }
+.community-nickname > p { flex-basis: 100%; margin: 0; color: var(--text-secondary); font-size: 11px; }
 .community-form textarea { resize: vertical; min-height: 180px; line-height: 1.6; }
 .badge.success { color: var(--success, #2e7d32); border-color: currentColor; }
 /* 词表补齐：既有代码用 badge warning（components.css 只定义了 .badge.warn），
@@ -340,6 +373,22 @@ body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .cloudbag-tree-row:last-child { border-bottom: 0; }
 .cloudbag-file-preview { max-height: 52vh; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--divider); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--text-primary); font: 11.5px/1.6 var(--font-mono, monospace); white-space: pre-wrap; word-break: break-all; }
 .cloudbag-section { display: flex; flex-direction: column; gap: 10px; }
+.cloudbag-actions, .cloudbag-issue-toolbar, .community-inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.cloudbag-issues { display: flex; flex-direction: column; gap: 18px; }
+.cloudbag-issue-toolbar input { min-width: 140px; flex: 1; }
+.cloudbag-issue-toolbar input, .cloudbag-issue-toolbar select { min-height: 38px; padding: 8px 10px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; }
+.cloudbag-issues .community-form label { display: flex; flex-direction: column; gap: 7px; }
+.cloudbag-issues .community-form input, .cloudbag-issues .community-form textarea { min-height: 38px; padding: 9px 11px; font-size: 13px; }
+.cloudbag-issue-list { border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow: hidden; }
+.cloudbag-issue-row { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 15px; border: 0; border-bottom: 1px solid var(--divider); background: transparent; color: var(--text-primary); text-align: left; font: inherit; cursor: pointer; }
+.cloudbag-issue-row:last-child { border-bottom: 0; }
+.cloudbag-issue-row:hover { background: var(--surface-hover); }
+.cloudbag-issue-row small { display: block; margin-top: 6px; color: var(--text-muted); }
+.cloudbag-issue-detail, .cloudbag-issue-comment { padding: 16px 0; border-bottom: 1px solid var(--divider); }
+.cloudbag-issue-detail h2 { margin: 0 0 10px; font-size: 21px; overflow-wrap: anywhere; }
+.cloudbag-issue-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.75; font-size: 13px; }
+.cloudbag-star { margin-left: auto; flex: none; white-space: nowrap; }
+.cloudbag-star span { border-left: 1px solid var(--divider); padding-left: 8px; }
 .cloudbag-version-list { display: flex; flex-direction: column; gap: 8px; }
 .cloudbag-diff-list { display: flex; flex-direction: column; border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow: hidden; max-height: 40vh; overflow-y: auto; }
 .cloudbag-diff-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: 11.5px; }
@@ -350,3 +399,21 @@ body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .cloudbag-conflict { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); }
 .cloudbag-conflict-col { flex: 1 1 260px; min-width: 240px; display: flex; flex-direction: column; gap: 6px; }
 .cloudbag-sync-progress { padding: 6px 8px; border: 1px solid var(--divider); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 11.5px; }
+
+/* ── 搜索卡片网格（T8a 横向排列：每行约 3–4 个，窄窗自适应不溢出） ── */
+.post-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
+  gap: 10px;
+}
+body.ra-compact .post-card-grid { grid-template-columns: repeat(auto-fill, minmax(min(196px, 100%), 1fr)); }
+.post-card-grid .post-card { min-width: 0; }
+
+/* ── 筛选复选框（仅模组 / 成长公开开关） ───────────── */
+.community-check { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); font: 12px var(--font-ui); cursor: pointer; white-space: nowrap; }
+.community-check input { accent-color: var(--accent); cursor: pointer; }
+
+/* ── 集合整套/单模组下载与导入动作组 ─────────────── */
+.cloudbag-module-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cloudbag-download-action { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.cloudbag-download-action .local-note { padding: 4px 8px; }

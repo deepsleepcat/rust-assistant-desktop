@@ -86,6 +86,8 @@ export interface CommunityPost {
   pinned?: boolean
   accepted_comment_id?: number | null
   liked?: boolean
+  favorite_count?: number
+  favorited?: boolean
   following?: boolean
 }
 
@@ -136,8 +138,27 @@ export interface CommunityRankingItem {
   score?: number
   count?: number
   like_count?: number
+  download_count?: number
   comment_count?: number
   post_count?: number
+}
+
+export type CommunityTimeRange = 'all' | '7d' | '30d' | '90d' | '365d'
+export interface CommunityRankingPage {
+  items: CommunityRankingItem[]
+  type?: string
+  range?: CommunityTimeRange
+  metric?: string
+  coverage?: 'complete' | 'partial' | 'unavailable'
+  reason?: string | null
+}
+
+export interface CommunityGrowth {
+  growth_public: boolean
+  points_available: boolean
+  points: number | null
+  message: string
+  sources: Array<{ source: string; count: number; points: number | null }>
 }
 
 export type PostFeed = 'all' | 'hot' | 'featured' | 'dynamic' | 'question' | 'article'
@@ -147,6 +168,9 @@ export interface ListPostsOptions {
   keyword?: string
   feed?: PostFeed
   tag?: string
+  sort?: 'latest' | 'likes' | 'favorites'
+  range?: 'all' | '7d' | '30d' | '90d' | '365d'
+  onlyMods?: boolean
   page?: number
   pageSize?: number
 }
@@ -413,15 +437,25 @@ export function createCommunityApi(
       return Array.isArray(data) ? data : (data.items ?? [])
     },
     tags: (keyword = '', page = 1, pageSize = 50) => request<CommunityPage<CommunityTag>>(`/api/community/tags?${query({ keyword, page, page_size: pageSize })}`, {}, { auth: false }),
-    posts: (options: ListPostsOptions = {}) => request<CommunityPage<CommunityPost>>(`/api/community/posts?${query({ board: options.board, keyword: options.keyword, feed: options.feed, tag: options.tag, page: options.page ?? 1, page_size: options.pageSize ?? 12 })}`, {}, { auth: false }),
+    posts: (options: ListPostsOptions = {}) => request<CommunityPage<CommunityPost>>(`/api/community/posts?${query({ board: options.board, keyword: options.keyword, feed: options.feed, tag: options.tag, sort: options.sort, range: options.range, only_mods: options.onlyMods ? 1 : undefined, page: options.page ?? 1, page_size: options.pageSize ?? 12 })}`),
     following: (page = 1, pageSize = 12) => request<CommunityPage<CommunityPost>>(`/api/community/posts/following?${query({ page, page_size: pageSize })}`),
     mine: (page = 1, pageSize = 12) => request<CommunityPage<CommunityPost>>(`/api/community/posts/mine?${query({ page, page_size: pageSize })}`),
-    post: (id: number) => request<CommunityPostDetail>(`/api/community/posts/${encodeURIComponent(id)}`, {}, { auth: false }),
+    post: (id: number) => request<CommunityPostDetail>(`/api/community/posts/${encodeURIComponent(id)}`),
     comments: (postId: number, page = 1, pageSize = 50) => request<CommunityPage<CommunityComment>>(`/api/community/posts/${encodeURIComponent(postId)}/comments?${query({ page, page_size: pageSize })}`, {}, { auth: false }),
-    rankings: async (type: 'posts' | 'authors') => {
-      const data = await request<{ items?: CommunityRankingItem[]; type?: string } | CommunityRankingItem[]>(`/api/community/rankings?type=${type}`, {}, { auth: false })
+    rankingPage: async (type: 'posts' | 'authors' | 'mods', range: CommunityTimeRange = 'all'): Promise<CommunityRankingPage> => {
+      const data = await request<CommunityRankingPage | CommunityRankingItem[]>(`/api/community/rankings?${query({ type, range })}`, {}, { auth: false })
+      return Array.isArray(data) ? { items: data } : data
+    },
+    rankings: async (type: 'posts' | 'authors' | 'mods', range: CommunityTimeRange = 'all') => {
+      const data = await request<{ items?: CommunityRankingItem[]; type?: string } | CommunityRankingItem[]>(`/api/community/rankings?${query({ type, range })}`, {}, { auth: false })
       return Array.isArray(data) ? data : (data.items ?? [])
     },
+    profile: () => request<{ nickname: string; source: string }>('/api/community/account/profile'),
+    setNickname: (nickname: string) => json<{ nickname: string; source: string }>('/api/community/account/profile', 'PUT', { nickname }),
+    growth: () => request<CommunityGrowth>('/api/community/profile/growth'),
+    setGrowthPublic: (growthPublic: boolean) => json<CommunityGrowth>('/api/community/profile/growth', 'PUT', { growth_public: growthPublic }),
+    favorite: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}/favorite`, { method: 'POST' }),
+    unfavorite: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}/favorite`, { method: 'DELETE' }),
     createPost: (body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }) => json<CommunityPost>('/api/community/posts', 'POST', body),
     updatePost: (id: number, body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }) => json<CommunityPost>(`/api/community/posts/${encodeURIComponent(id)}`, 'PUT', body),
     deletePost: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -508,7 +542,14 @@ export interface CommunityApi {
   mine(page?: number, pageSize?: number): Promise<CommunityPage<CommunityPost>>
   post(id: number): Promise<CommunityPostDetail>
   comments(postId: number, page?: number, pageSize?: number): Promise<CommunityPage<CommunityComment>>
-  rankings(type: 'posts' | 'authors'): Promise<CommunityRankingItem[]>
+  rankingPage(type: 'posts' | 'authors' | 'mods', range?: CommunityTimeRange): Promise<CommunityRankingPage>
+  rankings(type: 'posts' | 'authors' | 'mods', range?: CommunityTimeRange): Promise<CommunityRankingItem[]>
+  profile(): Promise<{ nickname: string; source: string }>
+  setNickname(nickname: string): Promise<{ nickname: string; source: string }>
+  growth(): Promise<CommunityGrowth>
+  setGrowthPublic(growthPublic: boolean): Promise<CommunityGrowth>
+  favorite(id: number): Promise<null>
+  unfavorite(id: number): Promise<null>
   createPost(body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }): Promise<CommunityPost>
   updatePost(id: number, body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }): Promise<CommunityPost>
   deletePost(id: number): Promise<null>

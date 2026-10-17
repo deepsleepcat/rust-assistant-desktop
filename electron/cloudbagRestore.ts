@@ -13,12 +13,16 @@
  * 本模块不发起任何网络请求——.rwmod 字节由渲染层经社区代理下载后传入。
  */
 import fs from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { fileFingerprint, snapshotLocalTree } from './cloudbagSnapshot'
 import path from 'node:path'
 import JSZip from 'jszip'
 import { assertNoLinkEscape, isPathInside, normalizePath, realRootOf } from './paths'
 import { isDangerousExcluded, isExcluded } from './modScan'
 import { CLOUD_BAG_MAX_UPLOAD_BYTES, cloudBagPathKey, isCloudBagTextPath, isCloudBagTreePath } from './cloudbagTree'
 import { registerCloudbagSaveIpc } from './cloudbagSave'
+import { registerCloudbagAudioIpc } from './cloudbagAudio'
+import { registerCloudbagWatch } from './cloudbagWatch'
 import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
 
@@ -346,7 +350,7 @@ async function resolveBackupDir(backupRoot: string, versionNo: number): Promise<
 }
 
 /** 恢复 .rwmod 到项目根（覆盖语义：备份被覆盖文件，失败回滚） */
-export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, versionNo: number): Promise<RestoreResult> {
+export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, versionNo: number, expectedSnapshot?: string): Promise<RestoreResult> {
   if (!Number.isInteger(versionNo) || versionNo <= 0) throw new Error('版本号无效')
   if (!(rwmodBuffer instanceof Buffer) || rwmodBuffer.byteLength === 0 || rwmodBuffer.byteLength > MAX_RWMOD_BYTES) {
     throw new Error('模组包无效或超过 50 MiB 限制')
@@ -357,6 +361,15 @@ export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, ver
   // normalizePath(projectRoot)` 恒为假（path.resolve 幂等 + normalizePath 只是 resolve+win32
   // 小写），是永不触发的死守卫——删除，避免被误当作授权校验。
   const root = path.resolve(projectRoot)
+  const snapshot = expectedSnapshot ? await snapshotLocalTree(root) : null
+  if (snapshot && snapshot.digest !== expectedSnapshot) throw new Error('下载期间本地文件发生变化，已停止自动拉取')
+  const appliedHashes = new Map<string, string>()
+  const verifyOriginal = async (rel: string): Promise<void> => {
+    if (!snapshot) return
+    const actual = await fileFingerprint(resolveInside(root, rel))
+    const expected = Object.prototype.hasOwnProperty.call(snapshot.files, rel) ? snapshot.files[rel] : null
+    if (actual !== expected) throw new Error(`本地文件发生变化，已停止覆盖：${rel}`)
+  }
 
   const { entries, skipped } = await validateZipEntries(rwmodBuffer)
   // 空 zip（合法但无文件条目）会把整个工作树「等效删除」进备份：直接拒绝，防御落在主进程。
@@ -374,10 +387,12 @@ export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, ver
     await assertNoLinkEscape(root, abs)
     // 项目内链接/junction 落进锚点目录：词法校验看不出来，用 realpath 拦下（大小写变体兜底）
     await assertOutsideAnchor(root, abs)
+    await verifyOriginal(entry.rel)
     if (await exists(abs)) {
       const backupAbs = resolveInside(backupDir, entry.rel)
       await fs.mkdir(path.dirname(backupAbs), { recursive: true })
       await fs.copyFile(abs, backupAbs)
+      if (snapshot && await fileFingerprint(backupAbs) !== snapshot.files[entry.rel]) throw new Error(`备份期间文件发生变化：${entry.rel}`)
       backups.push({ rel: entry.rel, abs: backupAbs })
     }
   }
@@ -398,6 +413,8 @@ export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, ver
       attempts.push(abs)
       const content = await readEntryLimited(entry.source, entry.rel, MAX_TOTAL - writtenTotal)
       writtenTotal += content.byteLength
+      await verifyOriginal(entry.rel)
+      if (snapshot) appliedHashes.set(abs, createHash('sha256').update(content).digest('hex'))
       await fs.writeFile(abs, content)
       written.push(abs)
     }
@@ -426,6 +443,7 @@ export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, ver
         skipped.push(rel)
         continue
       }
+      await verifyOriginal(rel)
       await fs.rename(abs, backupAbs)
       moved.push({ rel, abs: backupAbs })
     }
@@ -434,11 +452,21 @@ export async function restoreRwmod(rwmodBuffer: Buffer, projectRoot: string, ver
     for (const item of [...moved].reverse()) {
       const original = resolveInside(root, item.rel)
       await fs.mkdir(path.dirname(original), { recursive: true }).catch(() => undefined)
+      if (snapshot && await exists(original)) continue
       await fs.rename(item.abs, original).catch(() => undefined)
     }
-    for (const abs of attempts) await fs.rm(abs, { force: true }).catch(() => undefined)
+    const protectedFiles = new Set<string>()
+    for (const abs of attempts) {
+      if (snapshot) {
+        const applied = appliedHashes.get(abs)
+        const current = await fileFingerprint(abs).catch(() => undefined)
+        if (!applied || current !== applied) { protectedFiles.add(abs); continue }
+      }
+      await fs.rm(abs, { force: true }).catch(() => undefined)
+    }
     for (const backup of backups) {
       const original = resolveInside(root, backup.rel)
+      if (snapshot && (protectedFiles.has(original) || await exists(original))) continue
       await fs.mkdir(path.dirname(original), { recursive: true }).catch(() => undefined)
       await fs.copyFile(backup.abs, original).catch(() => undefined)
     }
@@ -471,12 +499,19 @@ async function exists(file: string): Promise<boolean> {
 /** IPC 注册：cloudbag:restore —— 只对已登记项目根生效（写盘边界与 fs 域一致） */
 export function registerCloudbagIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   registerCloudbagSaveIpc(ctx, ipc)
-  ipc('cloudbag:restore', async (_event, rootPath: unknown, rwmodBytes: unknown, versionNo: unknown): Promise<RestoreResult> => {
+  registerCloudbagAudioIpc(ctx, ipc)
+  registerCloudbagWatch(ctx, ipc)
+  ipc('cloudbag:snapshot', async (_event, rootPath: unknown) => {
+    if (typeof rootPath !== 'string' || !ctx.roots.has(normalizePath(rootPath))) throw new Error('未登记的项目目录')
+    return (await snapshotLocalTree(rootPath)).digest
+  })
+  ipc('cloudbag:restore', async (_event, rootPath: unknown, rwmodBytes: unknown, versionNo: unknown, expectedSnapshot?: unknown): Promise<RestoreResult> => {
     if (typeof rootPath !== 'string' || !rootPath.trim()) throw new Error('项目目录为空')
     const normalized = normalizePath(rootPath)
     if (!ctx.roots.has(normalized)) throw new Error('未登记的项目目录')
     if (!(rwmodBytes instanceof ArrayBuffer)) throw new Error('模组包数据无效')
     if (typeof versionNo !== 'number') throw new Error('版本号无效')
+    if (expectedSnapshot !== undefined && (typeof expectedSnapshot !== 'string' || !/^[a-f0-9]{64}$/.test(expectedSnapshot))) throw new Error('本地快照无效')
     // 按 root 互斥（packing 同模式的 fail-fast）：同根并发两次恢复时，「备份→写盘→
     // 移走多余文件→失败回滚」三阶段会交错执行，产出两棵远端树的混合工作树且
     // moved/skipped 统计互踩——UI 的 busy 守卫只覆盖单窗口，双窗口/重入不在其列。
@@ -484,7 +519,7 @@ export function registerCloudbagIpc(ctx: IpcContext, ipc: RegisterHandler): void
     if (ctx.cloudbagRestores.has(normalized)) throw new Error('该项目正在恢复云书包版本，请等待当前恢复完成后再试')
     ctx.cloudbagRestores.add(normalized)
     try {
-      return await restoreRwmod(Buffer.from(rwmodBytes), rootPath, versionNo)
+      return await restoreRwmod(Buffer.from(rwmodBytes), rootPath, versionNo, expectedSnapshot as string | undefined)
     } finally {
       ctx.cloudbagRestores.delete(normalized)
     }

@@ -21,7 +21,7 @@ import { createProjectSlice } from './slices/projectSlice'
 import { createUiSlice } from './slices/uiSlice'
 import type { WorkspaceStore, WorkspaceStoreState } from './types'
 
-export type { WorkspaceStore, WorkspaceStoreState, WorkspaceStoreActions, ConfirmRequest, EditorPosition } from './types'
+export type { WorkspaceStore, WorkspaceStoreState, WorkspaceStoreActions, ConfirmRequest, EditorPosition, NonSettingsSurface, WorkspaceSurface } from './types'
 
 function mapBridgeAuthState(state: CommunityAuthStatus['state']): 'signed_out' | 'signed_in' | 'checking' | 'error' {
   if (state === 'signed-in') return 'signed_in'
@@ -170,10 +170,12 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       editorPos: { line: 1, col: 1 },
       settingsOpen: false,
       settingsTab: 'appearance',
+      settingsReturnSurface: 'editor',
       commandOpen: false,
       drawerSide: null,
       activeSurface: 'editor',
       communityTab: 'recommend',
+      communityReturnTab: 'recommend',
       cloudBagSlug: null,
       cloudBagSection: 'files',
       communityFollowing: [],
@@ -192,6 +194,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       pendingApproval: null,
       editorJump: null,
       modDialog: null,
+      modPackTask: null,
       modCheckResult: null,
       modReport: null,
       modReportOpen: false,

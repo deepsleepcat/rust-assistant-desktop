@@ -209,6 +209,7 @@ export interface AuthApi {
 
 export interface BridgeApi {
   platform: string
+  windowControl?(action: 'minimize' | 'maximize' | 'close'): void
   appInfo(): Promise<{ version: string; platform: string }>
   /** M6 自动更新（更新包托管在 GitHub Releases） */
   app: {
@@ -223,7 +224,7 @@ export interface BridgeApi {
   }
   store: StoreApi
   plugins?: PluginApi
-  /** M42 引擎渲染 DLC（宿主只提供插座，引擎由用户自备放进指定目录） */
+  /** M42 引擎渲染 DLC（单位预览的画面只由引擎渲染产生；DLC 安装到指定目录并授权后使用） */
   engineDlc?: EngineDlcApi
   community?: {
     request(request: CommunityRequest): Promise<CommunityResponse>
@@ -232,6 +233,8 @@ export interface BridgeApi {
   auth?: AuthApi
   /** 云书包（社区模组仓库）受限主进程能力：把服务端打包的 .rwmod 安全恢复进已登记项目。 */
   cloudbag?: {
+    /** 上传专用 .wav 字节：主进程从已登记根读取，MP4/M4A 伪 WAV 在临时目录转码，不改源文件。 */
+    readWavForUpload?(rootPath: string, filePath: string): Promise<{ bytes: ArrayBuffer; size: number }>
     /** 有限大小 .rwmod 包另存为；路径仅来自原生对话框，写盘完成才返回成功。 */
     saveRwmod?(filename: string, bytes: ArrayBuffer): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number }>
     /** 用 export.rwmod 覆盖本地项目树（拉取版本 / 冲突「放弃本地改动」出口）。
@@ -239,7 +242,10 @@ export interface BridgeApi {
      * 唯一后缀目录，绝不覆盖旧备份）→ 全量校验 → 逐文件写盘 → 把 zip 外的本地多余文件
      * 移入备份（删除语义；锚点目录与云书包无法表示的文件除外）→ 失败回滚；.ohmytx 锚点永不覆盖。
      * movedList = 被移入备份的路径清单（逐条回显用，与 removed 同长）。 */
-    restore(rootPath: string, rwmodBytes: ArrayBuffer, versionNo: number): Promise<{ written: number; backedUp: number; removed: number; movedList: string[]; skipped: string[]; backupDir: string }>
+    watch?(rootPath: string, enabled: boolean): Promise<void>
+    onChanged?(listener: (event: { rootPath: string; error?: string }) => void): () => void
+    snapshot?(rootPath: string): Promise<string>
+    restore(rootPath: string, rwmodBytes: ArrayBuffer, versionNo: number, expectedSnapshot?: string): Promise<{ written: number; backedUp: number; removed: number; movedList: string[]; skipped: string[]; backupDir: string }>
   }
   project: {
     openFolderDialog(): Promise<OpenedProject | null>
@@ -290,7 +296,9 @@ export interface BridgeApi {
     /** 撤销导入：删除本次会话刚解压但未被使用的目录（导入确认被取消时调用） */
     discardImport(rootPath: string): Promise<{ ok: boolean }>
     createUnit(rootPath: string, params: { name: string; displayName?: string; folder?: string }): Promise<{ path: string }>
-    pack(rootPath: string, options?: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number; files: number; skippedLinks?: number }>
+    /** 订阅后再发起调用；取消订阅只解除该订阅。旧桥可不实现进度事件。 */
+    onPackProgress?(callback: (progress: import('./modPack').ModPackProgressEvent) => void): () => void
+    pack(rootPath: string, options?: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean }, requestId?: string): Promise<{ canceled: true } | { canceled: false; filePath: string; size: number; files: number; skippedLinks?: number }>
     /** M35 F3：打包并部署到游戏 mods/units 目录（跳过另存为对话框）。
      * 同名已存在且未 overwrite 时返回 code:'EXISTS'，UI 确认后带 overwrite 重试。 */
     packAndDeploy(
@@ -298,6 +306,7 @@ export interface BridgeApi {
       options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean },
       gamePath: string,
       overwrite: boolean,
+      requestId?: string,
     ): Promise<{ ok: true; filePath: string; size: number; files: number; skippedLinks: number; overwritten: boolean } | { ok: false; code?: 'EXISTS'; filePath?: string; message: string }>
     check(rootPath: string): Promise<{ issues: Array<{ file: string; level: 'error' | 'warning' | 'info'; message: string }>; unitCount: number; fileCount: number }>
     /** 读取模组自述文件（不存在返回 null） */

@@ -3,10 +3,12 @@ import { AppIcon } from '../../components/AppIcon'
 import { Modal } from '../../components/Modal'
 import { PanelState } from '../../components/PanelState'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { createCloudBagApi, type CloudBagApi, type CloudBagRepo } from '../../services/cloudBagApi'
-import { importTreeToNewRepo, writeCloudBagAnchor, type SyncProgress } from '../../services/cloudBagSync'
+import { createCloudBagApi, type CloudBagApi, type CloudBagRepo, type CloudBagRepoType } from '../../services/cloudBagApi'
+import { importTreeToNewRepo, pushLocalTree, writeCloudBagAnchor, type SyncProgress } from '../../services/cloudBagSync'
 import { getBridge } from '../../services/bridge'
-import { cloudBagGate, formatBytes, repoDeepLink } from './cloudBagData'
+import { scanLocalTree } from '../../services/cloudBagTreeState'
+import type { CloudBagTreeEntry } from '../../services/cloudBagApi'
+import { cloudBagGate, cloudBagPathKey, formatBytes, repoDeepLink } from './cloudBagData'
 import { CloudBagRepoView } from './CloudBagRepoView'
 
 /**
@@ -21,6 +23,11 @@ const VISIBILITY_LABELS: Record<CloudBagRepo['visibility'], string> = {
   public: '公开',
   link: '链接可见',
 }
+const REPO_TYPE_LABELS: Record<CloudBagRepoType, string> = {
+  mod: '单模组仓',
+  collection: '模组集合仓',
+  asset: '素材仓',
+}
 
 function RepoCard({ repo, endpoint, onOpen }: { repo: CloudBagRepo; endpoint: string; onOpen: () => void }) {
   return (
@@ -28,6 +35,7 @@ function RepoCard({ repo, endpoint, onOpen }: { repo: CloudBagRepo; endpoint: st
       <button className="post-card-main" onClick={onOpen}>
         <div className="post-card-title">
           <span>{repo.title}</span>
+          <span className="badge info">{REPO_TYPE_LABELS[repo.repoType ?? 'mod'] ?? repo.repoType}</span>
           <span className="badge">{VISIBILITY_LABELS[repo.visibility] ?? repo.visibility}</span>
         </div>
         <div className="post-card-meta">
@@ -56,6 +64,7 @@ function CreateRepoModal({ api, onClose, onCreated }: { api: CloudBagApi; onClos
   const [title, setTitle] = useState('')
   const [slugSuggestion, setSlugSuggestion] = useState('')
   const [description, setDescription] = useState('')
+  const [repoType, setRepoType] = useState<CloudBagRepoType>('mod')
   const [visibility, setVisibility] = useState<CloudBagRepo['visibility']>('private')
   const [tags, setTags] = useState('')
   const [busy, setBusy] = useState(false)
@@ -67,6 +76,7 @@ function CreateRepoModal({ api, onClose, onCreated }: { api: CloudBagApi; onClos
     try {
       await api.createRepo({
         title: title.trim(),
+        repoType,
         slugSuggestion: slugSuggestion.trim() || undefined,
         description: description.trim(),
         visibility,
@@ -88,13 +98,17 @@ function CreateRepoModal({ api, onClose, onCreated }: { api: CloudBagApi; onClos
         <input aria-label="仓库名称" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="名称（最多 128 字）" maxLength={128} />
         <input aria-label="仓库标识建议" value={slugSuggestion} onChange={(event) => setSlugSuggestion(event.target.value)} placeholder="标识建议（可留空，最终以服务端生成为准）" maxLength={64} />
         <input aria-label="仓库简介" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="简介（最多 500 字）" maxLength={500} />
+        <select aria-label="仓库类型" value={repoType} onChange={(event) => setRepoType(event.target.value as CloudBagRepoType)}>
+          <option value="mod">单模组仓（兼容旧流程）</option>
+          <option value="collection">模组集合仓（整套或单个模组下载）</option>
+          <option value="asset">素材仓（素材、模板、地图）</option>
+        </select>
         <select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as CloudBagRepo['visibility'])}>
           <option value="private">私有（仅成员）</option>
           <option value="public">公开（广场可见）</option>
           <option value="link">链接可见（持分享链接可读）</option>
         </select>
         <input aria-label="仓库标签" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="标签（逗号分隔，最多 8 个）" />
-        <div className="local-note">V1 云书包内容在服务器上为明文存储（加密属后续版本），请勿上传敏感内容。</div>
         {error && <div className="community-warning">{error}</div>}
       </div>
     </Modal>
@@ -109,50 +123,112 @@ function CreateRepoModal({ api, onClose, onCreated }: { api: CloudBagApi; onClos
  *    zip-slip / 20000 条目 / 128MB 单文件 / 512MB 总量 / 设备名 / 失败回滚）解包出的目录。
  * 两条路都走同一条推送链路（pushLocalTree），不新增第二条上传通道。
  */
-function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose, onImported, onRepoCreated }: {
+export function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose, onImported, onRepoCreated, initialTarget = 'new' }: {
   api: CloudBagApi
   activeProjectName: string | null
   activeProjectPath: string | null
+  initialTarget?: string
   onClose: () => void
   onImported: (slug: string) => void
   /** 导入中途取消/失败但仓库已在服务端建成：仓库列表必须立即重取（否则关窗后仍见旧列表） */
   onRepoCreated: () => void
 }) {
   const bridge = getBridge()
-  const [source, setSource] = useState<'project' | 'rwmod'>(activeProjectPath ? 'project' : 'rwmod')
+  const [source, setSource] = useState<'project' | 'rwmod' | 'folder'>(activeProjectPath ? 'project' : 'folder')
   const [title, setTitle] = useState(activeProjectName ?? '')
   const [slugSuggestion, setSlugSuggestion] = useState('')
   const [description, setDescription] = useState('')
+  const [repoType, setRepoType] = useState<CloudBagRepoType>('mod')
   const [visibility, setVisibility] = useState<CloudBagRepo['visibility']>('private')
   const [tags, setTags] = useState('')
-  const [note, setNote] = useState('从本地项目导入的初始版本')
+  const [note, setNote] = useState('从本地项目导入')
+  const [pickedRoot, setPickedRoot] = useState<string | null>(null)
+  const [target, setTarget] = useState(initialTarget)
+  const [targets, setTargets] = useState<CloudBagRepo[]>([])
+  const [targetsError, setTargetsError] = useState('')
+  const [prefix, setPrefix] = useState('')
+  const [importedSlug, setImportedSlug] = useState<string | null>(null)
+  const [mergePlan, setMergePlan] = useState<{ repo: CloudBagRepo; files: CloudBagTreeEntry[]; digest: string; root: string; prefix: string; overlaps: string[] } | null>(null)
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      const all: CloudBagRepo[] = []
+      const seen = new Set<string>()
+      for (let page = 1; ; page++) {
+        if (page > 1000) throw new Error('仓库数量过多，请缩小范围后重试')
+        const result = await api.repos({ mine: true, page, pageSize: 50 })
+        if (!active) return
+        const fresh = result.items.filter((repo) => !seen.has(repo.slug))
+        if (result.items.length && !fresh.length) throw new Error('仓库列表分页未前进，请刷新后重试')
+        for (const repo of fresh) seen.add(repo.slug)
+        all.push(...fresh.filter((repo) => repo.myRole === 'owner' || repo.myRole === 'editor'))
+        if (result.items.length < 50 || page * 50 >= (result.total ?? Infinity)) break
+      }
+      if (active) setTargets(all)
+    })().catch((err: unknown) => { if (active) setTargetsError(err instanceof Error ? err.message : String(err)) })
+    return () => { active = false }
+  }, [api])
+  const chooseSource = async (kind: 'project' | 'folder' | 'rwmod') => {
+    if (busy) return
+    if (kind === 'project') { setSource(kind); setMergePlan(null); return }
+    setBusy(true); setError(null)
+    try {
+      const picked = kind === 'folder' ? await bridge.project.openFolderDialog() : await bridge.mod.import('archive')
+      if (picked) { setSource(kind); setPickedRoot(picked.rootPath); setMergePlan(null) }
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)) }
+    finally { setBusy(false) }
+  }
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<SyncProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef(false)
 
   const submit = async () => {
-    if (!title.trim()) { setError('仓库名称不能为空'); return }
+    if (target === 'new' && !title.trim()) { setError('仓库名称不能为空'); return }
     if (!note.trim()) { setError('版本说明不能为空'); return }
-    let rootPath = activeProjectPath
-    if (source === 'rwmod') {
-      setBusy(true)
-      setError(null)
-      try {
-        // 取消返回 null：保持弹窗打开，不产生任何请求
-        const picked = await bridge.mod.import('archive')
-        if (!picked) { setBusy(false); return }
-        rootPath = picked.rootPath
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
-        setBusy(false)
-        return
-      }
-    }
+    const rootPath = source === 'project' ? activeProjectPath : pickedRoot
     if (!rootPath) { setError('请先打开一个本地项目，或选择 .rwmod 文件'); setBusy(false); return }
     setBusy(true)
     setError(null)
     abortRef.current = false
+    if (target !== 'new') {
+      try {
+        const repo = await api.repo(target)
+        if (repo.myRole !== 'owner' && repo.myRole !== 'editor') throw new Error('你已没有目标仓库的编辑权限')
+        const scan = await scanLocalTree(bridge, rootPath, { onProgress: setProgress, isCancelled: () => abortRef.current })
+        if (!scan) return
+        const normalizedPrefix = prefix.trim().replace(/\/$/, '')
+        let plan = mergePlan
+        if (!plan || plan.repo.slug !== repo.slug || plan.repo.headVersionNo !== repo.headVersionNo || plan.digest !== scan.digest || plan.root !== rootPath || plan.prefix !== normalizedPrefix) {
+          const files: CloudBagTreeEntry[] = []
+          if (repo.headVersionNo > 0) {
+            let cursor: string | undefined
+            const seen = new Set<string>()
+            do {
+              const result = await api.tree(repo.slug, repo.headVersionNo, cursor, 500)
+              files.push(...result.items)
+              cursor = result.nextCursor ?? undefined
+              if (cursor && seen.has(cursor)) throw new Error('远端文件树分页异常，请重试')
+              if (cursor) seen.add(cursor)
+              if (abortRef.current) return
+            } while (cursor)
+          }
+          const local = new Set(scan.entries.map((file) => (normalizedPrefix ? normalizedPrefix + '/' : '') + file.path).map(cloudBagPathKey))
+          const overlaps = files.filter((file) => local.has(cloudBagPathKey(file.path))).map((file) => file.path)
+          plan = { repo, files, digest: scan.digest, root: rootPath, prefix: normalizedPrefix, overlaps }
+          setMergePlan(plan)
+          if (overlaps.length) return
+        }
+        const result = await pushLocalTree({ api, bridge, rootPath, repoSlug: repo.slug, onProgress: setProgress, isAborted: () => abortRef.current }, { message: note.trim(), baseVersionNo: repo.headVersionNo, retainedFiles: plan.files, pathPrefix: plan.prefix, strict: true, expectedDigest: plan.digest })
+        if (result.status !== 'pushed') throw new Error(result.status === 'conflict' ? '远端已更新，请重新比较后导入' : result.error ?? '导入已取消')
+        setMergePlan(null)
+        onRepoCreated()
+        // 合并后的整仓可能包含来源目录没有的文件，因此不把子集绑定为整仓基线。
+        onImported(repo.slug)
+      } catch (err) { setMergePlan(null); setError(err instanceof Error ? err.message : String(err)) }
+      finally { setBusy(false) }
+      return
+    }
     const outcome = await importTreeToNewRepo({
       api,
       bridge,
@@ -163,6 +239,7 @@ function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose
     }, {
       repo: {
         title: title.trim(),
+        repoType,
         slugSuggestion: slugSuggestion.trim() || undefined,
         description: description.trim(),
         visibility,
@@ -174,13 +251,20 @@ function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose
     if (outcome.status === 'imported' && outcome.repo) {
       // 尽力写本地锚点（与同步弹窗同一结构）：写失败不阻断导入（服务端已成功），
       // 后果只是下次打开同步弹窗显示「未绑定」——那里有显式文案告知，不是假成功。
+      let anchorFailed = false
       await writeCloudBagAnchor(bridge, rootPath, {
         repoSlug: outcome.repo.slug,
         baselineSeq: outcome.versionNo ?? 0,
         // 首版本实际提交树摘要：写入后同步弹窗可直接比较，无需再从服务端补基线
         baselineTreeDigest: outcome.treeDigest ?? '',
         lastSyncedAt: Math.floor(Date.now() / 1000),
-      }).catch(() => undefined)
+      }).catch((err: unknown) => {
+        anchorFailed = true
+        setImportedSlug(outcome.repo!.slug)
+        setError(`服务器已导入成功，但本地同步绑定保存失败：${err instanceof Error ? err.message : String(err)}`)
+      })
+      onRepoCreated()
+      if (anchorFailed) return
       onImported(outcome.repo.slug)
       return
     }
@@ -196,48 +280,80 @@ function ImportToCloudModal({ api, activeProjectName, activeProjectPath, onClose
     : progress?.phase === 'committing' ? '正在创建首个版本…' : progress?.phase === 'done' ? '导入完成' : ''
 
   return (
-    <Modal title="导入到云书包" onClose={busy ? () => undefined : onClose} footer={<>
+    <Modal spacious title="导入到云仓库" onClose={busy ? () => undefined : onClose} footer={<>
       {/* busy 期间必须保留一个协作式取消出口（与同步弹窗同一语义）：大文件树导入
           只能等它跑完且无法取消是死路。发出取消后完成当前文件即停（IPC 不可中断）；
           仓库已创建时会如实提示（服务端不回滚）。 */}
       {busy
         ? <button className="btn" onClick={() => { abortRef.current = true }} title="发出取消：完成当前文件后停止上传（传输中的单个文件不可中断）">取消导入</button>
         : <button className="btn" onClick={onClose}>取消</button>}
-      <button className="btn primary" disabled={busy} onClick={() => void submit()}>{busy ? '导入中…' : '创建仓库并导入'}</button>
+      <button className="btn primary" disabled={busy} onClick={() => importedSlug ? onImported(importedSlug) : void submit()}>{importedSlug ? '查看已导入仓库' : busy ? '导入中…' : target === 'new' ? '创建仓库并导入' : mergePlan?.overlaps.length ? '确认替换同名文件并导入' : '比较并导入目标仓库'}</button>
     </>}>
       <div className="community-form">
         <div className="rank-filter">
-          <button type="button" className={`rank-chip${source === 'project' ? ' active' : ''}`} aria-pressed={source === 'project'} disabled={!activeProjectPath} title={activeProjectPath ? '以当前打开的项目目录作为初始文件树' : '先在工作台打开一个本地项目'} onClick={() => setSource('project')}>
+          <button type="button" className={`rank-chip${source === 'project' ? ' active' : ''}`} aria-pressed={source === 'project'} disabled={!activeProjectPath} title={activeProjectPath ? '以当前打开的项目目录作为初始文件树' : '先在工作台打开一个本地项目'} onClick={() => void chooseSource('project')}>
             从当前项目导入
           </button>
-          <button type="button" className={`rank-chip${source === 'rwmod' ? ' active' : ''}`} aria-pressed={source === 'rwmod'} onClick={() => setSource('rwmod')}>
+          <button type="button" className={`rank-chip${source === 'folder' ? ' active' : ''}`} aria-pressed={source === 'folder'} onClick={() => void chooseSource('folder')}>选择本地目录</button>
+          <button type="button" className={`rank-chip${source === 'rwmod' ? ' active' : ''}`} aria-pressed={source === 'rwmod'} disabled={busy} onClick={() => void chooseSource('rwmod')}>
             导入 .rwmod 文件
           </button>
         </div>
         <div className="local-note">
           {source === 'project'
             ? `源目录：${activeProjectPath ?? '（未打开项目）'}`
-            : '点击「创建仓库并导入」后会依次弹出「选择模组文件（.rwmod / .zip）」与「选择导入位置」；解压走 importModBuffer 的全量校验（zip-slip / 条目数 / 单文件与总量上限）。'}
+            : `源目录：${pickedRoot ?? '尚未选择，请点击上方来源按钮'}`}
         </div>
-        <input aria-label="仓库名称" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="名称（最多 128 字）" maxLength={128} />
+        <label>目标仓库<select value={target} disabled={busy} onChange={(event) => { setTarget(event.target.value); setMergePlan(null) }}><option value="new">新建仓库</option>{targets.map((repo) => <option key={repo.slug} value={repo.slug}>{repo.title} · {repo.slug}</option>)}</select></label>
+        {targetsError && <div className="community-warning">目标仓库列表加载失败：{targetsError}</div>}
+        {target !== 'new' && <label>目标子目录（可留空）<input value={prefix} disabled={busy} onChange={(event) => { setPrefix(event.target.value); setMergePlan(null) }} placeholder="例如 mods/my-mod" /></label>}
+        {mergePlan && mergePlan.overlaps.length > 0 && <div className="local-note"><strong>以下 {mergePlan.overlaps.length} 个同名文件将被替换，其余远端文件保留：</strong><div style={{ maxHeight: 180, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{mergePlan.overlaps.join('\n')}</div></div>}
+        {target === 'new' && <>
+        <label>仓库名称<input aria-label="仓库名称" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="名称（最多 128 字）" maxLength={128} /></label>
         <input aria-label="仓库标识建议" value={slugSuggestion} onChange={(event) => setSlugSuggestion(event.target.value)} placeholder="标识建议（可留空，最终以服务端生成为准）" maxLength={64} />
         <input aria-label="仓库简介" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="简介（最多 500 字）" maxLength={500} />
+        <select aria-label="仓库类型" value={repoType} onChange={(event) => setRepoType(event.target.value as CloudBagRepoType)}>
+          <option value="mod">单模组仓（兼容旧流程）</option>
+          <option value="collection">模组集合仓（整套或单个模组下载）</option>
+          <option value="asset">素材仓（素材、模板、地图）</option>
+        </select>
         <select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as CloudBagRepo['visibility'])}>
           <option value="private">私有（仅成员）</option>
           <option value="public">公开（广场可见）</option>
           <option value="link">链接可见（持分享链接可读）</option>
         </select>
-        <input aria-label="仓库标签" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="标签（逗号分隔，最多 8 个）" />
+        <label>标签<input aria-label="仓库标签" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="标签（逗号分隔，最多 8 个）" /></label>
+        </>}
         <input aria-label="版本说明" value={note} onChange={(event) => setNote(event.target.value)} placeholder="版本说明（必填，最多 600 字）" maxLength={600} />
         {phaseLabel && <div className="local-note" role="status">{phaseLabel}</div>}
-        <div className="local-note">V1 云书包内容在服务器上为明文存储（加密属后续版本），请勿上传敏感内容。</div>
         {error && <div className="community-warning" role="status">{error}</div>}
       </div>
     </Modal>
   )
 }
 
-export function CloudBagPanel({ onOpenLogin, onOpenSettings, onUnauthorized, refreshKey = 0, onReachabilityChange }: {
+export function CloudBagPanel() {
+  const openLogin = useWorkspaceStore((s) => s.openLoginScreen)
+  const openSettings = useWorkspaceStore((s) => s.openSettings)
+  const refreshAuth = useWorkspaceStore((s) => s.refreshCommunityAuth)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [reachable, setReachable] = useState<boolean | null>(null)
+  const onSettings = useCallback(() => openSettings('community'), [openSettings])
+  const onUnauthorized = useCallback(() => {
+    void refreshAuth().catch(() => setReachable(false))
+  }, [refreshAuth])
+  return <section className="community-panel panel" aria-label="云仓库">
+    <header className="panel-header">
+      <AppIcon name="cloud" size={13} /> 云仓库
+      <span className={`badge ${reachable === null ? 'info' : reachable ? 'success' : 'warning'}`} role="status">{reachable === null ? '等待连接' : reachable ? '在线' : '连接失败'}</span>
+      <span className="grow" />
+      <button type="button" className="icon-btn" title="刷新云仓库" aria-label="刷新云仓库" onClick={() => setRefreshKey((value) => value + 1)}><AppIcon name="refresh" size={13} /></button>
+    </header>
+    <CloudBagContent onOpenLogin={openLogin} onOpenSettings={onSettings} onUnauthorized={onUnauthorized} refreshKey={refreshKey} onReachabilityChange={setReachable} />
+  </section>
+}
+
+export function CloudBagContent({ onOpenLogin, onOpenSettings, onUnauthorized, refreshKey = 0, onReachabilityChange }: {
   onOpenLogin: () => void
   onOpenSettings: () => void
   onUnauthorized: () => void
@@ -266,6 +382,7 @@ export function CloudBagPanel({ onOpenLogin, onOpenSettings, onUnauthorized, ref
   const [repos, setRepos] = useState<CloudBagRepo[]>([])
   const [total, setTotal] = useState(0)
   const [mine, setMine] = useState(true)
+  const [starred, setStarred] = useState(false)
   const [keyword, setKeyword] = useState('')
   const [searchKeyword, setSearchKeyword] = useState('')
   const [page, setPage] = useState(1)
@@ -304,7 +421,7 @@ export function CloudBagPanel({ onOpenLogin, onOpenSettings, onUnauthorized, ref
     setError(null)
     try {
       // 真实请求：离线重试按钮同样走这里（离线时该请求会以网络错误失败并如实展示）
-      const result = await api.repos({ mine, q: searchKeyword || undefined, page })
+      const result = await api.repos({ mine: mine && !starred, starred, q: searchKeyword || undefined, page })
       if (!isCurrent()) return
       setRepos(result.items ?? [])
       setTotal(result.total ?? result.items?.length ?? 0)
@@ -323,7 +440,7 @@ export function CloudBagPanel({ onOpenLogin, onOpenSettings, onUnauthorized, ref
         setRetrying(false)
       }
     }
-  }, [api, mine, page, searchKeyword, gate.canBrowse, onReachabilityChange])
+  }, [api, mine, starred, page, searchKeyword, gate.canBrowse, onReachabilityChange])
 
   useEffect(() => {
     const timer = setTimeout(() => { void load() }, 0)
@@ -378,8 +495,9 @@ export function CloudBagPanel({ onOpenLogin, onOpenSettings, onUnauthorized, ref
       )}
       <div className="community-section community-toolbar">
         <div className="rank-filter">
-          <button type="button" className={`rank-chip${mine ? ' active' : ''}`} aria-pressed={mine} onClick={() => { setMine(true); setPage(1) }}>我的仓库</button>
-          <button type="button" className={`rank-chip${!mine ? ' active' : ''}`} aria-pressed={!mine} onClick={() => { setMine(false); setPage(1) }}>广场</button>
+          <button type="button" className={`rank-chip${mine && !starred ? ' active' : ''}`} aria-pressed={mine && !starred} onClick={() => { setMine(true); setStarred(false); setPage(1) }}>我的仓库</button>
+          <button type="button" className={`rank-chip${!mine && !starred ? ' active' : ''}`} aria-pressed={!mine && !starred} onClick={() => { setMine(false); setStarred(false); setPage(1) }}>广场</button>
+          <button type="button" className={`rank-chip${starred ? ' active' : ''}`} aria-pressed={starred} onClick={() => { setMine(false); setStarred(true); setPage(1) }}>我 Star 的仓库</button>
         </div>
         <input
           aria-label="搜索仓库"
@@ -391,8 +509,9 @@ export function CloudBagPanel({ onOpenLogin, onOpenSettings, onUnauthorized, ref
         <button className="btn-sm" onClick={() => { setSearchKeyword(keyword); setPage(1) }}>搜索</button>
         <span className="grow" />
         <button className="btn-sm" disabled={!gate.canWrite} title={gate.canWrite ? '创建新的模组仓库' : '请先完成邮箱认证后再创建仓库'} onClick={() => setCreateOpen(true)}>
-          <AppIcon name="plus" size={12} /> 创建仓库
+          创建仓库
         </button>
+        <button className="btn-sm" disabled={!gate.canWrite} onClick={() => setImportOpen(true)}>从本地目录导入</button>
       </div>
       {loading ? <PanelState kind="loading" title="加载云书包仓库…" /> : error
         ? <PanelState kind="error" title="云书包加载失败" description={error} onRetry={() => void load(true)} />

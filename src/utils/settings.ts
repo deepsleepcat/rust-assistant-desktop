@@ -2,17 +2,30 @@
  * 设置：默认值与清洗逻辑。所有外部输入（本地存储、界面操作）都必须先经过清洗，
  * 防止损坏的数据进入应用。
  */
-import type { AppSettings, BackgroundKind, FileSort, ThemeMode, WorkbenchLayoutSettings } from '../types/domain'
+import type { AppSettings, BackgroundKind, EditorColorKey, EditorColors, FileSort, ThemeMode, WorkbenchLayoutSettings } from '../types/domain'
 import type { AiProviderType } from '../types/ai'
 import { DEFAULT_COMMUNITY_ENDPOINT } from '../services/communityApi'
 import { defaultSemanticCheckerConfig, sanitizeCheckerConfig } from '../features/editor/semanticChecks/registry'
 import { INNER_RATIO_MAX, INNER_RATIO_MIN, WORKBENCH_CONSTRAINTS } from './layout'
+import { sanitizeShortcuts } from './shortcuts'
 
 export const FONT_OPTIONS = [
+  { label: '鸿蒙字体（HarmonyOS Sans）', value: 'harmony' },
   { label: '系统默认', value: 'system' },
   { label: '等宽字体（Cascadia Code）', value: 'mono' },
   { label: '楷体', value: 'kaiti' },
 ] as const
+
+// 同时作为设置控件、清洗白名单与编辑器 CSS 变量映射的唯一来源。
+export const EDITOR_COLOR_OPTIONS = [
+  { key: 'text', label: '正文', cssVariable: '--cm-text', themeVariable: '--text-primary' },
+  { key: 'label', label: '中文标签', cssVariable: '--cm-label', themeVariable: '--text-primary' },
+  { key: 'comment', label: '注释', cssVariable: '--cm-comment', themeVariable: '--cm-comment' },
+  { key: 'section', label: '节名', cssVariable: '--cm-section', themeVariable: '--cm-section' },
+  { key: 'key', label: '普通键', cssVariable: '--cm-key', themeVariable: '--cm-key' },
+  { key: 'animation', label: '动画键', cssVariable: '--cm-anim', themeVariable: '--cm-anim' },
+  { key: 'graphic', label: '图像键', cssVariable: '--cm-graphic', themeVariable: '--cm-graphic' },
+] as const satisfies ReadonlyArray<{ key: EditorColorKey; label: string; cssVariable: string; themeVariable: string }>
 
 /** 文件树排序方式 */
 export const FILE_SORTS: FileSort[] = ['name', 'type', 'size', 'mtime']
@@ -37,6 +50,7 @@ export const DEFAULT_LAYOUT: WorkbenchLayoutSettings = {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  keyboardShortcuts: {},
   // 白色 Google Material 是默认主视觉；深色 / 跟随系统为可选主题
   theme: 'light',
   background: {
@@ -45,11 +59,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
     gradient:
       'linear-gradient(135deg, #e8f0fe 0%, #fce8e6 33%, #fef7e0 66%, #e6f4ea 100%)',
     imagePath: null,
+    imageCrop: { x: 50, y: 50, zoom: 1 },
     opacity: 55,
     blur: 12,
   },
-  fontFamily: 'system',
+  fontFamily: 'harmony',
   fontSize: 14,
+  editorColors: {},
   translateMode: true,
   leftWidth: 280,
   rightWidth: 430,
@@ -97,17 +113,24 @@ export function sanitizeSettings(input: unknown): AppSettings {
   const bgRaw = (raw.background && typeof raw.background === 'object' ? raw.background : {}) as Partial<AppSettings['background']>
 
   return {
+    keyboardShortcuts: sanitizeShortcuts(raw.keyboardShortcuts),
     theme: THEME_MODES.includes(raw.theme as ThemeMode) ? (raw.theme as ThemeMode) : DEFAULT_SETTINGS.theme,
     background: {
       kind: BACKGROUND_KINDS.includes(bgRaw.kind as BackgroundKind) ? (bgRaw.kind as BackgroundKind) : DEFAULT_SETTINGS.background.kind,
       color: typeof bgRaw.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(bgRaw.color) ? bgRaw.color : DEFAULT_SETTINGS.background.color,
       gradient: typeof bgRaw.gradient === 'string' ? bgRaw.gradient : DEFAULT_SETTINGS.background.gradient,
       imagePath: typeof bgRaw.imagePath === 'string' ? bgRaw.imagePath : null,
+      imageCrop: {
+        x: typeof bgRaw.imageCrop?.x === 'number' && Number.isFinite(bgRaw.imageCrop.x) ? clamp(bgRaw.imageCrop.x, 0, 100) : 50,
+        y: typeof bgRaw.imageCrop?.y === 'number' && Number.isFinite(bgRaw.imageCrop.y) ? clamp(bgRaw.imageCrop.y, 0, 100) : 50,
+        zoom: typeof bgRaw.imageCrop?.zoom === 'number' && Number.isFinite(bgRaw.imageCrop.zoom) ? clamp(bgRaw.imageCrop.zoom, 1, 4) : 1,
+      },
       opacity: clamp(typeof bgRaw.opacity === 'number' ? bgRaw.opacity : DEFAULT_SETTINGS.background.opacity, 0, 100),
       blur: clamp(typeof bgRaw.blur === 'number' ? bgRaw.blur : DEFAULT_SETTINGS.background.blur, 0, 40),
     },
     fontFamily: FONT_OPTIONS.some((f) => f.value === raw.fontFamily) ? (raw.fontFamily as string) : DEFAULT_SETTINGS.fontFamily,
     fontSize: clamp(typeof raw.fontSize === 'number' ? raw.fontSize : DEFAULT_SETTINGS.fontSize, 12, 20),
+    editorColors: sanitizeEditorColors(raw.editorColors),
     translateMode: typeof raw.translateMode === 'boolean' ? raw.translateMode : DEFAULT_SETTINGS.translateMode,
     leftWidth: clamp(typeof raw.leftWidth === 'number' ? raw.leftWidth : DEFAULT_SETTINGS.leftWidth, WORKBENCH_CONSTRAINTS.minLeft, WORKBENCH_CONSTRAINTS.maxLeft),
     rightWidth: clamp(typeof raw.rightWidth === 'number' ? raw.rightWidth : DEFAULT_SETTINGS.rightWidth, WORKBENCH_CONSTRAINTS.minRight, WORKBENCH_CONSTRAINTS.maxRight),
@@ -135,6 +158,17 @@ export function sanitizeSettings(input: unknown): AppSettings {
     knowledgeSources: sanitizeSources(raw.knowledgeSources),
     ai: sanitizeAi(raw.ai),
   }
+}
+
+function sanitizeEditorColors(raw: unknown): EditorColors {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const input = raw as Record<string, unknown>
+  const colors: EditorColors = {}
+  for (const { key } of EDITOR_COLOR_OPTIONS) {
+    const value = Object.prototype.hasOwnProperty.call(input, key) ? input[key] : undefined
+    if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)) colors[key] = value
+  }
+  return colors
 }
 
 /** M29 工作区布局清洗：比例夹紧（与布局纯函数同界）、布尔字段必须是布尔，损坏数据回退默认 */

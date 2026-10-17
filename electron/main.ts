@@ -61,9 +61,9 @@ function createWindow(): BrowserWindow {
     backgroundColor: '#f6f7f9',
     // R Logo 图标（任务栏/窗口图标；打包后由 electron-builder 注入 exe）
     icon: path.join(__dirname, '..', '..', 'build', 'icon.ico'),
-    // 隐藏标题栏文字，保留系统窗口控制按钮（最小化/最大化/关闭）
+    frame: process.platform !== 'win32',
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#f6f7f9', symbolColor: '#57606a', height: 40 },
+    ...(process.platform !== 'win32' ? { titleBarOverlay: { color: '#f6f7f9', symbolColor: '#57606a', height: 40 } } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -71,6 +71,17 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
     },
   })
+
+  const controlWindow = (event: Electron.IpcMainEvent, action: unknown) => {
+    if (event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) return
+    if (action === 'minimize') win.minimize()
+    else if (action === 'maximize') {
+      if (win.isMaximized()) win.unmaximize()
+      else win.maximize()
+    } else if (action === 'close') win.close()
+  }
+  ipcMain.on('window:control', controlWindow)
+  win.once('closed', () => ipcMain.removeListener('window:control', controlWindow))
 
   // 阻止页面跳转到外部地址，防止被导航劫持（精确匹配开发服务器 origin+path，前缀劫持一律拦截）
   win.webContents.on('will-navigate', (event, url) => {

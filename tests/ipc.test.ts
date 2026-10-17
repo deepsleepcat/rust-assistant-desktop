@@ -162,7 +162,7 @@ describe('IPC 通道完整性', () => {
       // game
       'game:detect', 'game:importSample', 'game:importMod', 'game:launch', 'game:openDir', 'game:preflight', 'game:readAssetImage',
       // cloudbag（云书包恢复：拉取覆盖 / 冲突放弃本地改动）
-      'cloudbag:restore', 'cloudbag:saveRwmod',
+      'cloudbag:restore', 'cloudbag:saveRwmod', 'cloudbag:readWavForUpload', 'cloudbag:snapshot', 'cloudbag:watch',
       // app
       'app:info', 'app:flush-done', 'app:checkUpdate', 'app:downloadUpdate', 'app:installUpdate',
       // ai
@@ -171,7 +171,7 @@ describe('IPC 通道完整性', () => {
       'dlc:list', 'dlc:openDir', 'dlc:grant', 'dlc:render',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(92)
+    expect(channels.size).toBe(95)
     const combined = createFakeIpc()
     registerIpc(ctx, combined.ipc)
     expect([...combined.channels.keys()].sort()).toEqual([...expected].sort())
@@ -192,6 +192,7 @@ describe('社区设备认证 IPC', () => {
       logout: vi.fn(async () => ({ state: 'signed-out' as const })),
       withCredential: vi.fn(),
       invalidate: vi.fn(),
+      invalidateIfCredential: vi.fn(async () => false),
     }
     ctx.communityAuth = auth
     await expect(invoke(channels, 'auth:status')).resolves.toEqual({ state: 'signed-out' })
@@ -760,6 +761,62 @@ describe('mod / game / app 通道', () => {
     ).rejects.toThrow('未经选择的音频文件')
     // 未登记项目根也拒绝
     await expect(invoke(channels, 'mod:create', path.join(tmp, 'nope'), {})).rejects.toThrow('未登记的项目目录')
+  })
+
+  it.each(['success', 'cancel', 'write-failure'] as const)('mod:pack：真实进度、保存窗口等待与终态（%s）', async (outcome) => {
+    const { channels, ipc } = createFakeIpc()
+    registerModIpc(ctx, ipc)
+    const root = path.join(tmp, 'pack-project')
+    await fs.mkdir(root)
+    await fs.writeFile(path.join(root, 'unit.ini'), '[core]\nname: tank\n')
+    ctx.roots.add(normalizePath(root))
+    const events: import('../src/types/modPack').ModPackProgressEvent[] = []
+    const sender = { isDestroyed: () => false, send: vi.fn((channel, data) => {
+      expect(channel).toBe('mod:pack-progress')
+      events.push(data)
+    }) }
+    let entered!: () => void
+    const dialogEntered = new Promise<void>((resolve) => { entered = resolve })
+    let choose!: (result: { canceled: boolean; filePath: string }) => void
+    ctx.dialog.showSaveDialog = vi.fn(() => {
+      entered()
+      return new Promise<Electron.SaveDialogReturnValue>((resolve) => { choose = resolve })
+    })
+    const requestId = `test-${outcome}`
+    const task = invokeWithEvent<{ canceled: boolean; files: number }>(channels, 'mod:pack', { sender }, root, {}, requestId)
+    await dialogEntered
+    expect(events[0]).toMatchObject({ phase: 'reading', requestId })
+    expect(events.some((event) => event.phase === 'compressing' && event.percent === 100)).toBe(true)
+    expect(events.at(-1)).toMatchObject({ phase: 'awaiting-save', requestId, files: 1 })
+    expect(ctx.packing.active).toBe(true)
+    await expect(invoke(channels, 'mod:pack', root)).rejects.toThrow('已有打包任务')
+    expect(ctx.dialog.showSaveDialog).toHaveBeenCalledTimes(1)
+    const target = outcome === 'write-failure' ? root : path.join(tmp, 'output.rwmod')
+    choose({ canceled: outcome === 'cancel', filePath: target })
+    if (outcome === 'write-failure') {
+      await expect(task).rejects.toThrow()
+      expect(events.at(-1)).toMatchObject({ phase: 'failed', requestId, message: expect.any(String) })
+    } else {
+      expect(await task).toMatchObject({ canceled: outcome === 'cancel' })
+      expect(events.at(-1)?.phase).toBe(outcome === 'cancel' ? 'canceled' : 'completed')
+      if (outcome === 'success') expect((await fs.readFile(target)).byteLength).toBeGreaterThan(0)
+      else await expect(fs.stat(target)).rejects.toThrow()
+    }
+    expect(events.some((event) => event.phase === 'writing')).toBe(outcome !== 'cancel')
+    expect(events.filter((event) => event.phase === 'completed')).toHaveLength(outcome === 'success' ? 1 : 0)
+    expect(ctx.packing.active).toBe(false)
+  })
+
+  it('mod:pack：发送进度时窗口已销毁不影响归档；任务标识不合法不占用互斥锁', async () => {
+    const { channels, ipc } = createFakeIpc()
+    registerModIpc(ctx, ipc)
+    ctx.roots.add(normalizePath(tmp))
+    await expect(invoke(channels, 'mod:pack', tmp, {}, '../invalid')).rejects.toThrow('任务标识无效')
+    expect(ctx.packing.active).toBe(false)
+    const sender = { isDestroyed: () => true, send: vi.fn() }
+    await expect(invokeWithEvent(channels, 'mod:pack', { sender }, tmp, {}, 'destroyed-window')).resolves.toMatchObject({ canceled: true })
+    expect(sender.send).not.toHaveBeenCalled()
+    expect(ctx.packing.active).toBe(false)
   })
 
   it('mod:pack：互斥锁生效', async () => {
