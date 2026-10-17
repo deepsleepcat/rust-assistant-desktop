@@ -9,7 +9,6 @@ import { SplitHandle } from '../../components/SplitHandle'
 import { INNER_RATIO_MAX, INNER_RATIO_MIN, pxToRatio, ratioToPx } from '../../utils/layout'
 import { WorkspaceSidebar } from './WorkspaceSidebar'
 import { ProjectPanel } from '../project/ProjectPanel'
-import { SurfaceNav } from './SurfaceNav'
 
 const DEFAULT_A_RATIO = 0.3
 
@@ -31,8 +30,8 @@ export function LeftColumn() {
   const collapsed = layout.leftACollapsed
   const ratio = liveRatio ?? layout.leftARatio
   // 折叠时直接归零（ratioToPx 内部会 clampRatio 到 0.15，不能走那条路）
-  const px = collapsed ? 0 : ratioToPx(ratio, h)
-  const minPx = ratioToPx(INNER_RATIO_MIN, h)
+  const minPx = Math.min(h, Math.max(110, ratioToPx(INNER_RATIO_MIN, h)))
+  const px = collapsed ? 0 : Math.max(minPx, ratioToPx(ratio, h))
   const maxPx = Math.max(minPx, ratioToPx(INNER_RATIO_MAX, h))
 
   const commit = (v: number) => {
@@ -47,7 +46,6 @@ export function LeftColumn() {
 
   return (
     <div className="wb-left-col">
-      <SurfaceNav />
       <div
         ref={wrapRef}
         className="wb-left-inner"

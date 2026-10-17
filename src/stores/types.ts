@@ -9,6 +9,10 @@ import type { CommunityUser } from '../services/communityApi'
 
 export type CommunityAuthStatus = 'checking' | 'signed_out' | 'signed_in' | 'loading' | 'error' | 'offline'
 
+/** 全局桌面工作面。cloudBag 属于社区域，但作为独立工作面保留内部状态。 */
+export type WorkspaceSurface = 'dashboard' | 'community' | 'cloudBag' | 'editor' | 'settings'
+export type NonSettingsSurface = Exclude<WorkspaceSurface, 'settings'>
+
 export interface CommunityAuthState {
   status: CommunityAuthStatus
   user: CommunityUser | null
@@ -17,7 +21,7 @@ export interface CommunityAuthState {
 }
 
 /** 设置面板页签。engineDlc 为 M42 引擎渲染 DLC 的目录与授权页。 */
-export type SettingsTab = 'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'community' | 'plugins' | 'game' | 'engineDlc' | 'coming' | 'about'
+export type SettingsTab = 'shortcuts' | 'appearance' | 'background' | 'editor' | 'layout' | 'ai' | 'community' | 'plugins' | 'game' | 'engineDlc' | 'coming' | 'about'
 
 export interface ConfirmRequest {
   title: string
@@ -57,17 +61,21 @@ export interface WorkspaceStoreState {
   settingsOpen: boolean
   /** 当前设置页签只属于本次界面会话，不写入本地设置。 */
   settingsTab: SettingsTab
+  /** 从设置页返回时恢复的工作面；不写入本地设置。 */
+  settingsReturnSurface: NonSettingsSurface
   commandOpen: boolean
-  /** M29：紧凑窗口下打开的抽屉（'left' | 'right'；null = 关闭） */
+  /** M29：紧凑窗口下打开的抽屉（'left' | 'right'；新桌面壳默认不启用） */
   drawerSide: 'left' | 'right' | null
-  /** M33-社区：当前中心工作区（编辑器 / 社区；切换不丢标签与光标） */
-  activeSurface: 'editor' | 'community'
-  /** 社区当前页签（推荐/关注/排行/我的/云书包） */
+  /** 当前中心工作面；切换不丢编辑器标签、光标或社区/仓库会话状态。 */
+  activeSurface: WorkspaceSurface
+  /** 社区当前页签（推荐/关注/排行/我的/云仓库） */
   communityTab: CommunityTab
+  /** 离开社区去云仓库后，保留上次社区内容页签。 */
+  communityReturnTab: Exclude<CommunityTab, 'cloudBag'>
   /** 云书包当前打开的仓库 slug（会话内状态，切页签不丢位置） */
   cloudBagSlug: string | null
   /** 云书包仓库页内的子页签 */
-  cloudBagSection: 'files' | 'versions' | 'members' | 'settings'
+  cloudBagSection: 'files' | 'issues' | 'versions' | 'members' | 'settings'
   /** 社区关注的创作者 id（会话内状态，不持久化；服务器上线后并入账号数据） */
   communityFollowing: string[]
   /** Browser-auth community session; the token remains only in main-process safeStorage. */
@@ -110,6 +118,8 @@ export interface WorkspaceStoreState {
   editorJump: { path: string; line: number; seq: number } | null
   /** M5：模组工具弹窗（null 表示关闭） */
   modDialog: 'createMod' | 'createUnit' | 'check' | 'optimize' | 'pack' | 'globalOp' | 'report' | 'import' | 'translationRepair' | null
+  /** 全局打包任务，不随切换项目/关闭选项窗口清空。 */
+  modPackTask: import('../types/modPack').ModPackTask | null
   /** M5：单位检查结果 */
   modCheckResult: { issues: Array<{ file: string; level: 'error' | 'warning' | 'info'; message: string }>; unitCount: number; fileCount: number } | null
   /** M13：模组质量报告（生成中为 null；reportOpen 控制弹窗） */
@@ -198,12 +208,12 @@ export interface WorkspaceStoreActions {
   setCommandOpen(open: boolean): void
   /** M29：紧凑窗口抽屉开关 */
   setDrawerSide(side: 'left' | 'right' | null): void
-  /** M33-社区：切换中心工作区（编辑器 ↔ 社区） */
-  setActiveSurface(surface: 'editor' | 'community'): void
+  /** 切换中心工作面；设置页会记录返回工作面。 */
+  setActiveSurface(surface: WorkspaceSurface): void
   /** M33-社区：切换社区页签 */
   setCommunityTab(tab: CommunityTab): void
   /** 云书包：打开/关闭仓库详情与子页签（会话内导航状态） */
-  setCloudBagView(patch: { slug?: string | null; section?: 'files' | 'versions' | 'members' | 'settings' }): void
+  setCloudBagView(patch: { slug?: string | null; section?: 'files' | 'issues' | 'versions' | 'members' | 'settings' }): void
   /** M33-社区：关注/取消关注创作者（会话内状态） */
   toggleCommunityFollow(creatorId: string): void
   /** Refresh the browser-auth community session from the saved token. */

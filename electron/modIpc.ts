@@ -6,6 +6,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
+import type { ModPackProgress } from '../src/types/modPack'
 import { isPathInside, normalizePath } from './paths'
 import { buildLogicIdentifierMap } from '../src/services/translationRepair'
 import {
@@ -19,6 +20,24 @@ import { requireInsideRoot, requireRealInsideRoot, registerRoot, exists, PROJECT
 /** 显式目录边界断言（防御性冗余；调用点均已先做信任锚校验） */
 function assertInsideDir(base: string, target: string): void {
   if (!isPathInside(path.resolve(base), target)) throw new Error('目标路径超出项目目录范围，拒绝访问')
+}
+
+/** 单次调用、仅发送给发起窗口；限频只丢弃中间采样，不产生计时进度或定时器。 */
+function packReporter(event: Electron.IpcMainInvokeEvent, requestId: unknown): (progress: ModPackProgress) => void {
+  if (requestId === undefined) return () => undefined
+  if (typeof requestId !== 'string' || !/^[\w-]{1,128}$/.test(requestId)) throw new Error('打包任务标识无效')
+  let lastPhase: ModPackProgress['phase'] | undefined
+  let lastSentAt = 0
+  return (progress) => {
+    const now = Date.now()
+    if (progress.phase === lastPhase && now - lastSentAt < 100 && progress.percent !== 100) return
+    lastPhase = progress.phase
+    lastSentAt = now
+    // 窗口关闭/销毁不能把一次成功打包变成失败。
+    try {
+      if (!event.sender.isDestroyed()) event.sender.send('mod:pack-progress', { ...progress, requestId })
+    } catch { /* renderer 已离开 */ }
+  }
 }
 
 /** 模组工具与模板库 */
@@ -70,22 +89,32 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
 
   // 写操作互斥：打包/全局操作都是批量 IO + 可能改写文件，并发会让内容互相覆盖。
   // 打包是全程内存 + 大量 IO 操作，并发两次会让内存翻倍且内容可能不一致
-  ipc('mod:pack', async (_event, rootPath: string, options?: import('./modTools').PackOptions) => {
+  ipc('mod:pack', async (event: Electron.IpcMainInvokeEvent, rootPath: string, options?: import('./modTools').PackOptions, requestId?: string) => {
     if (ctx.packing.active) throw new Error('已有打包任务正在进行，请稍候')
+    const report = packReporter(event, requestId)
     ctx.packing.active = true
     try {
       requireInsideRoot(ctx, rootPath, rootPath)
       // 只打包一次（避免打包两次之间文件变化导致 size/files 与写入内容不一致，也省一半 CPU）
-      const { buffer, files, skippedLinks } = await packModBufferWithCount(rootPath, options ?? {})
+      const { buffer, files, skippedLinks } = await packModBufferWithCount(rootPath, options ?? {}, report)
+      report({ phase: 'awaiting-save', files })
       const suggested = path.join(path.dirname(rootPath), `${path.basename(rootPath)}.rwmod`)
       const result = await ctx.dialog.showSaveDialog({
         title: '保存打包文件',
         defaultPath: suggested,
         filters: [{ name: '铁锈战争模组包', extensions: ['rwmod'] }, { name: '压缩包', extensions: ['zip'] }],
       })
-      if (result.canceled || !result.filePath) return { canceled: true }
+      if (result.canceled || !result.filePath) {
+        report({ phase: 'canceled', files })
+        return { canceled: true }
+      }
+      report({ phase: 'writing', files })
       await fs.writeFile(result.filePath, buffer)
+      report({ phase: 'completed', files })
       return { canceled: false, filePath: result.filePath, size: buffer.byteLength, files, skippedLinks }
+    } catch (err) {
+      report({ phase: 'failed', message: err instanceof Error ? err.message : String(err) })
+      throw err
     } finally {
       ctx.packing.active = false
     }
@@ -96,11 +125,12 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   // M35 F3：打包并部署到游戏 mods/units 目录（一键验证：打包→部署→启动）。
   // 与 mod:pack 同一互斥域；游戏目录不是项目根——目录判定在 deployMod 内部
   // 与 looksLikeGameDir 同标准，文件名清洗防穿越，同名未确认覆盖返回 EXISTS
-  ipc('mod:packAndDeploy', async (_event, rootPath: unknown, options: unknown, gamePath: unknown, overwrite: unknown) => {
+  ipc('mod:packAndDeploy', async (event: Electron.IpcMainInvokeEvent, rootPath: unknown, options: unknown, gamePath: unknown, overwrite: unknown, requestId?: string) => {
     if (typeof rootPath !== 'string' || !rootPath) throw new Error('项目目录为空')
     if (typeof gamePath !== 'string' || !gamePath) return { ok: false, message: '请先在设置中配置游戏安装目录' }
     if (overwrite !== undefined && typeof overwrite !== 'boolean') throw new Error('overwrite 参数必须是布尔值')
     if (ctx.packing.active) throw new Error('已有打包任务正在进行，请稍候')
+    const report = packReporter(event, requestId)
     ctx.packing.active = true
     try {
       // 登记校验用规范化路径（大小写不敏感）；执行传原始 rootPath——
@@ -108,7 +138,14 @@ export function registerModIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       // 传小写会让游戏内模组名（= .rwmod 文件名）丢失大小写（MyTankMod→mytankmod）
       const normalized = normalizePath(rootPath)
       if (!ctx.roots.has(normalized)) throw new Error('项目目录未登记，拒绝访问')
-      return await deployMod(rootPath, gamePath, (options ?? {}) as import('./modTools').PackOptions, overwrite === true)
+      const result = await deployMod(rootPath, gamePath, (options ?? {}) as import('./modTools').PackOptions, overwrite === true, report)
+      report(result.ok
+        ? { phase: 'completed', files: result.files }
+        : { phase: result.code === 'EXISTS' ? 'awaiting-overwrite' : 'failed', message: result.message })
+      return result
+    } catch (err) {
+      report({ phase: 'failed', message: err instanceof Error ? err.message : String(err) })
+      throw err
     } finally {
       ctx.packing.active = false
     }

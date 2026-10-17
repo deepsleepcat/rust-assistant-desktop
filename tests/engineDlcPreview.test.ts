@@ -63,7 +63,7 @@ beforeEach(() => {
 })
 
 describe('engine preview React tree and effect contracts (no real GUI)', () => {
-  it.each(['failure', 'exception', 'image-error', 'success'])('shows the actual displayed renderer after DLC %s', async (mode) => {
+  it.each(['failure', 'exception', 'image-error', 'success'])('DLC %s never falls back to local compositing', async (mode) => {
     const drawImage = vi.fn()
     const ctx = Object.fromEntries(['clearRect', 'fillRect', 'save', 'restore'].map((op) => [op, vi.fn()]))
     hooks.refs[0] = { current: { width: 560, height: 420, getContext: () => ({ ...ctx, drawImage }) } }
@@ -78,11 +78,9 @@ describe('engine preview React tree and effect contracts (no real GUI)', () => {
     const content = '[graphics]\nimage: body.png\n'
     renderTree(content)
     hooks.effects[2]() // Actual DLC request effect.
-    hooks.effects.at(-1)!() // Actual Canvas adapter effect.
+    hooks.effects.at(-1)!() // Local composer effect: must be a no-op.
     await vi.waitFor(() => {
-      expect(run).toHaveBeenCalledOnce()
-      expect(drawImage).toHaveBeenCalledOnce()
-      expect(hooks.states[6]).toMatchObject({ pluginId: 'test.preview' })
+      expect(hooks.render).toHaveBeenCalledOnce()
       expect(hooks.states[13]).not.toBe('正在用引擎渲染…')
     })
     if (mode === 'image-error') {
@@ -91,52 +89,51 @@ describe('engine preview React tree and effect contracts (no real GUI)', () => {
     }
     const tree = renderTree(content)
     const visible = text(tree)
+    expect(run).not.toHaveBeenCalled()
+    expect(drawImage).not.toHaveBeenCalled()
+    expect(visible).not.toContain('渲染路径')
+    expect(elements(tree, 'canvas')[0].props.style).toEqual({ display: 'none' })
     if (mode === 'success') {
       expect(visible).toContain('引擎渲染：Test DLC')
-      expect(visible).not.toContain('渲染路径：插件')
-      expect(elements(tree, 'canvas')[0].props.style).toEqual({ display: 'none' })
       expect(elements(tree, 'img')).toHaveLength(1)
-    } else {
-      expect(visible).toContain('渲染路径：插件 test.preview')
-      expect(visible).toContain('已回退 Canvas 预览')
-      expect(visible).not.toContain('已回退内置合成')
+    } else if (mode === 'image-error') {
       expect(visible).not.toContain('引擎渲染：Test DLC')
-      expect(elements(tree, 'canvas')[0].props.style).toEqual({ display: undefined })
+      expect(visible).toContain('引擎图片无法显示，本次未生成预览')
+      expect(elements(tree, 'img')).toHaveLength(0)
+    } else {
+      expect(visible).not.toContain('引擎渲染：Test DLC')
+      expect(visible).toContain('引擎渲染失败，本次未生成预览')
       expect(elements(tree, 'img')).toHaveLength(0)
     }
   })
 
-  it('retains the same canvas position and ref through engine success and paused local fallback', () => {
-    const local = renderTree()
-    hooks.states[7] = false // paused (plugin renderPath occupies state 6)
+  it('keeps the canvas hidden whether the engine image is shown or not', () => {
+    const idle = renderTree()
+    const hidden = elements(idle, 'canvas')[0]
+    expect(hidden.props.style).toEqual({ display: 'none' })
+    expect(elements(idle, 'img')).toHaveLength(0)
     hooks.states[10] = 'Demo'
     hooks.states[11] = true
     hooks.states[12] = 'data:image/png;base64,test'
     const engine = renderTree()
-    const original = elements(local, 'canvas')[0]
     const retained = elements(engine, 'canvas')[0]
-    expect(retained.props.ref).toBe(original.props.ref)
-    expect(retained.key).toBe(original.key)
+    expect(retained.props.ref).toBe(hidden.props.ref)
+    expect(retained.key).toBe(hidden.key)
     expect(retained.props.style).toEqual({ display: 'none' })
     expect(elements(engine, 'img')).toHaveLength(1)
-    hooks.states[11] = false
-    const fallback = elements(renderTree(), 'canvas')[0]
-    expect(fallback.props.ref).toBe(original.props.ref)
-    expect(fallback.props.style).toEqual({ display: undefined })
-    expect(elements(renderTree(), 'img')).toHaveLength(0)
   })
 
-  it('image decode errors clear engine output and restore the canvas', () => {
+  it('image decode errors clear engine output without restoring the canvas', () => {
     renderTree()
     hooks.states[11] = true
     hooks.states[12] = 'bad-image'
     const image = elements(renderTree(), 'img')[0]
     ;(image.props.onError as () => void)()
     expect(hooks.states[12]).toBeNull()
-    expect(hooks.states[13]).toContain('回退')
-    const fallback = renderTree()
-    expect(elements(fallback, 'img')).toHaveLength(0)
-    expect(elements(fallback, 'canvas')[0].props.style).toEqual({ display: undefined })
+    expect(hooks.states[13]).toContain('引擎图片无法显示')
+    const after = renderTree()
+    expect(elements(after, 'img')).toHaveLength(0)
+    expect(elements(after, 'canvas')[0].props.style).toEqual({ display: 'none' })
   })
 
   it('effect cleanup cancels its own request and ignores a late response', async () => {

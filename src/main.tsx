@@ -9,6 +9,7 @@ import './styles/components.css'
 import './styles/layout.css'
 import './styles/community.css'
 import './styles/animations.css'
+import './styles/desktop.css'
 
 // 首帧前同步应用上次的主题（读 localStorage 缓存；设置数据随后经 IPC 异步加载，
 // App 的 useEffect 会按真实设置再校正一次，幂等）——避免深色用户启动时白屏闪烁。

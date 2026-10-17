@@ -11,6 +11,9 @@ import JSZip from 'jszip'
 import { assertNoLinkEscape, normalizePath } from './paths'
 import { exists, resolveInside } from './modShared'
 import { isExcluded } from './modScan'
+import type { ModPackProgress } from '../src/types/modPack'
+
+export type PackProgressCallback = (progress: ModPackProgress) => void
 
 /** 打包选项：打包时对源文件做清理/格式化 */
 export interface PackOptions {
@@ -137,7 +140,7 @@ export async function importModBuffer(rwmodBuffer: Buffer, destDir: string): Pro
 }
 
 /** 打包并返回 zip 二进制与文件数（供 IPC 单次打包：一次打包拿全量信息，避免二次打包不一致） */
-export async function packModBufferWithCount(projectRoot: string, options?: PackOptions): Promise<{ buffer: Buffer; files: number; skippedLinks: number }> {
+export async function packModBufferWithCount(projectRoot: string, options?: PackOptions, onProgress?: PackProgressCallback): Promise<{ buffer: Buffer; files: number; skippedLinks: number }> {
   const root = resolveInside(projectRoot, '.')
   const zip = new JSZip()
   let fileCount = 0
@@ -146,13 +149,22 @@ export async function packModBufferWithCount(projectRoot: string, options?: Pack
   const MAX_PACK_FILE_SIZE = 512 * 1024 * 1024
   const MAX_PACK_TOTAL_SIZE = 2 * 1024 * 1024 * 1024
   let totalBytes = 0
+  let filesRead = 0
+  let bytesRead = 0
+  onProgress?.({ phase: 'reading', filesRead, bytesRead, files: fileCount })
   const readForPack = async (abs: string): Promise<Buffer> => {
+    const currentFile = path.relative(root, abs).replace(/\\/g, '/')
+    onProgress?.({ phase: 'reading', filesRead, bytesRead, files: fileCount, currentFile })
     const st = await fs.stat(abs).catch(() => null)
     if (!st) throw new Error(`无法读取文件：${abs}`)
     if (st.size > MAX_PACK_FILE_SIZE) throw new Error(`文件过大（${(st.size / 1024 / 1024).toFixed(1)}MB，打包单文件上限 512MB）：${abs}`)
     if (totalBytes + st.size > MAX_PACK_TOTAL_SIZE) throw new Error('打包内容总量超过 2GB 上限，请先清理大文件再打包')
     totalBytes += st.size
-    return fs.readFile(abs)
+    const content = await fs.readFile(abs)
+    filesRead++
+    bytesRead += content.byteLength
+    onProgress?.({ phase: 'reading', filesRead, bytesRead, files: fileCount, currentFile })
+    return content
   }
   // LOW-1：指向项目外的链接不打包（跳过并计数，由 UI 提示），而不是中止整次打包
   let skippedLinks = 0
@@ -241,7 +253,10 @@ export async function packModBufferWithCount(projectRoot: string, options?: Pack
   }
 
   await walk(root, '')
-  const content = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+  onProgress?.({ phase: 'compressing', filesRead, bytesRead, files: fileCount, percent: 0 })
+  const content = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }, (metadata) => {
+    onProgress?.({ phase: 'compressing', filesRead, bytesRead, files: fileCount, percent: metadata.percent, currentFile: metadata.currentFile ?? undefined })
+  })
   return { buffer: Buffer.from(content), files: fileCount, skippedLinks }
 }
 
@@ -258,6 +273,7 @@ export async function deployMod(
   gamePath: string,
   options: PackOptions,
   overwrite: boolean,
+  onProgress?: PackProgressCallback,
 ): Promise<
   | { ok: true; filePath: string; size: number; files: number; skippedLinks: number; overwritten: boolean }
   | { ok: false; code?: 'EXISTS'; filePath?: string; message: string }
@@ -275,7 +291,7 @@ export async function deployMod(
   } catch {
     return { ok: false, message: '游戏目录校验失败（未找到 assets/units），请检查设置中的游戏安装路径' }
   }
-  const { buffer, files, skippedLinks } = await packModBufferWithCount(root, options)
+  const { buffer, files, skippedLinks } = await packModBufferWithCount(root, options, onProgress)
   const rawName = path.basename(path.resolve(root)).trim() || 'mod'
   // 清洗 Windows 文件名非法字符 + 路径穿越 + 结尾点/空格 + 保留设备名（CON/NUL/COM1…）
   let safeName = rawName.replace(/[\\/:*?"<>|]/g, '_').replace(/\.\./g, '_').replace(/[. ]+$/, '') || 'mod'
@@ -296,6 +312,7 @@ export async function deployMod(
   if (existed && !overwrite) {
     return { ok: false, code: 'EXISTS', filePath: target, message: `游戏模组目录已存在同名模组：${safeName}.rwmod（确认覆盖后重试）` }
   }
+  onProgress?.({ phase: 'writing', files })
   try {
     await fs.mkdir(modsDir, { recursive: true })
     if (overwrite) {

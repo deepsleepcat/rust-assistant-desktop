@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_SETTINGS, clamp, sanitizeSettings } from '../src/utils/settings'
 import { DEFAULT_COMMUNITY_ENDPOINT } from '../src/services/communityApi'
 import type { AppSettings } from '../src/types/domain'
+import { createWorkspaceStore } from '../src/stores/workspace'
+import { createMockBridge } from '../src/services/mockBridge'
 
 describe('设置清洗', () => {
   it('空输入返回默认设置', () => {
@@ -33,6 +35,51 @@ describe('设置清洗', () => {
   it('非法颜色回退默认值', () => {
     const s = sanitizeSettings({ background: { color: 'red; x' } })
     expect(s.background.color).toBe(DEFAULT_SETTINGS.background.color)
+  })
+
+  it('旧配置及损坏的编辑器颜色配置默认跟随主题', () => {
+    expect(sanitizeSettings({ fontSize: 16 }).editorColors).toEqual({})
+    for (const editorColors of [undefined, null, 'red', 42, ['#123456']]) {
+      expect(sanitizeSettings({ editorColors }).editorColors).toEqual({})
+    }
+  })
+
+  it('仅保留七类白名单颜色，接受大小写六位十六进制', () => {
+    const colors = { text: '#123456', label: '#aBcDeF', comment: '#888888', section: '#ABCDEF', key: '#333333', animation: '#7a3e00', graphic: '#3d5a80' }
+    expect(sanitizeSettings({ editorColors: { ...colors, background: '#ffffff', '--text-primary': '#000000' } }).editorColors).toEqual(colors)
+    for (const value of ['red', '#123', '#12345678', ' #123456', '#123456;', 'var(--text-primary)', 123456, null]) {
+      expect(sanitizeSettings({ editorColors: { text: value, label: '#ABCDEF' } }).editorColors).toEqual({ label: '#ABCDEF' })
+    }
+    expect(sanitizeSettings({ editorColors: Object.create({ text: '#123456' }) }).editorColors).toEqual({})
+  })
+
+  it('颜色覆盖通过设置存储持久化，单项及全部恢复后继续跟随主题', async () => {
+    const bridge = createMockBridge()
+    const saved = new Map<string, unknown>()
+    bridge.store.get = async (key) => saved.get(key) ?? null
+    bridge.store.set = async (key, value) => { saved.set(key, JSON.parse(JSON.stringify(value))) }
+    const store = createWorkspaceStore(bridge)
+    await store.getState().init()
+    const colors = { text: '#123456', label: '#123456', comment: '#123456', section: '#123456', key: '#123456', animation: '#123456', graphic: '#123456' }
+    store.getState().updateSettings({ editorColors: colors })
+    await store.getState().flushPersist()
+    const restored = createWorkspaceStore(bridge)
+    await restored.getState().init()
+    expect(restored.getState().settings.editorColors).toEqual(colors)
+    restored.getState().updateSettings({ theme: 'dark' })
+    expect(restored.getState().settings.editorColors).toEqual(colors)
+    const singleReset = { ...restored.getState().settings.editorColors }
+    delete singleReset.label
+    restored.getState().updateSettings({ editorColors: singleReset })
+    await restored.getState().flushPersist()
+    expect((saved.get('settings') as AppSettings).editorColors).toEqual(singleReset)
+    expect(singleReset.label).toBeUndefined()
+    expect(singleReset.key).toBe('#123456')
+    restored.getState().updateSettings({ editorColors: {} })
+    await restored.getState().flushPersist()
+    const reset = createWorkspaceStore(bridge)
+    await reset.getState().init()
+    expect(reset.getState().settings.editorColors).toEqual({})
   })
 
   it('合法值被保留', () => {

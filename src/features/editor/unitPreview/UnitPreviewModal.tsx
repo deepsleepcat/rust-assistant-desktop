@@ -1,7 +1,6 @@
 /**
- * 单位合成预览渲染（M22，P3 任务 1）：
- * 按 [graphics] 配方把「主体帧切片 + 阴影 + 炮塔 + 残骸」合成画到 Canvas——
- * 纯本地实现，不内置游戏引擎、不依赖服务器。
+ * 单位预览渲染（M22 → M42 起改为引擎唯一路径）：
+ * 画面只来自引擎渲染 DLC 的产出；没有可用的 DLC 就不显示预览。
  *
  * 图像来源（命名空间语义与运行前检查/官方文档一致）：
  * - 无前缀 / ROOT: / CUSTOM: → 项目内文件（readImageAsDataUrl，绝对路径）
@@ -9,10 +8,12 @@
  * - SHARED: → 游戏共享图库 assets/units/shared/ 下资源（readGameAssetImage）
  * - 缺图一律占位（灰块 + 名称），不报错不崩溃；加载失败原因分类提示。
  *
- * M42 引擎渲染路径（可选增强，默认不用）：
- * 用户把自己准备的渲染 DLC 放进指定目录并授权后，本模态可改用「引擎渲染」——
- * 由主进程调用该 DLC 拿回一张 PNG 显示。它只是**多一条路**：没装 DLC、没授权、
- * 或渲染失败时，一律回退到上面的本地合成，行为与从前完全一致（零回归）。
+ * M42 引擎渲染路径（唯一路径）：
+ * 用户把自己准备的渲染 DLC 放进指定目录并授权后，本模态改用「引擎渲染」——
+ * 由主进程调用该 DLC 拿回一张 PNG 显示。
+ * 产品规则：单位渲染只允许 DLC 产出的画面；没有可用的 DLC 就不显示预览，
+ * 也不回退到下面的本地合成。本地合成实现保留在文件里（未删除），由
+ * ENGINE_ONLY_RENDER 显式关闭执行，避免依赖样式值这种隐式条件。
  * 界面这一层不接触任何可执行文件路径：只说「画什么」，用哪个 DLC 由主进程决定。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -57,6 +58,13 @@ interface Props {
   zhToEn?: (s: string) => string | undefined
   onClose: () => void
 }
+
+/**
+ * 单位预览只使用 DLC 渲染：置 true 时本地合成 effect 直接返回，旧合成代码只是
+ * 保留在文件里、不参与执行。不要用 canvas 的 CSS 显示状态代替这个开关——
+ * 样式只负责布局，改样式不应改变渲染行为。
+ */
+const ENGINE_ONLY_RENDER = true
 
 /** 加载失败原因（提示文案区分：本地缺图 / 游戏内置读取失败 / 未配置游戏路径） */
 type FailReason = 'local-missing' | 'game-missing' | 'no-game-path'
@@ -252,6 +260,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
         if (!alive) return
         const ready = result.dlcs.find((item) => item.runnable)
         setEngineDlcName(ready ? ready.name || ready.id : null)
+        setEngineMode(Boolean(ready))
       })
       .catch(() => undefined)
     return () => {
@@ -293,12 +302,12 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
           setEngineNote(null)
         } else {
           setEngineImage(null)
-          setEngineNote(`引擎渲染失败，已回退 Canvas 预览：${result.reason}`)
+          setEngineNote(`引擎渲染失败，本次未生成预览：${result.reason}`)
         }
       } catch (error) {
         if (!alive || seq !== engineSeqRef.current) return
         setEngineImage(null)
-        setEngineNote(`引擎渲染失败，已回退 Canvas 预览：${error instanceof Error ? error.message : String(error)}`)
+        setEngineNote(`引擎渲染失败，本次未生成预览：${error instanceof Error ? error.message : String(error)}`)
       }
     })()
     return () => {
@@ -350,7 +359,8 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   //           插件无法注入滤镜、混合模式或任意绘制 API。
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
+    // 保留旧合成实现，但单位预览只允许 DLC 产出的画面。
+    if (ENGINE_ONLY_RENDER || !canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     let alive = true
@@ -521,13 +531,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
   const gameMissing = failed.filter((f) => f.reason === 'game-missing')
   const localMissing = failed.filter((f) => f.reason === 'local-missing')
   const totalFrames = frameInfo.count
-  // M41：渲染路径标注（用户必须能分辨看到的图是谁画的）
-  const usingPluginAdapter = renderPath.pluginId !== null && renderPath.pluginId !== BUILTIN_PREVIEW_ADAPTER_ID
-  const renderPathText = usingPluginAdapter
-    ? `渲染路径：插件 ${renderPath.pluginId}`
-    : renderPath.usedFallback
-      ? `渲染路径：本地内置（已回退：${renderPath.reason ?? '未知原因'}）`
-      : '渲染路径：本地内置'
+  void renderPath
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -541,28 +545,17 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
             <span className="vdiff-hint">
               {engineMode && engineImage
                 ? `引擎渲染：${engineDlcName}（静态帧，不跟随动画播放）`
-                : '按 [graphics] 配方合成（帧动画/炮塔叠加/阴影/队伍着色），纯本地渲染'}
+                : '单位渲染仅支持已安装并授权的引擎 DLC'}
             </span>
-            {(!engineMode || !engineImage) && (
-              <span className="vdiff-hint" title="渲染器插件化（M41）：插件只能引用场景声明的资源与受限绘制指令，不执行任何插件代码">
-                {renderPathText}
-              </span>
-            )}
             <span className="grow" />
             {engineDlcName && (
               <button
                 className={`btn${engineMode ? ' primary' : ''}`}
                 style={{ padding: '2px 10px', fontSize: 11.5 }}
-                title={`用「${engineDlcName}」渲染当前视图（失败自动回退内置合成）`}
+                title={`当前使用「${engineDlcName}」渲染，失败时停止显示预览`}
                 aria-label="切换引擎渲染"
-                onClick={() => {
-                  // 切回内置时清掉引擎残留：否则会停留在上一张引擎图上
-                  if (engineMode) {
-                    setEngineImage(null)
-                    setEngineNote(null)
-                  }
-                  setEngineMode((v) => !v)
-                }}
+                disabled
+                onClick={() => setEngineMode(true)}
               >
                 <AppIcon name="sparkle" size={12} /> 引擎渲染
               </button>
@@ -629,10 +622,11 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
             <span className="vdiff-hint">{Math.round(zoom * 100)}%</span>
             <button className="icon-btn" title="放大" onClick={() => setZoom((z) => Math.min(4, z + 0.25))}>+</button>
           </div>
+          {!engineDlcName && <div className="local-note" role="status">单位渲染需要安装并授权引擎 DLC。请前往设置中的「插件与 DLC」添加引擎 DLC。</div>}
           <div className="unitprev-canvas-wrap">
-            {/* M42：引擎渲染有结果时用 <img> 直接显示引擎的成品图（它已是「游戏里的样子」，
-                不再叠加我们自己的视野圈等分析层）；否则显示本地合成的 canvas */}
-            <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" style={{ display: engineMode && engineImage ? 'none' : undefined }} />
+            {/* M42：单位预览只显示引擎 DLC 的成品图；本地合成 canvas 仅保留为
+                旧实现的载体（不渲染可见内容，执行开关见 ENGINE_ONLY_RENDER）。 */}
+            <canvas ref={canvasRef} width={560} height={420} className="unitprev-canvas" style={{ display: 'none' }} />
             {engineMode && engineImage && (
               <img
                 src={engineImage}
@@ -641,7 +635,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
                 style={{ width: 560 * zoom, height: 420 * zoom }}
                 onError={() => {
                   setEngineImage(null)
-                  setEngineNote('引擎图片无法显示，已回退 Canvas 预览')
+                  setEngineNote('引擎图片无法显示，本次未生成预览')
                 }}
               />
             )}

@@ -9,9 +9,12 @@ import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, repositionTooltips, tooltips } from '@codemirror/view'
 import { defaultKeymap, indentWithTab } from '@codemirror/commands'
 import { autocompletion, CompletionContext, startCompletion } from '@codemirror/autocomplete'
-import { search, searchKeymap } from '@codemirror/search'
+import { search } from '@codemirror/search'
+import { useWorkspaceStore } from '../../stores/workspace'
+import { editorShortcutKeymap, remainingSearchKeymap } from './shortcutKeymap'
 import { rustConfigLanguageSupport, smartEnterBindings } from './rustLanguage'
 import { rustHoverExtension } from './rustHover'
+import { bilingualLabels } from './bilingualLabels'
 import { rustCompletionSource, setCompletionChineseMode, setCompletionTracker } from './completion'
 import { foldGutter, foldKeymap } from '@codemirror/language'
 import { lintGutter, lintKeymap } from '@codemirror/lint'
@@ -20,6 +23,8 @@ import { rustSectionFolding } from './sectionFolding'
 import { rustLintExtension } from './rustLint'
 import { loadCodeData } from '../../services/codeData'
 import { shouldReopenAfterComposition } from './imeCompletion'
+import type { EditorColors } from '../../types/domain'
+import { EDITOR_COLOR_OPTIONS } from '../../utils/settings'
 
 interface EditorMirrorProps {
   value: string
@@ -31,6 +36,7 @@ interface EditorMirrorProps {
   onRedo?: () => void
   fontFamily: string
   fontSize: number
+  editorColors?: EditorColors
   /** 中文显示层开启时，补全提交中文键/节名（保存时自动回译） */
   chineseMode?: boolean
   /** 翻译追踪表：补全提交的中文登记进去，保存时才能回译成英文 */
@@ -60,6 +66,7 @@ const editorTheme = EditorView.theme({
   '.cm-content': {
     fontFamily: 'var(--mono-active, var(--font-mono))',
     caretColor: 'var(--text-primary)',
+    color: 'var(--cm-text, var(--text-primary))',
     padding: '8px 0',
   },
   '.cm-line': { padding: '0 14px' },
@@ -106,6 +113,9 @@ const editorTheme = EditorView.theme({
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
+  '.cm-completionLabel': { display: 'none' },
+  '.cm-bilingual-option': { display: 'inline-flex', flexDirection: 'column', lineHeight: '1.35', whiteSpace: 'normal', verticalAlign: 'middle' },
+  '.cm-bilingual-option small': { fontSize: '0.8em', color: 'var(--text-secondary)' },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
     backgroundColor: 'var(--surface-hover)',
     color: 'var(--text-primary)',
@@ -151,7 +161,7 @@ const editorTheme = EditorView.theme({
   },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName, fileName }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo, fontFamily, fontSize, editorColors, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName, fileName }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -163,6 +173,8 @@ export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo
   // 语义 lint 专用槽位：配置（开关/项目根）变化时热替换，避免挂载时闭包陈旧
   // （否则设置页关掉检查器，已打开的编辑器波浪线仍按旧配置检查）
   const lintCompartment = useRef(new Compartment())
+  const shortcutCompartment = useRef(new Compartment())
+  const keyboardShortcuts = useWorkspaceStore((s) => s.settings.keyboardShortcuts)
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -205,10 +217,26 @@ export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo
         rustConfigLanguageSupport(),
         lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName, translationMap: chineseMode ? translationMap : null })),
         rustHoverExtension,
+        bilingualLabels,
         // aboveCursor：补全框显示在光标上方——中文输入时系统输入法候选窗
         // 在光标正下方，框在下方会被完全挡住（表现为「中文补全不可用」；
         // 空间不足时 CodeMirror 会自动翻回下方，不丢失候选）
-        autocompletion({ override: [rustCompletionSource], activateOnTyping: true, aboveCursor: true }),
+        autocompletion({ override: [rustCompletionSource], activateOnTyping: true, aboveCursor: true,
+          addToOptions: [{ position: 50, render: (completion) => {
+            const dom = document.createElement('span')
+            dom.className = 'cm-bilingual-option'
+            const [code, ...translation] = completion.label.split(' · ')
+            const primary = document.createElement('span')
+            primary.textContent = translation.length ? translation.join(' · ') : code
+            dom.append(primary)
+            if (translation.length) {
+              const secondary = document.createElement('small')
+              secondary.textContent = code
+              dom.append(secondary)
+            }
+            return dom
+          } }],
+        }),
         tooltips({
           // 输入法弹起时可视视口底部上移：补全空间按 visualViewport 计算，
           // 候选才会在键盘上方翻转/压缩而不是落在软键盘下面
@@ -223,18 +251,19 @@ export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo
           },
         }),
         search({ top: true }),
+        shortcutCompartment.current.of(keymap.of(editorShortcutKeymap(keyboardShortcuts, {
+          save: () => onSaveRef.current(),
+          undo: () => onUndoRef.current?.(),
+          redo: () => onRedoRef.current?.(),
+        }))),
         keymap.of([
-          { key: 'Mod-z', run: () => { onUndoRef.current?.(); return true } },
-          { key: 'Mod-y', run: () => { onRedoRef.current?.(); return true } },
-          { key: 'Mod-Shift-z', run: () => { onRedoRef.current?.(); return true } },
           ...smartEnterBindings, // 必须排在 defaultKeymap 之前：defaultKeymap 的 Enter（换行）无条件返回 true，
           // 排在后面永远轮不到；补全弹窗打开时 Enter 仍先走 Prec.highest 的 acceptCompletion（自动注册，与数组位置无关）
           ...defaultKeymap,
-          ...searchKeymap,
+          ...remainingSearchKeymap,
           ...foldKeymap,
           ...lintKeymap,
           indentWithTab,
-          { key: 'Mod-s', run: () => { onSaveRef.current(); return true } },
         ]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && !syncingRef.current) {
@@ -308,6 +337,15 @@ export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在挂载时创建一次编辑器实例
   }, [])
 
+  // 快捷键立即热更新，不重建编辑器，保留光标、选区和按 tab 管理的撤销历史。
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: shortcutCompartment.current.reconfigure(keymap.of(editorShortcutKeymap(keyboardShortcuts, {
+      save: () => onSaveRef.current(),
+      undo: () => onUndoRef.current?.(),
+      redo: () => onRedoRef.current?.(),
+    }))) })
+  }, [keyboardShortcuts])
+
   // 语义 lint 配置变化（检查器开关/项目根/目标版本/文件名）→ 热替换槽位（不重建编辑器）
   useEffect(() => {
     const view = viewRef.current
@@ -358,7 +396,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onJumpDone 是稳定的 store action/内联回调；跳转只应响应 jumpTo 变化
   }, [jumpTo])
 
-  const monoFont = fontFamily === 'mono' ? 'var(--font-mono)' : fontFamily === 'kaiti' ? 'KaiTi, "楷体", serif' : 'var(--font-mono)'
+  const monoFont = fontFamily === 'harmony' ? 'var(--font-ui)' : fontFamily === 'kaiti' ? 'KaiTi, "楷体", serif' : 'var(--font-mono)'
   return (
     <div
       ref={containerRef}
@@ -369,6 +407,10 @@ export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo
           overflow: 'hidden',
           '--font-size': `${fontSize}px`,
           '--mono-active': monoFont,
+          // 变量仅作用于本编辑器；清除覆盖后恢复 tokens.css 的深浅主题色。
+          ...Object.fromEntries(EDITOR_COLOR_OPTIONS.flatMap(({ key, cssVariable }) =>
+            editorColors?.[key] ? [[cssVariable, editorColors[key]]] : [],
+          )),
         } as React.CSSProperties
       }
     />

@@ -279,6 +279,8 @@ describe('工作区 store 业务流', () => {
       const filePath = `${MOCK_PROJECT_ROOT}\\units\\broken-reload.ini`
       await store.getState().openFile(filePath)
       const tab = store.getState().openTabs.find((t) => t.path === filePath)!
+      // 保留旧追踪回译回归；默认展示已改为源码上的双语装饰。
+      store.getState().toggleTranslation(tab.id)
       const before = await bridge.project.readFile(MOCK_PROJECT_ROOT, filePath)
       await store.getState().reloadTab(tab.id)
       const after = await bridge.project.readFile(MOCK_PROJECT_ROOT, filePath)
@@ -322,7 +324,10 @@ describe('工作区 store 业务流', () => {
       await store.getState().init()
       await store.getState().openProject()
       await store.getState().openFile(filePath)
-      const tab = store.getState().openTabs.find((t) => t.path === filePath)!
+      const opened = store.getState().openTabs.find((t) => t.path === filePath)!
+      // 显式调用兼容动作，继续验证旧中文显示内容的精确回译。
+      store.getState().toggleTranslation(opened.id)
+      const tab = store.getState().openTabs.find((t) => t.id === opened.id)!
       expect(tab.content).toContain('自动触发')
       expect(tab.content).toContain('添加路径点动作类型')
       expect(tab.content).toContain('[隐藏行动_治疗友军2]')

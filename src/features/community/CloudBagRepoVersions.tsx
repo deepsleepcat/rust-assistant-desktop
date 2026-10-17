@@ -4,6 +4,7 @@ import { PanelState } from '../../components/PanelState'
 import type { CloudBagApi, CloudBagRepo, CloudBagVersion, CloudBagDiffEntry } from '../../services/cloudBagApi'
 import { formatBytes, summarizeDiff } from './cloudBagData'
 import { getBridge } from '../../services/bridge'
+import { CloudBagImportButton } from './CloudBagDownload'
 
 function DiffModal({ api, slug, versionNo, against, onClose }: {
   api: CloudBagApi
@@ -76,14 +77,14 @@ export function VersionsView({ api, repo, canWrite, onChanged }: { api: CloudBag
     }
     // 同步上传只刷新仓库元数据；head 变化时版本列表也必须重新请求第一页。
   }, [load, repo.headVersionNo])
-  const download = async (versionNo: number) => {
+  const download = async (versionNo: number, modulePath?: string) => {
     try {
       setMessage(null)
       const save = getBridge().cloudbag?.saveRwmod
       if (!save) throw new Error('需要更新桌面版才能保存云书包（缺少保存能力）')
-      const { bytes, filename } = await api.exportRwmod(repo.slug, versionNo)
+      const { bytes, filename } = await api.exportRwmod(repo.slug, versionNo, modulePath)
       const saved = await save(filename, bytes)
-      setMessage(saved.canceled ? '已取消保存。' : `已保存 ${saved.filePath}。可经「模组工具 → 导入」导入为本地项目。`)
+      setMessage(saved.canceled ? '已取消保存。' : `已保存 ${saved.filePath}。${modulePath ? '这是所选模组的完整版本，可经「模组工具 → 导入」导入。' : '可经「模组工具 → 导入」导入为本地项目。'}`)
     } catch (err) {
       setMessage(err instanceof Error ? err.message : String(err))
     }
@@ -125,7 +126,19 @@ export function VersionsView({ api, repo, canWrite, onChanged }: { api: CloudBag
                     <span className="post-card-meta">{version.parentVersionNo ? `父版本 #${version.parentVersionNo}` : '初始版本'}</span>
                     <span className="grow" />
                     {version.parentVersionNo !== null && <button className="btn-sm" onClick={() => setDiffAgainst({ versionNo: version.versionNo, against: version.parentVersionNo! })}>查看差异</button>}
-                    <button className="btn-sm" onClick={() => void download(version.versionNo)}>下载 .rwmod</button>
+                    {repo.repoType === 'collection' && (version.manifest?.modules?.length ?? 0) > 0 ? <>
+                      <button className="btn-sm" onClick={() => void download(version.versionNo)}>下载整套 .rwmod</button>
+                      <CloudBagImportButton api={api} slug={repo.slug} versionNo={version.versionNo} label="导入整套到本地目录" />
+                      {version.manifest.modules?.map((module) => <div className="cloudbag-module-actions" key={module.path}>
+                        <button className="btn-sm" title={`下载完整模组：${module.title || module.path}`} onClick={() => void download(version.versionNo, module.path)}>
+                          下载「{module.title || module.path}」
+                        </button>
+                        <CloudBagImportButton api={api} slug={repo.slug} versionNo={version.versionNo} modulePath={module.path} label={`导入「${module.title || module.path}」`} />
+                      </div>)}
+                    </> : <>
+                      <button className="btn-sm" onClick={() => void download(version.versionNo)}>下载 .rwmod</button>
+                      <CloudBagImportButton api={api} slug={repo.slug} versionNo={version.versionNo} label="导入到本地目录" />
+                    </>}
                     {canWrite && version.versionNo !== repo.headVersionNo && <button className="btn-sm" onClick={() => void rollback(version.versionNo)}>回滚到此版本</button>}
                   </div>
                 </div>

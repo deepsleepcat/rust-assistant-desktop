@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../stores/workspace'
 import { getBridge } from '../services/bridge'
+import { BackgroundImage } from './BackgroundImage'
 
 export function Backdrop() {
   const background = useWorkspaceStore((s) => s.settings.background)
@@ -37,7 +38,7 @@ export function Backdrop() {
   return (
     <div className="backdrop" aria-hidden="true">
       {background.kind === 'image' && imageUrl && (
-        <img className="backdrop-img" src={imageUrl} alt="" style={{ ...layerStyle, ...blurStyle }} />
+        <BackgroundImage src={imageUrl} crop={background.imageCrop} style={{ ...layerStyle, ...blurStyle }} />
       )}
       {background.kind === 'color' && <div className="backdrop-solid" style={{ ...layerStyle, backgroundColor: background.color }} />}
       {background.kind === 'gradient' && (

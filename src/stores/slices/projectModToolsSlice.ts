@@ -7,6 +7,7 @@ import { invalidateResourceCache } from '../../features/editor/completion'
 import { getBridge } from '../../services/bridge'
 import { generateModReport as generateModReportFn } from '../../features/modTools/modReport'
 import { contentForDisk, type ProjectSliceContext } from './projectShared'
+import type { ModPackProgress } from '../../types/modPack'
 
 export function createModToolActions(ctx: ProjectSliceContext) {
   const { set, get, deps } = ctx
@@ -64,6 +65,10 @@ export function createModToolActions(ctx: ProjectSliceContext) {
     },
 
     async packModProject() {
+      if (get().modPackTask?.busy) {
+        get().notify('已有打包任务正在进行，请稍候')
+        return
+      }
       // M32：打开打包选项弹窗前提示未保存文件——打包读的是磁盘内容，
       // 未保存的编辑不会进产物（不阻塞打包，用户可先保存）
       const dirtyTabs = get().openTabs.filter((t) => t.dirty)
@@ -79,6 +84,10 @@ export function createModToolActions(ctx: ProjectSliceContext) {
       options: { removeEmptyFiles?: boolean; removeEmptyFolders?: boolean; removeEmptyLines?: boolean; removeComments?: boolean; formatCode?: boolean },
       deployToGame = false,
     ) {
+      if (get().modPackTask?.busy) {
+        get().notify('已有打包任务正在进行，请稍候')
+        return
+      }
       const project = ctx.activeProject()
       if (!project) return
       const gamePath = get().settings.gamePath
@@ -86,25 +95,42 @@ export function createModToolActions(ctx: ProjectSliceContext) {
         get().notify('未配置游戏安装目录，请在 设置 → 游戏 中配置后再试')
         return
       }
-      set({ modDialog: null })
+      const requestId = crypto.randomUUID()
+      set({ modDialog: null, modPackTask: { requestId, projectName: project.name, phase: 'reading', busy: true, filesRead: 0, bytesRead: 0 } })
+      const progress = (update: ModPackProgress) => {
+        const task = get().modPackTask
+        if (task?.requestId !== requestId || !task.busy) return
+        set({ modPackTask: { ...task, ...update, percent: update.percent, currentFile: update.currentFile } })
+      }
+      let unsubscribe: (() => void) | undefined
       get().notify(deployToGame ? '正在打包并部署到游戏…' : '正在打包模组…')
       try {
+        // 先订阅再 invoke；requestId 隔离旧任务和其他窗口的事件。
+        unsubscribe = deps.bridge.mod.onPackProgress?.((event) => {
+          if (event.requestId === requestId) progress(event)
+        })
+        if (!deps.bridge.mod.onPackProgress) progress({ phase: 'reading', message: '当前环境不支持详细进度，正在等待打包结果' })
         if (deployToGame) {
           // M35 F3：一键验证——打包 → 部署到游戏 mods/units → 自动启动游戏
-          let result = await deps.bridge.mod.packAndDeploy(project.rootPath, options, gamePath, false)
+          let result = await deps.bridge.mod.packAndDeploy(project.rootPath, options, gamePath, false, requestId)
           if (!result.ok && result.code === 'EXISTS') {
+            progress({ phase: 'awaiting-overwrite' })
             const fileName = result.filePath?.split(/[\\/]/).pop() ?? ''
             if (window.confirm(`游戏模组目录已存在同名模组「${fileName}」，覆盖它？`)) {
-              result = await deps.bridge.mod.packAndDeploy(project.rootPath, options, gamePath, true)
+              progress({ phase: 'reading', filesRead: 0, bytesRead: 0, files: 0 })
+              result = await deps.bridge.mod.packAndDeploy(project.rootPath, options, gamePath, true, requestId)
             } else {
+              progress({ phase: 'canceled', message: '已取消部署（同名模组未覆盖）' })
               get().notify('已取消部署（同名模组未覆盖）')
               return
             }
           }
           if (!result.ok) {
+            progress({ phase: 'failed', message: result.message })
             get().notify(`部署失败：${result.message}`)
             return
           }
+          progress({ phase: 'completed', files: result.files, message: `已部署到游戏：${result.filePath}` })
           const mb = (result.size / 1024 / 1024).toFixed(2)
           const skippedTip = result.skippedLinks ? `；已跳过 ${result.skippedLinks} 个指向项目外的链接` : ''
           get().notify(
@@ -118,11 +144,13 @@ export function createModToolActions(ctx: ProjectSliceContext) {
             })
             .catch(() => undefined)
         } else {
-          const result = await deps.bridge.mod.pack(project.rootPath, options)
+          const result = await deps.bridge.mod.pack(project.rootPath, options, requestId)
           if ('canceled' in result && result.canceled) {
+            progress({ phase: 'canceled', message: '已取消保存，未写入模组包' })
             get().notify('已取消打包')
             return
           }
+          progress({ phase: 'completed', files: result.files, message: `已保存：${result.filePath}` })
           const mb = (result.size / 1024 / 1024).toFixed(2)
           // LOW-1：指向项目外的链接被跳过时给出提示（不再中止整次打包）
           const skippedTip = result.skippedLinks ? `；已跳过 ${result.skippedLinks} 个指向项目外的链接` : ''
@@ -153,7 +181,16 @@ export function createModToolActions(ctx: ProjectSliceContext) {
           })
           .catch(() => undefined)
       } catch (err) {
-        get().notify(`打包失败：${err instanceof Error ? err.message : String(err)}`)
+        const message = err instanceof Error ? err.message : String(err)
+        progress({ phase: 'failed', message })
+        get().notify(`打包失败：${message}`)
+      } finally {
+        try {
+          unsubscribe?.()
+        } finally {
+          const task = get().modPackTask
+          if (task?.requestId === requestId) set({ modPackTask: { ...task, busy: false } })
+        }
       }
     },
 

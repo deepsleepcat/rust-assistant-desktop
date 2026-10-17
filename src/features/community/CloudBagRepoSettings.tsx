@@ -63,31 +63,30 @@ export function SettingsView({ api, repo, canWrite, onChanged, onDeleted }: { ap
     <div className="cloudbag-section">
       {!canWrite && <div className="local-note community-warning">请先完成邮箱认证后再管理仓库（保存设置 / 删除仓库在认证前不可用）。</div>}
       <div className="community-form">
-        <input aria-label="仓库名称" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={128} />
-        <input aria-label="仓库简介" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} />
-        <select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as CloudBagRepo['visibility'])}>
+        <label>仓库名称<input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={128} /></label>
+        <label>仓库简介<textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={500} rows={4} /></label>
+        <label>可见性<select aria-label="可见性" value={visibility} onChange={(event) => setVisibility(event.target.value as CloudBagRepo['visibility'])}>
           <option value="private">私有</option>
           <option value="public">公开</option>
           <option value="link">链接可见</option>
-        </select>
-        <input aria-label="标签" value={tags} onChange={(event) => setTags(event.target.value)} placeholder="标签（逗号分隔，最多 8 个）" />
-        <input aria-label="关联社区帖子 id" value={postId} onChange={(event) => setPostId(event.target.value)} placeholder="关联社区帖子 id（可选，单向弱关联）" />
+        </select></label>
+        <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔，最多 8 个" /></label>
+        <label>关联社区帖子 ID（可选）<input value={postId} onChange={(event) => setPostId(event.target.value)} placeholder="填写已有帖子 ID" /></label>
         <div className="cloudbag-unsupported-row">
           {/* V1 未支持的能力：保留按钮以表达「曾经/将来会有」，但用 aria-disabled（而非
               disabled）——disabled 元素不可聚焦，键盘与读屏用户既取不到 title 也无法触发，
               触屏用户同样拿不到悬停提示。可聚焦 + 可读的说明行覆盖三类用户。 */}
           <button className="btn-sm" aria-disabled="true" title="未支持：网页端在线编辑仓库文件">在线编辑</button>
-          <button className="btn-sm" aria-disabled="true" title="未支持：Issue / PR 评审">Issue / PR</button>
-          <button className="btn-sm" aria-disabled="true" title="未支持：Star / Fork 社交图谱">Star / Fork</button>
+          <button className="btn-sm" aria-disabled="true" title="未支持：PR 评审">PR 评审</button>
+          <button className="btn-sm" aria-disabled="true" title="未支持：Fork 仓库">Fork</button>
           <button className="btn-sm" aria-disabled="true" title="未支持：Wiki">Wiki</button>
           <button className="btn-sm" aria-disabled="true" title="未支持：CI 构建">CI 构建</button>
           <button className="btn-sm" aria-disabled="true" title="未支持：实时多人协同编辑">协同编辑</button>
           <button className="btn-sm" aria-disabled="true" title="未支持：超过 50 MiB 的两阶段大文件上传">大文件直传</button>
         </div>
-        <div className="local-note">以上 7 个入口 V1 均未支持（在线编辑 / Issue-PR / Star-Fork / Wiki / CI 构建 / 协同编辑 / 大文件直传）：按钮已停用，鼠标悬停或键盘聚焦可看到具体说明。</div>
-        <div className="local-note">V1 云书包内容在服务器上为明文存储（加密属后续版本）。</div>
+        <div className="local-note">以上功能尚未开放；Issues 和 Star 可从仓库页直接使用。</div>
       </div>
-      {message && <div className="local-note community-warning" role="status">{message}</div>}
+      {message && <div className={`local-note${message === '已保存仓库设置' ? '' : ' community-warning'}`} role="status">{message}</div>}
       <div className="cloudbag-unsupported-row">
         <button className="btn primary" disabled={busy || !canWrite} title={writeTitle} onClick={() => void save()}>{busy ? '保存中…' : '保存设置'}</button>
         <button className="btn-danger" disabled={busy || destroying || !canWrite} title={destroying ? '正在删除仓库…' : writeTitle} onClick={() => void destroy()}>{destroying ? '删除中…' : '删除仓库'}</button>

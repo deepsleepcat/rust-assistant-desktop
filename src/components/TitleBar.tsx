@@ -1,75 +1,62 @@
-/**
- * 顶部标题栏：Logo、项目名、命令搜索（Codex 风格）、设置头像。
- * 在 Electron 中作为可拖拽区域（窗口控制按钮由系统渲染在右侧）。
- * 社区账号不再持有令牌：登录统一走独立登录门禁（loginCommunity），
- * 头像经主进程注入凭据后由 /api/me 获取，renderer 只拿到公开资料。
- */
 import { useWorkspaceStore } from '../stores/workspace'
 import { AppIcon } from './AppIcon'
 import { LogoR } from './LogoR'
 import { truncateMiddle } from '../utils/paths'
-import { createCommunityApi } from '../services/communityApi'
-import { CommunityAvatar } from './CommunityAvatar'
-import { useEffect, useMemo, useState } from 'react'
+import { surfaceLabel } from './desktop/shellContract'
+import { formatShortcut, resolveShortcuts } from '../utils/shortcuts'
 
 export function TitleBar() {
-  const activeProject = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
+  const activeProject = useWorkspaceStore((s) => s.projects.find((project) => project.id === s.activeProjectId) ?? null)
+  const activeSurface = useWorkspaceStore((s) => s.activeSurface)
   const setCommandOpen = useWorkspaceStore((s) => s.setCommandOpen)
   const openSettings = useWorkspaceStore((s) => s.openSettings)
-  const loginCommunity = useWorkspaceStore((s) => s.loginCommunity)
-  const refreshCommunityAuth = useWorkspaceStore((s) => s.refreshCommunityAuth)
-  const communityAuth = useWorkspaceStore((s) => s.communityAuth)
-  const signedIn = communityAuth.status === 'signed_in'
-  const [avatar, setAvatar] = useState<{ key: string; path?: string }>({ key: '' })
-  const endpoint = useWorkspaceStore((s) => s.settings.ai.communityEndpoint)
-  const communityApi = useMemo(() => signedIn ? createCommunityApi(endpoint, undefined, undefined, () => void refreshCommunityAuth()) : null, [endpoint, refreshCommunityAuth, signedIn])
-
-  useEffect(() => {
-    if (!communityApi) return
-    let alive = true
-    const key = `${communityAuth.user?.id ?? 0}:${communityAuth.user?.username ?? ''}`
-    void communityApi.me()
-      .then((me) => alive && setAvatar({ key, path: me.avatar_url }))
-      .catch(() => alive && setAvatar({ key }))
-    return () => { alive = false }
-  }, [communityApi, communityAuth.user])
-
-  const avatarKey = `${communityAuth.user?.id ?? 0}:${communityAuth.user?.username ?? ''}`
-  const avatarPath = signedIn && avatar.key === avatarKey ? avatar.path : communityAuth.user?.avatar_url
+  const overrides = useWorkspaceStore((s) => s.settings.keyboardShortcuts)
+  const shortcuts = resolveShortcuts(overrides)
 
   return (
     <header className="titlebar">
       <div className="titlebar-inner">
-        <LogoR size="header" />
-        <span className="titlebar-name">铁锈工坊</span>
-        {activeProject && (
+        <div className="titlebar-brand" aria-label="铁锈工坊">
+          <LogoR size="header" />
+          <span className="titlebar-name">铁锈工坊</span>
+        </div>
+        <span className="titlebar-sep" aria-hidden="true">/</span>
+        <span className="titlebar-surface" aria-live="polite">{surfaceLabel(activeSurface)}</span>
+        {activeProject && activeSurface === 'editor' && (
           <>
-            <span className="titlebar-sep">/</span>
-            <span className="titlebar-project" title={activeProject.rootPath}>
-              {truncateMiddle(activeProject.rootPath, 42)}
-            </span>
+            <span className="titlebar-sep" aria-hidden="true">/</span>
+            <span className="titlebar-project" title={activeProject.rootPath}>{truncateMiddle(activeProject.rootPath, 42)}</span>
           </>
         )}
-        <div className="titlebar-search" onClick={() => setCommandOpen(true)} role="search" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setCommandOpen(true)}>
+        <button
+          className="titlebar-search"
+          type="button"
+          onClick={() => setCommandOpen(true)}
+          aria-label="打开命令面板"
+        >
           <AppIcon name="search" size={14} />
           <span>搜索命令、打开项目…</span>
-          <span className="hint">
-            <kbd>Ctrl</kbd> <kbd>K</kbd>
-          </span>
-        </div>
-        <div className="titlebar-spacer" />
-        <button
-          className="community-account-btn"
-          title={signedIn ? '打开社区账号设置' : '在浏览器中登录社区账号'}
-          onClick={() => (signedIn ? openSettings('community') : void loginCommunity())}
-        >
-          <AppIcon name="user" size={13} />
-          <span>{signedIn ? '社区账号' : '登录社区'}</span>
+          {shortcuts.commandPalette && <span className="hint"><kbd>{formatShortcut(shortcuts.commandPalette)}</kbd></span>}
         </button>
-        <button className="avatar-btn glow-hover" title="社区账号" onClick={() => openSettings('community')}>
-          <CommunityAvatar api={communityApi} avatarPath={avatarPath} className="titlebar-avatar" iconSize={15} />
+        <div className="titlebar-spacer" />
+        <button className="titlebar-settings" type="button" title={shortcuts.settings ? `打开设置（${formatShortcut(shortcuts.settings)}）` : '打开设置'} onClick={() => openSettings('appearance')}>
+          <AppIcon name="settings" size={14} />
+          <span>设置</span>
         </button>
       </div>
+      {window.rustAssistant?.platform === 'win32' && (
+        <div className="window-controls" aria-label="窗口控制">
+          <button type="button" aria-label="最小化" title="最小化" onClick={() => window.rustAssistant?.windowControl?.('minimize')}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 6h8" /></svg>
+          </button>
+          <button type="button" aria-label="最大化或还原" title="最大化或还原" onClick={() => window.rustAssistant?.windowControl?.('maximize')}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="2" y="4" width="6" height="6" rx="1" /><path d="M4 2h5a1 1 0 0 1 1 1v5" /></svg>
+          </button>
+          <button className="window-close" type="button" aria-label="关闭窗口" title="关闭窗口" onClick={() => window.rustAssistant?.windowControl?.('close')}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="m2.5 2.5 7 7m0-7-7 7" /></svg>
+          </button>
+        </div>
+      )}
     </header>
   )
 }

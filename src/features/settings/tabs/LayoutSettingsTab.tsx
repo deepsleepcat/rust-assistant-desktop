@@ -26,19 +26,6 @@ export function LayoutSettingsTab() {
         />
         <span style={{ width: 40, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{settings.leftWidth}px</span>
       </div>
-      <div className="setting-row">
-        <span className="label">
-          右侧对话栏宽度
-        </span>
-        <input
-          type="range"
-          min={240}
-          max={760}
-          value={settings.rightWidth}
-          onChange={(e) => updateSettings({ rightWidth: Number(e.target.value) })}
-        />
-        <span style={{ width: 40, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{settings.rightWidth}px</span>
-      </div>
 
       <div className="setting-divider" />
       <div className="setting-title">内部比例</div>
@@ -69,34 +56,6 @@ export function LayoutSettingsTab() {
           恢复默认
         </button>
       </div>
-      <div className="setting-row">
-        <span className="label">
-          右栏对话列表高度
-          <div className="desc">对话列表占右栏的高度比例，其余为消息区</div>
-        </span>
-        <input
-          type="range"
-          min={15}
-          max={80}
-          value={Math.round(settings.layout.rightARatio * 100)}
-          onChange={(e) => {
-            const s = useWorkspaceStore.getState()
-            updateSettings({ layout: { ...s.settings.layout, rightARatio: Number(e.target.value) / 100 } })
-          }}
-        />
-        <span style={{ width: 34, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{Math.round(settings.layout.rightARatio * 100)}%</span>
-        <button
-          className="btn"
-          style={{ padding: '1px 8px', fontSize: 11, height: 22 }}
-          onClick={() => {
-            const s = useWorkspaceStore.getState()
-            updateSettings({ layout: { ...s.settings.layout, rightARatio: DEFAULT_LAYOUT.rightARatio } })
-          }}
-        >
-          恢复默认
-        </button>
-      </div>
-
       <div className="setting-divider" />
       <div className="setting-title">折叠状态</div>
       <div className="desc" style={{ marginBottom: 8 }}>
@@ -117,20 +76,6 @@ export function LayoutSettingsTab() {
         </button>
       </div>
       <div className="setting-row">
-        <span className="label">AI 对话区整体折叠</span>
-        <button
-          className={`switch${settings.layout.rightCollapsed ? ' on' : ''}`}
-          role="switch"
-          aria-checked={settings.layout.rightCollapsed}
-          onClick={() => {
-            const s = useWorkspaceStore.getState()
-            updateSettings({ layout: { ...s.settings.layout, rightCollapsed: !s.settings.layout.rightCollapsed } })
-          }}
-        >
-          <span className="knob" />
-        </button>
-      </div>
-      <div className="setting-row">
         <span className="label">左栏项目列表折叠</span>
         <button
           className={`switch${settings.layout.leftACollapsed ? ' on' : ''}`}
@@ -139,20 +84,6 @@ export function LayoutSettingsTab() {
           onClick={() => {
             const s = useWorkspaceStore.getState()
             updateSettings({ layout: { ...s.settings.layout, leftACollapsed: !s.settings.layout.leftACollapsed } })
-          }}
-        >
-          <span className="knob" />
-        </button>
-      </div>
-      <div className="setting-row">
-        <span className="label">右栏对话列表折叠</span>
-        <button
-          className={`switch${settings.layout.rightACollapsed ? ' on' : ''}`}
-          role="switch"
-          aria-checked={settings.layout.rightACollapsed}
-          onClick={() => {
-            const s = useWorkspaceStore.getState()
-            updateSettings({ layout: { ...s.settings.layout, rightACollapsed: !s.settings.layout.rightACollapsed } })
           }}
         >
           <span className="knob" />

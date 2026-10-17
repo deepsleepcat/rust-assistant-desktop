@@ -5,9 +5,12 @@
  * 冲突分支、取消、跳过二进制、锚点写入）。
  */
 import type { BridgeApi } from '../types/bridge'
-import type { CloudBagApi, CloudBagApiError, CloudBagHeadSummary, CloudBagRepo, CreateCloudBagRepoInput } from './cloudBagApi'
+import { acquireCloudBagOperation, ownsCloudBagOperation } from './cloudBagOperation'
+import type { CloudBagApi, CloudBagApiError, CloudBagHeadSummary, CloudBagRepo, CloudBagTreeEntry, CreateCloudBagRepoInput } from './cloudBagApi'
 import {
   CLOUD_BAG_ANCHOR_PATH,
+  cloudBagPathKey,
+  isValidTreePath,
   newClientOpId,
   parseCloudBagAnchor,
   serializeCloudBagAnchor,
@@ -75,6 +78,8 @@ export interface SyncHost {
   onProgress: (progress: SyncProgress) => void
   /** 取消标记：文件粒度协作式取消（IPC 发出后不可中断，发完当前文件即停） */
   isAborted: () => boolean
+  /** 调用方持有至锚点写入完成，避免同步结束与记录基线之间插入另一操作。 */
+  operationLease?: () => void
 }
 
 // sha256/读取/扫描统一在 cloudBagTreeState（push 与同步弹窗共用同一口径，见该模块注释）
@@ -210,7 +215,7 @@ export function isCloudBagInternalPath(path: string): boolean {
 /** 推送：本地树 → 白名单过滤 → 逐文件 blob（进度/取消/重试）→ 原子建版本 */
 export async function pushLocalTree(
   host: SyncHost,
-  options: { message: string; baseVersionNo: number; clientOpId?: string },
+  options: { message: string; baseVersionNo: number; clientOpId?: string; strict?: boolean; retainedFiles?: CloudBagTreeEntry[]; pathPrefix?: string; expectedDigest?: string },
 ): Promise<PushOutcome> {
   const { api, bridge, rootPath, repoSlug, onProgress, isAborted } = host
   const uploaded: string[] = []
@@ -219,6 +224,10 @@ export async function pushLocalTree(
   let unsupported: string[] = []
   /** 第一趟候选清单快照：冲突时给 A 栏「本地 vs 锚点基线」复用，不重复哈希 */
   let prepared: LocalTreeEntry[] = []
+  const release = host.operationLease
+    ? (ownsCloudBagOperation(rootPath, host.operationLease) ? () => {} : null)
+    : acquireCloudBagOperation(rootPath)
+  if (!release) return { status: 'failed', error: '该目录已有同步操作正在进行', uploaded, skippedBinary, oversized, unsupported }
   try {
     // 第一趟（扫描+分流+哈希）与同步弹窗打开时的基线核对是同一函数，口径不会漂移。
     // 只保留元数据（path/sha256）：字节在每次迭代后即出作用域，不随 prepared 常驻。
@@ -229,6 +238,13 @@ export async function pushLocalTree(
     skippedBinary = scan.skippedBinary
     oversized = scan.oversized
     unsupported = scan.unsupported
+    if (options.expectedDigest && scan.digest !== options.expectedDigest) throw new Error('本地文件已发生变化，请重新比较后重试')
+    if (options.strict && (skippedBinary.length || oversized.length)) throw new Error(`以下文件读取失败或超过限制，本次提交已停止：\n${[...skippedBinary, ...oversized.map((path) => `${path}（超过 50 MiB）`)].join('\n')}`)
+    const prefix = options.pathPrefix ? options.pathPrefix.replace(/\/$/, '') + '/' : ''
+    const targetPath = (source: string) => prefix + source
+    for (const file of prepared) { if (!isValidTreePath(targetPath(file.path))) throw new Error(`目标路径无效：${targetPath(file.path)}`) }
+    const localKeys = new Set(prepared.map((file) => cloudBagPathKey(targetPath(file.path))))
+    const retained = (options.retainedFiles ?? []).filter((file) => !localKeys.has(cloudBagPathKey(file.path)))
 
     if (prepared.length === 0) {
       return { status: 'failed', error: '没有可上传的文件（全部被跳过或超限）', uploaded, skippedBinary, oversized, unsupported, localTree: prepared }
@@ -237,14 +253,14 @@ export async function pushLocalTree(
     const session = await api.openSession(repoSlug, {
       opType: 'push',
       baseVersionNo: options.baseVersionNo,
-      files: prepared.map((file) => ({ path: file.path, sha256: file.sha256 })),
+      files: [...retained, ...prepared.map((file) => ({ path: targetPath(file.path), sha256: file.sha256 }))],
     })
 
     onProgress({ phase: 'uploading', done: 0, total: prepared.length })
     // 成功上传的 {path,sha256}：提交只纳入真正上传成功的文件。第二趟读取失败/超限
     // 与第一趟同一口径——「计入 skipped 并继续」，而不是整次发布失败：两趟策略必须对称，
     // 否则发布期间一个文件被并发改动/删除就会让整推中止，且留下已开的会话与已传 blob。
-    const uploadedRefs: Array<{ path: string; sha256: string }> = []
+    const uploadedRefs: Array<{ path: string; sha256: string }> = retained.map(({ path, sha256 }) => ({ path, sha256 }))
     for (let index = 0; index < prepared.length; index++) {
       if (isAborted()) return { status: 'aborted', uploaded, skippedBinary, oversized, unsupported }
       const file = prepared[index]
@@ -252,15 +268,18 @@ export async function pushLocalTree(
       let bytes = await readLocalFileBytes(bridge, rootPath, file.path)
         .catch((err: unknown) => (err instanceof Error ? err : new Error(String(err))))
       if (bytes instanceof Error) {
+        if (options.strict) throw bytes
         skippedBinary.push(`${file.path}（${bytes.message}）`)
         onProgress({ phase: 'uploading', done: index + 1, total: prepared.length, currentPath: file.path })
         continue
       }
       if (bytes.byteLength > 50 * 1024 * 1024) {
+        if (options.strict) throw new Error(`文件超过上传限制：${file.path}`)
         oversized.push(file.path)
         onProgress({ phase: 'uploading', done: index + 1, total: prepared.length, currentPath: file.path })
         continue
       }
+      if (options.strict && await sha256Hex(bytes) !== file.sha256) throw new Error(`扫描后文件发生变化：${file.path}`)
       let sha = file.sha256
       let lastError: unknown = null
       let hashReread = false
@@ -269,11 +288,12 @@ export async function pushLocalTree(
       // （同一份字节重传必然再失败），不再盲重试：重读文件并重算 sha 后重试一次
       // （文件在 pass 1 哈希后被并发改动时 sha 会变）；仍不一致则计入 skipped 继续，
       // 与第二趟读取失败同口径——不因单个文件变动整推中止。
+      let rateLimitWaits = 0
       for (let attempt = 0; attempt <= 2; attempt++) {
         try {
           await api.uploadBlob(repoSlug, {
             sessionId: session.id,
-            path: file.path,
+            path: targetPath(file.path),
             sha256: sha,
             bytes,
             fileName: safeUploadFileName(file.path),
@@ -284,10 +304,22 @@ export async function pushLocalTree(
         } catch (err) {
           lastError = err
           const kind = (err as CloudBagApiError).kind
+          if ((err as CloudBagApiError).status === 429 && rateLimitWaits < 3) {
+            rateLimitWaits++
+            const until = Date.now() + 61000
+            while (Date.now() < until) {
+              if (isAborted()) return { status: 'aborted', uploaded, skippedBinary, oversized, unsupported }
+              onProgress({ phase: 'uploading', done: index, total: prepared.length, currentPath: `限流等待 ${Math.ceil((until - Date.now()) / 1000)} 秒后继续：${file.path}` })
+              await new Promise((resolve) => setTimeout(resolve, 1000))
+            }
+            attempt--
+            continue
+          }
           // timeout 不重试：渲染层的超时不会取消主进程的传输，重发只会让同一份大文件
           // 在慢上行链路上再传一遍（用户白耗带宽），如实上报让用户改走网页端。
           if (kind === 'quota_exceeded' || kind === 'forbidden' || kind === 'file_too_large' || kind === 'timeout') throw err
           if (kind === 'object_hash_mismatch') {
+            if (options.strict) throw err
             if (hashReread) break // 只重读重算一次；仍不一致则交给下面的 skipped 分支
             hashReread = true
             const reread = await readLocalFileBytes(bridge, rootPath, file.path)
@@ -325,8 +357,8 @@ export async function pushLocalTree(
         }
         throw lastError instanceof Error ? lastError : new Error(String(lastError))
       }
-      uploadedRefs.push({ path: file.path, sha256: sha })
-      uploaded.push(file.path)
+      uploadedRefs.push({ path: targetPath(file.path), sha256: sha })
+      uploaded.push(targetPath(file.path))
       onProgress({ phase: 'uploading', done: index + 1, total: prepared.length, currentPath: file.path })
     }
 
@@ -338,6 +370,11 @@ export async function pushLocalTree(
       return { status: 'failed', error: '没有可上传的文件（全部被跳过或超限）', uploaded, skippedBinary, oversized, unsupported }
     }
 
+    if (options.strict) {
+      const verified = await scanLocalTree(bridge, rootPath, { onProgress, isCancelled: isAborted })
+      if (!verified) return { status: 'aborted', uploaded, skippedBinary, oversized, unsupported }
+      if (verified.digest !== scan.digest || verified.skippedBinary.length || verified.oversized.length) throw new Error('上传期间本地文件发生变化，本次版本未提交')
+    }
     onProgress({ phase: 'committing', done: prepared.length, total: prepared.length })
     // 幂等键在「一次逻辑推送」内固定：同一次提交的失败重试复用同一 client_op_id，
     // 服务端的 uniqueIndex(repo_id,user_id,client_op_id) 幂等重放才真正生效
@@ -364,7 +401,7 @@ export async function pushLocalTree(
       return { status: 'conflict', conflict: cloudError.conflict, uploaded, skippedBinary, oversized, unsupported, localTree: prepared }
     }
     return { status: 'failed', error: cloudError?.message ?? (error instanceof Error ? error.message : String(error)), uploaded, skippedBinary, oversized, unsupported }
-  }
+  } finally { release() }
 }
 
 export interface ImportOutcome {
@@ -408,19 +445,27 @@ export async function importTreeToNewRepo(
   }
 }
 
-/** 拉取：下载服务端打包的 head .rwmod → 主进程两段式恢复（先备份后覆盖，失败回滚） */
+/** 拉取：下载服务端打包的 .rwmod → 主进程两段式恢复（先备份后覆盖，失败回滚）。
+ * modulePath 为集合内单个模组：服务端导出已剥外层目录，恢复后即为该模组的完整树；
+ * 调用方不得据此改写集合锚点（单模组子集不等于整仓基线）。 */
 export async function pullRemoteVersion(
   host: SyncHost,
-  options: { versionNo: number },
+  options: { versionNo: number; modulePath?: string; expectedSnapshot?: string },
 ): Promise<PullOutcome> {
   const { api, bridge, rootPath, repoSlug, onProgress, isAborted } = host
+  const release = host.operationLease
+    ? (ownsCloudBagOperation(rootPath, host.operationLease) ? () => {} : null)
+    : acquireCloudBagOperation(rootPath)
+  if (!release) return { status: 'failed', error: '该目录已有同步操作正在进行' }
   try {
     onProgress({ phase: 'downloading', done: 0, total: 1 })
-    const download = await api.exportRwmod(repoSlug, options.versionNo)
+    const download = await api.exportRwmod(repoSlug, options.versionNo, options.modulePath)
     if (isAborted()) return { status: 'aborted' }
     if (!bridge.cloudbag) return { status: 'failed', error: '需要更新桌面版才能拉取覆盖（缺少恢复通道）' }
     onProgress({ phase: 'restoring', done: 1, total: 1 })
-    const result = await bridge.cloudbag.restore(rootPath, download.bytes, options.versionNo)
+    const result = options.expectedSnapshot === undefined
+      ? await bridge.cloudbag.restore(rootPath, download.bytes, options.versionNo)
+      : await bridge.cloudbag.restore(rootPath, download.bytes, options.versionNo, options.expectedSnapshot)
     // 恢复成功后按**实际落盘的本地树**重新扫描并算摘要（同一候选过滤口径）：锚点基线摘要
     // 必须与真实恢复树一致，下一次打开/发布后的判定才能直接比较。验证失败不能把已成功的
     // 恢复谎报为失败：摘要缺省，锚点留空，下次打开走旧锚点从服务端补齐的迁移路径。
@@ -449,5 +494,5 @@ export async function pullRemoteVersion(
     }
   } catch (error) {
     return { status: 'failed', error: error instanceof Error ? error.message : String(error) }
-  }
+  } finally { release() }
 }

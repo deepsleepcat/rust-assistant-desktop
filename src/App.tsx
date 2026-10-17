@@ -1,20 +1,26 @@
 /**
- * 应用根组件：组装三栏布局、主题、快捷键与全局弹层。
+ * 应用根组件：组装桌面壳、五个工作面、主题、快捷键与全局弹层。
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useWorkspaceStore } from './stores/workspace'
 import { getBridge, isElectron } from './services/bridge'
 import { Backdrop } from './components/Backdrop'
+import { CloudBagAutoSyncService } from './components/CloudBagAutoSyncService'
 import { TitleBar } from './components/TitleBar'
 import { StatusBar } from './components/StatusBar'
 import { ApprovalDialog, ConfirmDialog } from './components/Modal'
 import { installEscapeDispatcher } from './utils/modalStack'
+import { useAppShortcuts } from './utils/useAppShortcuts'
 import { WorkbenchLayout } from './components/WorkbenchLayout'
+import { DesktopShell } from './components/desktop/DesktopShell'
+import { SurfaceAuthGate } from './components/desktop/SurfaceAuthGate'
+import { DashboardSurface, CloudBagSurface } from './components/desktop/surfaceModules'
+import { SurfaceDeck } from './components/desktop/SurfaceDeck'
+import { useDesktopPreferences } from './components/desktop/desktopPreferences'
 import { LeftColumn } from './features/workspace/LeftColumn'
-import { RightColumn } from './features/conversation/RightColumn'
 import { EditorArea } from './features/editor/EditorArea'
 import { CommunityPanel } from './features/community/CommunityPanel'
-import { SettingsModal } from './features/settings/SettingsModal'
+import { SettingsPage } from './features/settings/SettingsPage'
 import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
 import { CodeTableModal } from './features/editor/CodeTableModal'
@@ -26,7 +32,6 @@ import { UnitLibraryModal } from './features/editor/UnitLibraryModal'
 import { ValueTypeModal } from './features/settings/ValueTypeModal'
 import { CursorEffect } from './components/CursorEffect'
 import { LogoR } from './components/LogoR'
-import { LoginScreen } from './features/auth/LoginScreen'
 
 interface StartupScreenProps {
   initError: string | null
@@ -61,7 +66,6 @@ export function App() {
   const ready = useWorkspaceStore((s) => s.ready)
   const communityAuth = useWorkspaceStore((s) => s.communityAuth)
   const settings = useWorkspaceStore((s) => s.settings)
-  const settingsOpen = useWorkspaceStore((s) => s.settingsOpen)
   const codeTableOpen = useWorkspaceStore((s) => s.codeTableOpen)
   const versionDiffOpen = useWorkspaceStore((s) => s.versionDiffOpen)
   const relationGraphOpen = useWorkspaceStore((s) => s.relationGraphOpen)
@@ -72,9 +76,9 @@ export function App() {
   const valueTypeOpen = useWorkspaceStore((s) => s.valueTypeOpen)
   const toast = useWorkspaceStore((s) => s.toast)
   const dismissToast = useWorkspaceStore((s) => s.dismissToast)
-  // M33-社区：中心区域在编辑器与社区之间切换（切换不丢标签/光标/项目状态）
+  // 工作面切换不丢编辑器标签/光标/项目状态；编辑器节点始终挂载。
   const activeSurface = useWorkspaceStore((s) => s.activeSurface)
-
+  const desktopPreferences = useDesktopPreferences()
 
   // 初始化：读取本地设置与工作区（失败时展示错误面板与重试入口；initPromise 已重置可重试）
   const [initError, setInitError] = useState<string | null>(null)
@@ -119,23 +123,19 @@ export function App() {
     installEscapeDispatcher()
   }, [])
 
-  // 全局快捷键
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        const s = useWorkspaceStore.getState()
-        s.setCommandOpen(!s.commandOpen)
-      }
-      if (mod && e.key === ',') {
-        e.preventDefault()
-        useWorkspaceStore.getState().setSettingsOpen(true)
-      }
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const device = navigator as Navigator & { deviceMemory?: number }
+    const applyPerformanceHints = () => {
+      document.body.classList.toggle('ra-reduced-motion', media.matches || desktopPreferences.reduceMotion)
+      document.body.classList.toggle('ra-low-performance', desktopPreferences.lowPerformance || (navigator.hardwareConcurrency || 8) <= 4 || (device.deviceMemory ?? 8) <= 2)
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+    applyPerformanceHints()
+    media.addEventListener('change', applyPerformanceHints)
+    return () => media.removeEventListener('change', applyPerformanceHints)
+  }, [desktopPreferences.lowPerformance, desktopPreferences.reduceMotion])
+
+  useAppShortcuts()
 
   // 外部文件修改轮询：只标记，不自动覆盖用户内容
   useEffect(() => {
@@ -175,24 +175,34 @@ export function App() {
     return <StartupScreen initError={initError} onRetry={runInit} />
   }
 
-  // Desktop builds require the browser-backed community session or an explicit
-  // offline choice; preview mode remains usable offline with the mock bridge.
-  if (isElectron && communityAuth.status !== 'signed_in' && communityAuth.status !== 'offline') return <LoginScreen />
+  const signedIn = communityAuth.status === 'signed_in'
 
   return (
-    <div className={`app${settings.background.kind !== 'none' ? ' has-backdrop' : ''}`}>
+    <div className={`app${settings.background.kind !== 'none' ? ' has-backdrop' : ''}`} data-surface={activeSurface}>
       <Backdrop />
-      <TitleBar />
-
+      <CloudBagAutoSyncService />
       {settings.cursorEffect && <CursorEffect intensity={settings.cursorEffectIntensity} color={settings.cursorEffectColor} />}
 
-      <div className="app-body">
-        <WorkbenchLayout left={<LeftColumn />} editor={activeSurface === 'community' ? <CommunityPanel /> : <EditorArea />} right={<RightColumn />} />
-      </div>
+      <DesktopShell>
+        <TitleBar />
+        <main className="app-body" id="main-content">
+          <SurfaceDeck pages={{
+            editor: <WorkbenchLayout left={<LeftColumn />} editor={<EditorArea />} />,
+            dashboard: signedIn
+              ? <DashboardSurface key={`${settings.ai.communityEndpoint}:${communityAuth.user?.id ?? ''}`} />
+              : <SurfaceAuthGate surfaceLabel="仪表盘" description="登录后才能读取真实余额、准确 Token 用量和调用日志。" />,
+            community: signedIn
+              ? <CommunityPanel key={`${settings.ai.communityEndpoint}:${communityAuth.user?.id ?? ''}`} />
+              : <SurfaceAuthGate surfaceLabel="社区" description="登录后才能浏览实时帖子、互动与社区账户内容。" />,
+            cloudBag: signedIn
+              ? <CloudBagSurface key={`${settings.ai.communityEndpoint}:${communityAuth.user?.id ?? ''}`} />
+              : <SurfaceAuthGate surfaceLabel="云仓库" description="登录后才能访问云仓库版本、文件树与下载授权。" />,
+            settings: <SettingsPage />,
+          }} />
+        </main>
+        <StatusBar />
+      </DesktopShell>
 
-      <StatusBar />
-
-      {settingsOpen && <SettingsModal />}
       <CommandPalette />
       <ModToolModals />
       {codeTableOpen && <CodeTableModal onClose={() => useWorkspaceStore.getState().setCodeTableOpen(false)} />}

@@ -172,7 +172,9 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     const timeoutMs = request.upload ? cloudBagUploadTimeoutMs(request.upload.bytes.byteLength) : 60_000
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
+      let usedCredential: string | undefined
       const perform = async (credential?: string): Promise<Response> => {
+        usedCredential = credential
         const requestHeaders = new Headers(headers)
         if (request.authenticated && credential) requestHeaders.set('Authorization', `Bearer ${credential}`)
         // origin 只取自已验证的 trustedOrigin；pathname/search 以属性赋值方式搬入，
@@ -191,7 +193,7 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
         ? await (ctx.communityAuth?.withCredential((credential) => perform(credential)) ?? Promise.reject(new Error('社区登录已失效')))
         : await perform()
       if (!response) throw new Error('社区登录已失效')
-      if (response.status === 401 && request.authenticated) await ctx.communityAuth?.invalidate()
+      if (response.status === 401 && request.authenticated && usedCredential) await ctx.communityAuth?.invalidateIfCredential(usedCredential)
       const isAvatar = /^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/.test(url.pathname)
       // 下载上限改显式家族正则（桌面契约 §7.2）：导出/分享下载 50MiB、树内单文件 2MiB，其余 JSON 2MiB
       const downloadLimit = downloadLimitRules.find((item) => item.pattern.test(url.pathname))?.maxBytes

@@ -27,6 +27,7 @@ import { formatIni } from './iniFormatter'
 import { scanSections } from './outline'
 import { OverflowToolbar, type ToolbarAction } from '../../components/OverflowToolbar'
 import { SplitHandle } from '../../components/SplitHandle'
+import { formatShortcut, resolveShortcuts } from '../../utils/shortcuts'
 
 interface MapSession {
   editMode: boolean
@@ -232,7 +233,6 @@ function WelcomeView() {
   const projects = useWorkspaceStore((s) => s.projects)
   const selectProject = useWorkspaceStore((s) => s.selectProject)
   const importModProject = useWorkspaceStore((s) => s.importModProject)
-  const createConversation = useWorkspaceStore((s) => s.createConversation)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
 
   return (
@@ -246,9 +246,6 @@ function WelcomeView() {
         <div className="welcome-actions">
           <button className="btn" onClick={() => void importModProject()}>
             导入模组
-          </button>
-          <button className="btn" onClick={() => createConversation()}>
-            新建对话
           </button>
           <button className="btn" onClick={() => setSettingsOpen(true)}>
             外观设置
@@ -269,7 +266,7 @@ function WelcomeView() {
             ))}
           </div>
         )}
-        <div className="welcome-footer">打开一个模组项目，开始 AI 辅助开发</div>
+        <div className="welcome-footer">打开一个模组项目，开始编辑</div>
       </div>
     </div>
   )
@@ -300,7 +297,6 @@ function EditorPane({
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const semanticCheckers = useWorkspaceStore((s) => s.settings.semanticCheckers)
   const targetVersionName = useWorkspaceStore((s) => s.settings.targetGameVersion)
-  const toggleTranslation = useWorkspaceStore((s) => s.toggleTranslation)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
   // M29：大纲开合的唯一状态来源是 settings.layout.outlineCollapsed（大纲按钮 = 切换它），
   // 高度来源是 settings.layout.outlineHeight；拖动期间用本地 state 暂存 live 值
@@ -340,6 +336,8 @@ function EditorPane({
   }
   const fontFamily = useWorkspaceStore((s) => s.settings.fontFamily)
   const fontSize = useWorkspaceStore((s) => s.settings.fontSize)
+  const editorColors = useWorkspaceStore((s) => s.settings.editorColors)
+  const keyboardShortcuts = useWorkspaceStore((s) => s.settings.keyboardShortcuts)
 
   // 大纲/格式化结果按内容缓存：光标移动等重渲染不再全量重算（大文件每键 O(全文) 会卡）
   const tabContent = tab?.content ?? ''
@@ -367,12 +365,14 @@ function EditorPane({
   // 依赖 actions 身份重测宽度，每次渲染新建数组会陷入 setState 无限循环。
   const actions = useMemo<ToolbarAction[]>(() => {
     if (!tab) return []
+    const shortcuts = resolveShortcuts(keyboardShortcuts)
+    const redoKeys = [shortcuts.redo, shortcuts.redoAlternative].filter(Boolean).map(formatShortcut).join(' 或 ')
     const list: ToolbarAction[] = [
       {
         key: 'undo',
         label: '撤销',
         icon: <AppIcon name="undo" size={12} />,
-        title: '撤销（Ctrl+Z）',
+        title: shortcuts.undo ? `撤销（${formatShortcut(shortcuts.undo)}）` : '撤销',
         disabled: !canUndoTab(tab.id),
         onClick: () => undoTab(tab.id),
       },
@@ -380,7 +380,7 @@ function EditorPane({
         key: 'redo',
         label: '重做',
         icon: <AppIcon name="redo" size={12} />,
-        title: '重做（Ctrl+Y 或 Ctrl+Shift+Z）',
+        title: redoKeys ? `重做（${redoKeys}）` : '重做',
         disabled: !canRedoTab(tab.id),
         onClick: () => redoTab(tab.id),
       },
@@ -388,7 +388,7 @@ function EditorPane({
         key: 'format',
         label: '格式化',
         icon: <AppIcon name="text" size={12} />,
-        title: 'Ctrl+Shift+F',
+        title: '格式化当前文件',
         onClick: () => useWorkspaceStore.getState().updateTabContent(tab.id, formatted, { history: true }),
       },
       {
@@ -460,12 +460,13 @@ function EditorPane({
     list.push({
       key: 'save',
       label: '保存',
+      title: shortcuts.save ? `保存（${formatShortcut(shortcuts.save)}）` : '保存',
       icon: <AppIcon name="save" size={12} />,
       alwaysVisible: true,
       onClick: () => void saveTab(tab.id),
     })
     return list
-  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onMapEditModeChange, onOpenPreview, saveTab, undoTab, redoTab, canUndoTab, canRedoTab])
+  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onMapEditModeChange, onOpenPreview, saveTab, undoTab, redoTab, canUndoTab, canRedoTab, keyboardShortcuts])
 
   if (!tab) return null
   if (isPreviewableImage(tab.path) && project) {
@@ -515,13 +516,7 @@ function EditorPane({
               ◐ 待写回修复
             </span>
           )}
-          <button
-            className={tab.translationEnabled ? 'btn primary' : 'btn'}
-            onClick={() => toggleTranslation(tab.id)}
-            title="切换中文显示层：显示中文，保存时自动转回英文"
-          >
-            {tab.translationEnabled ? '中文模式' : '英文模式'}
-          </button>
+          <span className="badge" title="字段同时显示中文说明和英文原码，显示标签不写入文件">双语字段 · Bilingual</span>
         </div>
         <div className="editor-head-row actions">
           <OverflowToolbar actions={actions} />
@@ -576,6 +571,7 @@ function EditorPane({
               onRedo={() => redoTab(tab.id)}
               fontFamily={fontFamily}
               fontSize={fontSize}
+              editorColors={editorColors}
               chineseMode={tab.translationEnabled}
               translationMap={tab.translationMap}
               jumpTo={jumpTo}
@@ -589,7 +585,7 @@ function EditorPane({
             <MapViewer path={tab.path} rootPath={project.rootPath} content={mapContent} initialCamera={mapCamera} onCameraChange={onMapCameraChange} />
           )
         ) : formMode && isUnitFile(tab.content) && project ? (
-          <UnitFormPanel tab={tab} rootPath={project.rootPath} onOpenPreview={onOpenPreview} />
+          <UnitFormPanel tab={tab} rootPath={project.rootPath} />
         ) : (
         <EditorMirror
           value={tab.content}
@@ -600,6 +596,7 @@ function EditorPane({
           onRedo={() => redoTab(tab.id)}
           fontFamily={fontFamily}
           fontSize={fontSize}
+          editorColors={editorColors}
           chineseMode={tab.translationEnabled}
           translationMap={tab.translationMap}
           jumpTo={jumpTo}

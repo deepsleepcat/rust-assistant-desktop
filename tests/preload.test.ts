@@ -64,6 +64,14 @@ describe('preload 桥契约', () => {
     expect(mocks.invoke).toHaveBeenLastCalledWith('community:request', request)
   })
 
+  it('WAV 上传准备只发送 root+path，ArrayBuffer 结果原样返回', async () => {
+    const cloudbag = api().cloudbag as { readWavForUpload: (root: string, file: string) => Promise<unknown> }
+    const result = { bytes: new Uint8Array([82, 73, 70, 70]).buffer, size: 4 }
+    mocks.invoke.mockResolvedValueOnce(result as never)
+    expect(await cloudbag.readWavForUpload('C:\\proj', 'C:\\proj\\a.wav')).toBe(result)
+    expect(mocks.invoke).toHaveBeenLastCalledWith('cloudbag:readWavForUpload', 'C:\\proj', 'C:\\proj\\a.wav')
+  })
+
   it('云书包恢复映射到 cloudbag:restore（根路径/字节/版本号三参原样传递）', async () => {
     const cloudbag = api().cloudbag as { restore: (root: string, bytes: ArrayBuffer, versionNo: number) => Promise<unknown> }
     const bytes = new ArrayBuffer(8)
@@ -121,7 +129,7 @@ describe('preload 桥契约', () => {
     const a = api()
     const mod = a.mod as Record<string, (...x: unknown[]) => Promise<unknown>>
     await mod.pack('r', {})
-    expect(mocks.invoke).toHaveBeenLastCalledWith('mod:pack', 'r', {})
+    expect(mocks.invoke).toHaveBeenLastCalledWith('mod:pack', 'r', {}, undefined)
     await mod.globalOp('r', { kind: 'replace' })
     expect(mocks.invoke).toHaveBeenLastCalledWith('mod:globalOp', 'r', { kind: 'replace' })
     await mod.import('archive')

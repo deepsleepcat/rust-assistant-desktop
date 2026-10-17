@@ -4,14 +4,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { IconChat, IconClose, IconFolder, IconGear } from '../../components/icons'
+import { IconClose, IconFolder, IconGear } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { useEscapeHandler } from '../../utils/modalStack'
 import { DEFAULT_LAYOUT, DEFAULT_SETTINGS } from '../../utils/settings'
+import { formatShortcut, resolveShortcuts } from '../../utils/shortcuts'
 
 interface CommandItem {
   id: string
   title: string
+  /** 小号英文提示（中文在上、英文在下，展示层双语） */
+  en?: string
   hint?: string
   icon: ReactNode
   run: () => void
@@ -21,7 +24,6 @@ export function CommandPalette() {
   const open = useWorkspaceStore((s) => s.commandOpen)
   const setOpen = useWorkspaceStore((s) => s.setCommandOpen)
   const importModProject = useWorkspaceStore((s) => s.importModProject)
-  const createConversation = useWorkspaceStore((s) => s.createConversation)
   const setSettingsOpen = useWorkspaceStore((s) => s.setSettingsOpen)
   const setModDialog = useWorkspaceStore((s) => s.setModDialog)
   const packModProject = useWorkspaceStore((s) => s.packModProject)
@@ -30,7 +32,7 @@ export function CommandPalette() {
   const activeTabId = useWorkspaceStore((s) => s.activeTabId)
   // M29：布局折叠状态（命令面板动态显示「显示/隐藏」文案）
   const leftCollapsed = useWorkspaceStore((s) => s.settings.layout.leftCollapsed)
-  const rightCollapsed = useWorkspaceStore((s) => s.settings.layout.rightCollapsed)
+  const settingsKey = useWorkspaceStore((s) => resolveShortcuts(s.settings.keyboardShortcuts).settings)
 
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
@@ -50,35 +52,37 @@ export function CommandPalette() {
 
   const commands = useMemo<CommandItem[]>(
     () => [
-      { id: 'open-project', title: '导入模组…', hint: 'Ctrl+O', icon: <IconFolder size={15} />, run: () => void importModProject() },
-      { id: 'new-conversation', title: '新建 AI 对话', hint: 'Ctrl+Shift+C', icon: <IconChat size={15} />, run: () => createConversation() },
-      { id: 'open-settings', title: '打开设置', hint: 'Ctrl+,', icon: <IconGear size={15} />, run: () => setSettingsOpen(true) },
-      // M33-社区：工作区切换命令（与左侧导航一致：紧凑模式下顺带收起抽屉，避免目标工作区被抽屉遮挡）
-      { id: 'surface-community', title: '打开社区', icon: <AppIcon name="share" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setDrawerSide(null); useWorkspaceStore.getState().setActiveSurface('community') } },
-      { id: 'surface-editor', title: '返回工作台（编辑器）', icon: <AppIcon name="code" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setDrawerSide(null); useWorkspaceStore.getState().setActiveSurface('editor') } },
+      { id: 'open-project', title: '导入模组…', en: 'Import mod…', icon: <IconFolder size={15} />, run: () => void importModProject() },
+      { id: 'open-settings', title: '打开设置', en: 'Open settings', hint: settingsKey ? formatShortcut(settingsKey) : undefined, icon: <IconGear size={15} />, run: () => setSettingsOpen(true) },
+      { id: 'surface-dashboard', title: '打开仪表盘', en: 'Open dashboard', icon: <AppIcon name="layout" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setActiveSurface('dashboard') } },
+      { id: 'surface-community', title: '打开社区', en: 'Open community', icon: <AppIcon name="share" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setActiveSurface('community') } },
+      { id: 'surface-cloud-bag', title: '打开云仓库', en: 'Open cloud repo', icon: <AppIcon name="cloud" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setActiveSurface('cloudBag') } },
+      { id: 'surface-editor', title: '返回工作区（编辑器）', en: 'Back to workspace', icon: <AppIcon name="code" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setActiveSurface('editor') } },
       {
         id: 'close-tab',
         title: '关闭当前文件',
+        en: 'Close current file',
         icon: <IconClose size={15} />,
         run: () => activeTabId && closeTab(activeTabId),
       },
-      { id: 'mod-create', title: '模组：自述文件（创建/编辑）…', icon: <AppIcon name="box" size={15} />, run: () => { setModDialog('createMod'); setOpen(false) } },
-      { id: 'mod-create-unit', title: '模组：新建单位…', icon: <AppIcon name="tower" size={15} />, run: () => { setModDialog('createUnit'); setOpen(false) } },
-      { id: 'mod-unit-library', title: '模组：单位库', icon: <AppIcon name="tower" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setUnitLibraryOpen(true) } },
-      { id: 'mod-pack', title: '模组：打包（.rwmod）', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); void packModProject() } },
-      { id: 'mod-check', title: '模组：检查单位', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); void checkModProject() } },
-      { id: 'mod-optimize', title: '模组：优化（清理垃圾）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); setModDialog('optimize') } },
-      { id: 'mod-translation-repair', title: '模组：修复中文翻译损坏', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); setModDialog('translationRepair') } },
-      { id: 'template-library', title: '模板库管理（本地浏览/导入/删除）', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setTemplateLibraryOpen(true) } },
-      { id: 'git-info', title: 'Git 历史与回滚（本地）', icon: <AppIcon name="clock" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setGitInfoOpen(true) } },
-      { id: 'code-table', title: '浏览代码表', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setCodeTableOpen(true) } },
-      { id: 'version-diff', title: '版本差异对比（字段新增/弃用/迁移）', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setVersionDiffOpen(true) } },
-      { id: 'relation-graph', title: '模组关系图（单位/资源/炮塔/弹体引用）', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setRelationGraphOpen(true) } },
-      { id: 'value-type', title: '值类型管理（自定义补全规则）', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setValueTypeOpen(true) } },
+      { id: 'mod-create', title: '模组：自述文件（创建/编辑）…', en: 'Mod: mod-info.txt…', icon: <AppIcon name="box" size={15} />, run: () => { setModDialog('createMod'); setOpen(false) } },
+      { id: 'mod-create-unit', title: '模组：新建单位…', en: 'Mod: new unit…', icon: <AppIcon name="tower" size={15} />, run: () => { setModDialog('createUnit'); setOpen(false) } },
+      { id: 'mod-unit-library', title: '模组：单位库', en: 'Mod: unit library', icon: <AppIcon name="tower" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setUnitLibraryOpen(true) } },
+      { id: 'mod-pack', title: '模组：打包（.rwmod）', en: 'Mod: pack (.rwmod)', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); void packModProject() } },
+      { id: 'mod-check', title: '模组：检查单位', en: 'Mod: check units', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); void checkModProject() } },
+      { id: 'mod-optimize', title: '模组：优化（清理垃圾）', en: 'Mod: optimize', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); setModDialog('optimize') } },
+      { id: 'mod-translation-repair', title: '模组：修复中文翻译损坏', en: 'Mod: repair translations', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); setModDialog('translationRepair') } },
+      { id: 'template-library', title: '模板库管理（本地浏览/导入/删除）', en: 'Template library', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setTemplateLibraryOpen(true) } },
+      { id: 'git-info', title: 'Git 历史与回滚（本地）', en: 'Git history & rollback', icon: <AppIcon name="clock" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setGitInfoOpen(true) } },
+      { id: 'code-table', title: '浏览代码表', en: 'Browse code table', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setCodeTableOpen(true) } },
+      { id: 'version-diff', title: '版本差异对比（字段新增/弃用/迁移）', en: 'Version diff', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setVersionDiffOpen(true) } },
+      { id: 'relation-graph', title: '模组关系图（单位/资源/炮塔/弹体引用）', en: 'Relation graph', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setRelationGraphOpen(true) } },
+      { id: 'value-type', title: '值类型管理（自定义补全规则）', en: 'Value types', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setValueTypeOpen(true) } },
       // M29：布局命令（折叠状态动态切换文案；操作前读最新 state，避免闭包旧值）
       {
         id: leftCollapsed ? 'layout-show-left' : 'layout-hide-left',
         title: leftCollapsed ? '布局：显示项目区' : '布局：隐藏项目区',
+        en: leftCollapsed ? 'Show projects' : 'Hide projects',
         icon: <AppIcon name={leftCollapsed ? 'eye' : 'eye-off'} size={15} />,
         run: () => {
           setOpen(false)
@@ -87,18 +91,9 @@ export function CommandPalette() {
         },
       },
       {
-        id: rightCollapsed ? 'layout-show-right' : 'layout-hide-right',
-        title: rightCollapsed ? '布局：显示 AI 对话区' : '布局：隐藏 AI 对话区',
-        icon: <AppIcon name={rightCollapsed ? 'eye' : 'eye-off'} size={15} />,
-        run: () => {
-          setOpen(false)
-          const s = useWorkspaceStore.getState()
-          s.updateSettings({ layout: { ...s.settings.layout, rightCollapsed: !s.settings.layout.rightCollapsed } })
-        },
-      },
-      {
         id: 'layout-reset',
         title: '布局：恢复默认布局',
+        en: 'Reset layout',
         icon: <AppIcon name="refresh" size={15} />,
         run: () => {
           setOpen(false)
@@ -113,6 +108,7 @@ export function CommandPalette() {
       {
         id: 'layout-toggle-outline',
         title: '布局：切换大纲',
+        en: 'Toggle outline',
         icon: <AppIcon name="expand" size={15} />,
         run: () => {
           setOpen(false)
@@ -121,13 +117,13 @@ export function CommandPalette() {
         },
       },
     ],
-    [importModProject, createConversation, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen, leftCollapsed, rightCollapsed],
+    [importModProject, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen, leftCollapsed, settingsKey],
   )
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return commands
-    return commands.filter((c) => c.title.toLowerCase().includes(q) || (c.hint ?? '').toLowerCase().includes(q))
+    return commands.filter((c) => c.title.toLowerCase().includes(q) || (c.en ?? '').toLowerCase().includes(q) || (c.hint ?? '').toLowerCase().includes(q))
   }, [commands, query])
 
   if (!open) return null

@@ -62,6 +62,8 @@ export interface CommunityAuthService {
   /** Main-process-only access for the restricted community proxy. */
   withCredential<T>(use: (credential: string) => Promise<T>): Promise<T | null>
   invalidate(): Promise<void>
+  /** Main-process-only: compare and clear inside the credential mutation queue. */
+  invalidateIfCredential(expected: string): Promise<boolean>
 }
 
 export interface CommunityAuthDependencies {
@@ -240,6 +242,16 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
     return run
   }
 
+  async function invalidateIfCredential(expected: string): Promise<boolean> {
+    return enqueueCredentialMutation(async () => {
+      const matches = await deps.credentials.withCredential((credential) => credential === expected)
+      if (matches !== true) return false
+      await deps.credentials.clearCredential()
+      currentUser = undefined
+      return true
+    })
+  }
+
   async function request(url: URL, method: 'GET' | 'POST', body?: Record<string, string>, secret?: string, bearer?: string): Promise<{ response: Response; body: unknown }> {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
@@ -266,10 +278,14 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
     if (await deps.credentials.hasCredential()) {
       if (!currentUser) {
         let unauthorized = false
+        let expectedCredential = ''
+        let stale = false
+        const generation = operationGeneration
         let credentialRead = false
         try {
           await deps.credentials.withCredential(async (credential) => {
             credentialRead = true
+            expectedCredential = credential
             const { response, body } = await request(apiUrl(origin, AUTH_ME_PATH), 'GET', undefined, undefined, credential)
             if (response.status === 401) {
               unauthorized = true
@@ -278,16 +294,21 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
             if (!response.ok) throw new CommunityAuthError(`无法验证社区登录状态（HTTP ${response.status}）`, response.status >= 500)
             const user = toUser(successfulData(body))
             if (!user) throw new CommunityAuthError('社区配对服务返回了无效用户数据')
-            currentUser = user
+            stale = !await enqueueCredentialMutation(async () => {
+              const matches = await deps.credentials.withCredential((current) => current === credential)
+              if (matches !== true || generation !== operationGeneration) return false
+              currentUser = user
+              return true
+            })
           })
         } catch (error) {
           if (unauthorized) {
-            currentUser = undefined
-            await deps.credentials.clearCredential()
-            return { state: 'signed-out' }
+            if (await invalidateIfCredential(expectedCredential)) return { state: 'signed-out' }
+            return status()
           }
           throw error
         }
+        if (stale) return status()
         if (!credentialRead) return { state: 'signed-out' }
       }
       return { state: 'signed-in', user: currentUser }
@@ -334,7 +355,11 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
   return {
     status,
     withCredential: (apply) => deps.credentials.withCredential(apply),
-    invalidate: () => enqueueCredentialMutation(() => deps.credentials.clearCredential()),
+    invalidate: () => enqueueCredentialMutation(async () => {
+      await deps.credentials.clearCredential()
+      currentUser = undefined
+    }),
+    invalidateIfCredential,
     startPairing: () => {
       if (startInFlight) return startInFlight
       const requestPromise = start()

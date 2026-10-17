@@ -89,7 +89,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
           const dom = document.createElement('div')
           dom.className = 'cm-hover-doc'
           // secName 来自模组文件内容（可能含 HTML 特殊字符）：必须转义
-          dom.innerHTML = `<b>[${escapeHtml(secName)}]</b>${zh ? ` · ${escapeHtml(zh)}` : ''}<div class="cm-hover-muted">节（Section）</div>`
+          dom.innerHTML = `${zh ? `<b>${escapeHtml(zh)}</b><br>` : ''}<small>[${escapeHtml(secName)}]</small><div class="cm-hover-muted">节（Section）</div>`
           return { dom }
         },
       }
@@ -216,7 +216,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
           dom.className = 'cm-hover-doc'
           const parts: string[] = []
           // en.code/translate 可能含 HTML 特殊字符：统一转义（key 是用户文件内容）
-          parts.push(`<b>${escapeHtml(en.code)}</b>${en.translate && en.translate !== en.code ? ` · ${escapeHtml(en.translate)}` : ''}`)
+          parts.push(`${en.translate && en.translate !== en.code ? `<b>${escapeHtml(en.translate)}</b><br>` : ''}<small>${escapeHtml(en.code)}</small>`)
           if (en.description && en.description !== en.translate) parts.push(`<div style="margin-top:3px">${escapeHtml(en.description)}</div>`)
           parts.push(`<div class="cm-hover-muted" style="margin-top:3px">类型：${escapeHtml(vt)}${en.section && en.section !== 'all' ? ` · 节：${escapeHtml(en.section)}` : ''}</div>`)
           if (versionParts.length > 0) parts.push(`<div class="cm-hover-muted">${escapeHtml(versionParts.join(' · '))}</div>`)

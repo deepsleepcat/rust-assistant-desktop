@@ -3,6 +3,7 @@ import { AppIcon } from '../../components/AppIcon'
 import { Modal } from '../../components/Modal'
 import { PanelState } from '../../components/PanelState'
 import { getBridge } from '../../services/bridge'
+import { acquireCloudBagOperation } from '../../services/cloudBagOperation'
 import type { CloudBagApi, CloudBagHeadSummary, CloudBagRepo } from '../../services/cloudBagApi'
 import { judgeSyncState, formatBytes, isForeignAnchor, newClientOpId, syncStateAfterPush, type CloudBagAnchor, type SyncState } from './cloudBagData'
 import {
@@ -265,6 +266,9 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
   }, [api, bridge, rootPath, repo.headVersionNo, repo.slug])
 
   const runPush = useCallback(async (baseVersionNo: number, text: string) => {
+    const operationLease = acquireCloudBagOperation(rootPath)
+    if (!operationLease) { setError('当前目录已有同步操作，请稍后重试'); return }
+    try {
     abortRef.current = false
     setBusy(true)
     setError(null)
@@ -281,6 +285,7 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
       repoSlug: repo.slug,
       onProgress: (progress) => setSyncState((current) => ({ ...(current ?? { running: true, message: null, error: null, phase: null, done: 0, total: 0 }), ...progress })),
       isAborted: () => abortRef.current,
+      operationLease,
     }, { message: text, baseVersionNo, clientOpId })
     setBusy(false)
     setSyncState((current) => ({ ...(current ?? { running: false, phase: null, done: 0, total: 0, message: null, error: null }), running: false, push: outcome }))
@@ -341,9 +346,14 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
     } else if (outcome.status === 'aborted') {
       setMessage('已取消同步')
     }
+    } catch (error) { setError(error instanceof Error ? error.message : String(error)) }
+    finally { operationLease(); setBusy(false) }
   }, [api, bridge, onChanged, repo.headVersionNo, repo.slug, rootPath])
 
   const runPull = useCallback(async (versionNo: number) => {
+    const operationLease = acquireCloudBagOperation(rootPath)
+    if (!operationLease) { setError('当前目录已有同步操作，请稍后重试'); return }
+    try {
     abortRef.current = false
     setBusy(true)
     setError(null)
@@ -357,6 +367,7 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
       repoSlug: repo.slug,
       onProgress: (progress) => setSyncState((current) => ({ ...(current ?? { running: true, message: null, error: null, phase: null, done: 0, total: 0 }), ...progress })),
       isAborted: () => abortRef.current,
+      operationLease,
     }, { versionNo })
     setBusy(false)
     setSyncState((current) => ({ ...(current ?? { running: false, phase: null, done: 0, total: 0, message: null, error: null }), running: false, pull: outcome }))
@@ -393,6 +404,8 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
     } else {
       setMessage('已取消拉取')
     }
+    } catch (error) { setError(error instanceof Error ? error.message : String(error)) }
+    finally { operationLease(); setBusy(false) }
   }, [api, bridge, onChanged, repo.slug, rootPath])
 
   const repoHead = repo.headVersionNo

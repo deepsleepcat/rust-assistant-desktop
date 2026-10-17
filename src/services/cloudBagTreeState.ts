@@ -84,6 +84,13 @@ export async function readLocalFileBytes(bridge: BridgeApi, rootPath: string, re
     return dataUrlToBytes(await bridge.project.readImageAsDataUrl(rootPath, abs))
   }
   if (kind === 'audio') {
+    if (/\.wav$/i.test(relPath)) {
+      if (typeof bridge.cloudbag?.readWavForUpload !== 'function') {
+        throw new Error('当前桌面版缺少 WAV 上传准备通道，请重启应用后再同步')
+      }
+      // 扫描摘要、上传第二趟与哈希重试都读取同一份转码口径，失败不回退原伪 WAV。
+      return (await bridge.cloudbag.readWavForUpload(rootPath, abs)).bytes
+    }
     return dataUrlToBytes(await bridge.project.readAudioAsDataUrl(rootPath, abs))
   }
   throw new Error(`暂不支持读取的二进制文件类型：${relPath}`)
@@ -118,8 +125,7 @@ export async function scanLocalTree(
   const oversized: string[] = plan.oversized.map((file) => file.path)
   const unsupported: string[] = []
   plan.unsupported.forEach((file) => {
-    if (classifyLocalFile(file.path) === 'binary') skippedBinary.push(file.path)
-    else unsupported.push(file.path)
+    unsupported.push(file.path)
   })
 
   onProgress?.({ phase: 'hashing', done: 0, total: plan.uploadable.length })
