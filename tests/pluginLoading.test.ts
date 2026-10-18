@@ -111,7 +111,7 @@ describe('M41 插件目录信任锚（pluginTrust）', () => {
     // 模拟重启：新建一个空上下文，从同一份 store 恢复
     const fresh = { ...ctx, pluginDirs: new Map<string, string>() }
     restorePluginDirs(fresh)
-    expect(fresh.pluginDirs.get('demo.atlas')).toBe(normalizePath(pluginDir))
+    expect(fresh.pluginDirs.get('demo.atlas')).toBe(normalizePath(await fs.realpath(pluginDir)))
   })
 
   it('注销后不再可查（插件卸载路径）', async () => {
@@ -349,7 +349,7 @@ describe('M41 插件导入入口（plugin:importLocal）', () => {
     await reopened.ready()
     const fresh = { ...ctx, store: reopened, pluginDirs: new Map<string, string>() }
     restorePluginDirs(fresh)
-    expect(pluginDirOf(fresh, 'import.demo')).toBe(normalizePath(pluginDir))
+    expect(pluginDirOf(fresh, 'import.demo')).toBe(normalizePath(await fs.realpath(pluginDir)))
     expect(reopened.get(PLUGIN_DIRS_KEY)).toEqual(original)
   })
 
