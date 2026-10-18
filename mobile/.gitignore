@@ -38,3 +38,10 @@ dist-ssr
 *.apk
 *.aab
 src-tauri/gen/android/app/src/main/jniLibs/
+
+# Rust / Tauri build output（手机端本地构建产物，远端规则未覆盖的部分）
+src-tauri/target
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/build/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/local.properties

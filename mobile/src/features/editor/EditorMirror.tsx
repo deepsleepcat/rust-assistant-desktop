@@ -7,9 +7,9 @@
 import { useEffect, useRef } from 'react'
 import { Compartment, EditorState, Transaction } from '@codemirror/state'
 import { EditorView, drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers, repositionTooltips, tooltips } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentMore, indentWithTab, redo, undo } from '@codemirror/commands'
 import { autocompletion, startCompletion } from '@codemirror/autocomplete'
-import { search, searchKeymap } from '@codemirror/search'
+import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { rustConfigLanguageSupport, smartEnterBindings } from './rustLanguage'
 import { rustHoverExtension } from './rustHover'
 import { rustCompletionSource, setCompletionChineseMode, setCompletionTracker } from './completion'
@@ -43,6 +43,22 @@ interface EditorMirrorProps {
   targetVersionName?: string
   /** 当前文件名（checkFile 区分 .template 模板文件用） */
   fileName?: string
+  /**
+   * 编辑器就绪后交出命令句柄（手机工具栏用：撤销/重做/搜索/缩进/插入符号/补全）。
+   * 卸载时回调 null。移动端没有 Ctrl 组合键，这些操作只能靠按钮触发。
+   */
+  onReady?: (api: EditorCommandApi | null) => void
+}
+
+/** 手机工具栏可用的编辑器命令 */
+export interface EditorCommandApi {
+  undo(): void
+  redo(): void
+  openSearch(): void
+  indent(): void
+  /** 在当前选区插入文本（保留撤销历史） */
+  insertText(text: string): void
+  triggerCompletion(): void
 }
 
 const editorTheme = EditorView.theme({
@@ -123,7 +139,7 @@ const editorTheme = EditorView.theme({
   },
 })
 
-export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName, fileName }: EditorMirrorProps) {
+export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fontSize, chineseMode = false, translationMap, jumpTo, onJumpDone, rootPath, semanticCheckers, targetVersionName, fileName, onReady }: EditorMirrorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -132,6 +148,49 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
   // 语义 lint 专用槽位：配置（开关/项目根）变化时热替换，避免挂载时闭包陈旧
   // （否则设置页关掉检查器，已打开的编辑器波浪线仍按旧配置检查）
   const lintCompartment = useRef(new Compartment())
+
+  /**
+   * 命令句柄：工具栏按钮点击时编辑器可能已失焦，但 CodeMirror 的
+   * selection 仍保留在 state 里，所以「插入符号」能落在用户最后停留的位置。
+   * 输入法组合期间（view.composing）一律不动作——否则会把正在组合的中文打断。
+   */
+  useEffect(() => {
+    const api: EditorCommandApi = {
+      undo: () => {
+        const view = viewRef.current
+        if (view) undo(view)
+      },
+      redo: () => {
+        const view = viewRef.current
+        if (view) redo(view)
+      },
+      openSearch: () => {
+        const view = viewRef.current
+        if (view) openSearchPanel(view)
+      },
+      indent: () => {
+        const view = viewRef.current
+        if (view) indentMore(view)
+      },
+      insertText: (text: string) => {
+        const view = viewRef.current
+        if (!view || view.composing) return
+        const { from, to } = view.state.selection.main
+        view.dispatch({
+          changes: { from, to, insert: text },
+          selection: { anchor: from + text.length },
+          userEvent: 'input.type',
+        })
+        view.focus()
+      },
+      triggerCompletion: () => {
+        const view = viewRef.current
+        if (view && !view.composing) startCompletion(view)
+      },
+    }
+    onReady?.(api)
+    return () => onReady?.(null)
+  }, [onReady])
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -305,6 +364,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
   return (
     <div
       ref={containerRef}
+      className="m-editor-surface"
       style={
         {
           flex: 1,
