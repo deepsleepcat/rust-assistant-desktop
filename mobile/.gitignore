@@ -26,6 +26,8 @@ dist-ssr
 # Keep mobile documentation despite the desktop repository ignore rule
 !docs/
 !docs/**
+# 内部验收记录仅本地（必须放在 !docs/** 之后，否则会被重新放行）
+docs/ACCEPTANCE-*.md
 
 # Local tooling, credentials and Android build artifacts
 .zcode/

@@ -41,6 +41,8 @@ Thumbs.db
 # 以及 mobile 子项目自己的说明与架构文档。
 docs/
 CHANGELOG.md
+# 手机端内部验收记录仅本地；README 引用的构建/架构文档保留。
+mobile/docs/ACCEPTANCE-*.md
 
 # AI 参考/说明素材（仅本地；modding-guide.md 构建必需，保留）
 assets/ai/README.md
