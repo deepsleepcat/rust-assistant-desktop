@@ -97,7 +97,7 @@ afterEach(async () => {
 describe('M41 插件目录信任锚（pluginTrust）', () => {
   it('登记后可查到，且 id 大小写不敏感', async () => {
     await registerPluginDir(ctx, 'Demo.Atlas', pluginDir)
-    expect(pluginDirOf(ctx, 'demo.atlas')).toBe(normalizePath(pluginDir))
+    expect(pluginDirOf(ctx, 'demo.atlas')).toBe(normalizePath(await fs.realpath(pluginDir)))
     expect(pluginDirOf(ctx, 'DEMO.ATLAS')).not.toBeNull()
   })
 
@@ -256,7 +256,7 @@ describe('M41 插件导入入口（plugin:importLocal）', () => {
     expect(selection.manifest.id).toBe('import.demo')
     expect(selection.files.length).toBeGreaterThanOrEqual(2)
     // 关键：导入即登记锚值——后续 readResource 才有基准
-    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(pluginDir))
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(await fs.realpath(pluginDir)))
   })
 
   it('用户取消对话框 → 返回 null，不登记任何锚值', async () => {
@@ -303,7 +303,7 @@ describe('M41 插件导入入口（plugin:importLocal）', () => {
     stubDialog([manifestPath])
     const selection = await invoke<{ source: string }>(channels, 'plugin:importLocal')
     expect(selection.source).toBe('json')
-    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(pluginDir))
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(await fs.realpath(pluginDir)))
   })
 
   async function importFixture(root = pluginDir, single = true) {
@@ -337,7 +337,7 @@ describe('M41 插件导入入口（plugin:importLocal）', () => {
     const original = ctx.store.get(PLUGIN_DIRS_KEY)
     await expect(importFixture(path.join(tmp, 'plugin-b'))).rejects.toThrow('冲突')
     expect(ctx.store.get(PLUGIN_DIRS_KEY)).toEqual(original)
-    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(pluginDir))
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(await fs.realpath(pluginDir)))
     const failing = vi.spyOn(ctx.store, 'setDurable').mockRejectedValueOnce(new Error('disk failure'))
     registerStoreIpc(ctx, (name, handler) => channels.set(name, handler))
     await expect(invoke(channels, 'store:set', 'plugins', { plugins: [] })).rejects.toThrow('disk failure')
@@ -414,7 +414,7 @@ describe('M41 插件导入入口（plugin:importLocal）', () => {
     await fs.mkdir(diskPath) // rename of the temporary JSON over a directory must fail.
     await expect(invoke(channels, 'store:set', 'plugins', { plugins: [] })).rejects.toThrow()
     expect(ctx.store.get(PLUGIN_DIRS_KEY)).toEqual(original)
-    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(pluginDir))
+    expect(pluginDirOf(ctx, 'import.demo')).toBe(normalizePath(await fs.realpath(pluginDir)))
     expect(JSON.parse(await fs.readFile(backupPath, 'utf8'))[PLUGIN_DIRS_KEY]).toEqual(original)
     await fs.rmdir(diskPath)
     await fs.rename(backupPath, diskPath)

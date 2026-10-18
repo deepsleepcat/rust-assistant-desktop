@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises'
 import { normalizePath } from './paths'
 import type { IpcContext } from './ipcContext'
 import { createPluginState, normalizePluginRelativePath, validatePluginConflicts, validatePluginManifest, type PluginState } from '../src/features/plugins'
@@ -56,8 +57,10 @@ async function commit(ctx: IpcContext, next: PluginSnapshot): Promise<void> {
 export async function registerPluginDir(ctx: IpcContext, pluginId: string, dir: string, paths: string[] = [], state = installedPluginState(ctx)): Promise<void> {
   const previous = snapshot(ctx)
   const manifest = state.plugins.find((item) => item.manifest.id.toLowerCase() === pluginId.toLowerCase())?.manifest
+  // 统一存真实路径：短路径（RUNNER~1）和 junction 替换都不会再与词法路径混淆。
+  const realDir = await fs.realpath(dir)
   await commit(ctx, { version: 1, state, grants: { ...previous.grants, [pluginId.toLowerCase()]: {
-    dir: normalizePath(dir), paths, ...(manifest ? { manifest: JSON.stringify(manifest) } : {}),
+    dir: normalizePath(realDir), paths, ...(manifest ? { manifest: JSON.stringify(manifest) } : {}),
   } } })
 }
 

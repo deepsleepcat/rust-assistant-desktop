@@ -49,7 +49,9 @@ async function collectPluginFiles(rootPath: string): Promise<Array<{ path: strin
 async function verifiedResourcePath(root: string, absolute: string): Promise<string> {
   const realRoot = await fs.realpath(root)
   const real = await fs.realpath(absolute)
-  if (normalizePath(realRoot) !== normalizePath(root) || !isPathInside(root, real)) {
+  // root 在登记时已规范化为真实路径；这里再比一次，用于拒绝「根目录被 junction
+  // 替换到别处」的情况。短路径/大小写差异在登记阶段已经消除。
+  if (normalizePath(realRoot) !== normalizePath(root) || !isPathInside(realRoot, real)) {
     throw new Error('插件资源真实路径逃逸，拒绝访问')
   }
   return real

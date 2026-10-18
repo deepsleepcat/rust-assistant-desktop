@@ -269,7 +269,7 @@ describe('PR4 path, PNG and lifecycle regressions', () => {
       const { workDir, parentPid } = JSON.parse(await fs.readFile(workDirFile, 'utf8')) as { workDir: string; parentPid: number }
       expect(path.basename(workDir)).toMatch(/^ra-dlc-/)
       expect((await fs.stat(workDir)).isDirectory()).toBe(true)
-      expect(JSON.parse(await fs.readFile(path.join(workDir, 'request.json'), 'utf8')).unitFile).toBe(request.unitFile)
+      expect(JSON.parse(await fs.readFile(path.join(workDir, 'request.json'), 'utf8')).unitFile).toBe(await fs.realpath(request.unitFile))
       if (action === 'foreignCancel') {
         const stranger = Object.assign(new EventEmitter(), { id: 99, isDestroyed: () => false })
         await handler({ sender: stranger }, { cancel: true, requestId: 'in-flight' })
