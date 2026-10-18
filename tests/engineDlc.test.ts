@@ -331,6 +331,65 @@ describe('M42 DLC 目录扫描（scanEngineDlcDir）', () => {
     expect(read.problem).toContain('链接')
   })
 
+  // 回归：readEngineDlcDir 曾用裸 dir.startsWith(root + path.sep) 做根锚定校验。
+  // root 由调用方传入，path.resolve 只归一化左边的派生路径，右边原样参与比较，
+  // 于是 root 带正斜杠 / 混合大小写 / 尾部分隔符时前缀永不匹配，合法 DLC 全被
+  // 误判成「DLC 目录名不合法」。这里把三种写法全部钉住。
+  describe('readEngineDlcDir 的 root 归一化（分隔符/大小写/尾部分隔符）', () => {
+    /** 造一个合法 DLC，返回其父目录（= root）与目录名 */
+    async function seed(root: string, id = 'normalized'): Promise<string> {
+      const dir = path.join(root, id)
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(
+        path.join(dir, 'dlc.json'),
+        JSON.stringify({ dlcVersion: 1, id, name: '归一化', version: '1.0.0', entry: 'render.cjs' }),
+        'utf8',
+      )
+      await fs.writeFile(path.join(dir, 'render.cjs'), '// entry', 'utf8')
+      return dir
+    }
+
+    it('root 用正斜杠也能解析（Windows 上 path.resolve 会归一成反斜杠）', async () => {
+      const root = engineDlcDir(tmp)
+      await seed(root)
+      const slashed = root.replace(/\\/g, '/')
+      expect(slashed).not.toBe(root) // 确认两种写法确实不同，否则这条用例没意义
+      const read = await readEngineDlcDir(slashed, 'normalized')
+      expect(read.ok).toBe(true)
+      if (!read.ok) return
+      expect(read.dlc.id).toBe('normalized')
+      // 注意 normalizePath 在 Windows 上会转小写：断言按同一函数归一化后比较，
+      // 否则这条用例会在不同大小写的临时目录上假失败。
+      expect(read.dlc.entryPath).toBe(normalizePath(path.join(root, 'normalized', 'render.cjs')))
+    })
+
+    it('root 混合大小写也能解析（Windows 路径比较不区分大小写）', async () => {
+      const root = engineDlcDir(tmp)
+      await seed(root)
+      const upper = root.toUpperCase()
+      if (upper === root) return // 全为数字/无字母的极端路径：跳过
+      const read = await readEngineDlcDir(upper, 'normalized')
+      expect(read.ok).toBe(true)
+    })
+
+    it('root 尾部带分隔符也能解析（拼 + path.sep 会变成双分隔符）', async () => {
+      const root = engineDlcDir(tmp)
+      await seed(root)
+      const read = await readEngineDlcDir(`${root}${path.sep}`, 'normalized')
+      expect(read.ok).toBe(true)
+    })
+
+    it('归一化不放松边界：.. 穿越仍被拒绝', async () => {
+      const root = engineDlcDir(tmp)
+      await seed(root)
+      // dirName 含分隔符/点段本就会被第一道白名单拦下；这里确认错误信息明确
+      const read = await readEngineDlcDir(root, '../escape')
+      expect(read.ok).toBe(false)
+      if (read.ok) return
+      expect(read.problem).toContain('目录名')
+    })
+  })
+
   it('toEngineDlcList：未授权的合法条目可授权但不可直接渲染', async () => {
     await writeDlc('demo', GOOD_SCRIPT)
     const { items } = await scanEngineDlcDir(engineDlcDir(tmp))

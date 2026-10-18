@@ -1,13 +1,21 @@
 /**
- * 设置 → 外观：主题、鼠标粒子特效（强度/颜色）。
+ * 设置 → 外观：主题、显示动效/低性能模式、鼠标粒子特效（强度/颜色）。
  * 从 SettingsModal 拆出（M39 巨型函数治理）；自订阅工作区 store，无父级 props。
  */
+import { useState } from 'react'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import { CURSOR_EFFECT_COLORS } from '../../../utils/settings'
+import { updateDesktopPreferences, useDesktopPreferences } from '../../../components/desktop/desktopPreferences'
 
 export function AppearanceSettingsTab() {
   const settings = useWorkspaceStore((s) => s.settings)
   const updateSettings = useWorkspaceStore((s) => s.updateSettings)
+  const desktopPreferences = useDesktopPreferences()
+  const [preferenceError, setPreferenceError] = useState<string | null>(null)
+  const setPreference = (patch: { lowPerformance?: boolean; reduceMotion?: boolean }) => {
+    const error = updateDesktopPreferences(patch)
+    setPreferenceError(error)
+  }
 
   return (
     <div className="setting-section">
@@ -35,12 +43,36 @@ export function AppearanceSettingsTab() {
       </div>
       <div className="setting-row">
         <span className="label">
+          减少动态效果
+          <span className="label-en">Reduce motion</span>
+          <div className="desc">关闭页面切换与入场动画，同时仍尊重系统“减少动态效果”设置</div>
+        </span>
+        <button type="button" className={`switch${desktopPreferences.reduceMotion ? ' on' : ''}`} role="switch"
+          aria-label="减少动态效果 Reduce motion" aria-checked={desktopPreferences.reduceMotion} onClick={() => setPreference({ reduceMotion: !desktopPreferences.reduceMotion })}>
+          <span className="knob" />
+        </button>
+      </div>
+      <div className="setting-row">
+        <span className="label">
+          低性能模式
+          <span className="label-en">Low performance mode</span>
+          <div className="desc">关闭磨砂模糊与过渡动效，功能保持不变；低配设备自动降级</div>
+        </span>
+        <button type="button" className={`switch${desktopPreferences.lowPerformance ? ' on' : ''}`} role="switch"
+          aria-label="低性能模式 Low performance mode" aria-checked={desktopPreferences.lowPerformance} onClick={() => setPreference({ lowPerformance: !desktopPreferences.lowPerformance })}>
+          <span className="knob" />
+        </button>
+      </div>
+      {preferenceError && <div className="setting-error">{preferenceError}</div>}
+      <div className="setting-row">
+        <span className="label">
           鼠标粒子特效
           <div className="desc">移动鼠标时出现柔和光点尾迹（跟随指针，不影响操作）</div>
         </span>
         <button
           className={`switch${settings.cursorEffect ? ' on' : ''}`}
           role="switch"
+          aria-label="鼠标粒子特效"
           aria-checked={settings.cursorEffect}
           onClick={() => updateSettings({ cursorEffect: !settings.cursorEffect })}
         >

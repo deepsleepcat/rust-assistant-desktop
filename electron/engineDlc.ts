@@ -1,10 +1,10 @@
 /**
  * 引擎渲染 DLC 宿主（M42）——扫描指定目录、校验清单、以子进程方式调用外部渲染程序。
  *
- * 背景：本项目是 GPL-3.0 分发，**不内置也不转发**《铁锈战争》引擎代码。
- * 本模块只提供「插座」：用户把自己准备的渲染 DLC 放进指定目录
- * （<userData>/engine-dlc/），主进程负责发现、校验并按固定协议调用它，
- * 拿回一张位图交给预览界面。引擎从哪来、怎么用，由 DLC 自己决定。
+ * 背景：单位预览的画面只由引擎渲染产生。渲染程序以 DLC 形式安装到
+ * <userData>/engine-dlc/，主进程负责发现、校验并按固定协议调用它，
+ * 拿回一张位图交给预览界面。仓库本身不含任何游戏二进制文件，
+ * 内置包由本机已安装的游戏在本地生成（见引擎打包脚本）。
  *
  * 安全边界：DLC 是**用户自己安装的可执行程序**，以用户权限运行，本身不是沙箱对象
  * （它能读写的东西等同于用户在终端里能读写的东西）。因此这里要守住的不是「限制它」，
@@ -190,9 +190,15 @@ export async function readEngineDlcDir(root: string, dirName: string): Promise<{
     return { ok: false, problem: 'DLC 目录名不合法' }
   }
   // 根锚定包含校验：DLC 目录与清单路径都必须落在 root 内。
+  // 必须走 isPathInside 而不是裸 startsWith(root + path.sep)：root 是调用方传入的
+  // （测试/脚本可能给正斜杠、混合大小写或尾部分隔符），path.resolve 只归一化左边的
+  // 派生路径，右边原样参与字符串比较，分隔符或大小写一不一致前缀就永不匹配，
+  // 于是所有合法 DLC 都被误判成「目录名不合法」。isPathInside 内部做 normalizePath。
+  // 注意：本文件被其他分支合并覆盖过一次，这段不要退回裸 startsWith（见 engineDlc.test.ts
+  // 的「readEngineDlcDir 的 root 归一化」用例）。
   const dir = path.resolve(root, dirName)
   const manifestPath = path.resolve(root, dirName, ENGINE_DLC_MANIFEST_NAME)
-  if (!dir.startsWith(root + path.sep) || !manifestPath.startsWith(root + path.sep)) {
+  if (!isPathInside(root, dir) || !isPathInside(root, manifestPath)) {
     return { ok: false, problem: 'DLC 目录名不合法' }
   }
   let text: string

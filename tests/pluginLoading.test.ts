@@ -195,16 +195,20 @@ describe('M41 插件资源读取（plugin:readResource）', () => {
       .rejects.toThrow('超过 8MB 上限')
   })
 
-  it('插件目录内指向外部的符号链接被拒绝（链接逃逸）', async () => {
-    const outside = path.join(tmp, 'outside-secret.png')
+  it('插件目录内指向外部的链接被拒绝（链接逃逸）', async () => {
+    const outsideDir = path.join(tmp, 'outside-resources')
+    await fs.mkdir(outsideDir)
+    const outside = path.join(outsideDir, 'outside-secret.png')
     await fs.writeFile(outside, TINY_PNG)
-    const link = path.join(pluginDir, 'link.png')
-    try {
-      await fs.symlink(outside, link)
-    } catch (error) {
-      throw new Error('环境无法创建符号链接，测试未覆盖', { cause: error })
-    }
-    await expect(invoke(channels, 'plugin:readResource', 'demo.atlas', 'link.png')).rejects.toThrow()
+    const directoryLink = process.platform === 'win32'
+    const link = path.join(pluginDir, directoryLink ? 'external' : 'link.png')
+    const resource = directoryLink ? 'external/outside-secret.png' : 'link.png'
+    // Windows 目录联接无需符号链接特权，仍须经过真实路径逃逸校验。
+    await fs.symlink(directoryLink ? outsideDir : outside, link, directoryLink ? 'junction' : 'file')
+    await registerPluginDir(ctx, 'demo.atlas', pluginDir, [resource])
+    expect(await fs.readFile(path.join(pluginDir, resource))).toEqual(TINY_PNG)
+    await expect(invoke(channels, 'plugin:readResource', 'demo.atlas', resource))
+      .rejects.toThrow(directoryLink ? '插件资源真实路径逃逸' : '插件资源不存在或包含链接')
   })
 })
 

@@ -1,10 +1,11 @@
 /**
- * 设置 → 编辑器：字体/字号、语义检查器开关、项目自定义规则（rules/*.json）。
+ * 设置 → 编辑器：字体/字号/颜色、语义检查器开关、项目自定义规则（rules/*.json）。
  * 从 SettingsModal 拆出（M39 巨型函数治理）；目标游戏版本下拉与规则加载随本组件挂载。
  */
 import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../../stores/workspace'
-import { FONT_OPTIONS } from '../../../utils/settings'
+import { EDITOR_COLOR_OPTIONS, FONT_OPTIONS } from '../../../utils/settings'
+import type { EditorColorKey, EditorColors } from '../../../types/domain'
 import { getGameVersions, loadCodeData } from '../../../services/codeData'
 import { ALL_SEMANTIC_CHECKERS } from '../../../features/editor/semanticChecks/registry'
 import { loadProjectRuleSets, type ProjectRuleSet } from '../../../features/editor/semanticChecks/customRules'
@@ -14,6 +15,33 @@ export function EditorSettingsTab() {
   const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const activeProject = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const [gameVersions, setGameVersions] = useState<Array<{ versionName: string; versionNumber: number }>>([])
+  const [themeColors, setThemeColors] = useState<EditorColors>({})
+
+  // 读取实际主题色作为颜色选择器的起点，系统主题变化也同步；不写入颜色覆盖。
+  useEffect(() => {
+    let frame = 0
+    const refresh = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const style = getComputedStyle(document.documentElement)
+        setThemeColors(Object.fromEntries(EDITOR_COLOR_OPTIONS.map(({ key, themeVariable }) =>
+          [key, style.getPropertyValue(themeVariable).trim()],
+        )))
+      })
+    }
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    refresh()
+    media.addEventListener('change', refresh)
+    return () => { cancelAnimationFrame(frame); media.removeEventListener('change', refresh) }
+  }, [settings.theme])
+
+  function changeColor(key: EditorColorKey, value?: string) {
+    const colors = { ...useWorkspaceStore.getState().settings.editorColors }
+    if (value === undefined) delete colors[key]
+    else colors[key] = value
+    updateSettings({ editorColors: colors })
+  }
+
   // M21：项目自定义规则（rules/*.json；可单独开关）
   const [projectRules, setProjectRules] = useState<{ sets: ProjectRuleSet[]; errors: Array<{ file: string; errors: string[] }> } | null>(null)
 
@@ -77,6 +105,30 @@ export function EditorSettingsTab() {
           onChange={(e) => updateSettings({ fontSize: Number(e.target.value) })}
         />
         <span style={{ width: 34, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{settings.fontSize}px</span>
+      </div>
+      <div className="setting-divider" />
+      <div className="setting-title">字体颜色</div>
+      <div className="desc" style={{ marginBottom: 8 }}>默认跟随当前主题；自定义颜色会在切换主题后保留。</div>
+      {EDITOR_COLOR_OPTIONS.map(({ key, label }) => {
+        const override = settings.editorColors[key]
+        const current = override ?? themeColors[key]
+        return (
+          <div className="setting-row" key={key}>
+            <label className="label" htmlFor={`editor-color-${key}`}>{label}</label>
+            <input
+              id={`editor-color-${key}`}
+              type="color"
+              value={current && /^#[0-9a-fA-F]{6}$/.test(current) ? current : '#000000'}
+              onChange={(e) => changeColor(key, e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{override ?? '跟随主题'}</span>
+            <button className="btn" disabled={!override} onClick={() => changeColor(key)} aria-label={`恢复${label}为主题颜色`}>恢复默认</button>
+          </div>
+        )
+      })}
+      <div className="setting-row">
+        <span className="label">全部字体颜色</span>
+        <button className="btn" disabled={Object.keys(settings.editorColors).length === 0} onClick={() => updateSettings({ editorColors: {} })}>全部恢复默认</button>
       </div>
       <div className="setting-divider" />
       <div className="setting-title">语义检查器（M10）</div>

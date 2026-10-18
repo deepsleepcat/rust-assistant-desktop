@@ -32,7 +32,7 @@ describe('communityApi', () => {
     expect(result).toEqual({ ok: true, message: 'ok', version: 'v0.8.7.5' })
   })
 
-  it('帖子列表带分页和筛选参数，公开请求不携带令牌', async () => {
+  it('帖子列表带分页和筛选参数，登录后带令牌读取个人点赞收藏状态', async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(String(input))
       expect(url.pathname).toBe('/api/community/posts')
@@ -42,7 +42,7 @@ describe('communityApi', () => {
       expect(url.searchParams.get('tag')).toBe('陆军')
       expect(url.searchParams.get('page')).toBe('2')
       expect(url.searchParams.get('page_size')).toBe('12')
-      expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+      expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer sk-secret')
       return response({ success: true, message: '', data: { items: [], total: 0, page: 2, page_size: 12 } })
     })
     const result = await createCommunityApi(DEFAULT_COMMUNITY_ENDPOINT, 'sk-secret', fetcher).posts({

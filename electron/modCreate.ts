@@ -68,7 +68,7 @@ export async function transcodeToOgg(srcPath: string, destDir: string, usedNames
   return dest
 }
 
-function findFfmpeg(): Promise<string | null> {
+export function findFfmpeg(): Promise<string | null> {
   return new Promise((resolve) => {
     // 1) ffmpeg-static（随应用打包）
     try {

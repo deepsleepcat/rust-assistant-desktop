@@ -75,7 +75,7 @@ export function MembersView({ api, repo, canWrite }: { api: CloudBagApi; repo: C
   }
   return (
     <div className="cloudbag-section">
-      {message && <div className="local-note community-warning" role="status">{message}</div>}
+      {message && <div className={`local-note${message === '已添加成员' || message === '已移除成员' ? '' : ' community-warning'}`} role="status">{message}</div>}
       {loading ? <PanelState kind="loading" title="加载成员…" /> : error
         ? <PanelState kind="error" title="成员加载失败" description={error} onRetry={() => void load()} />
         : <div className="cloudbag-diff-list">
@@ -99,11 +99,11 @@ export function MembersView({ api, repo, canWrite }: { api: CloudBagApi; repo: C
         </div>}
       {isOwner && canWrite && (
         <div className="community-form">
-          <input aria-label="被邀请用户 id" value={inviteUid} onChange={(event) => setInviteUid(event.target.value)} placeholder="站内用户数字 id" />
-          <select aria-label="成员角色" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as 'editor' | 'viewer')}>
+          <label>被邀请用户 ID<input value={inviteUid} onChange={(event) => setInviteUid(event.target.value)} placeholder="站内用户数字 ID" inputMode="numeric" /></label>
+          <label>成员角色<select aria-label="成员角色" value={inviteRole} onChange={(event) => setInviteRole(event.target.value as 'editor' | 'viewer')}>
             <option value="viewer">查看者</option>
             <option value="editor">编辑者</option>
-          </select>
+          </select></label>
           <button className="btn-sm" disabled={inviting} onClick={() => void invite()}>{inviting ? '邀请中…' : '邀请成员'}</button>
         </div>
       )}

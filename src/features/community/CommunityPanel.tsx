@@ -3,10 +3,20 @@ import { AppIcon } from '../../components/AppIcon'
 import { Modal } from '../../components/Modal'
 import { PanelState } from '../../components/PanelState'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { createCommunityApi, type CommunityApi, type CommunityBoard, type CommunityComment, type CommunityModerationComment, type CommunityModerationResource, type CommunityPost, type CommunityPostDetail, type CommunityRankingItem, type CommunityResource, type CommunityTag, type CommunityUser, type PostFeed } from '../../services/communityApi'
+import { createCommunityApi, type CommunityApi, type CommunityBoard, type CommunityComment, type CommunityGrowth, type CommunityModerationComment, type CommunityModerationResource, type CommunityPost, type CommunityPostDetail, type CommunityRankingItem, type CommunityResource, type CommunityTag, type CommunityTimeRange, type CommunityUser, type ListPostsOptions, type PostFeed } from '../../services/communityApi'
 import { CommunityAvatar } from '../../components/CommunityAvatar'
-import { CloudBagPanel } from './CloudBagPanel'
+import { CloudBagContent } from './CloudBagPanel'
+import { CommunityNickname } from './CommunityNickname'
 import { filterOfflinePosts, localCommunityDataSource, TAB_LABELS, type CommunitySnapshot, type CommunityTab } from './communityData'
+
+type CommunitySort = NonNullable<ListPostsOptions['sort']>
+
+const TIME_RANGES: Array<{ value: CommunityTimeRange; label: string }> = [
+  { value: 'all', label: '全部时间' },
+  { value: '7d', label: '近 7 天' },
+  { value: '30d', label: '近 30 天' },
+  { value: '365d', label: '近一年' },
+]
 
 const FEEDS: Array<{ value: PostFeed; label: string }> = [
   { value: 'all', label: '全部' },
@@ -133,6 +143,8 @@ export function CommunityPanel() {
   const [board, setBoard] = useState('')
   const [keyword, setKeyword] = useState('')
   const [tag, setTag] = useState('')
+  const [sort, setSort] = useState<CommunitySort>('latest')
+  const [onlyMods, setOnlyMods] = useState(false)
   const [boardOptions, setBoardOptions] = useState(BOARD_OPTIONS)
   const [tagOptions, setTagOptions] = useState<CommunityTag[]>([])
   const [page, setPage] = useState(1)
@@ -236,7 +248,7 @@ export function CommunityPanel() {
         setPosts(result.items)
         setTotal(result.total)
       } else {
-        const result = await client.posts({ board: board || undefined, keyword: keyword || undefined, feed, tag: tag || undefined, page })
+        const result = await client.posts({ board: board || undefined, keyword: keyword || undefined, feed, tag: tag || undefined, sort, onlyMods: onlyMods || undefined, page })
         if (!isCurrent()) return
         setPosts(result.items)
         setTotal(result.total)
@@ -270,7 +282,7 @@ export function CommunityPanel() {
     } finally {
       if (isCurrent()) setLoading(false)
     }
-  }, [board, communityAuth.user, feed, handleUnauthorized, keyword, page, settings.ai.communityEndpoint, signedIn, tab, tag])
+  }, [board, communityAuth.user, feed, handleUnauthorized, keyword, onlyMods, page, settings.ai.communityEndpoint, signedIn, sort, tab, tag])
 
   useEffect(() => {
     const timer = setTimeout(() => { void load() }, 0)
@@ -345,6 +357,32 @@ export function CommunityPanel() {
     }
   }
 
+  /** 收藏独立于点赞/关注：不同端点、不同计数，绝不复用 liked 状态。 */
+  const onFavorite = async (post: CommunityPost) => {
+    if (!requireInteraction()) return
+    if (!api || localMode) { setMessage('社区服务器不可用，暂时无法收藏'); return }
+    const key = `favorite:${post.id}`
+    if (actionLocks.current.has(key)) return
+    actionLocks.current.add(key)
+    const wasFavorited = post.favorited === true
+    const generation = loadGeneration.current
+    try {
+      if (wasFavorited) await api.unfavorite(post.id)
+      else await api.favorite(post.id)
+      if (generation !== loadGeneration.current) return
+      const patch = (item: CommunityPost): CommunityPost => item.id === post.id
+        ? { ...item, favorited: !wasFavorited, favorite_count: Math.max(0, (item.favorite_count ?? 0) + (wasFavorited ? -1 : 1)) }
+        : item
+      setPosts((current) => current.map(patch))
+      setDetail((current) => current && current.id === post.id ? patch(current) : current)
+      setMessage(wasFavorited ? '已取消收藏' : '已收藏')
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      actionLocks.current.delete(key)
+    }
+  }
+
   const offline = communityAuth.status === 'offline'
   /** 云书包页签下，头部徽标以本页签真实请求的可达性为准（可达性未知时回落原门控文案） */
   const reachKey = `${tab}:${refreshKey}`
@@ -400,7 +438,7 @@ export function CommunityPanel() {
             （CommunityPanel 自己的 load 在 cloudBag 页签提前 return，不覆盖该页签）。
             离线态登录入口统一走 openLoginScreen（社区页签同款），避免先打一次必然失败的配对请求。
             onReachabilityChange：头部徽标必须反映云书包页签本次请求的真实可达性。 */}
-        {tab === 'cloudBag' ? <CloudBagPanel refreshKey={refreshKey} onOpenLogin={openLoginScreen} onOpenSettings={openVerificationSettings} onUnauthorized={handleUnauthorized} onReachabilityChange={onCloudBagReachability} /> : offline ? (
+        {tab === 'cloudBag' ? <CloudBagContent refreshKey={refreshKey} onOpenLogin={openLoginScreen} onOpenSettings={openVerificationSettings} onUnauthorized={handleUnauthorized} onReachabilityChange={onCloudBagReachability} /> : offline ? (
           <PanelState
             kind="empty"
             icon="cloud"
@@ -413,9 +451,9 @@ export function CommunityPanel() {
         ) : loading ? <PanelState kind="loading" title="加载社区内容…" /> : (
           <>
             {error && <div className="local-note community-warning">{error}。当前保留本地示例浏览。</div>}
-            {tab === 'recommend' && <RecommendView feed={feed} setFeed={(value) => { setFeed(value); setPage(1) }} board={board} setBoard={(value) => { setBoard(value); setPage(1) }} boardOptions={boardOptions} keyword={keyword} setKeyword={(value) => { setKeyword(value); setPage(1) }} tag={tag} setTag={(value) => { setTag(value); setPage(1) }} tagOptions={tagOptions} onSearch={() => setRefreshKey((n) => n + 1)} posts={posts} onOpen={openPost} onLike={onLike} />}
-            {tab === 'me' && <MeView api={api} signedIn={signedIn} following={following} currentUser={currentUser} posts={posts} onOpen={openPost} onLike={onLike} onOpenLogin={openCommunityLogin} onCreate={openCreatePost} />}
-            {tab === 'following' && <FollowingView posts={posts} localMode={localMode} onOpen={openPost} onLike={onLike} />}
+            {tab === 'recommend' && <RecommendView feed={feed} setFeed={(value) => { setFeed(value); setPage(1) }} board={board} setBoard={(value) => { setBoard(value); setPage(1) }} boardOptions={boardOptions} keyword={keyword} setKeyword={(value) => { setKeyword(value); setPage(1) }} tag={tag} setTag={(value) => { setTag(value); setPage(1) }} sort={sort} setSort={(value) => { setSort(value); setPage(1) }} onlyMods={onlyMods} setOnlyMods={(value) => { setOnlyMods(value); setPage(1) }} tagOptions={tagOptions} onSearch={() => setRefreshKey((n) => n + 1)} posts={posts} onOpen={openPost} onLike={onLike} onFavorite={onFavorite} />}
+            {tab === 'me' && <MeView key={`${settings.ai.communityEndpoint}:${currentUserId ?? 'offline'}`} api={api} signedIn={signedIn} following={following} currentUser={currentUser} posts={posts} onOpen={openPost} onLike={onLike} onFavorite={onFavorite} onOpenLogin={openCommunityLogin} onCreate={openCreatePost} />}
+            {tab === 'following' && <FollowingView posts={posts} localMode={localMode} onOpen={openPost} onLike={onLike} onFavorite={onFavorite} />}
             {tab === 'ranking' && <RankingView api={api} localMode={localMode} onOpen={openPost} />}
             <div className="community-pagination">
               <span>{total > 0 ? `共 ${total} 条` : '暂无内容'}</span>
@@ -427,7 +465,7 @@ export function CommunityPanel() {
           </>
         )}
       </div>
-      {(detail || detailLocal) && <PostDetailModal key={(detail ?? detailLocal!).id} api={api} post={detail ?? detailLocal!} signedIn={signedIn} currentUser={currentUser} currentUserId={currentUserId} following={following} requireInteraction={requireInteraction} onClose={() => { setDetail(null); setDetailLocal(null) }} onLike={onLike} onFollow={onFollow} onChanged={() => setRefreshKey((n) => n + 1)} />}
+      {(detail || detailLocal) && <PostDetailModal key={(detail ?? detailLocal!).id} api={api} post={detail ?? detailLocal!} signedIn={signedIn} currentUser={currentUser} currentUserId={currentUserId} following={following} requireInteraction={requireInteraction} onClose={() => { setDetail(null); setDetailLocal(null) }} onLike={onLike} onFavorite={onFavorite} onFollow={onFollow} onChanged={() => setRefreshKey((n) => n + 1)} />}
       {formOpen && <CreatePostModal api={api} boardOptions={boardOptions} tagOptions={tagOptions} requireInteraction={requireInteraction} onClose={() => setFormOpen(false)} onCreated={() => { setFormOpen(false); setRefreshKey((n) => n + 1) }} />}
       {moderationOpen && api && currentUser && isVerifiedUser(currentUser) && (currentUser.role ?? 0) >= 10 && <ModerationModal api={api} isRoot={currentUser.role === 100} onClose={() => setModerationOpen(false)} onChanged={() => setRefreshKey((n) => n + 1)} />}
       {message && <div className="community-toast" role="status" onClick={() => setMessage(null)}>{message}</div>}
@@ -435,58 +473,127 @@ export function CommunityPanel() {
   )
 }
 
-function RecommendView({ feed, setFeed, board, setBoard, boardOptions, keyword, setKeyword, tag, setTag, tagOptions, onSearch, posts, onOpen, onLike }: { feed: PostFeed; setFeed: (value: PostFeed) => void; board: string; setBoard: (value: string) => void; boardOptions: Array<{ value: string; label: string }>; keyword: string; setKeyword: (value: string) => void; tag: string; setTag: (value: string) => void; tagOptions: CommunityTag[]; onSearch: () => void; posts: DisplayPost[]; onOpen: (post: DisplayPost) => void; onLike: (post: CommunityPost) => void }) {
+function RecommendView({ feed, setFeed, board, setBoard, boardOptions, keyword, setKeyword, tag, setTag, sort, setSort, onlyMods, setOnlyMods, tagOptions, onSearch, posts, onOpen, onLike, onFavorite }: { feed: PostFeed; setFeed: (value: PostFeed) => void; board: string; setBoard: (value: string) => void; boardOptions: Array<{ value: string; label: string }>; keyword: string; setKeyword: (value: string) => void; tag: string; setTag: (value: string) => void; sort: CommunitySort; setSort: (value: CommunitySort) => void; onlyMods: boolean; setOnlyMods: (value: boolean) => void; tagOptions: CommunityTag[]; onSearch: () => void; posts: DisplayPost[]; onOpen: (post: DisplayPost) => void; onLike: (post: CommunityPost) => void; onFavorite: (post: CommunityPost) => void }) {
   return <>
     <div className="community-section community-toolbar">
       <div className="rank-filter">{FEEDS.map((item) => <button key={item.value} type="button" className={`rank-chip${feed === item.value ? ' active' : ''}`} aria-pressed={feed === item.value} onClick={() => setFeed(item.value)}>{item.label}</button>)}</div>
       <select aria-label="社区板块" value={board} onChange={(event) => setBoard(event.target.value)}>{boardOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>
+      <select aria-label="排序方式" value={sort} onChange={(event) => setSort(event.target.value as CommunitySort)}>
+        <option value="latest">最新</option>
+        <option value="likes">按点赞</option>
+        <option value="favorites">按收藏</option>
+      </select>
       <input aria-label="搜索帖子" value={keyword} onChange={(event) => setKeyword(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }} placeholder="搜索帖子" />
       <input aria-label="按标签筛选" list="community-tag-options" value={tag} onChange={(event) => setTag(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') onSearch() }} placeholder="标签" />
       <datalist id="community-tag-options">{tagOptions.map((item) => <option key={item.name} value={item.name}>{item.post_count ? `${item.name} (${item.post_count})` : item.name}</option>)}</datalist>
+      <label className="community-check"><input type="checkbox" checked={onlyMods} onChange={(event) => setOnlyMods(event.target.checked)} /> 仅模组</label>
       <button className="btn-sm" onClick={onSearch}>搜索</button>
     </div>
-    {posts.length === 0 ? <PanelState kind="empty" icon="search" title="没有找到帖子" description="换一个关键词或筛选条件试试。" /> : <div className="post-list">{posts.map((post) => <PostCard key={post.id} post={post} onOpen={() => onOpen(post)} onLike={() => onLike(post)} />)}</div>}
+    {posts.length === 0 ? <PanelState kind="empty" icon="search" title="没有找到帖子" description="换一个关键词或筛选条件试试。" /> : <div className="post-card-grid">{posts.map((post) => <PostCard key={post.id} post={post} onOpen={() => onOpen(post)} onLike={() => onLike(post)} onFavorite={() => onFavorite(post)} />)}</div>}
   </>
 }
 
-function FollowingView({ posts, localMode, onOpen, onLike }: { posts: DisplayPost[]; localMode: boolean; onOpen: (post: DisplayPost) => void; onLike: (post: CommunityPost) => void }) {
+function FollowingView({ posts, localMode, onOpen, onLike, onFavorite }: { posts: DisplayPost[]; localMode: boolean; onOpen: (post: DisplayPost) => void; onLike: (post: CommunityPost) => void; onFavorite: (post: CommunityPost) => void }) {
   if (localMode) return <PanelState kind="empty" icon="search" title="登录后查看关注流" description="在设置中登录社区账号，关注作者后这里会显示他们的内容。" />
   if (posts.length === 0) return <PanelState kind="empty" icon="search" title="还没有关注动态" description="去推荐页关注喜欢的作者。" />
-  return <div className="post-list">{posts.map((post) => <PostCard key={post.id} post={post} onOpen={() => onOpen(post)} onLike={() => onLike(post)} />)}</div>
+  return <div className="post-card-grid">{posts.map((post) => <PostCard key={post.id} post={post} onOpen={() => onOpen(post)} onLike={() => onLike(post)} onFavorite={() => onFavorite(post)} />)}</div>
 }
 
 function RankingView({ api, localMode, onOpen }: { api: CommunityApi | null; localMode: boolean; onOpen: (post: DisplayPost) => void }) {
-  const [kind, setKind] = useState<'posts' | 'authors'>('posts')
+  const [kind, setKind] = useState<'posts' | 'authors' | 'mods'>('posts')
+  const [range, setRange] = useState<CommunityTimeRange>('all')
+  const [refresh, setRefresh] = useState(0)
+  const [coverageNote, setCoverageNote] = useState<string | null>(null)
   const [items, setItems] = useState<CommunityRankingItem[]>([])
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     if (!api || localMode) return
     let alive = true
-    void api.rankings(kind).then((result) => alive && setItems(result)).catch((err) => alive && setError(err instanceof Error ? err.message : String(err)))
+    void api.rankingPage(kind, range).then((result) => { if (alive) { setItems(result.items); setCoverageNote(result.reason ?? null); setError(null) } }).catch((err) => { if (alive) setError(err instanceof Error ? err.message : String(err)) })
     return () => { alive = false }
-  }, [api, kind, localMode])
-  if (localMode) return <PanelState kind="empty" title="排行暂不可用" description="连接社区服务器后可查看热门帖子和活跃作者排行。" />
+  }, [api, kind, localMode, range, refresh])
+  if (localMode) return <PanelState kind="empty" title="排行暂不可用" description="连接社区服务器后可查看热门帖子、活跃作者和模组下载排行。" />
+  const metricLabel = kind === 'mods' ? '下载' : kind === 'posts' ? '点赞' : '热度'
   return <>
-    <div className="rank-filter">{(['posts', 'authors'] as const).map((value) => <button key={value} className={`rank-chip${kind === value ? ' active' : ''}`} aria-pressed={kind === value} onClick={() => setKind(value)}>{value === 'posts' ? '热门帖子' : '活跃作者'}</button>)}</div>
-    {error ? <PanelState kind="error" title="排行加载失败" description={error} /> : items.length === 0 ? <PanelState kind="empty" title="暂无排行数据" /> : <div className="rank-list">{items.map((item, index) => <div className="rank-item" key={`${item.id ?? item.post_id ?? item.author_user_id}-${index}`}><span className={`rank-no${index < 3 ? ' top' : ''}`}>{index + 1}</span><div className="rank-info"><div className="rank-name">{item.title ?? item.author_name ?? '未知对象'}</div><div className="rank-meta">{item.score ?? item.like_count ?? item.post_count ?? item.count ?? 0} 热度</div></div>{kind === 'posts' && (item.post_id ?? item.id) !== undefined && api && <button className="btn-sm" onClick={() => { const postId = item.post_id ?? item.id; if (postId !== undefined) void api.post(postId).then((post) => onOpen(post)).catch(() => undefined) }}>详情</button>}</div>)}</div>}
+    <div className="community-toolbar">
+      <div className="rank-filter">{(['posts', 'mods', 'authors'] as const).map((value) => <button key={value} className={`rank-chip${kind === value ? ' active' : ''}`} aria-pressed={kind === value} onClick={() => { setKind(value); setItems([]) }}>{value === 'posts' ? '帖子点赞榜' : value === 'mods' ? '模组下载榜' : '活跃作者'}</button>)}</div>
+      <select aria-label="榜单时间范围" value={range} onChange={(event) => { setRange(event.target.value as CommunityTimeRange); setItems([]) }}>
+        {TIME_RANGES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+      </select>
+      <button className="btn-sm" onClick={() => setRefresh((value) => value + 1)}>刷新榜单</button>
+      <span className="local-note">{kind === 'posts' ? '按窗口内新增点赞排行' : kind === 'mods' ? '按窗口内新增真实下载排行' : '按历史累计热度'}</span>
+    </div>
+    {coverageNote && <p className="local-note" role="status">{coverageNote}</p>}
+    {error ? <PanelState kind="error" title="排行加载失败" description={error} onRetry={() => setRefresh((value) => value + 1)} /> : items.length === 0 ? <PanelState kind="empty" title="暂无排行数据" description="当前时间范围内没有真实记录，不展示占位条目。" /> : <div className="rank-list">{items.map((item, index) => <div className="rank-item" key={`${item.id ?? item.post_id ?? item.author_user_id}-${index}`}><span className={`rank-no${index < 3 ? ' top' : ''}`}>{index + 1}</span><div className="rank-info"><div className="rank-name">{item.title ?? item.author_name ?? '未知对象'}</div><div className="rank-meta">{item.score ?? item.like_count ?? item.download_count ?? item.post_count ?? item.count ?? 0} {metricLabel}</div></div>{kind !== 'authors' && (item.post_id ?? item.id) !== undefined && api && <button className="btn-sm" onClick={() => { const postId = item.post_id ?? item.id; if (postId !== undefined) void api.post(postId).then((post) => onOpen(post)).catch(() => setError('帖子读取失败')) }}>详情</button>}</div>)}</div>}
   </>
 }
 
-function MeView({ api, signedIn, following, currentUser, posts, onOpen, onLike, onOpenLogin, onCreate }: { api: CommunityApi | null; signedIn: boolean; following: string[]; currentUser: CommunityUser | null; posts: DisplayPost[]; onOpen: (post: DisplayPost) => void; onLike: (post: CommunityPost) => void; onOpenLogin: () => void; onCreate: () => void }) {
-  if (!signedIn) return <PanelState kind="empty" icon="search" title="尚未登录社区账号" description="登录后可以发帖、评论、点赞、关注作者和上传资源。" action={<button className="btn primary" onClick={onOpenLogin}>在浏览器中登录</button>} />
+/** 成长设置：公开开关 + 真实构成明细；无已批准奖励规则，积分恒显示为未配置。 */
+function GrowthSection({ api }: { api: CommunityApi | null }) {
+  const [growth, setGrowth] = useState<CommunityGrowth | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const generation = useRef(0)
+  const load = useCallback(() => {
+    if (!api || busy) return
+    const current = ++generation.current
+    setError(null)
+    void api.growth().then((result) => { if (current === generation.current) setGrowth(result) }).catch((err) => { if (current === generation.current) setError(err instanceof Error ? err.message : String(err)) })
+  }, [api, busy])
+  useEffect(() => {
+    if (!api) return
+    let alive = true
+    const current = ++generation.current
+    void api.growth().then((result) => { if (alive && current === generation.current) { setGrowth(result); setError(null) } }).catch((err) => { if (alive && current === generation.current) setError(err instanceof Error ? err.message : String(err)) })
+    return () => { alive = false }
+  }, [api])
+  const toggle = async (value: boolean) => {
+    if (!api || busy) return
+    setBusy(true)
+    setError(null)
+    const current = ++generation.current
+    try { const result = await api.setGrowthPublic(value); if (current === generation.current) setGrowth(result) }
+    catch (err) { if (current === generation.current) setError(err instanceof Error ? err.message : String(err)) }
+    finally { if (current === generation.current) setBusy(false) }
+  }
+  if (!api) return null
+  return (
+    <div className="community-card">
+      <div className="community-section-title">统计<span className="grow" /><button className="btn-sm" onClick={load}>刷新</button></div>
+      <label className="community-check">
+        <input type="checkbox" checked={growth?.growth_public ?? false} disabled={busy} onChange={(event) => void toggle(event.target.checked)} />
+        公开显示活动统计（其他人可见）
+      </label>
+      {error && <p className="community-warning" role="alert">{error}</p>}
+      {growth ? (
+        <div className="me-stats">
+          {growth.sources.map((source) => <div className="me-stat" key={source.source}>
+            <span className="me-stat-value">{source.count}</span>
+            <span className="me-stat-label">{source.source}</span>
+          </div>)}
+        </div>
+      ) : error ? <div className="community-warning" role="alert">{error}</div> : <div className="local-note">加载统计…</div>}
+    </div>
+  )
+}
+
+function MeView({ api, signedIn, following, currentUser, posts, onOpen, onLike, onFavorite, onOpenLogin, onCreate }: { api: CommunityApi | null; signedIn: boolean; following: string[]; currentUser: CommunityUser | null; posts: DisplayPost[]; onOpen: (post: DisplayPost) => void; onLike: (post: CommunityPost) => void; onFavorite: (post: CommunityPost) => void; onOpenLogin: () => void; onCreate: () => void }) {
+  if (!signedIn) return <PanelState kind="empty" icon="search" title="尚未登录社区账号" description="登录后可以发帖、评论、点赞、收藏、关注作者和上传资源。" action={<button className="btn primary" onClick={onOpenLogin}>在浏览器中登录</button>} />
   return <>
     <div className="community-card me-profile"><CommunityAvatar api={api} avatarPath={currentUser?.avatar_url} className="creator-avatar me-avatar" iconSize={20} label="社区头像" /><div className="creator-info"><div className="creator-name">{currentUser?.display_name ?? currentUser?.username ?? '已登录'}</div><div className="creator-tagline">{currentUser?.email || '社区账号'} · {roleLabel(currentUser)}</div></div><span className={`badge ${isVerifiedUser(currentUser) ? 'success' : 'warning'}`}>{roleLabel(currentUser)}</span></div>
     <div className="disabled-row"><button className="btn primary" onClick={onCreate}>发布帖子</button><span className="local-note">已关注作者：{following.length} 人</span></div>
-    {posts.length === 0 ? <PanelState kind="empty" icon="search" title="还没有发布帖子" description="发布你的第一篇社区帖子。" /> : <div className="post-list">{posts.map((post) => <PostCard key={post.id} post={post} onOpen={() => onOpen(post)} onLike={() => onLike(post)} />)}</div>}
+    {api && <CommunityNickname api={api} />}
+    <GrowthSection api={api} />
+    {posts.length === 0 ? <PanelState kind="empty" icon="search" title="还没有发布帖子" description="发布你的第一篇社区帖子。" /> : <div className="post-card-grid">{posts.map((post) => <PostCard key={post.id} post={post} onOpen={() => onOpen(post)} onLike={() => onLike(post)} onFavorite={() => onFavorite(post)} />)}</div>}
   </>
 }
 
 
-function PostCard({ post, onOpen, onLike }: { post: DisplayPost; onOpen: () => void; onLike: () => void }) {
-  return <article className="community-card post-card"><button className="post-card-main" onClick={onOpen}><div className="post-card-title"><span>{post.pinned && '置顶 · '}{post.title}</span>{post.featured && <span className="badge info">精选</span>}</div><div className="post-card-meta">{post.author_name} · {post.board} · {formatTime(post.updated_at)}</div><p>{safeMarkdown(post.body).slice(0, 240)}</p><div className="mod-tags">{(post.tags ?? []).map((item) => <span className="badge" key={item}>{item}</span>)}</div></button><div className="post-card-foot"><span>{post.comment_count ?? 0} 评论 · {post.view_count ?? 0} 浏览</span><span className="grow" /><button className="btn-sm" onClick={(event) => { event.stopPropagation(); onLike() }}>{post.liked ? '已赞' : '点赞'} {post.like_count ?? 0}</button><button className="btn-sm" onClick={onOpen}>查看详情</button></div></article>
+function PostCard({ post, onOpen, onLike, onFavorite }: { post: DisplayPost; onOpen: () => void; onLike: () => void; onFavorite: () => void }) {
+  return <article className="community-card post-card"><button className="post-card-main" onClick={onOpen}><div className="post-card-title"><span>{post.pinned && '置顶 · '}{post.title}</span>{post.featured && <span className="badge info">精选</span>}</div><div className="post-card-meta">{post.author_name} · {post.board} · {formatTime(post.updated_at)}</div><p>{safeMarkdown(post.body).slice(0, 240)}</p><div className="mod-tags">{(post.tags ?? []).map((item) => <span className="badge" key={item}>{item}</span>)}</div></button><div className="post-card-foot"><span>{post.comment_count ?? 0} 评论 · {post.view_count ?? 0} 浏览</span><span className="grow" /><button className="btn-sm" onClick={(event) => { event.stopPropagation(); onLike() }}>{post.liked ? '已赞' : '点赞'} {post.like_count ?? 0}</button><button className="btn-sm" title="收藏独立于点赞与关注" onClick={(event) => { event.stopPropagation(); onFavorite() }}>{post.favorited ? '已收藏' : '收藏'} {post.favorite_count ?? 0}</button><button className="btn-sm" onClick={onOpen}>查看详情</button></div></article>
 }
 
-function PostDetailModal({ api, post, signedIn, currentUser, currentUserId, following, requireInteraction, onClose, onLike, onFollow, onChanged }: { api: CommunityApi | null; post: DisplayPost; signedIn: boolean; currentUser: CommunityUser | null; currentUserId: number | null; following: string[]; requireInteraction: () => boolean; onClose: () => void; onLike: (post: CommunityPost) => void; onFollow: (id: number) => void; onChanged: () => void }) {
+function PostDetailModal({ api, post, signedIn, currentUser, currentUserId, following, requireInteraction, onClose, onLike, onFavorite, onFollow, onChanged }: { api: CommunityApi | null; post: DisplayPost; signedIn: boolean; currentUser: CommunityUser | null; currentUserId: number | null; following: string[]; requireInteraction: () => boolean; onClose: () => void; onLike: (post: CommunityPost) => void; onFavorite: (post: CommunityPost) => void; onFollow: (id: number) => void; onChanged: () => void }) {
   const [comments, setComments] = useState<CommunityComment[]>([])
   const [comment, setComment] = useState('')
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
@@ -593,7 +700,7 @@ function PostDetailModal({ api, post, signedIn, currentUser, currentUserId, foll
       setBusy(false)
     }
   }
-  return <Modal wide title={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><AppIcon name="share" size={15} />{editingPost ? '编辑帖子' : editingTitle}</span>} onClose={onClose} footer={<><button className="btn" onClick={() => onLike(post)} disabled={isLocal(post)}>{post.liked ? '取消点赞' : '点赞'} {post.like_count ?? 0}</button><button className="btn" onClick={() => onFollow(post.author_user_id)} disabled={isLocal(post) || !signedIn}>{following.includes(String(post.author_user_id)) ? '取消关注作者' : '关注作者'}</button>{isOwner && !editingPost && <><button className="btn" onClick={() => setEditingPost(true)}>编辑帖子</button><button className="btn-danger" onClick={() => void deletePost()}>删除帖子</button></>}{editingPost && <button className="btn primary" disabled={busy} onClick={() => void savePost()}>保存修改</button>}<button className="btn" onClick={onClose}>关闭</button></>}>
+  return <Modal wide title={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}><AppIcon name="share" size={15} />{editingPost ? '编辑帖子' : editingTitle}</span>} onClose={onClose} footer={<><button className="btn" onClick={() => onLike(post)} disabled={isLocal(post)}>{post.liked ? '取消点赞' : '点赞'} {post.like_count ?? 0}</button><button className="btn" title="收藏独立于点赞与关注" onClick={() => onFavorite(post)} disabled={isLocal(post)}>{post.favorited ? '取消收藏' : '收藏'} {post.favorite_count ?? 0}</button><button className="btn" onClick={() => onFollow(post.author_user_id)} disabled={isLocal(post) || !signedIn}>{following.includes(String(post.author_user_id)) ? '取消关注作者' : '关注作者'}</button>{isOwner && !editingPost && <><button className="btn" onClick={() => setEditingPost(true)}>编辑帖子</button><button className="btn-danger" onClick={() => void deletePost()}>删除帖子</button></>}{editingPost && <button className="btn primary" disabled={busy} onClick={() => void savePost()}>保存修改</button>}<button className="btn" onClick={onClose}>关闭</button></>}>
     <div className="community-detail-body"><div className="post-card-meta">{post.author_name} · {post.board} · {formatTime(post.created_at)}</div>{editingPost ? <div className="community-form"><input aria-label="编辑帖子标题" value={editingTitle} onChange={(event) => setEditingTitle(event.target.value)} maxLength={160} /><textarea aria-label="编辑帖子正文" value={editingBody} onChange={(event) => setEditingBody(event.target.value)} maxLength={256 * 1024} rows={12} /></div> : <><div className="mod-tags">{(post.tags ?? []).map((item) => <span className="badge" key={item}>{item}</span>)}</div><p className="community-detail-desc post-body">{safeMarkdown(editingBody)}</p></>}<div className="detail-meta">{post.view_count ?? 0} 浏览 · {post.comment_count ?? comments.length} 评论 · {post.featured ? '精选' : ''}</div>{(resources.length > 0 || (!isLocal(post) && signedIn)) && <div className="community-section"><div className="community-section-title">附件</div>{resources.map((resource) => <div className="resource-row" key={resource.id}><span>{resource.display_name}</span><span className="grow" /><button className="btn-sm" onClick={() => api?.download(resource.id).then(({ blob, filename }) => { const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; anchor.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000) }).catch((err) => setError(err instanceof Error ? err.message : String(err)))}>下载</button></div>)}{!isLocal(post) && signedIn && isVerifiedUser(currentUser) && <><input ref={fileInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.gif,.txt,.json,.zip,.rwmod" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void uploadResource(file) }} /><button className="btn-sm" disabled={busy} onClick={() => fileInputRef.current?.click()}>{busy ? '上传中…' : '上传附件'}</button></>}</div>}<div className="community-section"><div className="community-section-title">评论（{comments.length}）</div>{comments.map((item) => <div className="comment-row" key={item.id}><strong>{item.author_name}</strong><span className="post-card-meta">{formatTime(item.created_at)}</span>{editingCommentId === item.id ? <div className="comment-compose"><input value={editingCommentBody} onChange={(event) => setEditingCommentBody(event.target.value)} maxLength={32_000} /><button className="btn-sm" disabled={busy} onClick={() => void saveComment(item.id)}>保存</button><button className="btn-sm" onClick={() => setEditingCommentId(null)}>取消</button></div> : <><p>{safeMarkdown(item.body)}</p><div className="comment-actions">{(acceptedCommentId === item.id || item.accepted === true) && <span className="badge success">已采纳</span>}{isOwner && <button className="btn-sm" disabled={busy} onClick={() => void acceptComment(item.id)}>{acceptedCommentId === item.id || item.accepted === true ? '取消采纳' : '采纳'}</button>}{currentUserId !== null && item.author_user_id === currentUserId && <><button className="btn-sm" onClick={() => { setEditingCommentId(item.id); setEditingCommentBody(item.body) }}>编辑</button><button className="btn-sm" onClick={() => void deleteComment(item.id)}>删除</button></>}</div></>}</div>)}{!isLocal(post) && signedIn && isVerifiedUser(currentUser) && <div className="comment-compose"><input value={comment} onChange={(event) => setComment(event.target.value)} placeholder="写下评论" maxLength={32_000} /><button className="btn-sm" disabled={busy || !comment.trim()} onClick={() => void submitComment()}>发表评论</button></div>}{error && <div className="community-warning">{error}</div>}</div></div>
   </Modal>
 }

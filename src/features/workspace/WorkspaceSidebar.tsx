@@ -23,7 +23,7 @@ export function WorkspaceSidebar() {
     <section className="panel" style={{ minHeight: 0 }}>
       <div className="panel-header">
         <AppIcon name="folder" size={13} />
-        项目
+        <span>项目</span>
         <span className="grow" />
         <button
           className="icon-btn panel-collapse"
@@ -38,7 +38,7 @@ export function WorkspaceSidebar() {
         </button>
       </div>
       {projects.length === 0 ? (
-        <div className="empty-state" style={{ padding: '18px 14px' }}>
+        <div className="empty-state project-empty-state">
           <AppIcon name="folder" size={28} />
           <div>还没有项目</div>
           <button className="btn" onClick={() => void importModProject()}>

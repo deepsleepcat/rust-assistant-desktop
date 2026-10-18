@@ -1,7 +1,22 @@
+@font-face {
+  font-family: "HarmonyOS Sans SC";
+  src: url('/fonts/harmonyos/HarmonyOS_Sans_SC_Regular.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "HarmonyOS Sans SC";
+  src: url('/fonts/harmonyos/HarmonyOS_Sans_SC_Bold.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+}
+
 /* Google Material × Codex：白色工作区设计令牌 */
 :root {
-  --font-ui: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
-  --font-display: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  --font-ui: "HarmonyOS Sans SC", "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  --font-display: "HarmonyOS Sans SC", "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", sans-serif;
   --font-mono: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
 
 
@@ -52,7 +67,8 @@ html[data-theme="light"] {
   --border-strong: rgba(0, 0, 0, .3);
   --text-primary: #111111;
   --text-secondary: #555555;
-  --text-muted: #888888;
+  --text-muted: #666666;
+  --on-accent: #ffffff;
   --accent: #111111;
   --accent-hover: #000000;
   --accent-soft: rgba(0, 0, 0, .07);
@@ -95,23 +111,24 @@ html[data-theme="light"] {
 
 html[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #202124;
-  --surface-0: #292a2d;
-  --surface-1: #303134;
-  --surface-2: #3c4043;
-  --surface-input: #303134;
-  --surface-hover: #3c4043;
-  --surface-active: #394b63;
-  --editor: #202124;
+  --canvas: #101011;
+  --surface-0: #202022;
+  --surface-1: #262628;
+  --surface-2: #333336;
+  --surface-input: #29292c;
+  --surface-hover: rgba(255, 255, 255, .08);
+  --surface-active: rgba(255, 255, 255, .12);
+  --editor: #1b1b1d;
   --divider: rgba(255, 255, 255, .12);
   --border: rgba(255, 255, 255, .16);
   --border-strong: rgba(255, 255, 255, .28);
   --text-primary: #e8eaed;
   --text-secondary: #bdc1c6;
   --text-muted: #9aa0a6;
-  --accent: #8ab4f8;
-  --accent-hover: #aecbfa;
-  --accent-soft: #394b63;
+  --on-accent: #111111;
+  --accent: #eeeeef;
+  --accent-hover: #ffffff;
+  --accent-soft: rgba(255, 255, 255, .10);
   /* M29：语义状态色（深色主题沿用 Google 暗色语义色） */
   --success: #81c995;
   --warning: #fdd663;

@@ -20,11 +20,13 @@ import {
 } from '../src/features/community/communityData'
 
 describe('localCommunityDataSource（本地快照契约）', () => {
-  it('快照各集合非空且字段完整', async () => {
+  it('没有真实缓存时返回空集合，不用演示帖子或统计冒充业务数据', async () => {
     const snap = await localCommunityDataSource.getSnapshot()
-    expect(snap.mods.length).toBeGreaterThanOrEqual(10)
-    expect(snap.creators.length).toBeGreaterThanOrEqual(5)
-    expect(snap.activities.length).toBeGreaterThanOrEqual(5)
+    expect(snap.mods).toEqual([])
+    expect(snap.creators).toEqual([])
+    expect(snap.activities).toEqual([])
+    expect(snap.profile.favoriteModIds).toEqual([])
+    expect(snap.profile.tagline).toContain('尚无社区缓存')
     for (const m of snap.mods) {
       expect(typeof m.id).toBe('string')
       expect(typeof m.name).toBe('string')
@@ -54,9 +56,11 @@ describe('localCommunityDataSource（本地快照契约）', () => {
     const a = await localCommunityDataSource.getSnapshot()
     const b = await localCommunityDataSource.getSnapshot()
     sortModsByRanking(a.mods, 'units')
-    a.mods[0].name = '被修改'
-    expect(b.mods[0].name).not.toBe('被修改')
-    expect((await communityDataSource.getSnapshot()).mods[0].name).not.toBe('被修改')
+    a.profile.name = '被修改'
+    a.profile.favoriteModIds.push('test-only')
+    expect(b.profile.name).not.toBe('被修改')
+    expect(b.profile.favoriteModIds).toEqual([])
+    expect((await communityDataSource.getSnapshot()).profile.name).not.toBe('被修改')
   })
 })
 
@@ -163,9 +167,9 @@ describe('formatCount（数量格式化）', () => {
 })
 
 describe('标签常量', () => {
-  it('五个页签（含云书包）与排行维度文案齐全', () => {
+  it('五个页签（含云仓库）与排行维度文案齐全', () => {
     expect(Object.keys(TAB_LABELS).sort()).toEqual(['cloudBag', 'following', 'me', 'ranking', 'recommend'])
-    expect(TAB_LABELS.cloudBag).toBe('云书包')
+    expect(TAB_LABELS.cloudBag).toBe('云仓库')
     expect(Object.keys(RANKING_DIMENSION_LABELS).sort()).toEqual(['downloads', 'favorites', 'units', 'updated'])
   })
 })

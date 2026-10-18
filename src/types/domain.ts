@@ -20,6 +20,7 @@ export interface BackgroundSettings {
   gradient: string
   /** 图片背景的文件路径（由 Electron 读取并转成 data URL 显示） */
   imagePath: string | null
+  imageCrop?: { x: number; y: number; zoom: number }
   /** 背景透明度 0-100 */
   opacity: number
   /** 背景模糊 0-40 */
@@ -46,7 +47,18 @@ export interface WorkbenchLayoutSettings {
   outlineCollapsed: boolean
 }
 
+export type EditorColorKey = 'text' | 'label' | 'comment' | 'section' | 'key' | 'animation' | 'graphic'
+
+/** 缺省的颜色项目跟随当前主题。 */
+export type EditorColors = Partial<Record<EditorColorKey, string>>
+
+export type ShortcutAction = 'save' | 'undo' | 'redo' | 'redoAlternative' | 'search' | 'gotoLine' | 'commandPalette' | 'settings'
+
+/** 缺省使用原快捷键；空字符串表示停用该绑定。 */
+export type KeyboardShortcuts = Partial<Record<ShortcutAction, string>>
+
 export interface AppSettings {
+  keyboardShortcuts: KeyboardShortcuts
   theme: ThemeMode
   background: BackgroundSettings
   /** 是否启用中文翻译显示层 */
@@ -63,6 +75,8 @@ export interface AppSettings {
   fontFamily: string
   /** 编辑器字号 12-20 */
   fontSize: number
+  /** 编辑器局部颜色覆盖；空对象表示全部跟随主题。 */
+  editorColors: EditorColors
   /** 左侧项目栏宽度 */
   leftWidth: number
   /** 右侧对话栏宽度 */

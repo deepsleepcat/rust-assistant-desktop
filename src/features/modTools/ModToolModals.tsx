@@ -21,8 +21,13 @@ import { GlobalOpModal } from './modals/GlobalOpModal'
 import { PackModal } from './modals/PackModal'
 import { ReportModal } from './modals/ReportModal'
 import { ImportModModal } from './modals/ImportModModal'
+import { ModPackProgress } from './ModPackProgress'
 
 export function ModToolModals() {
+  return <><ModDialogContent /><ModPackProgress /></>
+}
+
+function ModDialogContent() {
   const kind = useWorkspaceStore((s) => s.modDialog)
   const setModDialog = useWorkspaceStore((s) => s.setModDialog)
   const createModProject = useWorkspaceStore((s) => s.createModProject)

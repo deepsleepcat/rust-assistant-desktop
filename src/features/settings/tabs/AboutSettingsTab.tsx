@@ -133,6 +133,7 @@ export function AboutSettingsTab() {
         本项目参考了开源 Pi Agent Harness、铁锈工坊 Android 版与旧版 Python 工具的设计与数据，
         遵循各自开源许可。
       </p>
+      <p className="desc">本应用使用 HarmonyOS Sans Fonts（鸿蒙字体），版权所有 © 2021 Huawei Device Co., Ltd.；按 HarmonyOS Sans Fonts License Agreement 使用；完整授权随字体保存在 fonts/harmonyos/LICENSE.txt。</p>
       <div className="setting-divider" />
       <div className="setting-title">离线知识包</div>
       <div className="desc" style={{ marginBottom: 8 }}>

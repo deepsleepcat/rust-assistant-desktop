@@ -43,7 +43,9 @@ export function createEditorTabActions(ctx: ProjectSliceContext) {
           set({ activeTabId: again.id, activeSurface: 'editor' })
           return
         }
-        const translationEnabled = get().settings.translateMode
+        // 同时双语由 CodeMirror 装饰呈现；新标签始终保留引擎源码。
+        // 旧翻译动作与追踪回译仍供兼容调用，不再作为用户展示开关。
+        const translationEnabled = false
         const source = result.content
         // 只在内存中修复已经写成中文的已知节名/字段名；这里不触碰磁盘。
         // 用户明确保存时，pendingRepair 会让规范化后的英文键一起写回。
@@ -140,6 +142,9 @@ export function createEditorTabActions(ctx: ProjectSliceContext) {
             return false
           }
         }
+        // 仅查看或双语装饰不触发写盘，保留原编码、BOM、换行和分隔符字节。
+        // 已有待修复文件仍按显式保存语义写回，不丢弃旧修复能力。
+        if (!tab.dirty && !tab.pendingRepair) return true
         // 翻译模式下：先把显示内容转回英文再写盘（追踪表精确还原；未追踪中文保留），并更新快照
         const toWrite = contentForDisk(tab.content, tab)
         await deps.bridge.project.writeFile(project.rootPath, tab.path, toWrite, { hasBom: tab.hasBom })

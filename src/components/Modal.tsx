@@ -15,9 +15,10 @@ interface ModalProps {
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
+  spacious?: boolean
 }
 
-export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
+export function Modal({ title, onClose, children, footer, wide, spacious }: ModalProps) {
   // Escape 走全局弹窗栈（多弹窗叠放时只关最上层）
   useEscapeHandler(onClose)
   const titleId = useId()
@@ -27,7 +28,7 @@ export function Modal({ title, onClose, children, footer, wide }: ModalProps) {
 
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={cardRef} className={`modal-card${wide ? ' settings' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <div ref={cardRef} className={`modal-card${wide ? ' settings' : ''}${spacious ? ' modal-spacious' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="modal-header" id={titleId}>
           {title}
           <span className="grow" />

@@ -5,6 +5,8 @@
 import { useEffect, useState } from 'react'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import { getBridge } from '../../../services/bridge'
+import { BackgroundImage, DEFAULT_IMAGE_CROP, type ImageCrop } from '../../../components/BackgroundImage'
+import { Modal } from '../../../components/Modal'
 
 const GRADIENT_PRESETS = [
   { name: '纸张', value: 'linear-gradient(135deg, #ffffff 0%, #f1f1f1 100%)' },
@@ -16,6 +18,10 @@ export function BackgroundSettingsTab() {
   const settings = useWorkspaceStore((s) => s.settings)
   const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const bg = settings.background
+  const [cropDraft, setCropDraft] = useState<{ path: string; url: string; crop: ImageCrop } | null>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const [ratio, setRatio] = useState(() => window.innerWidth / window.innerHeight)
+  useEffect(() => { const resize = () => setRatio(window.innerWidth / window.innerHeight); window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
   const [image, setImage] = useState<{ path: string; url: string | null }>({ path: '', url: null })
 
   useEffect(() => {
@@ -33,8 +39,13 @@ export function BackgroundSettingsTab() {
   const imageUrl = image.path === bg.imagePath ? image.url : null
 
   const pickImage = async () => {
-    const picked = await getBridge().project.openImageDialog()
-    if (picked) updateSettings({ background: { ...bg, imagePath: picked, kind: 'image' } })
+    setImageError(null)
+    try {
+      const picked = await getBridge().project.openImageDialog()
+      if (!picked) return
+      const url = await getBridge().project.readImageAsDataUrl('', picked)
+      setCropDraft({ path: picked, url, crop: { ...DEFAULT_IMAGE_CROP } })
+    } catch (err) { setImageError(err instanceof Error ? err.message : String(err)) }
   }
 
   const previewStyle: React.CSSProperties = {
@@ -43,7 +54,6 @@ export function BackgroundSettingsTab() {
   }
   if (bg.kind === 'color') previewStyle.backgroundColor = bg.color
   if (bg.kind === 'gradient') previewStyle.backgroundImage = bg.gradient
-  if (bg.kind === 'image' && imageUrl) previewStyle.backgroundImage = `url(${imageUrl})`
 
   return (
     <div className="setting-section">
@@ -52,10 +62,24 @@ export function BackgroundSettingsTab() {
         className="bg-preview"
         style={{
           ...previewStyle,
+          position: 'relative',
+          aspectRatio: ratio,
+          width: '100%',
+          overflow: 'hidden',
+          border: '1px solid var(--divider)',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
-      />
+      >{bg.kind === 'image' && imageUrl && <BackgroundImage src={imageUrl} crop={bg.imageCrop} />}</div>
+      {imageError && <p className="community-warning" role="alert">{imageError}</p>}
+      {cropDraft && <Modal wide title="调整背景图片取景" onClose={() => setCropDraft(null)} footer={<><button className="btn" onClick={() => setCropDraft(null)}>取消</button><button className="btn primary" onClick={() => { updateSettings({ background: { ...bg, kind: 'image', imagePath: cropDraft.path, imageCrop: cropDraft.crop } }); setCropDraft(null) }}>使用此取景</button></>}>
+        <p className="local-note">拖动图片调整位置，缩放改变取景范围。原图片保持不变。</p>
+        <div style={{ position: 'relative', width: '100%', aspectRatio: ratio, overflow: 'hidden', background: 'var(--surface-1)' }}><BackgroundImage src={cropDraft.url} crop={cropDraft.crop} onCrop={(crop) => setCropDraft((current) => current ? { ...current, crop } : null)} /></div>
+        <label className="setting-row">缩放<input aria-label="图片缩放" type="range" min={1} max={4} step={0.01} value={cropDraft.crop.zoom} onChange={(event) => setCropDraft({ ...cropDraft, crop: { ...cropDraft.crop, zoom: Number(event.target.value) } })} /><span>{Math.round(cropDraft.crop.zoom * 100)}%</span></label>
+        <label className="setting-row">水平位置<input aria-label="图片水平位置" type="range" min={0} max={100} value={cropDraft.crop.x} onChange={(event) => setCropDraft({ ...cropDraft, crop: { ...cropDraft.crop, x: Number(event.target.value) } })} /></label>
+        <label className="setting-row">垂直位置<input aria-label="图片垂直位置" type="range" min={0} max={100} value={cropDraft.crop.y} onChange={(event) => setCropDraft({ ...cropDraft, crop: { ...cropDraft.crop, y: Number(event.target.value) } })} /></label>
+        <button className="btn" onClick={() => setCropDraft({ ...cropDraft, crop: { ...DEFAULT_IMAGE_CROP } })}>重置取景</button>
+      </Modal>}
       <div className="setting-row">
         <span className="label">
           背景类型
@@ -132,6 +156,7 @@ export function BackgroundSettingsTab() {
           <button className="btn" onClick={() => void pickImage()}>
             选择图片…
           </button>
+          {imageUrl && bg.imagePath && <button className="btn" onClick={() => setCropDraft({ path: bg.imagePath!, url: imageUrl, crop: bg.imageCrop ?? { ...DEFAULT_IMAGE_CROP } })}>调整取景</button>}
         </div>
       )}
 

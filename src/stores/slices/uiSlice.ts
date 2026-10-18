@@ -4,9 +4,8 @@
  * 「定位到文件行」跳转请求。全部是纯 set/get 操作，无外部依赖。
  */
 import type { StoreApi } from 'zustand'
-import type { ConfirmRequest, EditorPosition, WorkspaceStore } from '../types'
+import type { ConfirmRequest, EditorPosition, NonSettingsSurface, SettingsTab, WorkspaceStore, WorkspaceSurface } from '../types'
 import type { CommunityTab } from '../../features/community/communityData'
-import type { SettingsTab } from '../types'
 
 export function createUiSlice() {
   return (set: StoreApi<WorkspaceStore>['setState'], get: () => WorkspaceStore) => ({
@@ -15,10 +14,21 @@ export function createUiSlice() {
     },
 
     setSettingsOpen(open: boolean) {
-      set({ settingsOpen: open, ...(open ? { settingsTab: 'appearance' as SettingsTab } : {}) })
+      const current = get().activeSurface
+      if (open) {
+        const returnSurface: NonSettingsSurface = current === 'settings' ? get().settingsReturnSurface : current
+        set({ settingsOpen: true, activeSurface: 'settings', settingsReturnSurface: returnSurface, settingsTab: 'appearance', drawerSide: null })
+        return
+      }
+      set({
+        settingsOpen: false,
+        activeSurface: current === 'settings' ? get().settingsReturnSurface : current,
+      })
     },
     openSettings(tab: SettingsTab = 'appearance') {
-      set({ settingsOpen: true, settingsTab: tab })
+      const current = get().activeSurface
+      const returnSurface: NonSettingsSurface = current === 'settings' ? get().settingsReturnSurface : current
+      set({ settingsOpen: true, activeSurface: 'settings', settingsReturnSurface: returnSurface, settingsTab: tab, drawerSide: null })
     },
     setSettingsTab(tab: SettingsTab) {
       set({ settingsTab: tab })
@@ -29,13 +39,31 @@ export function createUiSlice() {
     setDrawerSide(side: 'left' | 'right' | null) {
       set({ drawerSide: side })
     },
-    setActiveSurface(surface: 'editor' | 'community') {
-      set({ activeSurface: surface })
+    setActiveSurface(surface: WorkspaceSurface) {
+      const current = get().activeSurface
+      if (surface === 'settings') {
+        const returnSurface: NonSettingsSurface = current === 'settings' ? get().settingsReturnSurface : current
+        set({ activeSurface: surface, settingsOpen: true, settingsReturnSurface: returnSurface, drawerSide: null })
+        return
+      }
+      set({
+        activeSurface: surface,
+        settingsOpen: false,
+        drawerSide: null,
+        ...(surface === 'cloudBag' ? { communityTab: 'cloudBag' as CommunityTab } : {}),
+        ...(surface === 'community' && get().communityTab === 'cloudBag' ? { communityTab: get().communityReturnTab } : {}),
+      })
     },
     setCommunityTab(tab: CommunityTab) {
-      set({ communityTab: tab })
+      const current = get().activeSurface
+      const inCommunity = current === 'community' || current === 'cloudBag'
+      set({
+        communityTab: tab,
+        ...(tab !== 'cloudBag' ? { communityReturnTab: tab } : {}),
+        ...(inCommunity ? { activeSurface: tab === 'cloudBag' ? 'cloudBag' as const : 'community' as const, drawerSide: null } : {}),
+      })
     },
-    setCloudBagView(patch: { slug?: string | null; section?: 'files' | 'versions' | 'members' | 'settings' }) {
+    setCloudBagView(patch: { slug?: string | null; section?: 'files' | 'issues' | 'versions' | 'members' | 'settings' }) {
       set((state) => ({
         cloudBagSlug: patch.slug !== undefined ? patch.slug : state.cloudBagSlug,
         cloudBagSection: patch.section ?? (patch.slug !== undefined ? 'files' : state.cloudBagSection),

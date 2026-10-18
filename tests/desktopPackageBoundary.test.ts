@@ -18,7 +18,7 @@ const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package
 const externalResearchRoots = [
   'W:\\mao\\tx\\AbyssStars深渊星辰0.7.10',
   'W:\\mao\\tx\\ASEU深渊星辰-深渊扩展DLCX',
-  'W:\\mao\\tx\\模组加载器',
+  'W:\\mao\\tx\\ohmytx项目\\模组加载器',
   'W:\\mao\\tx\\模组实例',
   'W:\\mao\\tx\\模组实例\\特殊',
 ]
