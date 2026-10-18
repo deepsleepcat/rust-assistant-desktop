@@ -7,7 +7,7 @@ export default tseslint.config(
   { ignores: ['dist/**', 'dist-electron/**', 'node_modules/**', 'coverage/**', 'vendor/**', 'mobile/**', 'promo/**', 'promo-v2/**', 'scripts/capture-promo.mjs',
     // 会话/工具产物与本地验证脚本：不属于产品代码，不进提交，也不参与 lint
     '.zcode/**', '.claude/**', '.mimosa/**', '.playwright-mcp/**', '.code-review-graph/**',
-    'probe-*.mjs', 'gui-test-screenshots/**', 'release/**'] },
+    'docs/**', '**/probe-*.mjs', 'gui-test-screenshots/**', 'release/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
