@@ -32,6 +32,7 @@ Thumbs.db
 # 工具运行时状态
 .zcode/
 .claude/
+.automation/
 
 # 内部技能、研究资料和工作流脚本（仅本地，不随仓库分发）
 .agents/
