@@ -2,7 +2,7 @@ name: 手机端检查
 
 on:
   push:
-    branches: [main, feat/mobile-source]
+    branches: [main, feat/mobile-source, 'automation/*']
     paths:
       - 'mobile/**'
       - '.github/workflows/mobile.yml'
