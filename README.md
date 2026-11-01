@@ -1,7 +1,7 @@
-# 铁锈助手 · 电脑版（Rust Assistant Desktop）
+# 铁锈工坊 · 电脑版（Rust Assistant Desktop）
 
 <p align="center">
-  <img src="assets/mascot.png" alt="铁锈助手看板娘" width="380" />
+  <img src="assets/mascot.png" alt="铁锈工坊看板娘" width="380" />
 </p>
 
 面向《铁锈战争》（Rusted Warfare）模组开发的 **Windows 桌面工作台**：
@@ -78,7 +78,7 @@ Electron 43 · React 19 · TypeScript 6 · Vite 8 · Zustand 5 · CodeMirror 6 �
 
 ## 许可证
 
-[GNU GPL v3.0](LICENSE)。代码表数据来自 Rusted Warfare Mod Support（1.15 官方数据）与铁锈助手数据，随本项目一并以 GPL-3.0 分发。
+[GNU GPL v3.0](LICENSE)。代码表数据来自 Rusted Warfare Mod Support（1.15 官方数据）与铁锈工坊数据，随本项目一并以 GPL-3.0 分发。
 
 ## 更新与安全说明
 
