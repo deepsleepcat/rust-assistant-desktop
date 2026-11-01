@@ -8,7 +8,7 @@
  * 换成真正的渲染：把下面写 PNG 的那两行替换成你的引擎桥接逻辑即可，
  * 素材就在 request.unitFile / request.gamePath / request.projectRoot 里。
  *
- * 协议全文见仓库根目录的 ENGINE-DLC.md。
+ * 协议由桌面端 DLC 会话宿主传入 request.json。
  */
 const fs = require('node:fs')
 

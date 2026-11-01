@@ -50,8 +50,7 @@ scripts/local-test.sh build    # tsc 类型检查 + vite 生产构建
 - 沙箱目录默认 `$HOME/work/ohmytxphone`，可用 `OHMYTX_SANDBOX` 覆盖；源码权威始终在仓库目录。
 - 首次运行会把 `node_modules` 复制进沙箱（约 90MB）；仓库内安装依赖需加
   `--no-bin-links --ignore-scripts`（跳过 esbuild 的二进制校验）。
-- Android 出包（Gradle + NDK）仍需 JDK 17、Android SDK 36、NDK 27.1，建议交给电脑或 CI
-  （本机不可行的实测原因见 [docs/BUILD-AND-DEVICE-CHECKLIST.md](docs/BUILD-AND-DEVICE-CHECKLIST.md)）。
+- Android 出包（Gradle + NDK）需要 JDK 17、Android SDK 36、NDK 27.1，建议使用电脑或 CI 构建。
 
 ### Android 构建环境（Windows）
 
@@ -61,10 +60,9 @@ scripts/local-test.sh build    # tsc 类型检查 + vite 生产构建
 - 模拟器加速：AEHD 驱动（`sdkmanager "extras;google;Android_Emulator_Hypervisor_Driver"`）
 - 环境变量：`ANDROID_HOME`、`ANDROID_SDK_ROOT`（AVD 建议放非系统盘：`ANDROID_AVD_HOME`）
 
-## 架构
+## 技术概览
 
-见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)（模块划分、桥契约、编辑会话与文件通道边界、
-云书包接入预留）。
+客户端由 React/TypeScript 界面与 Tauri Rust 桥接层组成，数据保存在本机应用目录。
 
 ## 目录结构
 
@@ -89,17 +87,13 @@ src/
 ├─ components/            通用组件（AppIcon、MobileDialog 弹层）
 ├─ screens/               项目/编辑器/模板库/检查/AI/设置 六屏
 ├─ ai/rustSystemPrompt.ts AI 系统提示词（含 modding-guide 领域知识）
-└─ utils/                 纯函数工具（settings/layout/paths/entryName/viewport…）
+└─ utils/                 纯函数工具（设置、布局、路径、文件名校验等）
 src-tauri/
-├─ src/lib.rs             Rust 层：ai_stream 流式代理（SSE → tauri 事件）+ 插件装配
-└─ capabilities/          fs 权限（appdata 递归读写 scope）
-public/data/              代码表/词典/官方单位/模板（与桌面版共享资产）
-scripts/local-test.sh     本机测试/构建沙箱脚本（noexec 分区绕行）
-tests/                    vitest 用例（393 个：纯逻辑 + 组件交互）
-├─ fixtures/memoryBridge.ts   组件测试用的内存文件系统桥
-├─ editorScreen.test.tsx      编辑器页交互（未保存保护/冲突/中文往返/文件树操作）
-└─ projectsScreen.test.tsx    项目页交互（新建/删除/打包）
-docs/BUILD-AND-DEVICE-CHECKLIST.md  出包步骤与 29 项真机验收清单
+├─ src/lib.rs             Rust 层：AI 流式代理与插件装配
+└─ capabilities/          文件系统权限
+public/data/              代码表、词典、单位与模板
+scripts/local-test.sh     本地测试/构建脚本
+tests/                    Vitest 单元和组件测试
 ```
 
 ## 许可证
