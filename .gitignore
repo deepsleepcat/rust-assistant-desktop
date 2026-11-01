@@ -36,13 +36,12 @@ Thumbs.db
 # 内部技能、研究资料和工作流脚本（仅本地，不随仓库分发）
 .agents/
 
-# 内部文档与发布资料仅本地（架构、规格、QA、评审、归档、发布清单）。
-# 不进 GitHub 仓库；公开说明只保留根目录 README.md / ENGINE-DLC.md
-# 以及 mobile 子项目自己的说明与架构文档。
-docs/
+# 开发协议、架构、构建与验收文档留在本地；公开入口保留根 README 与 mobile README
+/ENGINE-DLC.md
+/examples/engine-dlc-hello/README.md
+/mobile/docs/
+/docs/
 CHANGELOG.md
-# 手机端内部验收记录仅本地；README 引用的构建/架构文档保留。
-mobile/docs/ACCEPTANCE-*.md
 
 # AI 参考/说明素材（仅本地；modding-guide.md 构建必需，保留）
 assets/ai/README.md

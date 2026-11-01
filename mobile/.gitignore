@@ -23,11 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
-# Keep mobile documentation despite the desktop repository ignore rule
-!docs/
-!docs/**
-# 内部验收记录仅本地（必须放在 !docs/** 之后，否则会被重新放行）
-docs/ACCEPTANCE-*.md
+# 开发架构和验收文档仅保留在本机，不进入公开仓库
+/docs/
 
 # Local tooling, credentials and Android build artifacts
 .zcode/
