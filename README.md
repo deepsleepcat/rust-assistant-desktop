@@ -1,5 +1,9 @@
 # 铁锈助手 · 电脑版（Rust Assistant Desktop）
 
+<p align="center">
+  <img src="assets/mascot.png" alt="铁锈助手看板娘" width="380" />
+</p>
+
 面向《铁锈战争》（Rusted Warfare）模组开发的 **Windows 桌面工作台**：
 用代码编辑器的体验写模组 ini 代码，并集成模组检查、地图预览与云仓库协作。
 
