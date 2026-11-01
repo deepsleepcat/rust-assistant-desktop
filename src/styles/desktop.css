@@ -11,7 +11,54 @@
   --desktop-glass-blur: 18px;
   --desktop-shadow: 0 18px 50px rgba(16, 16, 18, .12);
   --desktop-panel-shadow: 0 8px 24px rgba(16, 16, 18, .07);
+
+  /* 桌面壳层表面（语义 token）：无背景时是玻璃混合，背景图模式（.has-backdrop）整体
+     指向 tokens.css 的 --veil-* 轻薄底色，保证全应用只有一层半透明遮罩 */
+  --shell-chrome: color-mix(in srgb, var(--surface-1) 90%, transparent);
+  --shell-side: var(--surface-1);
+  --shell-panel: color-mix(in srgb, var(--surface-0) 88%, transparent);
+  --shell-editor: color-mix(in srgb, var(--editor) 94%, transparent);
+  --shell-blur: var(--desktop-glass-blur);
 }
+
+/* 背景图模式：只保留一层轻薄底色；壳层不再做 backdrop-filter
+   （用户设置 blur=0 时，内容图不能被壳层玻璃继续模糊） */
+.has-backdrop {
+  --shell-chrome: var(--veil-chrome);
+  --shell-side: var(--veil-side);
+  --shell-panel: var(--veil-panel);
+  --shell-editor: var(--veil-editor);
+  --shell-blur: 0px;
+}
+
+/* 相邻层级改用 1%-3% 底色微对比划分区域，不再画结构边框。
+   保留：输入框边框、:focus-visible 焦点环、分隔条拖动反馈、错误语义底色 */
+.app.has-backdrop::before { content: none; }
+.desktop-shell .titlebar { border-bottom: 0; }
+.desktop-shell .statusbar { border-top: 0; }
+.desktop-shell .desktop-rail { border-right: 0; }
+.desktop-shell .sidebar,
+.desktop-shell .sidebar > .panel:first-child { border-right: 0; border-bottom: 0; }
+.desktop-shell .app-body > .conversation-panel,
+.desktop-shell .app-body > section:last-child { border-left: 0; }
+.desktop-shell .tabbar { border-bottom: 0; }
+.desktop-shell .tab { border-right: 0; }
+.desktop-shell .editor-head { border-bottom: 0; }
+.desktop-shell .editor-gutter { border-right: 0; }
+.desktop-shell .conv-view-header { border-bottom: 0; }
+.desktop-shell .conversation-list { border-bottom: 0; }
+.desktop-shell .conv-input-area { border-top: 0; }
+.desktop-shell .settings-page-header { border-bottom: 0; }
+.desktop-shell .settings-content > .setting-section + .setting-section { border-top: 0; }
+.desktop-shell .setting-row { border-bottom: 0; }
+/* 设置页：左导航与内容区用 surface-1 / surface-0 的微对比分区（替代 divider） */
+.desktop-shell .settings-page-body .settings-nav { background: var(--surface-1); }
+.desktop-shell .settings-page-body .settings-content { background: var(--surface-0); }
+/* 背景图模式：设置页整页（header/nav/content）统一透出背景，各区域只铺
+   一层对应语义的 --veil-* 轻薄遮罩，不叠加、不用结构 border 分区 */
+.has-backdrop .settings-page-header { background: var(--veil-panel); }
+.has-backdrop .settings-page-body .settings-nav { background: var(--veil-side); }
+.has-backdrop .settings-page-body .settings-content { background: var(--veil-panel); }
 
 html[data-theme="light"] {
   --desktop-canvas: #e9e9e7;
@@ -273,16 +320,35 @@ body.ra-low-performance .desktop-account-menu { animation: none; }
   backdrop-filter: blur(28px) saturate(1.1);
 }
 .desktop-shell .titlebar,
-.desktop-shell .statusbar,
+.desktop-shell .statusbar {
+  background: var(--shell-chrome);
+  -webkit-backdrop-filter: blur(var(--shell-blur));
+  backdrop-filter: blur(var(--shell-blur));
+}
 .desktop-shell .wb-left {
-  background: var(--desktop-glass);
-  -webkit-backdrop-filter: blur(var(--desktop-glass-blur));
-  backdrop-filter: blur(var(--desktop-glass-blur));
+  background: var(--shell-side);
+  -webkit-backdrop-filter: blur(var(--shell-blur));
+  backdrop-filter: blur(var(--shell-blur));
+}
+/* 背景图模式下壳层不再模糊：blur=0 是用户对内容图的明确设置 */
+.has-backdrop .desktop-shell .titlebar,
+.has-backdrop .desktop-shell .statusbar,
+.has-backdrop .desktop-shell .wb-left {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* 背景图模式：左侧导轨的玻璃层同样不再对内容图做第二层模糊
+   （此前 .desktop-rail::before 无条件 blur(18px)，blur=0 时仍额外模糊背景图），
+   底色与侧栏统一走 --veil-side 单层轻薄遮罩（阅读遮罩强度不变） */
+.has-backdrop .desktop-rail::before {
+  background: var(--veil-side);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .desktop-shell .wb-left .panel,
 .desktop-shell .wb-left .projects-list,
 .desktop-shell .wb-left .tree { background: transparent; }
-.desktop-shell .wb-left .panel-header { background: color-mix(in srgb, var(--surface-1) 48%, transparent); }
+.desktop-shell .wb-left .panel-header { background: transparent; }
 body.ra-low-performance .desktop-rail::before,
 body.ra-low-performance .desktop-rail .desktop-account-menu,
 body.ra-low-performance .desktop-shell .titlebar,
@@ -651,17 +717,19 @@ html[data-theme="dark"] .btn.primary { --icon-filter: brightness(0); color: #111
 .project-tools-popover button { flex-shrink: 0; }
 .project-tools-mask { z-index: 159; }
 
-/* Glass treatment for legacy panel children while keeping code/content opaque. */
+/* Glass treatment for legacy panel children while keeping code/content opaque.
+   无背景：轻玻璃混合；背景图模式：--shell-* 已整体指向 --veil-* 单层轻薄底色，
+   不会与 app.css 的 .has-backdrop 规则叠加成多层遮罩 */
 .desktop-shell .panel,
 .desktop-shell .editor-panel,
-.desktop-shell .community-panel { background: color-mix(in srgb, var(--surface-0) 88%, transparent); }
+.desktop-shell .community-panel { background: var(--shell-panel); }
 .desktop-shell .editor-textarea,
 .desktop-shell .editor-gutter,
 .desktop-shell .tree,
-.desktop-shell .projects-list { background: color-mix(in srgb, var(--editor) 94%, transparent); }
+.desktop-shell .projects-list { background: var(--shell-editor); }
 .desktop-shell .panel-header,
 .desktop-shell .tabbar,
-.desktop-shell .editor-head { background: color-mix(in srgb, var(--surface-1) 90%, transparent); }
+.desktop-shell .editor-head { background: var(--shell-chrome); }
 
 body.ra-low-performance .desktop-rail,
 body.ra-low-performance .titlebar,

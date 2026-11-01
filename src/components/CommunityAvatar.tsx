@@ -11,7 +11,7 @@ interface CommunityAvatarProps {
   label?: string
 }
 
-export function CommunityAvatar({ api, avatarPath, className, iconSize = 16, label = '社区账号头像' }: CommunityAvatarProps) {
+export function CommunityAvatar({ api, avatarPath, className, iconSize = 16, label = '云仓库账号头像' }: CommunityAvatarProps) {
   const requestKey = `${api?.endpoint ?? ''}:${avatarPath ?? ''}`
   const [image, setImage] = useState<{ key: string; url: string } | null>(null)
   const [failedKey, setFailedKey] = useState<string | null>(null)

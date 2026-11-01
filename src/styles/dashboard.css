@@ -93,7 +93,7 @@
 
 .has-backdrop .dashboard-widget,
 .has-backdrop .dashboard-card {
-  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
+  background: var(--veil-side);
 }
 
 .dashboard-widget:focus-visible {

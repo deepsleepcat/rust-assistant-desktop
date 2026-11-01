@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { getEnToZhDict, getKeyZhToEnDict, getLogicIdentifierEnToZhDict, getLogicIdentifierZhToEnDict, getLogicValueKeys, getPreserveValueKeys, getSectionZhToEnDict, getZhToEnDict, isPreserveValueKey, normalizeValueForEngine } from '../../services/codeData'
 import { makeDict, zhToEn } from '../../services/translation'
-import { TurretEditorModal } from '../modTools/TurretEditorModal'
+import { TurretEditorView } from '../modTools/TurretEditorView'
 import { formatRelativeTime } from '../../utils/conversation'
 import { truncateMiddle } from '../../utils/paths'
 import { FileTypeIcon, IconClose } from '../../components/icons'
@@ -59,7 +59,6 @@ export function EditorArea() {
 
   return (
     <section className="editor-panel panel" style={{ flex: 1, minWidth: 0 }}>
-      {turretEditorOpen && <TurretEditorModal onClose={() => useWorkspaceStore.getState().setTurretEditorOpen(false)} />}
       {tabs.length > 0 && (
         <div
           className={`tabbar${tabs.length > 12 ? ' tabbar-many' : ''}`}
@@ -83,6 +82,10 @@ export function EditorArea() {
       )}
       {tabs.length === 0 ? (
         <WelcomeView />
+      ) : turretEditorOpen && activeId ? (
+        // 炮塔编辑器：独立编辑子模式，独占内容区域（非弹窗）；按标签 key 挂载，
+        // 切标签/关文件自动卸载并关闭 DLC 渲染会话
+        <TurretEditorView key={activeId} tabId={activeId} onClose={() => useWorkspaceStore.getState().setTurretEditorOpen(false)} />
       ) : (
         // key=tabId：每个标签独立挂载编辑器实例，撤销/重做历史互不串扰
         // （共享单实例时，跨标签 Ctrl+Z 会撤销「标签切换替换」而把 A 的内容写进 B，损坏数据）
@@ -363,6 +366,7 @@ function EditorPane({
 
   // M29：第二行操作行动作。useMemo 保持数组引用稳定——OverflowToolbar 的 useLayoutEffect
   // 依赖 actions 身份重测宽度，每次渲染新建数组会陷入 setState 无限循环。
+  // group：相邻不同分组的动作之间用留白隔开（撤销历史 / 编辑 / 视图 / 单位工具 / 保存）。
   const actions = useMemo<ToolbarAction[]>(() => {
     if (!tab) return []
     const shortcuts = resolveShortcuts(keyboardShortcuts)
@@ -370,6 +374,7 @@ function EditorPane({
     const list: ToolbarAction[] = [
       {
         key: 'undo',
+        group: 'history',
         label: '撤销',
         icon: <AppIcon name="undo" size={12} />,
         title: shortcuts.undo ? `撤销（${formatShortcut(shortcuts.undo)}）` : '撤销',
@@ -378,6 +383,7 @@ function EditorPane({
       },
       {
         key: 'redo',
+        group: 'history',
         label: '重做',
         icon: <AppIcon name="redo" size={12} />,
         title: redoKeys ? `重做（${redoKeys}）` : '重做',
@@ -386,6 +392,7 @@ function EditorPane({
       },
       {
         key: 'format',
+        group: 'edit',
         label: '格式化',
         icon: <AppIcon name="text" size={12} />,
         title: '格式化当前文件',
@@ -393,6 +400,7 @@ function EditorPane({
       },
       {
         key: 'outline',
+        group: 'view',
         label: `大纲 (${sections.length})`,
         icon: <AppIcon name="expand" size={12} />,
         active: !outlineCollapsed,
@@ -403,6 +411,7 @@ function EditorPane({
       },
       {
         key: 'code-table',
+        group: 'view',
         label: '代码表',
         icon: <AppIcon name="document" size={12} />,
         title: '浏览代码表：字段说明 / 值类型 / 所属节',
@@ -413,6 +422,7 @@ function EditorPane({
     if (/\.(ini|template)$/i.test(tab.path) && /^\s*\[(core|核心)\]\s*$/m.test(tab.content)) {
       list.push({
         key: 'save-template',
+        group: 'unit',
         label: '存为模板',
         icon: <AppIcon name="box" size={12} />,
         title: '把当前单位文件保存为模板，可在「新建单位」中复用',
@@ -422,6 +432,7 @@ function EditorPane({
     if (/\.ini$/i.test(tab.path) && (/^\s*\[turret_.+\]\s*(?:#.*)?$/im.test(tab.content) || /^\s*\[炮塔_.+\]\s*(?:#.*)?$/im.test(tab.content))) {
       list.push({
         key: 'turret',
+        group: 'unit',
         label: '炮塔',
         icon: <AppIcon name="tower" size={12} />,
         title: '可视化编辑 [turret_N] 炮塔坐标',
@@ -432,6 +443,7 @@ function EditorPane({
       list.push(
         {
           key: 'preview',
+          group: 'unit',
           label: '预览',
           icon: <AppIcon name="image" size={12} />,
           title: '按 [graphics] 配方合成单位预览图（帧切换/炮塔叠加）',
@@ -439,6 +451,7 @@ function EditorPane({
         },
         {
           key: 'form-mode',
+          group: 'unit',
           label: formMode ? '代码模式' : '表单模式',
           icon: <AppIcon name="edit" size={12} />,
           title: '表单模式：可视化编辑 Core/Graphics/Attack/Movement/炮塔 字段，实时同步代码',
@@ -450,6 +463,7 @@ function EditorPane({
     if (isMapFile(tab.path)) {
       list.push({
         key: 'map-mode',
+        group: 'unit',
         label: mapEditMode ? '预览模式' : '代码编辑',
         icon: <AppIcon name="edit" size={12} />,
         title: '地图查看器只读；切换到代码模式可手改 XML',
@@ -459,6 +473,7 @@ function EditorPane({
     }
     list.push({
       key: 'save',
+      group: 'save',
       label: '保存',
       title: shortcuts.save ? `保存（${formatShortcut(shortcuts.save)}）` : '保存',
       icon: <AppIcon name="save" size={12} />,

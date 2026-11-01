@@ -174,11 +174,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       commandOpen: false,
       drawerSide: null,
       activeSurface: 'editor',
-      communityTab: 'recommend',
-      communityReturnTab: 'recommend',
       cloudBagSlug: null,
       cloudBagSection: 'files',
-      communityFollowing: [],
       communityAuth: { status: 'checking', user: null, error: null, pairing: null },
       codeTableOpen: false,
       versionDiffOpen: false,
@@ -237,7 +234,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         set({ communityAuth: { status: 'loading', user: get().communityAuth.user, error: null, pairing: null } })
         try {
           const bridgeAuth = bridge.auth
-          if (!bridgeAuth) throw new Error('社区登录仅支持桌面端')
+          if (!bridgeAuth) throw new Error('云仓库登录仅支持桌面端')
           const pairing = await bridgeAuth.startPairing()
           if (generation !== authGeneration) return
           set({ communityAuth: { status: 'loading', user: null, error: null, pairing: { userCode: pairing.userCode, expiresAt: pairing.expiresAt } } })
@@ -254,7 +251,7 @@ export function createWorkspaceStore(bridge: BridgeApi) {
         pairingCheckInFlight = true
         try {
           const bridgeAuth = bridge.auth
-          if (!bridgeAuth) throw new Error('社区登录仅支持桌面端')
+          if (!bridgeAuth) throw new Error('云仓库登录仅支持桌面端')
           const status = await bridgeAuth.pollPairing()
           if (generation !== authGeneration || get().communityAuth.status !== 'loading') return
           if (status.state === 'signed-in') {

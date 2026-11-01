@@ -49,13 +49,13 @@ function RepoCard({ repo, endpoint, onOpen }: { repo: CloudBagRepo; endpoint: st
         <span className="grow" />
         {repo.visibility === 'link'
           // aria-disabled 而非 disabled：disabled 不可聚焦，键盘/读屏/触屏用户都取不到原因
-          ? <button className="btn-sm" aria-disabled="true" title="未支持：链接可见仓库需要一次性分享 token（请在社区网页创建分享）">复制链接</button>
+          ? <button className="btn-sm" aria-disabled="true" title="未支持：链接可见仓库需要一次性分享 token（请在云仓库网页创建分享）">复制链接</button>
           : <button className="btn-sm" onClick={(event) => { event.stopPropagation(); void navigator.clipboard?.writeText(repoDeepLink(endpoint, repo.slug)).catch(() => undefined) }} title={repoDeepLink(endpoint, repo.slug)}>
               复制链接
             </button>}
         <button className="btn-sm" onClick={onOpen}>打开仓库</button>
       </div>
-      {repo.visibility === 'link' && <div className="local-note">链接可见仓库需要一次性分享 token 才能被他人读取；桌面 V1 未支持创建分享，请在社区网页创建。</div>}
+      {repo.visibility === 'link' && <div className="local-note">链接可见仓库需要一次性分享 token 才能被他人读取；桌面 V1 未支持创建分享，请在云仓库网页创建。</div>}
     </article>
   )
 }
@@ -357,7 +357,7 @@ export function CloudBagContent({ onOpenLogin, onOpenSettings, onUnauthorized, r
   onOpenLogin: () => void
   onOpenSettings: () => void
   onUnauthorized: () => void
-  /** 社区面板头部「刷新社区数据」的计数器：该页签必须随之重新取数，否则按钮是死交互 */
+  /** 社区面板头部「刷新云仓库数据」的计数器：该页签必须随之重新取数，否则按钮是死交互 */
   refreshKey?: number
   /** 本次真实请求的可达性回报（true/false；未发请求或结论未定时为 null）：
    * 头部徽标必须反映本页签的真实可达性，而不是 communityAuth 缓存里的 signed_in
@@ -387,7 +387,7 @@ export function CloudBagContent({ onOpenLogin, onOpenSettings, onUnauthorized, r
   const [searchKeyword, setSearchKeyword] = useState('')
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
-  /** 离线态「重试」真的在发请求：只有它为 true 时才渲染「正在重试连接社区服务器…」。
+  /** 离线态「重试」真的在发请求：只有它为 true 时才渲染「正在重试连接云仓库服务器…」。
    * 旧实现复用 loading（初值恒 true），离线首帧必然显示一次与事实不符的「正在重试」。 */
   const [retrying, setRetrying] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -401,7 +401,7 @@ export function CloudBagContent({ onOpenLogin, onOpenSettings, onUnauthorized, r
       setLoading(false)
       setRetrying(false)
       onReachabilityChange?.(null)
-      setError('社区服务器地址无效，请在设置中检查社区服务器地址')
+      setError('云仓库服务器地址无效，请在设置中检查云仓库服务器地址')
       return
     }
     // 离线/未登录时不自动发请求（避免把必然失败的 404/网络错误与空态同时呈现）；
@@ -431,7 +431,7 @@ export function CloudBagContent({ onOpenLogin, onOpenSettings, onUnauthorized, r
       if (!isCurrent()) return
       setRepos([])
       setTotal(0)
-      // 请求失败：页签正文会如实展示错误，头部徽标不得再声称「已连接社区服务器」
+      // 请求失败：页签正文会如实展示错误，头部徽标不得再声称「已连接云仓库服务器」
       onReachabilityChange?.(false)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -454,10 +454,10 @@ export function CloudBagContent({ onOpenLogin, onOpenSettings, onUnauthorized, r
     const errored = communityAuth.status === 'error'
     const checking = communityAuth.status === 'checking' || communityAuth.status === 'loading'
     // 离线重试期间渲染进行中反馈（旧实现复用 loading，离线首帧会假报「正在重试」）
-    if (offline && retrying) return <PanelState kind="loading" title="正在重试连接社区服务器…" />
-    // 标题必须与真实状态一致：认证失败/检查中若仍写「尚未登录社区账号」，会与头部
+    if (offline && retrying) return <PanelState kind="loading" title="正在重试连接云仓库服务器…" />
+    // 标题必须与真实状态一致：认证失败/检查中若仍写「尚未登录云仓库账号」，会与头部
     // 徽标（连接异常/检查中）和 gate.notice（网络失败文案）三者互相矛盾。
-    const title = offline ? '离线模式' : errored ? '连接社区服务器失败' : checking ? '正在检查社区登录状态…' : '尚未登录社区账号'
+    const title = offline ? '离线模式' : errored ? '连接云仓库服务器失败' : checking ? '正在检查云仓库登录状态…' : '尚未登录云仓库账号'
     return (
       <div className="cloudbag-body">
         <PanelState
@@ -465,9 +465,9 @@ export function CloudBagContent({ onOpenLogin, onOpenSettings, onUnauthorized, r
           icon="cloud"
           title={title}
           description={gate.notice}
-          // 离线/连接失败态同样给「登录社区」：否则用户只剩可能失败的「重试」，陷入软死路
+          // 离线/连接失败态同样给「登录云仓库」：否则用户只剩可能失败的「重试」，陷入软死路
           // （离线态粘滞，后台复检被 workspace 跳过）。
-          action={<button className="btn primary" onClick={onOpenLogin}>登录社区</button>}
+          action={<button className="btn primary" onClick={onOpenLogin}>登录云仓库</button>}
           // 网络层失败（§8:245）与离线都必须有真实重试出口
           onRetry={offline || errored ? () => void load(true) : undefined}
           retryLabel={retrying ? '重试中…' : '重试'}
@@ -480,9 +480,9 @@ export function CloudBagContent({ onOpenLogin, onOpenSettings, onUnauthorized, r
   if (cloudBagSlug) {
     return api
       // 返回列表时让列表重新取数：删除仓库/新发布后列表不能停在旧快照上。
-      // key 带上 refreshKey：头部「刷新社区数据」在仓库详情页同样必须真的重新取数。
+      // key 带上 refreshKey：头部「刷新云仓库数据」在仓库详情页同样必须真的重新取数。
       ? <CloudBagRepoView key={`${cloudBagSlug}:${refreshKey}`} api={api} slug={cloudBagSlug} gate={gate} onBack={() => { setCloudBagView({ slug: null }); setListRefreshKey((n) => n + 1) }} />
-      : <PanelState kind="error" title="社区服务器地址无效" description="请在设置中检查社区服务器地址" />
+      : <PanelState kind="error" title="云仓库服务器地址无效" description="请在设置中检查云仓库服务器地址" />
   }
 
   return (

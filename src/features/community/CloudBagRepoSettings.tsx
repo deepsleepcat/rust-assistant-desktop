@@ -7,21 +7,12 @@ export function SettingsView({ api, repo, canWrite, onChanged, onDeleted }: { ap
   const [description, setDescription] = useState(repo.description)
   const [visibility, setVisibility] = useState<CloudBagRepo['visibility']>(repo.visibility)
   const [tags, setTags] = useState((repo.tags ?? []).join(', '))
-  const [postId, setPostId] = useState(repo.postId ? String(repo.postId) : '')
   const [busy, setBusy] = useState(false)
   const [destroying, setDestroying] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const isOwner = repo.myRole === 'owner'
   const save = async () => {
-    // 关联帖子 id 必须校验成正整数：Number('abc')=NaN 会被序列化成 post_id:null，
-    // 服务端 PostId 为 *int，null 落 nil → handler 整块跳过（no-op），界面却报「已保存」。
-    // 同时明确清空语义：留空 = 发送 0，服务端按 post_id<=0 解除关联（null 无法解除）。
-    const rawPostId = postId.trim()
-    const postIdValue = rawPostId === '' ? 0 : Number(rawPostId)
-    if (rawPostId !== '' && (!Number.isInteger(postIdValue) || postIdValue <= 0)) {
-      setMessage('关联帖子 id 必须是正整数；留空表示解除关联')
-      return
-    }
+    // 帖子功能已下线：不再展示「关联帖子 ID」，保存时不发送 post_id（后端保留原值）。
     setBusy(true)
     setMessage(null)
     try {
@@ -30,7 +21,6 @@ export function SettingsView({ api, repo, canWrite, onChanged, onDeleted }: { ap
         description: description.trim(),
         visibility,
         tags: tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 8),
-        postId: postIdValue,
       })
       setMessage('已保存仓库设置')
       onChanged()
@@ -71,7 +61,6 @@ export function SettingsView({ api, repo, canWrite, onChanged, onDeleted }: { ap
           <option value="link">链接可见</option>
         </select></label>
         <label>标签<input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="逗号分隔，最多 8 个" /></label>
-        <label>关联社区帖子 ID（可选）<input value={postId} onChange={(event) => setPostId(event.target.value)} placeholder="填写已有帖子 ID" /></label>
         <div className="cloudbag-unsupported-row">
           {/* V1 未支持的能力：保留按钮以表达「曾经/将来会有」，但用 aria-disabled（而非
               disabled）——disabled 元素不可聚焦，键盘与读屏用户既取不到 title 也无法触发，

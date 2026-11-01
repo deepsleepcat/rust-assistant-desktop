@@ -264,7 +264,7 @@
 /* ── 本地示例说明 / 禁用在线动作 ────────────────────── */
 .local-note {
   padding: 8px 12px;
-  border: 1px dashed var(--border-strong);
+  border: 1px solid var(--divider);
   border-radius: var(--radius-sm);
   background: var(--surface-0);
   color: var(--text-muted);
@@ -279,15 +279,15 @@
 .community-detail-desc { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
 .detail-meta { color: var(--text-muted); font-size: 11.5px; }
 
-/* ── 背景图模式：面板/卡片按主题 token 半透明混合 ─────── */
+/* ── 背景图模式：面板/卡片使用统一 veil 语义 token（单层轻薄底色） ─────── */
 .has-backdrop .app-body .community-panel,
-.has-backdrop .app-body .community-tabs { background: color-mix(in srgb, var(--surface-1) 78%, transparent); }
+.has-backdrop .app-body .community-tabs { background: var(--veil-side); }
 .has-backdrop .app-body .community-card,
 .has-backdrop .app-body .activity-item,
 .has-backdrop .app-body .me-stat,
 .has-backdrop .app-body .local-note,
 .has-backdrop .app-body .rank-chip,
-.has-backdrop .app-body .btn-sm { background: color-mix(in srgb, var(--surface-0) 74%, transparent); }
+.has-backdrop .app-body .btn-sm { background: var(--veil-panel); }
 
 /* ── 窄屏收缩（body.ra-compact，由 WorkbenchLayout 设置） ── */
 body.ra-compact .community-body { padding: 10px 12px 22px; }

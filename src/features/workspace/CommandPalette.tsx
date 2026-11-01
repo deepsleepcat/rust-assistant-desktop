@@ -55,7 +55,6 @@ export function CommandPalette() {
       { id: 'open-project', title: '导入模组…', en: 'Import mod…', icon: <IconFolder size={15} />, run: () => void importModProject() },
       { id: 'open-settings', title: '打开设置', en: 'Open settings', hint: settingsKey ? formatShortcut(settingsKey) : undefined, icon: <IconGear size={15} />, run: () => setSettingsOpen(true) },
       { id: 'surface-dashboard', title: '打开仪表盘', en: 'Open dashboard', icon: <AppIcon name="layout" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setActiveSurface('dashboard') } },
-      { id: 'surface-community', title: '打开社区', en: 'Open community', icon: <AppIcon name="share" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setActiveSurface('community') } },
       { id: 'surface-cloud-bag', title: '打开云仓库', en: 'Open cloud repo', icon: <AppIcon name="cloud" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setActiveSurface('cloudBag') } },
       { id: 'surface-editor', title: '返回工作区（编辑器）', en: 'Back to workspace', icon: <AppIcon name="code" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setActiveSurface('editor') } },
       {

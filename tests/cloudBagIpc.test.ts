@@ -135,27 +135,27 @@ describe('community:request 云书包上传规则表', () => {
     await expect(invoke(channels, 'community:request', {
       url: `${TRUSTED}/api/community/cloudbag/repos/x/blobs`, method: 'POST',
       upload: { name: 'a.bin', type: 'application/octet-stream', bytes: new ArrayBuffer(50 * 1024 * 1024 + 1) },
-    })).rejects.toThrow('社区附件超过 50 MiB 限制')
+    })).rejects.toThrow('云仓库附件超过 50 MiB 限制')
     await expect(invoke(channels, 'community:request', {
       url: `${TRUSTED}/api/community/cloudbag/repos/x/blobs`, method: 'POST',
       upload: { name: 'a.bin', type: 'application/octet-stream', bytes: new ArrayBuffer(1), fields: { 'bad-key!': 'v' } },
-    })).rejects.toThrow('社区附件参数无效')
+    })).rejects.toThrow('云仓库附件参数无效')
     await expect(invoke(channels, 'community:request', {
       url: `${TRUSTED}/api/community/cloudbag/repos/x/blobs`, method: 'POST',
       upload: { name: 'a.bin', type: 'application/octet-stream', bytes: new ArrayBuffer(1), fields: { k: 'v'.repeat(201) } },
-    })).rejects.toThrow('社区附件参数无效')
+    })).rejects.toThrow('云仓库附件参数无效')
     // 保留名 file/filename 会与真正的 file 部件同名：拒绝
     for (const reserved of ['file', 'fileName']) {
       await expect(invoke(channels, 'community:request', {
         url: `${TRUSTED}/api/community/cloudbag/repos/x/blobs`, method: 'POST',
         upload: { name: 'a.bin', type: 'application/octet-stream', bytes: new ArrayBuffer(1), fields: { [reserved]: 'v' } },
-      })).rejects.toThrow('社区附件参数无效')
+      })).rejects.toThrow('云仓库附件参数无效')
     }
     // fields 为 null：先判类型再取键，不得靠 Object.keys 抛 TypeError 兜底
     await expect(invoke(channels, 'community:request', {
       url: `${TRUSTED}/api/community/cloudbag/repos/x/blobs`, method: 'POST',
       upload: { name: 'a.bin', type: 'application/octet-stream', bytes: new ArrayBuffer(1), fields: null },
-    })).rejects.toThrow('社区附件参数无效')
+    })).rejects.toThrow('云仓库附件参数无效')
   })
 
   it('帖子资源上传规则保持不变（既有行为不回退）', async () => {

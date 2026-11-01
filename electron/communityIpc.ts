@@ -11,12 +11,12 @@ import { cloudBagUploadTimeoutMs } from './cloudbagTree'
 
 /**
  * 超限文案：区分「桌面端本地上限」与「服务端响应过大」。
- * 旧文案一律说「社区服务器响应过大」，用户按服务端问题排查永远找不到原因
+ * 旧文案一律说「云仓库服务器响应过大」，用户按服务端问题排查永远找不到原因
  * （实际是客户端上限；服务端导出默认上限为 512MiB）。
  */
 function tooLargeMessage(maxBytes: number): string {
   const mib = Math.round(maxBytes / (1024 * 1024))
-  return `响应超过桌面端本地上限（${mib} MiB）——这是客户端限制而非服务端响应过大；更大的内容请在社区网页端操作`
+  return `响应超过桌面端本地上限（${mib} MiB）——这是客户端限制而非服务端响应过大；更大的内容请在云仓库网页端操作`
 }
 
 /** 流式读取响应体并限制总大小（头像 2MB / JSON 2MB / 下载 50MB） */
@@ -97,54 +97,54 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
   ]
 
   ipc('community:request', async (_event, input: unknown): Promise<CommunityResponse> => {
-    if (!input || typeof input !== 'object') throw new Error('社区请求参数无效')
+    if (!input || typeof input !== 'object') throw new Error('云仓库请求参数无效')
     const request = input as CommunityRequest
-    if (!allowedMethods.has(request.method)) throw new Error('社区请求方法不允许')
-    if (typeof request.url !== 'string' || request.url.length > 600) throw new Error('社区服务器地址无效')
-    if (request.authenticated !== undefined && typeof request.authenticated !== 'boolean') throw new Error('社区认证参数无效')
-    if (request.body !== undefined && typeof request.body !== 'string') throw new Error('社区请求体无效')
-    if (request.headers !== undefined && (!request.headers || typeof request.headers !== 'object' || Array.isArray(request.headers))) throw new Error('社区请求头无效')
+    if (!allowedMethods.has(request.method)) throw new Error('云仓库请求方法不允许')
+    if (typeof request.url !== 'string' || request.url.length > 600) throw new Error('云仓库服务器地址无效')
+    if (request.authenticated !== undefined && typeof request.authenticated !== 'boolean') throw new Error('云仓库认证参数无效')
+    if (request.body !== undefined && typeof request.body !== 'string') throw new Error('云仓库请求体无效')
+    if (request.headers !== undefined && (!request.headers || typeof request.headers !== 'object' || Array.isArray(request.headers))) throw new Error('云仓库请求头无效')
     let url: URL
     try {
       url = new URL(request.url)
     } catch {
-      throw new Error('社区服务器地址无效')
+      throw new Error('云仓库服务器地址无效')
     }
-    if (url.origin !== trustedOrigin) throw new Error('社区服务器地址不受信任')
+    if (url.origin !== trustedOrigin) throw new Error('云仓库服务器地址不受信任')
     // 显式主机校验（SSRF 防线）：即使上游源校验被改动，这里也把请求钉死在
     // 受信任的主机上；http 协议只允许显式本地开发后端（localhost）。
-    if (url.hostname !== trustedHost) throw new Error('社区服务器地址不受信任')
-    if (url.protocol !== 'https:' && url.hostname !== 'localhost') throw new Error('社区服务器地址不受信任')
+    if (url.hostname !== trustedHost) throw new Error('云仓库服务器地址不受信任')
+    if (url.protocol !== 'https:' && url.hostname !== 'localhost') throw new Error('云仓库服务器地址不受信任')
     // pathname 必须是站内绝对路径（单 / 开头）：阻止 `//host` 协议相对形式借 base 重建时逃逸到其他源
-    if (!url.pathname.startsWith('/') || url.pathname.startsWith('//')) throw new Error('社区请求路径不允许')
-    if (!allowedPathPatterns.some((pattern) => pattern.test(url.pathname))) throw new Error('社区请求路径不允许')
+    if (!url.pathname.startsWith('/') || url.pathname.startsWith('//')) throw new Error('云仓库请求路径不允许')
+    if (!allowedPathPatterns.some((pattern) => pattern.test(url.pathname))) throw new Error('云仓库请求路径不允许')
     if (/^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/.test(url.pathname) && (request.method !== 'GET' || request.body !== undefined || request.upload)) {
-      throw new Error('社区头像只允许读取')
+      throw new Error('云仓库头像只允许读取')
     }
-    if (url.search.length > 600) throw new Error('社区查询参数过长')
-    if (typeof request.body === 'string' && Buffer.byteLength(request.body, 'utf8') > maxJsonBytes) throw new Error('社区请求体过大')
+    if (url.search.length > 600) throw new Error('云仓库查询参数过长')
+    if (typeof request.body === 'string' && Buffer.byteLength(request.body, 'utf8') > maxJsonBytes) throw new Error('云仓库请求体过大')
     if (request.upload !== undefined) {
       const rule = uploadPathRules.find((item) => item.pattern.test(url.pathname))
       // 既有用例文案保持可读且兼容（substring 断言），表驱动后同时覆盖帖子资源与云书包 blob
       if (!rule || !rule.methods.includes(request.method) || request.body !== undefined) {
         throw new Error('附件只能上传到帖子资源接口或云书包 blob 接口')
       }
-      if (!request.upload || typeof request.upload !== 'object' || Array.isArray(request.upload)) throw new Error('社区附件参数无效')
-      if (typeof request.upload.name !== 'string' || typeof request.upload.type !== 'string' || request.upload.name.length > 180 || request.upload.type.length > 200) throw new Error('社区附件参数无效')
+      if (!request.upload || typeof request.upload !== 'object' || Array.isArray(request.upload)) throw new Error('云仓库附件参数无效')
+      if (typeof request.upload.name !== 'string' || typeof request.upload.type !== 'string' || request.upload.name.length > 180 || request.upload.type.length > 200) throw new Error('云仓库附件参数无效')
       if (request.upload.fields !== undefined) {
         const fields = request.upload.fields
         // 先判类型再取键：fields 可能是 null（Object.keys(null) 会抛 TypeError）
-        if (!fields || typeof fields !== 'object' || Array.isArray(fields)) throw new Error('社区附件参数无效')
+        if (!fields || typeof fields !== 'object' || Array.isArray(fields)) throw new Error('云仓库附件参数无效')
         const keys = Object.keys(fields)
-        if (keys.length > 8) throw new Error('社区附件参数无效')
+        if (keys.length > 8) throw new Error('云仓库附件参数无效')
         for (const key of keys) {
           // 拒绝保留名 file/filename：真正的 file 部件固定最后追加，同名文本字段会让
           // 服务端 multipart 解析出现歧义
-          if (!/^[A-Za-z0-9_]{1,40}$/.test(key) || /^(file|filename)$/i.test(key) || typeof fields[key] !== 'string' || (fields[key] as string).length > 200) throw new Error('社区附件参数无效')
+          if (!/^[A-Za-z0-9_]{1,40}$/.test(key) || /^(file|filename)$/i.test(key) || typeof fields[key] !== 'string' || (fields[key] as string).length > 200) throw new Error('云仓库附件参数无效')
         }
       }
       const bytes = request.upload.bytes
-      if (!(bytes instanceof ArrayBuffer) || bytes.byteLength > rule.maxBytes) throw new Error('社区附件超过 50 MiB 限制')
+      if (!(bytes instanceof ArrayBuffer) || bytes.byteLength > rule.maxBytes) throw new Error('云仓库附件超过 50 MiB 限制')
     }
 
     const headers = new Headers()
@@ -185,14 +185,14 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
         // 发请求前的显式主机校验：协议必须 https（或显式本地开发的 localhost），
         // 主机必须等于受信任主机——即便上游校验被改动，这里也不会成为通用代理。
         if (trustedUrl.hostname !== trustedHost || (trustedUrl.protocol !== 'https:' && trustedUrl.hostname !== 'localhost')) {
-          throw new Error('社区服务器地址不受信任')
+          throw new Error('云仓库服务器地址不受信任')
         }
         return fetch(trustedUrl, { method: request.method, headers: requestHeaders, body, signal: controller.signal, redirect: 'error' })
       }
       const response = request.authenticated
-        ? await (ctx.communityAuth?.withCredential((credential) => perform(credential)) ?? Promise.reject(new Error('社区登录已失效')))
+        ? await (ctx.communityAuth?.withCredential((credential) => perform(credential)) ?? Promise.reject(new Error('云仓库登录已失效')))
         : await perform()
-      if (!response) throw new Error('社区登录已失效')
+      if (!response) throw new Error('云仓库登录已失效')
       if (response.status === 401 && request.authenticated && usedCredential) await ctx.communityAuth?.invalidateIfCredential(usedCredential)
       const isAvatar = /^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/.test(url.pathname)
       // 下载上限改显式家族正则（桌面契约 §7.2）：导出/分享下载 50MiB、树内单文件 2MiB，其余 JSON 2MiB
@@ -206,7 +206,7 @@ export function registerCommunityIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       }
       return { status: response.status, headers: safeHeaders, body: data }
     } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') throw new Error('社区服务器请求超时', { cause: error })
+      if (error instanceof DOMException && error.name === 'AbortError') throw new Error('云仓库服务器请求超时', { cause: error })
       throw error
     } finally {
       clearTimeout(timer)

@@ -96,10 +96,10 @@ function successfulData(value: unknown): Record<string, unknown> {
   const envelope = object(value)
   if (!envelope || envelope.success !== true) {
     const message = envelope && typeof envelope.message === 'string' ? envelope.message : ''
-    throw new CommunityAuthError(message || '社区配对服务拒绝了该请求')
+    throw new CommunityAuthError(message || '云仓库配对服务拒绝了该请求')
   }
   const result = object(envelope.data)
-  if (!result) throw new CommunityAuthError('社区配对服务返回了无效数据')
+  if (!result) throw new CommunityAuthError('云仓库配对服务返回了无效数据')
   return result
 }
 
@@ -107,15 +107,15 @@ function apiUrl(origin: string, path: string, query?: Record<string, string>): U
   const base = validateConfiguredCommunityOrigin(origin)
   const url = new URL(path, `${base}/`)
   for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value)
-  if (url.pathname !== path || url.username || url.password || url.hash) throw new CommunityAuthError('社区配对地址配置无效')
+  if (url.pathname !== path || url.username || url.password || url.hash) throw new CommunityAuthError('云仓库配对地址配置无效')
   return url
 }
 
 /** Only the fixed production origin or the explicit local test origin may be opened. */
 export function validateCommunityPairingUrl(value: string, expectedOrigin = getConfiguredCommunityOrigin()): string {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 1000) throw new CommunityAuthError('社区配对地址无效')
+  if (typeof value !== 'string' || value.length === 0 || value.length > 1000) throw new CommunityAuthError('云仓库配对地址无效')
   let url: URL
-  try { url = new URL(value) } catch { throw new CommunityAuthError('社区配对地址无效') }
+  try { url = new URL(value) } catch { throw new CommunityAuthError('云仓库配对地址无效') }
   const origin = validateConfiguredCommunityOrigin(url.origin)
   if (
     origin !== validateConfiguredCommunityOrigin(expectedOrigin) ||
@@ -123,9 +123,9 @@ export function validateCommunityPairingUrl(value: string, expectedOrigin = getC
     (url.port && origin === PRODUCTION_COMMUNITY_ORIGIN) ||
     url.username ||
     url.password
-  ) throw new CommunityAuthError('社区配对地址不受信任')
+  ) throw new CommunityAuthError('云仓库配对地址不受信任')
   const code = url.searchParams.get('code')
-  if (!code || url.searchParams.size !== 1 || code.length > 32 || url.hash) throw new CommunityAuthError('社区配对地址不受信任')
+  if (!code || url.searchParams.size !== 1 || code.length > 32 || url.hash) throw new CommunityAuthError('云仓库配对地址不受信任')
   return url.toString()
 }
 
@@ -164,10 +164,10 @@ function toUser(value: unknown): CommunityAuthUser | undefined {
 
 async function readLimitedBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
   const declaredSize = Number(response.headers.get('content-length') ?? '')
-  if (Number.isFinite(declaredSize) && declaredSize > maxBytes) throw new CommunityAuthError('社区配对服务响应过大')
+  if (Number.isFinite(declaredSize) && declaredSize > maxBytes) throw new CommunityAuthError('云仓库配对服务响应过大')
   if (!response.body) {
     const body = new Uint8Array(await response.arrayBuffer())
-    if (body.byteLength > maxBytes) throw new CommunityAuthError('社区配对服务响应过大')
+    if (body.byteLength > maxBytes) throw new CommunityAuthError('云仓库配对服务响应过大')
     return body
   }
   const reader = response.body.getReader()
@@ -180,7 +180,7 @@ async function readLimitedBytes(response: Response, maxBytes: number): Promise<U
       total += next.value.byteLength
       if (total > maxBytes) {
         await reader.cancel()
-        throw new CommunityAuthError('社区配对服务响应过大')
+        throw new CommunityAuthError('云仓库配对服务响应过大')
       }
       chunks.push(next.value)
     }
@@ -201,7 +201,7 @@ async function readJson(response: Response): Promise<unknown> {
   if (!text) return {}
   try { return JSON.parse(text) as unknown } catch {
     if (!response.ok) return {}
-    throw new CommunityAuthError('社区配对服务返回了无效数据')
+    throw new CommunityAuthError('云仓库配对服务返回了无效数据')
   }
 }
 
@@ -209,7 +209,7 @@ function publicStatus(status: unknown): CommunityAuthStatus['state'] {
   if (status === 'pending' || status === 'approved') return 'pairing'
   if (status === 'claimed') return 'signed-in'
   if (status === 'denied' || status === 'cancelled' || status === 'expired') return 'signed-out'
-  throw new CommunityAuthError('社区配对服务返回了未知状态')
+  throw new CommunityAuthError('云仓库配对服务返回了未知状态')
 }
 
 function isCommunityToken(value: string | null): value is string {
@@ -264,8 +264,8 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
       return { response, body: await readJson(response) }
     } catch (error) {
       if (error instanceof CommunityAuthError) throw error
-      if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityAuthError('社区配对服务请求超时', true)
-      throw new CommunityAuthError('无法连接社区配对服务', true)
+      if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityAuthError('云仓库配对服务请求超时', true)
+      throw new CommunityAuthError('无法连接云仓库配对服务', true)
     } finally {
       clearTimeout(timeout)
     }
@@ -289,11 +289,11 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
             const { response, body } = await request(apiUrl(origin, AUTH_ME_PATH), 'GET', undefined, undefined, credential)
             if (response.status === 401) {
               unauthorized = true
-              throw new CommunityAuthError('社区登录已失效')
+              throw new CommunityAuthError('云仓库登录已失效')
             }
-            if (!response.ok) throw new CommunityAuthError(`无法验证社区登录状态（HTTP ${response.status}）`, response.status >= 500)
+            if (!response.ok) throw new CommunityAuthError(`无法验证云仓库登录状态（HTTP ${response.status}）`, response.status >= 500)
             const user = toUser(successfulData(body))
-            if (!user) throw new CommunityAuthError('社区配对服务返回了无效用户数据')
+            if (!user) throw new CommunityAuthError('云仓库配对服务返回了无效用户数据')
             stale = !await enqueueCredentialMutation(async () => {
               const matches = await deps.credentials.withCredential((current) => current === credential)
               if (matches !== true || generation !== operationGeneration) return false
@@ -318,7 +318,7 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
   }
 
   async function start(): Promise<CommunityAuthPairing> {
-    if (!deps.credentials.isAvailable()) throw new CommunityAuthError('系统安全凭据存储不可用，无法开始社区配对')
+    if (!deps.credentials.isAvailable()) throw new CommunityAuthError('系统安全凭据存储不可用，无法开始云仓库配对')
     if (activePairing && activePairing.expiresAt > now()) {
       await deps.openExternal(activePairing.browserUrl)
       return toPublicPairing(activePairing)
@@ -328,13 +328,13 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
     if (!response.ok) {
       const data = object(body)
       const message = data && typeof data.message === 'string' ? data.message : ''
-      throw new CommunityAuthError(message || '社区服务器暂不支持桌面登录，请更新服务器后重试')
+      throw new CommunityAuthError(message || '云仓库服务器暂不支持桌面登录，请更新服务器后重试')
     }
     const data = successfulData(body)
     const pairingId = string(data.pairing_id, 128)
     const deviceSecret = string(data.device_secret, 256)
     const userCode = string(data.user_code, 64)
-    if (!pairingId || !deviceSecret || !userCode) throw new CommunityAuthError('社区配对服务返回了无效数据')
+    if (!pairingId || !deviceSecret || !userCode) throw new CommunityAuthError('云仓库配对服务返回了无效数据')
     const expiresAtSeconds = number(data.expires_at)
     const expiresAt = expiresAtSeconds && expiresAtSeconds > 1_000_000_000 ? expiresAtSeconds * 1000 : now() + DEFAULT_PAIRING_LIFETIME_MS
     const approvalUrl = string(data.approval_url, 1000)
@@ -401,7 +401,7 @@ export function createCommunityAuth(deps: CommunityAuthDependencies): CommunityA
       const user = toUser(data.user)
       if (!isCommunityToken(token) || !user) {
         activePairing = null
-        throw new CommunityAuthError('社区配对服务返回了无效会话')
+        throw new CommunityAuthError('云仓库配对服务返回了无效会话')
       }
       if (operationGeneration !== generation || activePairing !== pairing) return status()
       await enqueueCredentialMutation(async () => {

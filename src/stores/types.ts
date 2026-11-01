@@ -4,13 +4,12 @@
 import type { AppSettings, Conversation, EditorTab, ProjectInfo, TreeNode } from '../types/domain'
 import type { DiffLine } from '../types/diff'
 import type { ModImportKind } from '../types/bridge'
-import type { CommunityTab } from '../features/community/communityData'
 import type { CommunityUser } from '../services/communityApi'
 
 export type CommunityAuthStatus = 'checking' | 'signed_out' | 'signed_in' | 'loading' | 'error' | 'offline'
 
-/** 全局桌面工作面。cloudBag 属于社区域，但作为独立工作面保留内部状态。 */
-export type WorkspaceSurface = 'dashboard' | 'community' | 'cloudBag' | 'editor' | 'settings'
+/** 全局桌面工作面。cloudBag（云仓库）是唯一的在线内容工作面。 */
+export type WorkspaceSurface = 'dashboard' | 'cloudBag' | 'editor' | 'settings'
 export type NonSettingsSurface = Exclude<WorkspaceSurface, 'settings'>
 
 export interface CommunityAuthState {
@@ -68,16 +67,10 @@ export interface WorkspaceStoreState {
   drawerSide: 'left' | 'right' | null
   /** 当前中心工作面；切换不丢编辑器标签、光标或社区/仓库会话状态。 */
   activeSurface: WorkspaceSurface
-  /** 社区当前页签（推荐/关注/排行/我的/云仓库） */
-  communityTab: CommunityTab
-  /** 离开社区去云仓库后，保留上次社区内容页签。 */
-  communityReturnTab: Exclude<CommunityTab, 'cloudBag'>
   /** 云书包当前打开的仓库 slug（会话内状态，切页签不丢位置） */
   cloudBagSlug: string | null
   /** 云书包仓库页内的子页签 */
   cloudBagSection: 'files' | 'issues' | 'versions' | 'members' | 'settings'
-  /** 社区关注的创作者 id（会话内状态，不持久化；服务器上线后并入账号数据） */
-  communityFollowing: string[]
   /** Browser-auth community session; the token remains only in main-process safeStorage. */
   communityAuth: CommunityAuthState
   /** M7：代码表浏览弹窗 */
@@ -210,12 +203,8 @@ export interface WorkspaceStoreActions {
   setDrawerSide(side: 'left' | 'right' | null): void
   /** 切换中心工作面；设置页会记录返回工作面。 */
   setActiveSurface(surface: WorkspaceSurface): void
-  /** M33-社区：切换社区页签 */
-  setCommunityTab(tab: CommunityTab): void
   /** 云书包：打开/关闭仓库详情与子页签（会话内导航状态） */
   setCloudBagView(patch: { slug?: string | null; section?: 'files' | 'issues' | 'versions' | 'members' | 'settings' }): void
-  /** M33-社区：关注/取消关注创作者（会话内状态） */
-  toggleCommunityFollow(creatorId: string): void
   /** Refresh the browser-auth community session from the saved token. */
   refreshCommunityAuth(): Promise<void>
   /** Start browser pairing and continue checking until it completes or expires. */

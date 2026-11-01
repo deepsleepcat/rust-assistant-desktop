@@ -21,6 +21,15 @@ const devUrl = process.env.VITE_DEV_SERVER_URL
 const devRendererUrl =
   typeof devUrl === 'string' && /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:[/?#]|$)/.test(devUrl) ? devUrl : undefined
 
+// 隔离预览支持：设置 OMTX_USER_DATA_DIR（环境变量）或 --omtx-user-data-dir（启动参数）后
+// 所有持久化（设置/工作区/凭据）落在该目录，不触碰用户真实配置；
+// 正常启动（两者都未提供）行为完全不变。
+const isolatedUserDataDir = process.env.OMTX_USER_DATA_DIR
+  ?? process.argv.find((arg) => arg.startsWith('--omtx-user-data-dir='))?.slice('--omtx-user-data-dir='.length)
+if (isolatedUserDataDir) {
+  app.setPath('userData', isolatedUserDataDir)
+}
+
 const store = createStore(path.join(app.getPath('userData'), 'app-state.json'))
 // AI 修改历史（任务 2）：独立 JSON 文件，避免与主 store 共用导致每次设置变更重写大文件
 initAiHistory(path.join(app.getPath('userData'), 'ai-history.json'))

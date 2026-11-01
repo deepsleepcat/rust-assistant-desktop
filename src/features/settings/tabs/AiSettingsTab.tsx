@@ -65,7 +65,7 @@ export function AiSettingsTab() {
       <div className="setting-row">
         <span className="label">
           AI 提供者
-          <div className="desc">AI 对话当前仅支持 DeepSeek；社区服务器用于帖子和账号，不会自动作为 AI 提供者</div>
+          <div className="desc">AI 对话当前仅支持 DeepSeek；云仓库服务器用于账号与仓库，不会自动作为 AI 提供者</div>
         </span>
         <div className="seg-group settings-control">
           <button className={settings.ai.provider === 'deepseek' ? 'active' : ''} onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}>
@@ -74,7 +74,7 @@ export function AiSettingsTab() {
           <button
             className={settings.ai.provider === 'community' ? 'btn primary' : 'btn'}
             disabled={settings.ai.provider !== 'community'}
-            title="社区服务器当前只提供社区内容 API，AI 对话尚未接入"
+            title="云仓库服务器当前只提供账号与仓库 API，AI 对话尚未接入"
             onClick={() => updateSettings({ ai: { ...settings.ai, provider: 'deepseek' } })}
           >
             {settings.ai.provider === 'community' ? '切换回 DeepSeek' : '社区后端（AI 未接入）'}

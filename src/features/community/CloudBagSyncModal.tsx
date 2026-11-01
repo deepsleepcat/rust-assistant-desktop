@@ -556,7 +556,7 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
       )}
       <div className="local-note">
         同步仅手动触发；不做文件监听与自动上传。桌面 V1 单文件与单次导出/拉取上限均为 {formatBytes(50 * 1024 * 1024)}
-        （服务端导出上限为 512 MiB，更大的仓库请在社区网页端操作）。非 UTF-8 编码（GBK/ANSI）的文本文件会被跳过而不改写上传。
+        （服务端导出上限为 512 MiB，更大的仓库请在云仓库网页端操作）。非 UTF-8 编码（GBK/ANSI）的文本文件会被跳过而不改写上传。
       </div>
       {notePrompt && (
         <VersionNoteModal

@@ -29,6 +29,13 @@ import { assertNoLinkEscape, isPathInside, normalizePath } from './paths'
 /** 指定目录名（位于 userData 下，由主进程拼装；渲染层无权指定） */
 export const ENGINE_DLC_DIRNAME = 'engine-dlc'
 
+/**
+ * 会话宿主桥的固定相对路径（0.2.2+；渲染层无权指定，主进程只认这个文件名）。
+ * 存在即代表该 DLC 支持常驻会话（炮塔拖动实时预览）；清单不加新字段，
+ * 旧版桌面/旧 DLC 组合自然退化为「无会话能力」。
+ */
+export const ENGINE_DLC_SESSION_ENTRY = 'session-host.cjs'
+
 /** 每个 DLC 目录内的清单文件名 */
 export const ENGINE_DLC_MANIFEST_NAME = 'dlc.json'
 
@@ -84,6 +91,8 @@ export interface ResolvedEngineDlc {
   entryPath: string
   args: string[]
   timeoutMs: number
+  /** 会话宿主桥绝对路径；仅当 DLC 目录里确实存在 session-host.cjs 时才有值 */
+  sessionHostPath?: string
 }
 
 /** 一次目录扫描的单条结果：要么解析成功，要么带上中文原因 */
@@ -197,8 +206,13 @@ export async function readEngineDlcDir(root: string, dirName: string): Promise<{
   // 注意：本文件被其他分支合并覆盖过一次，这段不要退回裸 startsWith（见 engineDlc.test.ts
   // 的「readEngineDlcDir 的 root 归一化」用例）。
   const dir = path.resolve(root, dirName)
-  const manifestPath = path.resolve(root, dirName, ENGINE_DLC_MANIFEST_NAME)
-  if (!isPathInside(root, dir) || !isPathInside(root, manifestPath)) {
+  // 清单文件名是常量：先校验 dir 落在 root 内，再用 join 派生清单路径——
+  // 不用 resolve(root, dirName, …) 二次拼接变量，杜绝任何穿越组合的生存空间。
+  if (!isPathInside(root, dir)) {
+    return { ok: false, problem: 'DLC 目录名不合法' }
+  }
+  const manifestPath = path.join(dir, ENGINE_DLC_MANIFEST_NAME)
+  if (!isPathInside(root, manifestPath)) {
     return { ok: false, problem: 'DLC 目录名不合法' }
   }
   let text: string
@@ -236,6 +250,19 @@ export async function readEngineDlcDir(root: string, dirName: string): Promise<{
     return { ok: false, problem: 'entry 是指向 DLC 目录外的链接，已拒绝' }
   }
 
+  // 会话宿主桥探测：文件必须真实落在本 DLC 目录内（防链接逃逸同款校验）。
+  const sessionHostPath = path.resolve(dir, ENGINE_DLC_SESSION_ENTRY)
+  let sessionHost: string | undefined
+  try {
+    const st = await fs.stat(sessionHostPath)
+    if (st.isFile()) {
+      await assertNoLinkEscape(dir, sessionHostPath)
+      sessionHost = normalizePath(sessionHostPath)
+    }
+  } catch {
+    sessionHost = undefined
+  }
+
   return {
     ok: true,
     dlc: {
@@ -247,6 +274,7 @@ export async function readEngineDlcDir(root: string, dirName: string): Promise<{
       entryPath: normalizePath(entryPath),
       args: parsed.manifest.args,
       timeoutMs: parsed.manifest.timeoutMs,
+      ...(sessionHost ? { sessionHostPath: sessionHost } : {}),
     },
   }
 }

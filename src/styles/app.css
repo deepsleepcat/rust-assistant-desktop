@@ -20,32 +20,33 @@ body {
 
 .app { position: relative; height: 100%; display: flex; flex-direction: column; background: var(--canvas); }
 .backdrop { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-.backdrop-img, .backdrop-solid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.backdrop-img { transform: scale(1.08); filter: var(--backdrop-filter, none); }
-.backdrop-solid { opacity: .58; }
+.backdrop-solid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .58; }
 .modal-card.modal-spacious { width: min(800px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
 .modal-spacious .modal-body { min-height: 0; overflow-y: auto; padding: 22px; }
 .modal-spacious .modal-header, .modal-spacious .modal-footer { flex: none; }
-/* 背景图模式：面板改用主题 token 的半透明混合，图片透出的同时自动跟随浅色/深色主题 */
+/* 背景图模式：全应用只有一层轻薄底色（tokens.css 的 --veil-*，随浅/深主题自动适配）。
+   不再叠加桌面壳层的玻璃混合层（desktop.css 通过 --shell-* token 指向同一组 veil），
+   也不使用 backdrop-filter —— 用户设置 blur=0 时，壳层不得继续模糊背景内容图。
+   分区之间用底色透明度差（2%-6%）区分层级，不靠边框。 */
 .has-backdrop .titlebar,
-.has-backdrop .statusbar { background: color-mix(in srgb, var(--surface-0) 74%, transparent); }
+.has-backdrop .statusbar { background: var(--veil-chrome); }
 .has-backdrop .app-body .panel,
 .has-backdrop .app-body .welcome,
 .has-backdrop .app-body .conversation-view,
-.has-backdrop .app-body .conv-messages { background: color-mix(in srgb, var(--surface-0) 74%, transparent); }
+.has-backdrop .app-body .conv-messages { background: var(--veil-panel); }
 .has-backdrop .app-body .editor-workspace,
-.has-backdrop .app-body .editor-textarea { background: color-mix(in srgb, var(--editor) 74%, transparent); }
+.has-backdrop .app-body .editor-textarea { background: var(--veil-editor); }
 .has-backdrop .app-body .sidebar,
 .has-backdrop .app-body > section:last-child,
 .has-backdrop .app-body .wb-right,
 .has-backdrop .app-body .conversation-list,
-.has-backdrop .app-body .conv-input-area { background: color-mix(in srgb, var(--surface-1) 78%, transparent); }
-.has-backdrop .app-body .editor-gutter { background: color-mix(in srgb, var(--surface-1) 78%, transparent); }
+.has-backdrop .app-body .conv-input-area { background: var(--veil-side); }
+.has-backdrop .app-body .editor-gutter { background: var(--veil-side); }
 .has-backdrop .app-body .editor-head,
-.has-backdrop .app-body .tabbar { background: color-mix(in srgb, var(--surface-1) 80%, transparent); }
-.has-backdrop .app-body .tab.active { background: color-mix(in srgb, var(--editor) 82%, transparent); }
-.has-backdrop .app-body .editor-outline { background: color-mix(in srgb, var(--surface-1) 82%, transparent); }
-.has-backdrop .wb-drawer { background: color-mix(in srgb, var(--surface-1) 86%, transparent); }
+.has-backdrop .app-body .tabbar { background: var(--veil-chrome); }
+.has-backdrop .app-body .tab.active { background: var(--veil-editor); }
+.has-backdrop .app-body .editor-outline { background: var(--veil-side); }
+.has-backdrop .wb-drawer { background: var(--veil-float); }
 
 /* 顶部 chrome */
 .titlebar {
@@ -243,7 +244,7 @@ body.ra-compact .community-account-btn span { display: none; }
 .settings-layout { display: flex; gap: 20px; min-height: 380px; }
 .settings-nav { width: 130px; flex: 0 0 130px; }
 .settings-content { flex: 1; min-width: 0; container: settings-content / inline-size; }
-.setting-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--divider); }
+.setting-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 9px 0; }
 .setting-row .label { flex: 1 1 180px; min-width: 150px; color: var(--text-primary); font-size: 13px; }
 .setting-row .desc { color: var(--text-muted); font-size: 11px; overflow-wrap: anywhere; }
 .setting-row > :not(.label) { flex: 0 1 auto; min-width: 0; }
@@ -324,7 +325,6 @@ body.ra-compact .community-account-btn span { display: none; }
 .auth-endpoint {
   margin-top: 22px;
   padding-top: 14px;
-  border-top: 1px dashed var(--divider);
   display: flex;
   align-items: center;
   justify-content: center;

@@ -8,7 +8,7 @@ import type { RegisterHandler } from './ipcTypes'
 /** 设备配对认证：令牌只在主进程 safeStorage 内存/密文间流转。 */
 export function registerCommunityAuthIpc(ctx: IpcContext, ipc: RegisterHandler): void {
   const auth = (): NonNullable<IpcContext['communityAuth']> => {
-    if (!ctx.communityAuth) throw new Error('社区设备认证不可用')
+    if (!ctx.communityAuth) throw new Error('云仓库设备认证不可用')
     return ctx.communityAuth
   }
   ipc('auth:status', () => auth().status())

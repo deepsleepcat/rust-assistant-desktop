@@ -58,7 +58,7 @@ export function CommunitySettingsTab() {
 
   return (
     <div className="setting-section">
-      <div className="setting-title">社区账号</div>
+      <div className="setting-title">云仓库账号</div>
       <div className="setting-row">
         <span className="label">服务器连接</span>
         <button
@@ -100,15 +100,15 @@ export function CommunitySettingsTab() {
       {communityUser && communityUser.email_verified === false && <div className="setting-row community-auth-row">
         <span className="label">
           完成邮箱认证
-          <div className="desc">服务器要求邮箱认证时，认证后才能发布、评论、点赞和关注</div>
+          <div className="desc">服务器要求邮箱认证时，认证后才能管理云仓库（保存设置、发布版本等）</div>
         </span>
         <input aria-label="认证邮箱" type="email" value={communityEmail} onChange={(e) => setCommunityEmail(e.target.value)} placeholder="邮箱" style={{ width: 180 }} />
         <input aria-label="认证邮箱验证码" value={communityVerificationCode} onChange={(e) => setCommunityVerificationCode(e.target.value)} placeholder="邮箱验证码" style={{ width: 140 }} />
         <button className="btn" disabled={communityVerificationBusy || !communityEmail.trim()} onClick={() => void requestCommunityVerification()}>{communityVerificationBusy ? '发送中…' : '发送验证码'}</button>
         <button className="btn primary" disabled={communityBindingBusy || !communityEmail.trim() || !communityVerificationCode.trim()} onClick={() => void bindCommunityEmail()}>{communityBindingBusy ? '认证中…' : '完成认证'}</button>
       </div>}
-      {communityAuth.status === 'signed_in' && <div className="setting-row"><span className="label">退出社区账号</span><button className="btn" onClick={() => {
-        void logoutCommunity().then(() => setCommunityCheck('已退出社区账号'))
+      {communityAuth.status === 'signed_in' && <div className="setting-row"><span className="label">退出云仓库账号</span><button className="btn" onClick={() => {
+        void logoutCommunity().then(() => setCommunityCheck('已退出云仓库账号'))
       }}>退出登录</button></div>}
     </div>
   )

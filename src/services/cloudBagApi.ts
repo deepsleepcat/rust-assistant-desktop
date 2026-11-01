@@ -316,16 +316,16 @@ interface CloudBagEnvelope<T> {
  */
 function localLimitMessage(maxBytes: number): string {
   const mib = Math.round(maxBytes / (1024 * 1024))
-  return `响应超过桌面端本地上限（${mib} MiB）——这是客户端限制而非服务端响应过大；更大的内容请在社区网页端操作`
+  return `响应超过桌面端本地上限（${mib} MiB）——这是客户端限制而非服务端响应过大；更大的内容请在云仓库网页端操作`
 }
 
 /** 超时文案：上传类请求（时限按字节数放宽）与普通 JSON 请求分开，避免把「本地上传通道
  * 太慢/上限」误导成服务端故障。 */
 function timeoutMessage(timeoutMs: number): string {
   if (timeoutMs > REQUEST_TIMEOUT_MS) {
-    return `上传超时（本次请求时限 ${Math.round(timeoutMs / 1000)}s，已按文件大小放宽）：请检查上行网络，或到社区网页端上传该文件`
+    return `上传超时（本次请求时限 ${Math.round(timeoutMs / 1000)}s，已按文件大小放宽）：请检查上行网络，或到云仓库网页端上传该文件`
   }
-  return '社区服务器请求超时'
+  return '云仓库服务器请求超时'
 }
 
 async function readLimitedBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
@@ -387,7 +387,7 @@ async function awaitWithSignal<T>(promise: Promise<T>, signal?: AbortSignal | nu
 function bridgeAuthError(error: unknown, onUnauthorized?: () => void): CloudBagApiError | null {
   if (error instanceof Error && /登录已失效/.test(error.message)) {
     onUnauthorized?.()
-    return new CloudBagApiError('社区登录已失效，请重新登录', { kind: 'http', status: 401 })
+    return new CloudBagApiError('云仓库登录已失效，请重新登录', { kind: 'http', status: 401 })
   }
   return null
 }
@@ -467,13 +467,13 @@ export function createCloudBagApi(
   onUnauthorized?: () => void,
 ): CloudBagApi {
   let base = endpoint.trim().replace(/\/+$/, '')
-  if (!/^https?:\/\//i.test(base) || base.length > 500) throw new CloudBagApiError('社区服务器地址格式无效', { kind: 'invalid_endpoint' })
+  if (!/^https?:\/\//i.test(base) || base.length > 500) throw new CloudBagApiError('云仓库服务器地址格式无效', { kind: 'invalid_endpoint' })
   try {
     const parsed = new URL(base)
     if (parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) throw new Error('invalid origin')
     base = parsed.toString().replace(/\/+$/, '')
   } catch {
-    throw new CloudBagApiError('社区服务器地址格式无效', { kind: 'invalid_endpoint' })
+    throw new CloudBagApiError('云仓库服务器地址格式无效', { kind: 'invalid_endpoint' })
   }
 
   /** 信封解析：HTTP 恒按 200 信封处理业务错误（J3），code 决定分支与文案。
@@ -492,14 +492,14 @@ export function createCloudBagApi(
       try {
         payload = text ? JSON.parse(text) as CloudBagEnvelope<T> : null
       } catch {
-        throw new CloudBagApiError('社区服务器返回了无效数据', { kind: 'invalid_response', status: response.status })
+        throw new CloudBagApiError('云仓库服务器返回了无效数据', { kind: 'invalid_response', status: response.status })
       }
       if (response.status === 401) {
         onUnauthorized?.()
-        throw new CloudBagApiError('社区登录已失效，请重新登录', { kind: 'http', status: 401 })
+        throw new CloudBagApiError('云仓库登录已失效，请重新登录', { kind: 'http', status: 401 })
       }
       if (!response.ok) {
-        throw new CloudBagApiError(payload?.message || `社区服务器请求失败（HTTP ${response.status}）`, { kind: 'http', status: response.status })
+        throw new CloudBagApiError(payload?.message || `云仓库服务器请求失败（HTTP ${response.status}）`, { kind: 'http', status: response.status })
       }
       if (!payload || payload.success !== true) {
         const code = payload?.code
@@ -522,7 +522,7 @@ export function createCloudBagApi(
       if (error instanceof Error && /超时/.test(error.message)) {
         throw new CloudBagApiError(timeoutMessage(timeoutMs), { kind: 'timeout' })
       }
-      throw new CloudBagApiError('连接社区服务器失败，请检查网络后重试', { kind: 'network' })
+      throw new CloudBagApiError('连接云仓库服务器失败，请检查网络后重试', { kind: 'network' })
     } finally {
       clearTimeout(timer)
     }
@@ -596,9 +596,9 @@ export function createCloudBagApi(
         if (error instanceof CloudBagApiError) throw error
         const auth = bridgeAuthError(error, onUnauthorized)
         if (auth) throw auth
-        if (error instanceof DOMException && error.name === 'AbortError') throw new CloudBagApiError('社区服务器请求超时', { kind: 'timeout' })
-        if (error instanceof Error && /超时/.test(error.message)) throw new CloudBagApiError('社区服务器请求超时', { kind: 'timeout' })
-        throw new CloudBagApiError('连接社区服务器失败，请检查网络后重试', { kind: 'network' })
+        if (error instanceof DOMException && error.name === 'AbortError') throw new CloudBagApiError('云仓库服务器请求超时', { kind: 'timeout' })
+        if (error instanceof Error && /超时/.test(error.message)) throw new CloudBagApiError('云仓库服务器请求超时', { kind: 'timeout' })
+        throw new CloudBagApiError('连接云仓库服务器失败，请检查网络后重试', { kind: 'network' })
       } finally {
         clearTimeout(timer)
       }
@@ -736,7 +736,7 @@ export function createCloudBagApi(
         if (auth) throw auth
         if (error instanceof DOMException && error.name === 'AbortError') throw new CloudBagApiError('导出下载超时', { kind: 'timeout' })
         if (error instanceof Error && /超时/.test(error.message)) throw new CloudBagApiError('导出下载超时', { kind: 'timeout' })
-        throw new CloudBagApiError('连接社区服务器失败，请检查网络后重试', { kind: 'network' })
+        throw new CloudBagApiError('连接云仓库服务器失败，请检查网络后重试', { kind: 'network' })
       } finally {
         clearTimeout(timer)
       }

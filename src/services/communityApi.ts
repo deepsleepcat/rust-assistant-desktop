@@ -11,7 +11,6 @@ export const DEFAULT_COMMUNITY_ENDPOINT = getCommunityEndpoint()
 const MAX_ENDPOINT_LENGTH = 500
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024
-const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024
 const COMMUNITY_AVATAR_PATH = /^\/api\/avatar\/[A-Za-z0-9]{48}\.png$/
 const REQUEST_TIMEOUT_MS = 15_000
 
@@ -52,129 +51,6 @@ export interface CommunityRegistrationOptions {
   verificationCode?: string
 }
 
-export interface CommunityPage<T> {
-  items: T[]
-  total: number
-  page: number
-  page_size: number
-}
-
-export type CommunityBoard = string | { id?: string; name?: string; title?: string; post_count?: number }
-export interface CommunityTag {
-  name: string
-  usage_count?: number
-  post_count?: number
-}
-
-export interface CommunityPost {
-  id: number
-  board: string
-  title: string
-  body: string
-  author_user_id: number
-  author_name: string
-  status?: string
-  resource_count?: number
-  comment_count?: number
-  created_at: number
-  updated_at: number
-  content_type?: 'discussion' | 'dynamic' | 'question' | 'article' | string
-  tags?: string[]
-  view_count?: number
-  like_count?: number
-  featured?: boolean
-  pinned?: boolean
-  accepted_comment_id?: number | null
-  liked?: boolean
-  favorite_count?: number
-  favorited?: boolean
-  following?: boolean
-}
-
-export interface CommunityComment {
-  id: number
-  post_id: number
-  author_user_id: number
-  author_name: string
-  body: string
-  created_at: number
-  updated_at: number
-  status?: string
-  accepted?: boolean
-}
-
-export interface CommunityResource {
-  id: number
-  post_id: number
-  author_user_id: number
-  display_name: string
-  content_type: string
-  size: number
-  sha256: string
-  status?: string
-  download_count?: number
-  created_at: number
-  download_url?: string
-}
-
-export interface CommunityPostDetail extends CommunityPost {
-  resources?: CommunityResource[]
-}
-
-export interface CommunityModerationComment extends CommunityComment {
-  parent_post?: CommunityPost
-}
-
-export interface CommunityModerationResource extends CommunityResource {
-  parent_post?: CommunityPost
-}
-
-export interface CommunityRankingItem {
-  id?: number
-  post_id?: number
-  author_user_id?: number
-  title?: string
-  author_name?: string
-  score?: number
-  count?: number
-  like_count?: number
-  download_count?: number
-  comment_count?: number
-  post_count?: number
-}
-
-export type CommunityTimeRange = 'all' | '7d' | '30d' | '90d' | '365d'
-export interface CommunityRankingPage {
-  items: CommunityRankingItem[]
-  type?: string
-  range?: CommunityTimeRange
-  metric?: string
-  coverage?: 'complete' | 'partial' | 'unavailable'
-  reason?: string | null
-}
-
-export interface CommunityGrowth {
-  growth_public: boolean
-  points_available: boolean
-  points: number | null
-  message: string
-  sources: Array<{ source: string; count: number; points: number | null }>
-}
-
-export type PostFeed = 'all' | 'hot' | 'featured' | 'dynamic' | 'question' | 'article'
-
-export interface ListPostsOptions {
-  board?: string
-  keyword?: string
-  feed?: PostFeed
-  tag?: string
-  sort?: 'latest' | 'likes' | 'favorites'
-  range?: 'all' | '7d' | '30d' | '90d' | '365d'
-  onlyMods?: boolean
-  page?: number
-  pageSize?: number
-}
-
 export class CommunityApiError extends Error {
   readonly status: number
   readonly code: 'http' | 'business' | 'network' | 'invalid_response' | 'invalid_endpoint'
@@ -192,7 +68,7 @@ export class CommunityApiError extends Error {
 export function normalizeCommunityEndpoint(input: string): string {
   const value = input.trim().replace(/\/+$/, '')
   if (!value || value.length > MAX_ENDPOINT_LENGTH || !/^https?:\/\//i.test(value)) {
-    throw new CommunityApiError('社区服务器地址必须是 http:// 或 https:// 地址', { code: 'invalid_endpoint' })
+    throw new CommunityApiError('云仓库服务器地址必须是 http:// 或 https:// 地址', { code: 'invalid_endpoint' })
   }
   try {
     const url = new URL(value)
@@ -200,7 +76,7 @@ export function normalizeCommunityEndpoint(input: string): string {
     if (!isAllowedCommunityEndpoint(url.origin)) throw new Error('untrusted origin')
     return url.toString().replace(/\/+$/, '')
   } catch {
-    throw new CommunityApiError('社区服务器地址格式无效', { code: 'invalid_endpoint' })
+    throw new CommunityApiError('云仓库服务器地址格式无效', { code: 'invalid_endpoint' })
   }
 }
 
@@ -227,10 +103,10 @@ function headerValue(headers: Headers, name: string): string | undefined {
 
 async function readLimitedBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
   const length = Number(response.headers.get('content-length') ?? '')
-  if (Number.isFinite(length) && length > maxBytes) throw new CommunityApiError('社区服务器响应过大', { code: 'invalid_response' })
+  if (Number.isFinite(length) && length > maxBytes) throw new CommunityApiError('云仓库服务器响应过大', { code: 'invalid_response' })
   if (!response.body) {
     const bytes = new Uint8Array(await response.arrayBuffer())
-    if (bytes.byteLength > maxBytes) throw new CommunityApiError('社区服务器响应过大', { code: 'invalid_response' })
+    if (bytes.byteLength > maxBytes) throw new CommunityApiError('云仓库服务器响应过大', { code: 'invalid_response' })
     return bytes
   }
   const reader = response.body.getReader()
@@ -244,7 +120,7 @@ async function readLimitedBytes(response: Response, maxBytes: number): Promise<U
       total += chunk.byteLength
       if (total > maxBytes) {
         await reader.cancel()
-        throw new CommunityApiError('社区服务器响应过大', { code: 'invalid_response' })
+        throw new CommunityApiError('云仓库服务器响应过大', { code: 'invalid_response' })
       }
       chunks.push(chunk)
     }
@@ -265,9 +141,9 @@ async function readLimitedText(response: Response, maxBytes: number): Promise<st
 }
 
 function errorMessage(status: number, message: string): string {
-  if (status === 401) return '社区登录已失效，请重新登录'
-  if (status === 403) return message || '当前账号未完成社区认证，暂不能执行此操作'
-  return message || `社区服务器请求失败（HTTP ${status}）`
+  if (status === 401) return '云仓库登录已失效，请重新登录'
+  if (status === 403) return message || '当前账号未完成邮箱认证，暂不能执行此操作'
+  return message || `云仓库服务器请求失败（HTTP ${status}）`
 }
 
 async function defaultCommunityFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -280,7 +156,7 @@ async function defaultCommunityFetch(input: RequestInfo | URL, init?: RequestIni
     headers.forEach((value, key) => { requestHeaders[key] = value })
     const form = init?.body instanceof FormData ? init.body : null
     const file = form?.get('file')
-    if (form && !(file instanceof File)) throw new CommunityApiError('社区附件无效', { code: 'invalid_response' })
+    if (form && !(file instanceof File)) throw new CommunityApiError('云仓库附件无效', { code: 'invalid_response' })
     const upload = file instanceof File
       ? { name: file.name, type: file.type, bytes: await file.arrayBuffer() }
       : undefined
@@ -333,13 +209,13 @@ export function createCommunityApi(
       try {
         payload = text ? JSON.parse(text) as CommunityApiEnvelope<T> : null
       } catch {
-        throw new CommunityApiError('社区服务器返回了无效数据', { status: response.status, code: 'invalid_response', requestId })
+        throw new CommunityApiError('云仓库服务器返回了无效数据', { status: response.status, code: 'invalid_response', requestId })
       }
       if (!response.ok) {
         throw new CommunityApiError(errorMessage(response.status, payload?.message ?? ''), { status: response.status, code: 'http', requestId })
       }
       if (!payload || payload.success !== true) {
-        throw new CommunityApiError(errorMessage(response.status, payload?.message ?? '社区服务器拒绝了请求'), { status: response.status, code: 'business', requestId })
+        throw new CommunityApiError(errorMessage(response.status, payload?.message ?? '云仓库服务器拒绝了请求'), { status: response.status, code: 'business', requestId })
       }
       return payload.data as T
     } catch (error) {
@@ -347,8 +223,8 @@ export function createCommunityApi(
         if (error.status === 401) onUnauthorized?.()
         throw error
       }
-      if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('社区服务器请求超时', { code: 'network' })
-      throw new CommunityApiError('无法连接社区服务器，请检查网络或服务器地址', { code: 'network' })
+      if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('云仓库服务器请求超时', { code: 'network' })
+      throw new CommunityApiError('无法连接云仓库服务器，请检查网络或服务器地址', { code: 'network' })
     } finally {
       clearTimeout(timer)
     }
@@ -368,12 +244,12 @@ export function createCommunityApi(
         const response = await fetchImpl(`${base}/health`, { headers: { Accept: 'application/json' }, signal: controller.signal })
         const text = await readLimitedText(response, 64 * 1024)
         const data = JSON.parse(text) as CommunityHealth
-        if (!response.ok || data.ok !== true) throw new CommunityApiError(data.message || '社区服务器不可用', { status: response.status, code: 'http' })
+        if (!response.ok || data.ok !== true) throw new CommunityApiError(data.message || '云仓库服务器不可用', { status: response.status, code: 'http' })
         return { ok: true, message: data.message || 'ok', version: data.version }
       } catch (error) {
         if (error instanceof CommunityApiError) throw error
-        if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('社区服务器请求超时', { code: 'network' })
-        throw new CommunityApiError('无法连接社区服务器，请检查网络或服务器地址', { code: 'network' })
+        if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('云仓库服务器请求超时', { code: 'network' })
+        throw new CommunityApiError('无法连接云仓库服务器，请检查网络或服务器地址', { code: 'network' })
       } finally {
         clearTimeout(timer)
       }
@@ -413,103 +289,21 @@ export function createCommunityApi(
         if (authToken) headers.set('Authorization', `Bearer ${authToken}`)
         const response = await fetchImpl(resolved, requestInit)
         if (response.status === 401) onUnauthorized?.()
-        if (!response.ok) throw new CommunityApiError('社区头像加载失败', { status: response.status, code: 'http' })
+        if (!response.ok) throw new CommunityApiError('云仓库头像加载失败', { status: response.status, code: 'http' })
         const contentType = response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() ?? ''
-        if (contentType !== 'image/png') throw new CommunityApiError('社区头像格式无效', { status: response.status, code: 'invalid_response' })
+        if (contentType !== 'image/png') throw new CommunityApiError('云仓库头像格式无效', { status: response.status, code: 'invalid_response' })
         const bytes = await readLimitedBytes(response, MAX_AVATAR_BYTES)
         const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10]
         if (bytes.byteLength < pngSignature.length || !pngSignature.every((value, index) => bytes[index] === value)) {
-          throw new CommunityApiError('社区头像内容无效', { status: response.status, code: 'invalid_response' })
+          throw new CommunityApiError('云仓库头像内容无效', { status: response.status, code: 'invalid_response' })
         }
         const copy = new Uint8Array(bytes.byteLength)
         copy.set(bytes)
         return { bytes: copy.buffer, contentType }
       } catch (error) {
         if (error instanceof CommunityApiError) throw error
-        if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('社区头像加载超时', { code: 'network' })
-        throw new CommunityApiError('社区头像加载失败', { code: 'network' })
-      } finally {
-        clearTimeout(timer)
-      }
-    },
-    boards: async () => {
-      const data = await request<{ items?: CommunityBoard[] }>('/api/community/boards', {}, { auth: false })
-      return Array.isArray(data) ? data : (data.items ?? [])
-    },
-    tags: (keyword = '', page = 1, pageSize = 50) => request<CommunityPage<CommunityTag>>(`/api/community/tags?${query({ keyword, page, page_size: pageSize })}`, {}, { auth: false }),
-    posts: (options: ListPostsOptions = {}) => request<CommunityPage<CommunityPost>>(`/api/community/posts?${query({ board: options.board, keyword: options.keyword, feed: options.feed, tag: options.tag, sort: options.sort, range: options.range, only_mods: options.onlyMods ? 1 : undefined, page: options.page ?? 1, page_size: options.pageSize ?? 12 })}`),
-    following: (page = 1, pageSize = 12) => request<CommunityPage<CommunityPost>>(`/api/community/posts/following?${query({ page, page_size: pageSize })}`),
-    mine: (page = 1, pageSize = 12) => request<CommunityPage<CommunityPost>>(`/api/community/posts/mine?${query({ page, page_size: pageSize })}`),
-    post: (id: number) => request<CommunityPostDetail>(`/api/community/posts/${encodeURIComponent(id)}`),
-    comments: (postId: number, page = 1, pageSize = 50) => request<CommunityPage<CommunityComment>>(`/api/community/posts/${encodeURIComponent(postId)}/comments?${query({ page, page_size: pageSize })}`, {}, { auth: false }),
-    rankingPage: async (type: 'posts' | 'authors' | 'mods', range: CommunityTimeRange = 'all'): Promise<CommunityRankingPage> => {
-      const data = await request<CommunityRankingPage | CommunityRankingItem[]>(`/api/community/rankings?${query({ type, range })}`, {}, { auth: false })
-      return Array.isArray(data) ? { items: data } : data
-    },
-    rankings: async (type: 'posts' | 'authors' | 'mods', range: CommunityTimeRange = 'all') => {
-      const data = await request<{ items?: CommunityRankingItem[]; type?: string } | CommunityRankingItem[]>(`/api/community/rankings?${query({ type, range })}`, {}, { auth: false })
-      return Array.isArray(data) ? data : (data.items ?? [])
-    },
-    profile: () => request<{ nickname: string; source: string }>('/api/community/account/profile'),
-    setNickname: (nickname: string) => json<{ nickname: string; source: string }>('/api/community/account/profile', 'PUT', { nickname }),
-    growth: () => request<CommunityGrowth>('/api/community/profile/growth'),
-    setGrowthPublic: (growthPublic: boolean) => json<CommunityGrowth>('/api/community/profile/growth', 'PUT', { growth_public: growthPublic }),
-    favorite: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}/favorite`, { method: 'POST' }),
-    unfavorite: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}/favorite`, { method: 'DELETE' }),
-    createPost: (body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }) => json<CommunityPost>('/api/community/posts', 'POST', body),
-    updatePost: (id: number, body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }) => json<CommunityPost>(`/api/community/posts/${encodeURIComponent(id)}`, 'PUT', body),
-    deletePost: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-    setPostCuration: (id: number, body: { featured?: boolean; pinned?: boolean; reason: string }) => json<{ featured: boolean; pinned: boolean; changed: boolean }>(`/api/community/moderation/posts/${encodeURIComponent(id)}/curation`, 'PUT', body),
-    moderatePost: (id: number, body: { status: 'visible' | 'hidden'; reason: string }) => json<null>(`/api/community/moderation/posts/${encodeURIComponent(id)}`, 'PUT', body),
-    moderationPosts: (status: 'visible' | 'hidden' | 'all' = 'hidden', page = 1, pageSize = 20) => request<CommunityPage<CommunityPost>>(`/api/community/moderation/posts?${query({ status, page, page_size: pageSize })}`),
-    moderationComments: (status: 'visible' | 'hidden' | 'all' = 'hidden', page = 1, pageSize = 20) => request<CommunityPage<CommunityModerationComment>>(`/api/community/moderation/comments?${query({ status, page, page_size: pageSize })}`),
-    moderationResources: (status: 'visible' | 'hidden' | 'all' = 'hidden', page = 1, pageSize = 20) => request<CommunityPage<CommunityModerationResource>>(`/api/community/moderation/resources?${query({ status, page, page_size: pageSize })}`),
-    moderateComment: (id: number, body: { status: 'visible' | 'hidden'; reason: string }) => json<null>(`/api/community/moderation/comments/${encodeURIComponent(id)}`, 'PUT', body),
-    moderateResource: (id: number, body: { status: 'visible' | 'hidden'; reason: string }) => json<null>(`/api/community/moderation/resources/${encodeURIComponent(id)}`, 'PUT', body),
-    uploadResource: async (postId: number, file: File) => {
-      const form = new FormData()
-      form.append('file', file, file.name)
-      return request<CommunityResource>(`/api/community/posts/${encodeURIComponent(postId)}/resources`, { method: 'POST', body: form })
-    },
-    deleteResource: (id: number) => request<null>(`/api/community/resources/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-    createComment: (postId: number, body: string) => json<CommunityComment>(`/api/community/posts/${encodeURIComponent(postId)}/comments`, 'POST', { body }),
-    updateComment: (id: number, body: string) => json<CommunityComment>(`/api/community/comments/${encodeURIComponent(id)}`, 'PUT', { body }),
-    deleteComment: (id: number) => request<null>(`/api/community/comments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-    acceptComment: (postId: number, commentId: number) => json<{ accepted: boolean; changed: boolean; comment_id: number }>(`/api/community/posts/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}/accept`, 'PUT', {}),
-    like: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}/like`, { method: 'POST' }),
-    unlike: (id: number) => request<null>(`/api/community/posts/${encodeURIComponent(id)}/like`, { method: 'DELETE' }),
-    follow: (id: number) => request<null>(`/api/community/authors/${encodeURIComponent(id)}/follow`, { method: 'POST' }),
-    unfollow: (id: number) => request<null>(`/api/community/authors/${encodeURIComponent(id)}/follow`, { method: 'DELETE' }),
-    download: async (id: number) => {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 60_000)
-      try {
-        const headers = new Headers({ Accept: '*/*' })
-        if (authToken) headers.set('Authorization', `Bearer ${authToken}`)
-        const requestInit: RequestInit & { authenticated?: boolean } = { headers, signal: controller.signal, authenticated: true }
-        const response = await fetchImpl(`${base}/api/community/resources/${encodeURIComponent(id)}/download`, requestInit)
-        const length = Number(response.headers.get('content-length') ?? '')
-        if (Number.isFinite(length) && length > MAX_DOWNLOAD_BYTES) throw new CommunityApiError('下载资源超过 50 MiB 限制', { status: response.status, code: 'invalid_response' })
-        if (!response.ok) {
-          const text = await readLimitedText(response, 64 * 1024)
-          let message = ''
-          try { message = (JSON.parse(text) as { message?: string }).message ?? '' } catch { /* 附件错误可能不是 JSON */ }
-          const error = new CommunityApiError(errorMessage(response.status, message), { status: response.status, code: 'http' })
-          if (response.status === 401) onUnauthorized?.()
-          throw error
-        }
-        const bytes = await readLimitedBytes(response, MAX_DOWNLOAD_BYTES)
-        const blob = new Blob([bytes.buffer as ArrayBuffer], { type: response.headers.get('content-type') ?? '' })
-        const disposition = response.headers.get('content-disposition') ?? ''
-        const filenamePart = disposition.split(';').find((part) => part.trim().toLowerCase().startsWith('filename=') || part.trim().toLowerCase().startsWith('filename*='))
-        const rawFilename = filenamePart ? filenamePart.slice(filenamePart.indexOf('=') + 1).trim().replace(/^UTF-8''/i, '').replace(/^"|"$/g, '') : 'community-resource'
-        const decodedFilename = decodeURIComponent(rawFilename)
-        const filename = decodedFilename.replace(/[\\/\0\r\n]/g, '_').replace(/^\.+$/, '_').slice(0, 180) || 'community-resource'
-        return { blob, filename, contentType: response.headers.get('content-type') ?? blob.type }
-      } catch (error) {
-        if (error instanceof CommunityApiError) throw error
-        if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('资源下载超时', { code: 'network' })
-        throw new CommunityApiError('资源下载失败', { code: 'network' })
+        if (error instanceof DOMException && error.name === 'AbortError') throw new CommunityApiError('云仓库头像加载超时', { code: 'network' })
+        throw new CommunityApiError('云仓库头像加载失败', { code: 'network' })
       } finally {
         clearTimeout(timer)
       }
@@ -535,40 +329,4 @@ export interface CommunityApi {
   logout(): Promise<null>
   me(): Promise<CommunityUser>
   avatar(value: string | undefined): Promise<{ bytes: ArrayBuffer; contentType: string } | null>
-  boards(): Promise<CommunityBoard[]>
-  tags(keyword?: string, page?: number, pageSize?: number): Promise<CommunityPage<CommunityTag>>
-  posts(options?: ListPostsOptions): Promise<CommunityPage<CommunityPost>>
-  following(page?: number, pageSize?: number): Promise<CommunityPage<CommunityPost>>
-  mine(page?: number, pageSize?: number): Promise<CommunityPage<CommunityPost>>
-  post(id: number): Promise<CommunityPostDetail>
-  comments(postId: number, page?: number, pageSize?: number): Promise<CommunityPage<CommunityComment>>
-  rankingPage(type: 'posts' | 'authors' | 'mods', range?: CommunityTimeRange): Promise<CommunityRankingPage>
-  rankings(type: 'posts' | 'authors' | 'mods', range?: CommunityTimeRange): Promise<CommunityRankingItem[]>
-  profile(): Promise<{ nickname: string; source: string }>
-  setNickname(nickname: string): Promise<{ nickname: string; source: string }>
-  growth(): Promise<CommunityGrowth>
-  setGrowthPublic(growthPublic: boolean): Promise<CommunityGrowth>
-  favorite(id: number): Promise<null>
-  unfavorite(id: number): Promise<null>
-  createPost(body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }): Promise<CommunityPost>
-  updatePost(id: number, body: { board: string; title: string; body: string; content_type?: string; tags?: string[] }): Promise<CommunityPost>
-  deletePost(id: number): Promise<null>
-  setPostCuration(id: number, body: { featured?: boolean; pinned?: boolean; reason: string }): Promise<{ featured: boolean; pinned: boolean; changed: boolean }>
-  moderatePost(id: number, body: { status: 'visible' | 'hidden'; reason: string }): Promise<null>
-  moderationPosts(status?: 'visible' | 'hidden' | 'all', page?: number, pageSize?: number): Promise<CommunityPage<CommunityPost>>
-  moderationComments(status?: 'visible' | 'hidden' | 'all', page?: number, pageSize?: number): Promise<CommunityPage<CommunityModerationComment>>
-  moderationResources(status?: 'visible' | 'hidden' | 'all', page?: number, pageSize?: number): Promise<CommunityPage<CommunityModerationResource>>
-  moderateComment(id: number, body: { status: 'visible' | 'hidden'; reason: string }): Promise<null>
-  moderateResource(id: number, body: { status: 'visible' | 'hidden'; reason: string }): Promise<null>
-  uploadResource(postId: number, file: File): Promise<CommunityResource>
-  deleteResource(id: number): Promise<null>
-  createComment(postId: number, body: string): Promise<CommunityComment>
-  updateComment(id: number, body: string): Promise<CommunityComment>
-  deleteComment(id: number): Promise<null>
-  acceptComment(postId: number, commentId: number): Promise<{ accepted: boolean; changed: boolean; comment_id: number }>
-  like(id: number): Promise<null>
-  unlike(id: number): Promise<null>
-  follow(id: number): Promise<null>
-  unfollow(id: number): Promise<null>
-  download(id: number): Promise<{ blob: Blob; filename: string; contentType: string }>
 }

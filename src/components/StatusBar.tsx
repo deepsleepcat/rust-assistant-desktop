@@ -24,7 +24,7 @@ export function StatusBar() {
         <span className="sb-item">行 {editorPos.line}，列 {editorPos.col}</span>
         {dirtyCount > 0 && <span className="sb-item sb-dirty">未保存 {dirtyCount}</span>}
       </>}
-      <span className="sb-item sb-connection" title={authStatus === 'signed_in' ? '社区账号已连接' : '社区账号未连接'}>
+      <span className="sb-item sb-connection" title={authStatus === 'signed_in' ? '云仓库账号已连接' : '云仓库账号未连接'}>
         <span className={`sb-dot ${authStatus === 'signed_in' ? 'online' : ''}`} aria-hidden="true" />
         {authStatus === 'signed_in' ? '已连接' : '离线可用'}
       </span>

@@ -274,7 +274,7 @@ export function isForeignAnchor(anchor: CloudBagAnchor | null, repoSlug: string)
   return anchor !== null && anchor.repoSlug !== repoSlug
 }
 
-/** 社区网页端仓库深链（纯逻辑，放这里以避免 CloudBagPanel ↔ CloudBagRepoView 循环 import） */
+/** 云仓库网页端仓库深链（纯逻辑，放这里以避免 CloudBagPanel ↔ CloudBagRepoView 循环 import） */
 export function repoDeepLink(endpoint: string, slug: string): string {
   try {
     return `${new URL(endpoint).origin}/community/repos/${encodeURIComponent(slug)}`
@@ -301,19 +301,19 @@ export interface GateUser {
 
 export function cloudBagGate(status: CommunityGateStatus, user: GateUser | null): CloudBagGate {
   if (status === 'offline') {
-    return { canBrowse: false, canWrite: false, notice: '当前处于离线模式，云书包需要连接社区服务器后使用。' }
+    return { canBrowse: false, canWrite: false, notice: '当前处于离线模式，云书包需要连接云仓库服务器后使用。' }
   }
   // 非 signed_in 状态必须各自如实回文案（桌面契约 §8:245：网络层失败单独文案），
-  // 不得把认证失败/检查中/加载中都折叠成「登录社区账号后…」——那会把网络故障
+  // 不得把认证失败/检查中/加载中都折叠成「登录云仓库账号后…」——那会把网络故障
   // 误导成「只是没登录」，用户反复登录也解决不了。
   if (status === 'error') {
-    return { canBrowse: false, canWrite: false, notice: '连接社区服务器失败，请检查网络或社区服务器地址后重试。' }
+    return { canBrowse: false, canWrite: false, notice: '连接云仓库服务器失败，请检查网络或云仓库服务器地址后重试。' }
   }
   if (status === 'checking' || status === 'loading') {
-    return { canBrowse: false, canWrite: false, notice: '正在检查社区登录状态，请稍候…' }
+    return { canBrowse: false, canWrite: false, notice: '正在检查云仓库登录状态，请稍候…' }
   }
   if (status !== 'signed_in') {
-    return { canBrowse: false, canWrite: false, notice: '登录社区账号后可使用云书包管理你的模组仓库。' }
+    return { canBrowse: false, canWrite: false, notice: '登录云仓库账号后可使用云书包管理你的模组仓库。' }
   }
   const verified = user?.status === 1 && Boolean(user.email?.trim()) && user.email_verified === true
   if (!verified) {

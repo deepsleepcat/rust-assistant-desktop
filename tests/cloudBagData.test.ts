@@ -291,8 +291,8 @@ describe('cloudBagGate（离线/未登录/未验证不可互相误导）', () =>
   it('网络层失败（error）：单独文案，不得误导成「只是没登录」', () => {
     const gate = cloudBagGate('error', null)
     expect(gate).toMatchObject({ canBrowse: false, canWrite: false })
-    expect(gate.notice).toContain('连接社区服务器失败')
-    expect(gate.notice).not.toContain('登录社区账号后可使用')
+    expect(gate.notice).toContain('连接云仓库服务器失败')
+    expect(gate.notice).not.toContain('登录云仓库账号后可使用')
   })
   it('检查中（checking/loading）：如实回报进行态，不得折叠成未登录引导', () => {
     for (const status of ['checking', 'loading'] as const) {

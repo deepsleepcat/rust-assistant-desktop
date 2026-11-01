@@ -4,7 +4,7 @@ import type { WorkspaceSurface } from '../../stores/types'
 import { surfaceDirection, surfaceLabel } from './shellContract'
 import { useDesktopPreferences } from './desktopPreferences'
 
-const SURFACES: readonly WorkspaceSurface[] = ['editor', 'dashboard', 'community', 'cloudBag', 'settings']
+const SURFACES: readonly WorkspaceSurface[] = ['editor', 'dashboard', 'cloudBag', 'settings']
 
 /** Activity retains local state and pauses effects (including hidden dialog traps). */
 export function SurfaceDeck({ pages }: { pages: Record<WorkspaceSurface, ReactNode> }) {

@@ -17,6 +17,7 @@ import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
 import { isPathInside, normalizePath } from './paths'
 import {
+  ENGINE_DLC_LIMITS,
   engineDlcDir,
   readEngineDlcDir,
   runEngineDlcRender,
@@ -27,6 +28,7 @@ import {
 } from './engineDlc'
 import { grantEngineDlc, isEngineDlcAllowed, revokeEngineDlc, snapshotEngineDlc, sameEngineDlcGrant } from './engineDlcTrust'
 import { EngineDlcHost } from './engineDlcHost'
+import { EngineDlcSessionManager, type DlcSessionUpdateRequest } from './engineDlcSession'
 
 /** 界面传来的布尔值一律重新收敛（IPC 参数不可信） */
 function asBoolean(value: unknown): boolean {
@@ -44,6 +46,8 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
   /** 指定目录（userData 由主进程提供，渲染层无法影响其位置） */
   const rootOf = (): string => engineDlcDir(ctx.app.getPath('userData'))
   const host = new EngineDlcHost()
+  /** 0.2.2 常驻会话管理器：每个编辑器 owner 最多一个会话，sender 销毁即杀 */
+  const sessions = new EngineDlcSessionManager()
   const owners = new Set<number>()
   let grantEpoch = 0
 
@@ -87,6 +91,7 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     if (!asBoolean(enabled)) {
       revokeEngineDlc(ctx, dlcId)
       host.cancelAll()
+      sessions.cancelAll()
       return { ok: true, enabled: false }
     }
     const root = rootOf()
@@ -201,7 +206,7 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     if (event?.sender?.isDestroyed()) return { ok: false, reason: '预览窗口已关闭' }
     if (event?.sender && !owners.has(owner)) {
       owners.add(owner)
-      event.sender.once('destroyed', () => { host.cancel(owner); owners.delete(owner) })
+      event.sender.once('destroyed', () => { host.cancel(owner); sessions.cancelAll(); owners.delete(owner) })
     }
     const input = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
     const requestId = typeof input.requestId === 'string' ? input.requestId : 'legacy'
@@ -211,5 +216,170 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       return { ok: false, reason: '引擎渲染已取消' }
     }
     return host.run(owner, requestId, (signal) => render(signal, payload))
+  })
+
+  // ── 0.2.2 常驻会话（炮塔拖动实时预览）───────────────────────────────────
+  // 会话链路不收任何可执行路径：用哪个 DLC 由主进程从「已授权且带 session-host.cjs」
+  // 的集合里挑选（优先 0.2.2+ 目录）；渲染层传的字段全部是「要画什么」。
+
+  const asFinite = (value: unknown, limit: number): number | null =>
+    typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= limit ? value : null
+
+  /** 收敛会话视图（拖动编辑固定静态模式；不接受 frame/timeMs/turretAngle） */
+  const asSessionView = (value: unknown): { ok: true; view: Record<string, unknown> } | { ok: false; reason: string } => {
+    if (value === undefined) return { ok: true, view: {} }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return { ok: false, reason: '会话视图参数无效' }
+    const input = value as Record<string, unknown>
+    const view: Record<string, unknown> = {}
+    if (input.direction !== undefined) {
+      const direction = asInt(input.direction, 0, 3599)
+      if (direction === null) return { ok: false, reason: '会话朝向超出允许范围' }
+      view.direction = direction
+    }
+    if (input.animationState !== undefined) {
+      if (typeof input.animationState !== 'string' || !['idle', 'moving', 'attack'].includes(input.animationState)) {
+        return { ok: false, reason: '动画状态无效' }
+      }
+      view.animationState = input.animationState
+    }
+    if (input.showWreck !== undefined) view.showWreck = asBoolean(input.showWreck)
+    if (input.team !== undefined) {
+      const team = asInt(input.team, -1, 9)
+      if (team === null) return { ok: false, reason: '队伍参数超出允许范围' }
+      view.team = team
+    }
+    if (input.position !== undefined) {
+      if (!input.position || typeof input.position !== 'object') return { ok: false, reason: '位置参数无效' }
+      const position = input.position as Record<string, unknown>
+      const x = asFinite(position.x, 1000000)
+      const y = asFinite(position.y, 1000000)
+      if (x === null || y === null) return { ok: false, reason: '位置参数超出允许范围' }
+      view.position = { x, y }
+    }
+    for (const banned of ['frame', 'timeMs', 'turretAngle']) {
+      if (input[banned] !== undefined) return { ok: false, reason: `会话编辑不支持 ${banned}（仅静态预览）` }
+    }
+    return { ok: true, view }
+  }
+
+  const asSessionSize = (value: unknown): { ok: true; size: { width: number; height: number } } | { ok: false; reason: string } => {
+    if (value === undefined) return { ok: true, size: { width: 480, height: 360 } }
+    if (!value || typeof value !== 'object') return { ok: false, reason: '会话尺寸参数无效' }
+    const input = value as Record<string, unknown>
+    const width = asInt(input.width, 1, 4096)
+    const height = asInt(input.height, 1, 4096)
+    if (width === null || height === null) return { ok: false, reason: '会话尺寸超出允许范围（1..4096）' }
+    return { ok: true, size: { width, height } }
+  }
+
+  const asTurretOverrides = (value: unknown): { ok: true; overrides: Array<{ index: number; worldX: number; worldY: number }> } | { ok: false; reason: string } => {
+    if (value === undefined) return { ok: true, overrides: [] }
+    if (!Array.isArray(value)) return { ok: false, reason: '炮塔覆盖参数必须是数组' }
+    if (value.length > 64) return { ok: false, reason: '炮塔覆盖一次最多 64 个' }
+    const overrides: Array<{ index: number; worldX: number; worldY: number }> = []
+    const seen = new Set<number>()
+    for (const item of value) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return { ok: false, reason: '炮塔覆盖项无效' }
+      const input = item as Record<string, unknown>
+      const index = asInt(input.index, 1, 64)
+      const worldX = asFinite(input.worldX, 1000000)
+      const worldY = asFinite(input.worldY, 1000000)
+      if (index === null || worldX === null || worldY === null) return { ok: false, reason: '炮塔覆盖数值超出允许范围' }
+      if (seen.has(index)) return { ok: false, reason: `炮塔 ${index} 重复覆盖` }
+      seen.add(index)
+      overrides.push({ index, worldX, worldY })
+    }
+    return { ok: true, overrides }
+  }
+
+  /** 找「已授权且带会话宿主」的 DLC：按目录名序稳定选择第一个可用项 */
+  const surveySessionDlc = async (): Promise<{ dlc: ResolvedEngineDlc; sessionHostPath: string } | { reason: string }> => {
+    const root = rootOf()
+    const { items } = await scanEngineDlcDir(root)
+    for (const item of items) {
+      if (!item.dlc || !item.dlc.sessionHostPath) continue
+      if (!(await isEngineDlcAllowed(ctx, item.dlc))) continue
+      return { dlc: item.dlc, sessionHostPath: item.dlc.sessionHostPath }
+    }
+    return { reason: '没有支持常驻会话的已授权引擎 DLC（需要 0.2.2+ 并在设置中授权）' }
+  }
+
+  ipc('dlc:sessionOpen', async (event: Electron.IpcMainInvokeEvent | undefined, payload: unknown) => {
+    const owner = event?.sender?.id ?? 0
+    if (event?.sender?.isDestroyed()) return { ok: false, reason: '编辑器窗口已关闭' }
+    if (event?.sender && !owners.has(owner)) {
+      owners.add(owner)
+      event.sender.once('destroyed', () => { void sessions.close(owner); owners.delete(owner) })
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { ok: false, reason: '会话参数无效' }
+    const input = payload as Record<string, unknown>
+
+    const projectRoot = input.projectRoot
+    if (typeof projectRoot !== 'string' || !projectRoot) return { ok: false, reason: '项目目录为空' }
+    const normalizedRoot = normalizePath(projectRoot)
+    if (!ctx.roots.has(normalizedRoot)) return { ok: false, reason: '项目目录未登记，无法打开引擎会话' }
+
+    const unitFile = input.unitFile
+    if (typeof unitFile !== 'string' || !unitFile) return { ok: false, reason: '单位文件路径为空' }
+    let absUnit: string
+    try {
+      const realRoot = await fs.realpath(normalizedRoot)
+      absUnit = await fs.realpath(path.resolve(unitFile))
+      if (!isPathInside(realRoot, absUnit)) return { ok: false, reason: '单位文件链接指向项目目录外，已拒绝' }
+    } catch {
+      return { ok: false, reason: '无法校验单位文件真实路径，已拒绝' }
+    }
+
+    const unitContent = typeof input.unitContent === 'string' ? input.unitContent : ''
+    if (Buffer.byteLength(unitContent, 'utf8') > ENGINE_DLC_LIMITS.maxUnitContentBytes) return { ok: false, reason: '单位文件过大，已拒绝引擎会话' }
+
+    const view = asSessionView(input.view)
+    if (!view.ok) return view
+    const size = asSessionSize(input.size)
+    if (!size.ok) return size
+
+    const picked = await surveySessionDlc()
+    if ('reason' in picked) return { ok: false, reason: picked.reason }
+
+    // 打开前+启动时双重校验授权（防确认窗口期间被替换/撤销）
+    const fresh = await readEngineDlcDir(rootOf(), picked.dlc.id)
+    if (!fresh.ok || !fresh.dlc.sessionHostPath || !(await isEngineDlcAllowed(ctx, fresh.dlc))) {
+      return { ok: false, reason: '引擎 DLC 授权已失效，请重新授权' }
+    }
+    return sessions.open(owner, ctx.nodeRuntime, fresh.dlc.sessionHostPath, fresh.dlc.dir, fresh.dlc.id, {
+      unitFile: absUnit,
+      unitContent,
+      projectRoot: normalizedRoot,
+      view: view.view,
+      size: size.size,
+    })
+  })
+
+  ipc('dlc:sessionUpdate', async (event: Electron.IpcMainInvokeEvent | undefined, payload: unknown) => {
+    const owner = event?.sender?.id ?? 0
+    if (event?.sender?.isDestroyed()) return { ok: false, reason: '编辑器窗口已关闭' }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { ok: false, reason: '会话更新参数无效' }
+    const input = payload as Record<string, unknown>
+    const update: DlcSessionUpdateRequest = {}
+    const view = asSessionView(input.view)
+    if (!view.ok) return view
+    if (Object.keys(view.view).length > 0) update.view = view.view
+    const size = asSessionSize(input.size)
+    if (!size.ok) return size
+    if (input.size !== undefined) update.size = size.size
+    const overrides = asTurretOverrides(input.turretOverrides)
+    if (!overrides.ok) return overrides
+    if (overrides.overrides.length > 0) update.turretOverrides = overrides.overrides
+    if (input.turretOverridesReset !== undefined) {
+      if (typeof input.turretOverridesReset !== 'boolean') return { ok: false, reason: 'turretOverridesReset 必须为布尔值' }
+      update.turretOverridesReset = input.turretOverridesReset
+    }
+    return sessions.update(owner, update)
+  })
+
+  ipc('dlc:sessionClose', async (event: Electron.IpcMainInvokeEvent | undefined) => {
+    const owner = event?.sender?.id ?? 0
+    await sessions.close(owner)
+    return { ok: true }
   })
 }

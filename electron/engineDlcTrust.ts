@@ -1,8 +1,10 @@
 import crypto from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import fs from 'node:fs/promises'
+import path from 'node:path'
 import type { IpcContext } from './ipcContext'
 import type { ResolvedEngineDlc } from './engineDlc'
+import { ENGINE_DLC_SESSION_ENTRY } from './engineDlc'
 import { normalizePath } from './paths'
 
 export const ENGINE_DLC_ENABLED_KEY = 'engineDlcEnabled'
@@ -14,6 +16,13 @@ export interface EngineDlcGrant {
   execution?: string
 }
 
+/**
+ * 会话链固定文件集：会话宿主桥、会话 Node 入口、会话 Java 桥 JAR 与引擎校验清单。
+ * 全部落在 DLC 目录内；不存在的项跳过（老包没有 bridge-session.jar）。
+ * 授权指纹必须覆盖整条会话链，而不是只覆盖单帧入口——任何一处被替换都要重新授权。
+ */
+const SESSION_TRUST_FILES = [ENGINE_DLC_SESSION_ENTRY, 'render-session.cjs', 'bridge-session.jar', 'compatibility.json'] as const
+
 /** Hash all bytes, including large executables, with bounded memory. */
 export async function fingerprintEntry(entryPath: string): Promise<string> {
   const hash = crypto.createHash('sha256')
@@ -21,15 +30,42 @@ export async function fingerprintEntry(entryPath: string): Promise<string> {
   return `sha256:${hash.digest('hex')}`
 }
 
+/** 会话链指纹（相对路径 → sha256）。session-host.cjs 不存在时返回 undefined（无会话能力）。 */
+export async function fingerprintSessionChain(dir: string): Promise<Record<string, string> | undefined> {
+  const sessionHost = path.join(dir, ENGINE_DLC_SESSION_ENTRY)
+  try {
+    const st = await fs.stat(sessionHost)
+    if (!st.isFile()) return undefined
+  } catch {
+    return undefined
+  }
+  const fingerprints: Record<string, string> = {}
+  for (const relative of SESSION_TRUST_FILES) {
+    const absolute = path.join(dir, relative)
+    try {
+      const st = await fs.stat(absolute)
+      if (!st.isFile()) continue
+      fingerprints[relative] = await fingerprintEntry(absolute)
+    } catch {
+      continue
+    }
+  }
+  return fingerprints
+}
+
 export async function snapshotEngineDlc(ctx: IpcContext, dlc: ResolvedEngineDlc): Promise<EngineDlcGrant> {
   const entry = normalizePath(await fs.realpath(dlc.entryPath))
   const dir = normalizePath(await fs.realpath(dlc.dir))
+  // 会话链指纹放进 execution 快照一起比较：任何会话链文件被替换 → 指纹失配 → 需重新授权。
+  // 旧版授权快照没有该字段，DLC 升级后自然要求重新授权（符合「程序变化需重新确认」）。
+  const sessionChain = await fingerprintSessionChain(dir)
   return {
     entry,
     fingerprint: await fingerprintEntry(entry),
     execution: JSON.stringify({
       id: dlc.id, name: dlc.name, version: dlc.version, description: dlc.description,
       entry, dir, args: dlc.args, timeoutMs: dlc.timeoutMs, runtime: ctx.nodeRuntime,
+      ...(sessionChain ? { sessionChain } : {}),
     }),
   }
 }

@@ -93,6 +93,21 @@
 .tree-row .row-actions { opacity: 0; transform: translateY(-50%) translateX(3px); transition: opacity .15s ease, transform .15s ease; }
 .tree-row:hover .row-actions, .tree-row:focus-within .row-actions { opacity: 1; transform: translateY(-50%) translateX(0); }
 
+/* ── 编辑器内容入场：单位打开/标签切换时轻微淡入上浮 ─────
+   .editor-body 随 EditorPane 的 key=tabId 重新挂载而播放——只有文件身份
+   变化（打开新单位/切换标签）才触发；敲字只更新 store 不会重播。
+   fill 用 backwards：动画结束后不留 transform，避免给 CodeMirror 引入
+   常驻 stacking context（固定定位/遮罩层依赖正常文档结构）。
+   编辑器头部（路径/工具行）不参与动画，保持高密度界面框架稳定。 */
+@keyframes ra-editor-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.editor-body { animation: ra-editor-in 0.14s ease-out backwards; }
+
+/* 低性能模式：直接跳过入场动画 */
+body.ra-low-performance .editor-body { animation: none; }
+
 /* ── 减少动态效果：全部降级为即时显示 ────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -101,4 +116,5 @@
     transition-duration: .01ms !important;
   }
   .startup-panel, .startup-spinner { animation: none; }
+  .editor-body { animation: none; }
 }

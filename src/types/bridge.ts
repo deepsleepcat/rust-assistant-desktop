@@ -143,6 +143,58 @@ export interface EngineDlcRenderRequest {
 
 export type EngineDlcRenderResult = { ok: true; dataUrl: string } | { ok: false; reason: string }
 
+// ── 0.2.2 常驻会话（炮塔拖动实时预览）─────────────────────────────────
+// 会话只收「要画什么/怎么改」；DLC 的选择与可执行路径全部由主进程决定。
+
+/** DLC 会话返回的一帧（RGBA8 top-down 直 alpha，stride = width*4） */
+export interface EngineDlcSessionFrame {
+  ok: true
+  status: 'rendered' | 'stale' | 'superseded'
+  generation: number
+  latestGeneration?: number
+  size: { width: number; height: number }
+  stride?: number
+  pixelFormat?: string
+  rowOrder?: string
+  premultipliedAlpha?: boolean
+  coordinateMapping?: { originX: number; originY: number; pixelsPerUnit: number; yDirection: number }
+  worldBounds?: { x: number; y: number; width: number; height: number }
+  turrets?: Array<{
+    index: number
+    iniX: number
+    iniY: number
+    worldX: number
+    worldY: number
+    imageX: number
+    imageY: number
+    directionDegrees: number
+  }>
+  animation?: unknown
+  timing?: Record<string, number>
+  /** RGBA 原始像素（顶层向下、紧密行）；superseded/stale 帧可能为空 */
+  pixels: Uint8Array
+  bytes: number
+  sha256?: string
+}
+
+export type EngineDlcSessionResult = { ok: true; frame: EngineDlcSessionFrame } | { ok: false; reason: string }
+
+/** 会话视图（编辑器固定静态模式；不接受 frame/timeMs/turretAngle） */
+export interface EngineDlcSessionView {
+  direction?: number
+  animationState?: 'idle' | 'moving' | 'attack'
+  showWreck?: boolean
+  team?: number
+  position?: { x: number; y: number }
+}
+
+/** 炮塔位置覆盖：把 DLC 返回的炮塔锚点移动到目标世界坐标（INI 逆映射在 DLC 内完成） */
+export interface EngineDlcTurretOverride {
+  index: number
+  worldX: number
+  worldY: number
+}
+
 export interface EngineDlcApi {
   /** 列出指定目录里的 DLC 及各自状态 */
   list(): Promise<EngineDlcListResult>
@@ -153,6 +205,23 @@ export interface EngineDlcApi {
   /** 调用已授权的引擎 DLC 渲染一张单位预览图 */
   render(request: EngineDlcRenderRequest): Promise<EngineDlcRenderResult>
   cancel(requestId: string): Promise<EngineDlcRenderResult>
+  /** 打开常驻渲染会话（0.2.2+；每个编辑器窗口最多一个，重复打开会先关旧会话） */
+  sessionOpen?(request: {
+    unitFile: string
+    unitContent?: string
+    projectRoot: string
+    view?: EngineDlcSessionView
+    size?: { width: number; height: number }
+  }): Promise<EngineDlcSessionResult>
+  /** 会话增量更新（视图/尺寸/炮塔覆盖） */
+  sessionUpdate?(request: {
+    view?: EngineDlcSessionView
+    size?: { width: number; height: number }
+    turretOverrides?: EngineDlcTurretOverride[]
+    turretOverridesReset?: boolean
+  }): Promise<EngineDlcSessionResult>
+  /** 关闭当前窗口的常驻会话（幂等） */
+  sessionClose?(): Promise<{ ok: boolean }>
 }
 
 /** 受限社区 HTTP 代理：仅 Electron 真桥提供，用于跨域部署未配置 CORS 时的桌面端访问。 */

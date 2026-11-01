@@ -15,6 +15,8 @@ export interface ToolbarAction {
   active?: boolean
   disabled?: boolean
   onClick: () => void
+  /** 分组名：相邻不同分组的动作之间用留白隔开（不加竖线） */
+  group?: string
   /** 常驻可见（如保存），不允许被收进菜单 */
   alwaysVisible?: boolean
 }
@@ -47,6 +49,20 @@ export function OverflowToolbar({ actions, overflowLabel = '更多' }: OverflowT
       </span>
     </button>
   )
+
+  // 按顺序渲染动作列表，相邻不同分组的动作之间插入留白（测量行与可见行同构，宽度一致）
+  const renderGrouped = (list: ToolbarAction[]) => {
+    const out: ReactNode[] = []
+    let prevGroup: string | undefined
+    for (const a of list) {
+      if (out.length > 0 && a.group && a.group !== prevGroup) {
+        out.push(<span key={`gap-${a.key}`} className="toolbar-group-gap" aria-hidden="true" />)
+      }
+      out.push(renderItem(a))
+      prevGroup = a.group
+    }
+    return out
+  }
 
   // 单一重算入口：读 actionsRef（最新）与测量行宽度，把放不下的动作收进溢出集合
   const recompute = useCallback(() => {
@@ -103,9 +119,9 @@ export function OverflowToolbar({ actions, overflowLabel = '更多' }: OverflowT
         aria-hidden="true"
         style={{ position: 'absolute', left: 0, top: 0, visibility: 'hidden', display: 'flex', gap: 6, pointerEvents: 'none' }}
       >
-        {actions.map(renderItem)}
+        {renderGrouped(actions)}
       </div>
-      {visible.map(renderItem)}
+      {renderGrouped(visible)}
       {hidden.length > 0 && <OverflowMenuButton label={overflowLabel} hidden={hidden} />}
     </div>
   )

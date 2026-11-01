@@ -70,7 +70,7 @@ function ComingSettingsTab() {
         { icon: 'cloud' as const, name: '云仓库 · 多端同步', desc: '同一账号下手机与电脑接力同一份模组' },
         { icon: 'sparkle' as const, name: '社区 AI', desc: '免配置的多模型 AI 服务，无需自己填 Key' },
         { icon: 'lock' as const, name: '模组加密', desc: '服务器端加密保护，防解包与盗用' },
-        { icon: 'box' as const, name: '模板市场', desc: '社区模板浏览与一键下载' },
+        { icon: 'box' as const, name: '模板市场', desc: '模板浏览与一键下载' },
       ].map((feature) => (
         <div key={feature.name} className="setting-row">
           <span className="label">

@@ -50,6 +50,15 @@
   --titlebar-h: 44px;
   --statusbar-h: 24px;
   --panel-gap: 0px;
+
+  /* 背景图模式（.has-backdrop）：全应用唯一的轻薄底色层。
+     内部 var(--surface-*) 在使用处按浅/深主题解析，一套定义同时适配两种主题；
+     相邻层级之间只靠 2%-6% 的透明度差区分，不再叠边框 */
+  --veil-chrome: color-mix(in srgb, var(--surface-1) 78%, transparent);  /* 标题栏/状态栏/tab条/工具头 */
+  --veil-side: color-mix(in srgb, var(--surface-1) 64%, transparent);    /* 侧栏/对话列表/大纲 */
+  --veil-panel: color-mix(in srgb, var(--surface-0) 58%, transparent);   /* 主内容面板 */
+  --veil-editor: color-mix(in srgb, var(--editor) 86%, transparent);     /* 编辑区：更实，保证代码可读 */
+  --veil-float: color-mix(in srgb, var(--surface-1) 88%, transparent);   /* 抽屉/浮层 */
 }
 
 html[data-theme="light"] {

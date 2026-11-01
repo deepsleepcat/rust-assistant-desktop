@@ -5,7 +5,6 @@
  */
 import type { StoreApi } from 'zustand'
 import type { ConfirmRequest, EditorPosition, NonSettingsSurface, SettingsTab, WorkspaceStore, WorkspaceSurface } from '../types'
-import type { CommunityTab } from '../../features/community/communityData'
 
 export function createUiSlice() {
   return (set: StoreApi<WorkspaceStore>['setState'], get: () => WorkspaceStore) => ({
@@ -50,17 +49,6 @@ export function createUiSlice() {
         activeSurface: surface,
         settingsOpen: false,
         drawerSide: null,
-        ...(surface === 'cloudBag' ? { communityTab: 'cloudBag' as CommunityTab } : {}),
-        ...(surface === 'community' && get().communityTab === 'cloudBag' ? { communityTab: get().communityReturnTab } : {}),
-      })
-    },
-    setCommunityTab(tab: CommunityTab) {
-      const current = get().activeSurface
-      const inCommunity = current === 'community' || current === 'cloudBag'
-      set({
-        communityTab: tab,
-        ...(tab !== 'cloudBag' ? { communityReturnTab: tab } : {}),
-        ...(inCommunity ? { activeSurface: tab === 'cloudBag' ? 'cloudBag' as const : 'community' as const, drawerSide: null } : {}),
       })
     },
     setCloudBagView(patch: { slug?: string | null; section?: 'files' | 'issues' | 'versions' | 'members' | 'settings' }) {
@@ -68,12 +56,6 @@ export function createUiSlice() {
         cloudBagSlug: patch.slug !== undefined ? patch.slug : state.cloudBagSlug,
         cloudBagSection: patch.section ?? (patch.slug !== undefined ? 'files' : state.cloudBagSection),
       }))
-    },
-    toggleCommunityFollow(creatorId: string) {
-      const list = get().communityFollowing
-      set({
-        communityFollowing: list.includes(creatorId) ? list.filter((id) => id !== creatorId) : [...list, creatorId],
-      })
     },
     setCodeTableOpen(open: boolean) {
       set({ codeTableOpen: open })

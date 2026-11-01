@@ -40,6 +40,10 @@ const api: BridgeApi = {
     grant: (dlcId: string, enabled: boolean) => ipcRenderer.invoke('dlc:grant', dlcId, enabled),
     render: (request) => ipcRenderer.invoke('dlc:render', request),
     cancel: (requestId) => ipcRenderer.invoke('dlc:render', { cancel: true, requestId }),
+    // 0.2.2 常驻会话（炮塔拖动实时预览）：pixels 以 Uint8Array 经 structured clone 回传
+    sessionOpen: (request) => ipcRenderer.invoke('dlc:sessionOpen', request),
+    sessionUpdate: (request) => ipcRenderer.invoke('dlc:sessionUpdate', request),
+    sessionClose: () => ipcRenderer.invoke('dlc:sessionClose'),
   },
   community: {
     request: (request) => ipcRenderer.invoke('community:request', request),

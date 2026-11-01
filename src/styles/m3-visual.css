@@ -31,3 +31,16 @@
 .turret-preview { border: 1px solid var(--border, #d8dee4); border-radius: 6px; }
 .turret-dot { border-radius: 50%; border: 1.5px solid #fff; background: rgba(217, 76, 76, .85); color: #fff; font-size: 9px; font-weight: 700; display: grid; place-items: center; cursor: crosshair; box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 1; }
 .turret-dot:hover { background: rgba(217, 76, 76, 1); transform: scale(1.15); }
+
+/* M12b 炮塔编辑器独立界面（非弹窗；底图与锚点全部来自引擎 DLC 常驻会话） */
+.turret-editor-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.turret-editor-badge { font-size: 11px; font-weight: 600; color: var(--text-secondary, #57606a); border: 1px solid var(--border, #d8dee4); border-radius: 4px; padding: 1px 6px; }
+.turret-rendering { color: var(--text-secondary, #57606a); font-size: 11.5px; }
+.turret-editor-body { display: flex; gap: 16px; flex: 1; min-height: 0; padding: 12px 16px; overflow: auto; }
+.turret-editor-body .turret-table { flex: 0 0 auto; max-width: 46%; }
+.turret-editor-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.turret-preview-pane { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; }
+.turret-canvas-wrap { position: relative; display: inline-block; max-width: 100%; border: 1px solid var(--border, #d8dee4); border-radius: 6px; overflow: auto; }
+.turret-canvas { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
+.turret-preview-note { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px; color: var(--text-secondary, #57606a); background: rgba(255,255,255,.6); }
+.turret-preview-disabled { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: 420px; padding: 16px; border: 1px dashed var(--border, #d8dee4); border-radius: 8px; font-size: 13px; }

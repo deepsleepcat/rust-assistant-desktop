@@ -241,10 +241,10 @@ describe('cloudBagApi 信封与 code 分支（J3）', () => {
     expect(calls).toBe(2)
   })
 
-  it('网络层错误（fetch 抛错）统一为「连接社区服务器失败」，绝不显示为成功', async () => {
+  it('网络层错误（fetch 抛错）统一为「连接云仓库服务器失败」，绝不显示为成功', async () => {
     const fetcher = vi.fn(async () => { throw new TypeError('network down') })
     const api = createCloudBagApi(ENDPOINT, fetcher)
-    await expect(api.repos()).rejects.toMatchObject({ kind: 'network', message: '连接社区服务器失败，请检查网络后重试' })
+    await expect(api.repos()).rejects.toMatchObject({ kind: 'network', message: '连接云仓库服务器失败，请检查网络后重试' })
   })
 
   it('§8 文案映射逐字覆盖', () => {
@@ -271,7 +271,7 @@ describe('cloudBagApi 导出下载', () => {
 
   it('畸形 percent 编码的 filename* 回退到确定性文件名，且不冒充网络故障', async () => {
     // 服务端返回截断的 percent 序列（%E4%B8）：decodeURIComponent 抛 URIError，
-    // 旧实现把它归入 catch 的 kind:'network'「连接社区服务器失败，请检查网络后重试」，
+    // 旧实现把它归入 catch 的 kind:'network'「连接云仓库服务器失败，请检查网络后重试」，
     // 用户被指向错误的排查方向（实际是响应头格式问题）
     const fetcher = vi.fn(async () => new Response(new Uint8Array([1]).buffer, {
       status: 200,
@@ -330,7 +330,7 @@ describe('cloudBagApi 超时分类（上传与 JSON 分开）', () => {
       await vi.advanceTimersByTimeAsync(15_000)
       const err = await pending as CloudBagApiError
       expect(err.kind).toBe('timeout')
-      expect(err.message).toBe('社区服务器请求超时')
+      expect(err.message).toBe('云仓库服务器请求超时')
     } finally {
       vi.useRealTimers()
     }

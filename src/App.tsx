@@ -19,7 +19,6 @@ import { SurfaceDeck } from './components/desktop/SurfaceDeck'
 import { useDesktopPreferences } from './components/desktop/desktopPreferences'
 import { LeftColumn } from './features/workspace/LeftColumn'
 import { EditorArea } from './features/editor/EditorArea'
-import { CommunityPanel } from './features/community/CommunityPanel'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
@@ -191,9 +190,6 @@ export function App() {
             dashboard: signedIn
               ? <DashboardSurface key={`${settings.ai.communityEndpoint}:${communityAuth.user?.id ?? ''}`} />
               : <SurfaceAuthGate surfaceLabel="仪表盘" description="登录后才能读取真实余额、准确 Token 用量和调用日志。" />,
-            community: signedIn
-              ? <CommunityPanel key={`${settings.ai.communityEndpoint}:${communityAuth.user?.id ?? ''}`} />
-              : <SurfaceAuthGate surfaceLabel="社区" description="登录后才能浏览实时帖子、互动与社区账户内容。" />,
             cloudBag: signedIn
               ? <CloudBagSurface key={`${settings.ai.communityEndpoint}:${communityAuth.user?.id ?? ''}`} />
               : <SurfaceAuthGate surfaceLabel="云仓库" description="登录后才能访问云仓库版本、文件树与下载授权。" />,

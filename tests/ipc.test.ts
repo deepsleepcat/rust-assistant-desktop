@@ -169,9 +169,11 @@ describe('IPC 通道完整性', () => {
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
       // M42 引擎渲染 DLC（宿主只提供插座，引擎由用户自备放进指定目录）
       'dlc:list', 'dlc:openDir', 'dlc:grant', 'dlc:render',
+      // 0.2.2 常驻会话（炮塔拖动实时预览）
+      'dlc:sessionOpen', 'dlc:sessionUpdate', 'dlc:sessionClose',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(95)
+    expect(channels.size).toBe(98)
     const combined = createFakeIpc()
     registerIpc(ctx, combined.ipc)
     expect([...combined.channels.keys()].sort()).toEqual([...expected].sort())
@@ -182,7 +184,7 @@ describe('社区设备认证 IPC', () => {
   it('只暴露状态式认证方法，认证服务不可用时拒绝', async () => {
     const { channels, ipc } = createFakeIpc()
     registerCommunityAuthIpc(ctx, ipc)
-    await expect(invoke(channels, 'auth:status')).rejects.toThrow('社区设备认证不可用')
+    await expect(invoke(channels, 'auth:status')).rejects.toThrow('云仓库设备认证不可用')
 
     const auth = {
       status: vi.fn(async () => ({ state: 'signed-out' as const })),
@@ -209,7 +211,7 @@ describe('社区设备认证 IPC', () => {
 })
 
 describe('社区请求代理', () => {
-  it('只读取受信任社区的规范头像 URL，并拒绝写入、任意主机和路径', async () => {
+  it('只读取受信任云仓库的规范头像 URL，并拒绝写入、任意主机和路径', async () => {
     const { channels, ipc } = createFakeIpc()
     registerCommunityIpc(ctx, ipc)
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'content-type': 'application/json' } }))
@@ -288,10 +290,10 @@ describe('社区请求代理', () => {
 
     // 未登录（无凭据）时认证请求失败且不发出网络调用
     ctx.communityAuth = { withCredential: async () => null } as never
-    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/me`, method: 'GET', authenticated: true })).rejects.toThrow('社区登录已失效')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/me`, method: 'GET', authenticated: true })).rejects.toThrow('云仓库登录已失效')
     expect(fetcher).toHaveBeenCalledTimes(2)
-    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', upload: null })).rejects.toThrow('社区附件参数无效')
-    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', upload: { name: 'x.zip', type: 'application/zip', bytes: 'not-an-array-buffer' } })).rejects.toThrow('社区附件超过 50 MiB 限制')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', upload: null })).rejects.toThrow('云仓库附件参数无效')
+    await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'POST', upload: { name: 'x.zip', type: 'application/zip', bytes: 'not-an-array-buffer' } })).rejects.toThrow('云仓库附件超过 50 MiB 限制')
     const upload = { name: 'x.zip', type: 'application/zip', bytes: new ArrayBuffer(1) }
     await expect(invoke(channels, 'community:request', { url: `${trusted}/api/me`, method: 'POST', upload })).rejects.toThrow('附件只能上传到帖子资源接口')
     await expect(invoke(channels, 'community:request', { url: `${trusted}/api/community/posts/1/resources`, method: 'PUT', upload })).rejects.toThrow('附件只能上传到帖子资源接口')

@@ -249,8 +249,8 @@ export function DashboardPanel() {
           kind="empty"
           icon="cloud"
           title="离线模式下不可用"
-          description="仪表盘需要社区服务器提供真实余额与用量数据。离线状态不会展示占位数据。"
-          action={<button className="btn primary" onClick={() => void loginCommunity()}>登录社区</button>}
+          description="仪表盘需要云仓库服务器提供真实余额与用量数据。离线状态不会展示占位数据。"
+          action={<button className="btn primary" onClick={() => void loginCommunity()}>登录云仓库</button>}
         />
       </section>
     )
@@ -263,7 +263,7 @@ export function DashboardPanel() {
         <PanelState
           kind="empty"
           icon="cloud"
-          title="尚未登录社区账号"
+          title="尚未登录云仓库账号"
           description="登录后查看真实账户余额、准确 Token 用量与调用日志。"
           action={<button className="btn primary" onClick={() => void loginCommunity()}>在浏览器中登录</button>}
         />

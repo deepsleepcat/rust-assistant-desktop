@@ -23,13 +23,13 @@ export function LoginScreen() {
         </div>
         <div className="auth-mark"><AppIcon name="lock" size={18} /></div>
         <h1 id="auth-title">登录后开始工作</h1>
-        <p className="auth-copy">使用社区账号登录，跨设备同步社区身份与创作记录。</p>
+        <p className="auth-copy">使用云仓库账号登录，跨设备同步账号身份与云仓库数据。</p>
         {!pairingActive && <button className="btn primary auth-login" disabled={busy} onClick={() => void login()}>
           <AppIcon name="link" size={14} />
           {busy ? '正在检查登录状态…' : '在浏览器中登录'}
         </button>}
         {!pairingActive && <button className="btn auth-offline" disabled={busy} onClick={enterOffline}>
-          离线使用（本地编辑，不连接社区）
+          离线使用（本地编辑，不连接云仓库）
         </button>}
         {pairingActive && auth.pairing && <div className="auth-pairing" role="status" aria-live="polite">
           <p>浏览器已打开，请登录后在批准页手动点击“批准设备”。</p>

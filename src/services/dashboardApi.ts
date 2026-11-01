@@ -174,7 +174,7 @@ async function readLimitedText(response: Response, maxBytes: number): Promise<st
 }
 
 function errorMessage(status: number, message: string): string {
-  if (status === 401) return '社区登录已失效，请重新登录'
+  if (status === 401) return '云仓库登录已失效，请重新登录'
   if (status === 403) return message || '当前账号没有访问仪表盘的权限'
   if (status === 503) return message || '仪表盘数据源暂不可用'
   return message || `仪表盘请求失败（HTTP ${status}）`
@@ -239,7 +239,7 @@ export function createDashboardApi(endpoint: string, options: DashboardApiOption
         if (requestOptions.signal?.aborted) throw new DashboardApiError('仪表盘请求已取消', { kind: 'network' })
         throw new DashboardApiError('仪表盘服务器请求超时', { kind: 'timeout' })
       }
-      throw new DashboardApiError('无法连接社区服务器，请检查网络或服务器地址', { kind: 'network' })
+      throw new DashboardApiError('无法连接云仓库服务器，请检查网络或服务器地址', { kind: 'network' })
     } finally {
       clearTimeout(timer)
       requestOptions.signal?.removeEventListener('abort', onExternalAbort)

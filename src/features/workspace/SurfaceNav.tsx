@@ -3,7 +3,7 @@ import { AppIcon } from '../../components/AppIcon'
 import { LogoR } from '../../components/LogoR'
 import { CommunityAvatar } from '../../components/CommunityAvatar'
 import { runGameAction } from '../../components/desktop/runGame'
-import { DESKTOP_NAV_ITEMS, navigationSurface } from '../../components/desktop/shellContract'
+import { DESKTOP_NAV_ITEMS } from '../../components/desktop/shellContract'
 import { createCommunityApi } from '../../services/communityApi'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useEscapeHandler } from '../../utils/modalStack'
@@ -25,7 +25,7 @@ export function SurfaceNav() {
   const menuRef = useRef<HTMLDivElement>(null)
   const signedIn = auth.status === 'signed_in'
   const busy = auth.status === 'loading' || auth.status === 'checking'
-  const accountLabel = signedIn ? auth.user?.display_name || auth.user?.username || '社区账号' : '未登录'
+  const accountLabel = signedIn ? auth.user?.display_name || auth.user?.username || '云仓库账号' : '未登录'
   const avatarApi = useMemo(() => signedIn
     ? createCommunityApi(endpoint, undefined, undefined, () => void refreshAuth())
     : null, [endpoint, refreshAuth, signedIn])
@@ -63,7 +63,7 @@ export function SurfaceNav() {
       <div className="desktop-rail-brand" aria-label="铁锈工坊"><LogoR size="header" /></div>
       <nav className="desktop-rail-nav" aria-label="工作面">
         {DESKTOP_NAV_ITEMS.map((item) => {
-          const active = navigationSurface(activeSurface) === item.id
+          const active = activeSurface === item.id
           return (
             <button key={item.id} type="button" className={`desktop-rail-button${active ? ' active' : ''}`}
               aria-current={active ? 'page' : undefined} aria-label={`${item.label} ${item.en}`} title={`${item.label} · ${item.en}`}
@@ -86,7 +86,7 @@ export function SurfaceNav() {
           <div ref={menuRef} id="desktop-account-menu" className="desktop-account-menu" role="menu" aria-label="账号菜单" onKeyDown={onMenuKey}>
             <div className="desktop-account-summary">
               <span className="desktop-account-name">{accountLabel}</span>
-              <span className="desktop-account-status">{signedIn ? '已登录社区账号' : auth.status === 'loading' ? '正在配对' : auth.status === 'checking' ? '正在检查会话' : auth.status === 'error' ? '会话检查失败' : '本地编辑可用'}</span>
+              <span className="desktop-account-status">{signedIn ? '已登录云仓库账号' : auth.status === 'loading' ? '正在配对' : auth.status === 'checking' ? '正在检查会话' : auth.status === 'error' ? '会话检查失败' : '本地编辑可用'}</span>
             </div>
             <button type="button" role="menuitem" onClick={accountSettings}><AppIcon name="settings" size={14} /><Bilingual zh="账号设置" en="Account settings" /></button>
             <button type="button" role="menuitem" disabled={busy} onClick={() => { closeMenu(); openSettings('community'); void login() }}>

@@ -12,12 +12,12 @@ export function getConfiguredCommunityOrigin(): string {
 
 export function validateCommunityOrigin(value: string): string {
   let url: URL
-  try { url = new URL(value) } catch { throw new Error('社区服务器地址无效') }
+  try { url = new URL(value) } catch { throw new Error('云仓库服务器地址无效') }
   if (url.username || url.password || url.pathname !== '/' || url.search || url.hash || url.port && url.origin === PRODUCTION_COMMUNITY_ORIGIN) {
-    throw new Error('社区服务器地址不受信任')
+    throw new Error('云仓库服务器地址不受信任')
   }
   if (url.origin !== PRODUCTION_COMMUNITY_ORIGIN && url.origin !== LOCAL_COMMUNITY_ORIGIN) {
-    throw new Error('社区服务器地址不受信任')
+    throw new Error('云仓库服务器地址不受信任')
   }
   if (url.origin === LOCAL_COMMUNITY_ORIGIN && !process.env.VITE_DEV_SERVER_URL) {
     throw new Error('生产环境禁止使用本地社区地址')
