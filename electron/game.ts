@@ -314,8 +314,9 @@ const MAX_ASSET_IMAGE_BYTES = 10 * 1024 * 1024
 export async function readGameAssetImage(gamePath: string, relPath: string): Promise<string> {
   if (!(await looksLikeGameDir(gamePath))) throw new Error('不是有效的铁锈战争安装目录（缺少 assets/units）')
   const rel = String(relPath).replace(/^\/+/, '').replace(/\\/g, '/')
-  // 拒绝相对穿越、盘符绝对路径（win32 上 path.join 会丢弃 gamePath 拼接绝对路径）
-  if (!rel || rel.includes('..') || path.isAbsolute(rel)) throw new Error('无效的资产路径')
+  // 拒绝相对穿越与盘符绝对路径。注意 `path.isAbsolute` 在非 Windows 平台不识别 `C:/`，
+  // 而 win32 上 path.join 会丢弃 gamePath 直接拼出盘符绝对路径——两个平台都必须显式判盘符。
+  if (!rel || rel.includes('..') || /^[A-Za-z]:/.test(rel) || path.isAbsolute(rel)) throw new Error('无效的资产路径')
   // 规范化后显式边界校验（与 isPathInside 同语义；内联让静态检查可见）
   const abs = path.resolve(gamePath, rel)
   const base = path.resolve(gamePath)

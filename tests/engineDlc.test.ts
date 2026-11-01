@@ -349,7 +349,9 @@ describe('M42 DLC 目录扫描（scanEngineDlcDir）', () => {
       return dir
     }
 
-    it('root 用正斜杠也能解析（Windows 上 path.resolve 会归一成反斜杠）', async () => {
+    // 下面两条断言的是 Windows 路径语义（反斜杠归一 / 大小写不敏感）。
+    // POSIX 上路径本身就是正斜杠且大小写敏感，这两种写法不是同一目录，跳过而非放宽断言。
+    it.skipIf(process.platform !== 'win32')('root 用正斜杠也能解析（Windows 上 path.resolve 会归一成反斜杠）', async () => {
       const root = engineDlcDir(tmp)
       await seed(root)
       const slashed = root.replace(/\\/g, '/')
@@ -363,7 +365,7 @@ describe('M42 DLC 目录扫描（scanEngineDlcDir）', () => {
       expect(read.dlc.entryPath).toBe(normalizePath(path.join(root, 'normalized', 'render.cjs')))
     })
 
-    it('root 混合大小写也能解析（Windows 路径比较不区分大小写）', async () => {
+    it.skipIf(process.platform !== 'win32')('root 混合大小写也能解析（Windows 路径比较不区分大小写）', async () => {
       const root = engineDlcDir(tmp)
       await seed(root)
       const upper = root.toUpperCase()
