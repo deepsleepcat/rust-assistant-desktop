@@ -70,6 +70,10 @@ npm --prefix mobile run build
 
 云仓库后端是独立的闭源服务，不随本桌面端仓库发布；本仓库只包含桌面客户端及其公开接口适配层。
 
+## 交流群
+
+QQ 群：**1104148783** —— 使用问题、模组开发交流与版本更新通知。
+
 ## 技术栈
 
 Electron 43 · React 19 · TypeScript 6 · Vite 8 · Zustand 5 · CodeMirror 6 · Vitest 4
