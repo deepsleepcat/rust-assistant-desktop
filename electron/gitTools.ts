@@ -13,6 +13,7 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { conflictMarkers } from '../src/utils/conflictMarkers.js'
 import { promisify } from 'node:util'
+import { isAnyPlatformAbsolute } from './paths'
 import fs from 'node:fs/promises'
 
 const execFileAsync = promisify(execFile)
@@ -81,8 +82,8 @@ export function isValidCommit(hash: string): boolean {
 /** 相对路径校验（防越界/选项注入/绝对路径拼接） */
 export function isValidRelPath(rel: string): boolean {
   if (!rel || rel.includes('..') || rel.startsWith('-') || rel.includes('\\')) return false
-  // win32 上 path.join(root, 'C:/x') 会丢弃 root 拼出盘符绝对路径——显式拒绝
-  if (path.isAbsolute(rel)) return false
+  // 任何平台的绝对路径一律拒绝（win32 的盘符会让 path.join 丢弃 root；非 win32 则是安全校验兜底）
+  if (isAnyPlatformAbsolute(rel)) return false
   return true
 }
 
