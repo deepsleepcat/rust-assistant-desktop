@@ -83,3 +83,47 @@
 - **本次发现并修复 1 个安全类 bug（升级修复）**：跨平台路径校验失效波及 6 处安全敏感位置
 - 剩余 3 个测试失败为 Linux 环境假设差异，不影响产品功能
 - **连续无 bug 计数**：0（本次有 bug，计数清零）
+
+## 2026-11-02 晚上（第 3 次运行）
+
+- **日期**：2026-11-02
+- **时段**：晚上（20:08 执行）
+- **连续无 bug 次数**：1（本次无 bug，计数 +1；上两次均发现 bug 清零过）
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| npm run typecheck | ✅ 通过 | 无 TypeScript 错误 |
+| npm run lint | ✅ 通过 | 无 ESLint 错误 |
+| npm run test | ✅ 1318/1318 通过（5 skip） | 上轮已补的 `it.skipIf(platform !== 'win32')` 门控让 engineDlc/Security 用例在 Linux 上合理跳过，game.test.ts 的路径穿越用例修复后全绿 |
+
+### 代码审查范围
+
+- Git log：main 分支自 f0c6450（文档）后无新 commit；bug-check 分支 HEAD=139dd7f，2 个修复 commit 均已完整审阅 diff
+- 上轮修复覆盖 6 处安全敏感位置，本轮 grep 复核仓库剩余 `path.isAbsolute` 调用点：
+  - `mediaPolicy.ts:68`（要求绝对路径而非拦截恶意）——安全
+  - `modPack.ts:283`（游戏目录校验）——安全
+  - `engineDlc.ts:166`（entry 已双检）——安全，UNC 在 Windows 上天然被 `path.isAbsolute` 拒
+- Zip-slip 多端复核：
+  - Electron `cloudbagRestore.ts` 已升级到 `isAnyPlatformAbsolute`
+  - Mobile `bridge.ts:extractZip` 只拒 `/` 开头与 `..`，在 Android POSIX 下盘符路径被当作合法文件名一部分（安全），UNC 以 `//` 开头被 `startsWith('/')` 拒绝——结论安全，属跨平台观察项
+- Spawn 边界：全部 `shell:false`，nodeRuntime 默认 `process.execPath`，sessionHostPath 由主进程 `path.resolve + assertNoLinkEscape` 生成——无用户可控注入点
+- 状态管理/异步：confirmDirtySwitch、cloudBagAutoSync 的 reconcileQueue 串行化、projectFilesSlice 错误路径全部 notify 不吞——未发现竞态
+- 空 catch 审计：仅 1 处（`modOptimization.ts:148` rmdir 空目录清理），属尽力而为逻辑，合理
+- window/document guard：所有跨环境访问都有 `typeof window !== 'undefined'` 守卫——安全
+- Desktop/Mobile 边界：`mobile/src` 与主 `src/`/`electron/` 零交叉引用——干净
+
+### 运行验证
+
+- `npm run dev:web` — Vite 启动 228ms，HTTP 200，页面正常
+- `npm run build` — build:renderer + build:electron 全过，仅 chunk size >500kB 与 INEFFECTIVE_DYNAMIC_IMPORT 体积警告（既有提示，非功能缺陷）
+
+### 结论
+
+- **本次未发现 bug**
+- 上两轮的跨平台路径修复已让 test 1318/1318 全绿（5 skip 为既有平台门控）
+- **连续无 bug 计数**：1
+- 观察项（暂不动）：
+  - mobile `extractZip` 未显式覆盖 UNC 与盘符路径（Android POSIX 下天然安全；将来若 mobile 出 Windows Tauri 需升级）
+  - `engineDlc.ts:166` entry 校验未用 `isAnyPlatformAbsolute`（当前已双检覆盖盘符；UNC 在 Windows 上被 `path.isAbsolute` 拒，POSIX 上 `path.resolve` 不逃逸）
