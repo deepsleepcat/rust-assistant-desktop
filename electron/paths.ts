@@ -5,6 +5,19 @@
 import path from 'node:path'
 import fs from 'node:fs/promises'
 
+/**
+ * 跨平台绝对路径检测：path.isAbsolute 只识别当前平台的原生绝对路径，
+ * 在非 Windows 上对 C:/evil.png、\\server\share\file 等完全无感。
+ * 安全敏感的路径校验一律改用本函数。
+ */
+export function isAnyPlatformAbsolute(p: string): boolean {
+  if (!p) return false
+  if (path.isAbsolute(p)) return true // 本平台原生绝对路径（/root 或 C:\x）
+  if (/^[a-zA-Z]:[/\\]/.test(p)) return true // Windows 盘符（C:/evil.png / D:\x.ini）
+  if (/^\/\/[^/]/.test(p)) return true // UNC 路径（//server/share/file）
+  return false
+}
+
 /** 规范化绝对路径（Windows 下忽略大小写，便于比较） */
 export function normalizePath(p: string): string {
   const abs = path.resolve(p)
