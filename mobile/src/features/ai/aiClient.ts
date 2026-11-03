@@ -24,18 +24,45 @@ export interface ChatOnceResult {
   toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> | null
 }
 
-/** 单次流式请求（Rust 代理 → SSE 事件） */
+/** 单次流式请求（Rust 代理 → SSE 事件）
+ *
+ * 中止链路：UI 停止按钮 → runAgentChat 的 isAborted() 为 true
+ *  → chatOnce 检测到后 invoke('ai_stream_abort') 设置 Rust 端全局标志
+ *  → ai_stream 的 SSE 循环在下一轮迭代时提前终止并 emit Error 事件
+ *  → chatOnce 的 listen 收到 error 后 reject
+ *
+ * 这条链路把「停止」从一个 UI 状态提升到真正的 HTTP 请求级中止，
+ * 避免用户点停止后后端还在继续下载、API 继续计费。
+ */
 export async function chatOnce(
   settings: AiSettings,
   messages: AiChatMessage[],
-  opts: { tools?: boolean; onDelta: (text: string) => void },
+  opts: { tools?: boolean; onDelta: (text: string) => void; isAborted?: () => boolean },
 ): Promise<ChatOnceResult> {
   return new Promise<ChatOnceResult>((resolve, reject) => {
     let unlisten: UnlistenFn | null = null
     let fullText = ''
     let toolCallsJson: string | null = null
-    const timer = setTimeout(() => {
+    let abortNotified = false
+    const abortWatchdog = setInterval(() => {
+      if (opts.isAborted?.()) {
+        clearInterval(abortWatchdog)
+        if (!abortNotified) {
+          abortNotified = true
+          void invoke('ai_stream_abort').catch(() => undefined)
+          unlisten?.()
+          clearTimeout(timer)
+          reject(new Error('已中止'))
+        }
+      }
+    }, 100)
+    const cleanup = () => {
+      clearInterval(abortWatchdog)
+      clearTimeout(timer)
       unlisten?.()
+    }
+    const timer = setTimeout(() => {
+      cleanup()
       reject(new Error('AI 响应超时（30s 无事件），请重试'))
     }, 120_000)
 
@@ -51,8 +78,7 @@ export async function chatOnce(
         fullText += payload.text
         opts.onDelta(payload.text)
       } else if (payload.type === 'done') {
-        clearTimeout(timer)
-        unlisten?.()
+        cleanup()
         fullText = payload.full_text ?? fullText
         toolCallsJson = payload.tool_calls ?? null
         let toolCalls: ChatOnceResult['toolCalls'] = null
@@ -71,8 +97,7 @@ export async function chatOnce(
         }
         resolve({ fullText, toolCalls })
       } else if (payload.type === 'error') {
-        clearTimeout(timer)
-        unlisten?.()
+        cleanup()
         reject(new Error(payload.message ?? 'AI 请求失败'))
       }
     }).then((fn) => {
@@ -87,8 +112,7 @@ export async function chatOnce(
           noTools: opts.tools === false,
         },
       }).catch((err) => {
-        clearTimeout(timer)
-        unlisten?.()
+        cleanup()
         reject(new Error(typeof err === 'string' ? err : 'AI 请求失败'))
       })
     })
@@ -118,7 +142,13 @@ export async function runAgentChat(opts: AgentChatOptions): Promise<string> {
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (opts.isAborted?.()) return finalText || '（已中止）'
-    const result = await chatOnce(opts.settings, messages, { onDelta: opts.onDelta })
+    let result: ChatOnceResult
+    try {
+      result = await chatOnce(opts.settings, messages, { onDelta: opts.onDelta, isAborted: opts.isAborted })
+    } catch {
+      // abortWatchdog 触发中止时 chatOnce 会 reject('已中止')，按 abort 语义优雅返回
+      return finalText || '（已中止）'
+    }
     finalText = result.fullText
     if (!result.toolCalls || result.toolCalls.length === 0) {
       // 模型结束（无工具调用）

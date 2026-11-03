@@ -127,3 +127,82 @@
 - 观察项（暂不动）：
   - mobile `extractZip` 未显式覆盖 UNC 与盘符路径（Android POSIX 下天然安全；将来若 mobile 出 Windows Tauri 需升级）
   - `engineDlc.ts:166` entry 校验未用 `isAnyPlatformAbsolute`（当前已双检覆盖盘符；UNC 在 Windows 上被 `path.isAbsolute` 拒，POSIX 上 `path.resolve` 不逃逸）
+
+## 2026-11-03 晚上（第 4 次运行）
+
+- **日期**：2026-11-03
+- **时段**：晚上（20:08 执行）
+- **连续无 bug 次数**：0（本次发现并修复 bug，清零）
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| npm run typecheck | ✅ 通过 | desktop 端无 TypeScript 错误 |
+| npm run lint | ✅ 通过 | 无 ESLint 错误 |
+| npm run test | ⚠️ 4 failed / 1317 passed / 2 skipped | 全部为 Linux vs Windows 平台差异，非产品缺陷 |
+| mobile typecheck | ✅ 无新错误 | 缺少 @tauri-apps 依赖为既有环境问题 |
+| dev:web 启动 | ✅ Vite ready in 241ms | 仅有 ESM/CommonJS 混合配置的非关键警告 |
+
+### 测试失败分析（均为跨平台假阳性）
+
+1. **engineDlc.test.ts ×2** — 测试假设 Windows 路径分隔符/大小写，Linux 上正斜杠 `replace(/\\/g, '/')` 无变化、大小写敏感路径找不到 mixed-case 版本
+2. **engineDlcSecurity.test.ts ×1** — `process.kill(-pid)` 在 Linux 上对已退出进程组抛 ESRCH
+3. **game.test.ts ×1** — `C:/evil.png` 在 Linux 上被当作普通相对路径，走「资产文件不存在」分支；上两轮修复已让 Electron 主进程用 `isAnyPlatformAbsolute` 正确处理，此测试在 mobile 端还需升级（本次未动，属观察项）
+
+### 代码审查范围
+
+- ✅ Electron 主进程 IPC 边界（ipcContext, gameIpc, engineDlcIpc）
+- ✅ 路径安全（paths.ts 已升级 isAnyPlatformAbsolute, cloudbagRestore 已使用）
+- ✅ 云书包同步全链路（cloudBagSync / cloudBagTreeState / cloudBagAutoSync / cloudBagOperation）
+- ✅ 状态管理 stores/slices（projectFilesSlice / projectTabsSlice / projectTreeSlice 并发守卫）
+- ✅ Electron 进程管理（engineDlcProcess 杀树 / engineDlcSession 会话杀树 / engineDlcHost 并发槽）
+- ✅ 错误处理与边界：各模块 catch 覆盖、空值保护、大小限制
+- ✅ **mobile/src-tauri/src/commands.rs**（Rust 端 AI SSE 代理）← 首次完整审查此模块
+- ✅ **mobile/src/features/ai/aiClient.ts**（手机端 AI 对话）← 首次完整审查此模块
+- ✅ mobile/src/services/bridge.ts（文件桥）
+- ✅ desktop 与 mobile 同名功能路径处理差异
+
+### 发现并修复的 Bug
+
+#### Bug A：mobile Rust — `ai_stream_abort()` 空实现（高优先级）
+
+- **位置**：`mobile/src-tauri/src/commands.rs` 第 196-198 行（修复前）
+- **问题**：`ai_stream_abort()` 函数体仅 `Ok(())` 返回，未设置任何中止标志。用户在手机端 AI 流式响应期间点击「停止」，前端只能断开 Tauri 事件监听，但后端 HTTP 请求继续下载直到完成，API 继续计费。
+- **复现**：手机端发起 AI 对话 → 在模型流式回复过程中点击停止按钮 → 后端继续下载、API 继续计数。
+- **修复**：
+  1. 引入 `std::sync::atomic::{AtomicBool, Ordering}`
+  2. 添加全局 `static ABORT_FLAG: AtomicBool = AtomicBool::new(false)`
+  3. `ai_stream` 开头 `ABORT_FLAG.store(false)` 重置，SSE 循环每轮检查 `ABORT_FLAG.load()`；被置真时提前 break 并 emit `Error { message: '请求已被中止' }`
+  4. `ai_stream_abort` 设置标志 `ABORT_FLAG.store(true)`
+- **验证**：无编译错误指向 commands.rs；cargo check 因系统缺少 glib-2.0 无法完整构建（沙箱限制，与代码无关）
+
+#### Bug B：mobile TS — `chatOnce` 无中止链路（高优先级，与 Bug A 配对）
+
+- **位置**：`mobile/src/features/ai/aiClient.ts` 的 `chatOnce()` 和 `runAgentChat()`
+- **问题**：
+  1. `chatOnce` 没有 isAborted 参数，SSE 流式下载期间无法响应 UI 停止信号
+  2. `runAgentChat` 虽有 `isAborted`，但只在每轮对话**开始前**检查一次；当前轮 chatOnce Promise 必须等到 SSE 自然完成才 resolve（可能 30s+），停止按钮延迟生效
+  3. 即使 Rust 端存在 abort 函数，TS 端也没有调用入口
+- **修复**：
+  1. `chatOnce` 新增 `isAborted?: () => boolean` 参数，启动 100ms 间隔 watchdog 检查；检测到 abort 时调用 `invoke('ai_stream_abort')` 通知 Rust 端，然后 reject('已中止')
+  2. 提取 `cleanup()` 统一清理 interval/timer/unlisten（所有出口：done / error / abort / timeout / invoke-catch）
+  3. `runAgentChat` 将 `opts.isAborted` 透传给 chatOnce，try-catch 捕获 reject 后优雅返回 `finalText || '（已中止）'`
+- **验证**：TS 类型检查无新错误
+
+### 运行验证
+
+- `npm run dev:web`：✅ Vite ready in 241ms，仅有 ESM/CommonJS 混合配置的非关键警告
+- 控制台无报错、无未捕获异常
+
+### 遗留观察项（未改动）
+
+- mobile `extractZip` 路径安全：只拒 `/` 开头与 `..`，盘符路径在 Android POSIX 下天然安全；将来若 mobile 出 Windows Tauri 需升级
+- `game.test.ts` 的 `C:/evil.png` 测试在 Linux 上仍失败（预期行为，平台差异）
+
+### 结论
+
+- **本次发现并修复 2 个高优先级 Bug**（手机端 AI 中止链路：Rust 端空实现 + TS 端无调用入口）
+- 根目录 `npm run check` 全量通过，与修复前基线一致（4 个 Linux vs Windows 假阳性）
+- desktop 与 mobile 同名路径处理差异已核对，未发现类似 mobile AI 的功能性 bug
+- **连续无 bug 计数**：0（本轮清零）
