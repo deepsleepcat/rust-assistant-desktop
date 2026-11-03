@@ -67,3 +67,35 @@
 4. 长期：settings/tabs → SettingsScreen 分项展开
 
 ---
+
+### 2026-11-03（第 2 次运行）
+
+**补齐功能**：
+
+1. **bridge 层实现** — `mobile/src/services/bridge.ts`
+   - `optimizeScan(rootPath)`：从 stub（空数组）改为真实实现。扫描项目内空文件(0字节)、空文件夹、备份文件(.bak/.old/.tmp/~)、.ini 文件末尾空行(≥2行)、.ini 注释行(# 开头)。
+   - `optimizeApply(rootPath, ids)`：从 stub(done=0) 改为真实实现。按 id 逐个执行：删除空文件/备份文件、递归删除空文件夹、清理 .ini 末尾多余空行、移除 .ini 中 # 注释行并合并多余空行。全部走 `assertInsideProject` 路径校验。
+   - `globalOp(rootPath, params)`：从 stub 返回零值改为真实实现。遍历项目内全部 .ini / .template 文件，支持三种模式：replace（查找→替换，find 可空=删除）、prepend（头部附加，保留 BOM）、append（尾部追加，自动补换行）。结果返回 files/changed/skipped。
+
+2. **UI 入口** — `mobile/src/screens/ModToolsScreen.tsx`（新建）
+   - 新增「工具」Tab（底部导航第 6 个），图标 `tools`。
+   - 子页面：优化扫描（分组展示各类可优化项、逐项勾选/整类全选、确认弹窗、进度提示）+ 全局操作（三种模式切换、文本输入、执行预览）。
+   - `ConfirmModal` 走现有 mobile dialog 组件，路径校验复用 bridge 层 assertInsideProject。
+
+3. **导航与类型**
+   - `MobileTab` 类型新增 `'modTools'`。
+   - `App.tsx` TABS 数组插入「工具」Tab 并渲染 `<ModToolsScreen />`。
+
+**剩余差距**：
+- services 层：cloudBag*（5）、community*（2）、dashboardApi、mockBridge、versionDiff、configSyntax、translationRepair、codeDataLookup/State 仍缺失
+- bridge `translationRepairScan` / `translationRepairApply`：仍是 stub（返回空）
+- features 层：auth/community/conversation/dashboard/graph/map/plugins/project/workspace 仍缺失；settings 缺 tabs；modTools 缺 ReportModal、TranslationRepairModal
+- components 层和 stores 层差距最大（手机端 UI 范式不同，部分差距可接受）
+
+**是否完全对齐**：否
+
+**下一步计划**：
+1. 实现 `translationRepairScan` / `translationRepairApply`（翻译损坏修复）——补齐 modTools 最后一个重要功能，bridge 已有接口
+2. 实现 `versionDiff.ts`（版本差异可视化）——需在 mobile/codeData 补 alias 数据
+3. 评估 ReportModal（模组质量报告）是否需要：InspectScreen 已是简化版质量检查
+4. 长期：settings/tabs → SettingsScreen 分项展开
