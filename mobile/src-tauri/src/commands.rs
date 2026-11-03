@@ -1,8 +1,13 @@
 // AI 流式代理命令（独立模块：tauri::command 宏在子模块展开，避免与 lib 顶层命名空间冲突）
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use futures_util::StreamExt;
 use tauri::Emitter;
+
+/// 全局中止标志：ai_stream_abort() 置真，ai_stream 循环内检查并提前终止。
+/// 手机端单用户场景足够；并发 AI 流请求（多模型并行）需要更细粒度的 per-request 方案。
+static ABORT_FLAG: AtomicBool = AtomicBool::new(false);
 
 /// AI 流式代理：转发 DeepSeek（OpenAI 兼容）SSE 流到前端。
 /// 事件经 `ai://event` 推送给渲染层；重活下沉 Rust，UI 零阻塞。
@@ -52,6 +57,7 @@ pub async fn ai_stream(
     app: tauri::AppHandle,
     request: AiStreamRequest,
 ) -> Result<(), String> {
+    ABORT_FLAG.store(false, Ordering::SeqCst);
     let emit = |ev: &AiStreamEvent| {
         let _ = app.emit(AI_EVENT_CHANNEL, ev);
     };
@@ -105,7 +111,12 @@ pub async fn ai_stream(
 
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();
+    let mut aborted = false;
     while let Some(chunk) = stream.next().await {
+        if ABORT_FLAG.load(Ordering::SeqCst) {
+            aborted = true;
+            break;
+        }
         let chunk = chunk.map_err(|e| format!("流式读取失败：{e}"))?;
         buf.push_str(&String::from_utf8_lossy(&chunk));
         // 按行处理（SSE 事件以 \n 分隔；兼容 \r\n）
@@ -184,16 +195,21 @@ pub async fn ai_stream(
         Some(serde_json::to_string(&arr).unwrap_or_default())
     };
 
-    emit(&AiStreamEvent::Done {
-        full_text,
-        tool_calls,
-    });
+    if aborted {
+        emit(&AiStreamEvent::Error { message: '请求已被中止' });
+    } else {
+        emit(&AiStreamEvent::Done {
+            full_text,
+            tool_calls,
+        });
+    }
     Ok(())
 }
 
-/// 中止当前流（前端看门狗超时/用户停止用）：v1 由前端断开订阅并忽略后续事件。
+/// 中止当前 AI 流式请求：设置全局 ABORT_FLAG，ai_stream 的 SSE 循环会在下一轮迭代时提前终止。
 #[tauri::command]
 pub fn ai_stream_abort() -> Result<(), String> {
+    ABORT_FLAG.store(true, Ordering::SeqCst);
     Ok(())
 }
 
