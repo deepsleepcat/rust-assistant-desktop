@@ -87,7 +87,7 @@
    - `App.tsx` TABS 数组插入「工具」Tab 并渲染 `<ModToolsScreen />`。
 
 **剩余差距**：
-- services 层：cloudBag*（5）、community*（2）、dashboardApi、mockBridge、versionDiff、configSyntax、translationRepair、codeDataLookup/State 仍缺失
+- services 层：cloudBag*（5）、community*（2）、dashboardApi、mockBridge、versionDiff、codeDataLookup/State 仍缺失
 - bridge `translationRepairScan` / `translationRepairApply`：仍是 stub（返回空）
 - features 层：auth/community/conversation/dashboard/graph/map/plugins/project/workspace 仍缺失；settings 缺 tabs；modTools 缺 ReportModal、TranslationRepairModal
 - components 层和 stores 层差距最大（手机端 UI 范式不同，部分差距可接受）
@@ -99,3 +99,33 @@
 2. 实现 `versionDiff.ts`（版本差异可视化）——需在 mobile/codeData 补 alias 数据
 3. 评估 ReportModal（模组质量报告）是否需要：InspectScreen 已是简化版质量检查
 4. 长期：settings/tabs → SettingsScreen 分项展开
+
+---
+
+### 2026-11-04（第 3 次运行）
+
+**补齐功能**：
+- `mobile/src/services/communityConfig.ts` — 社区端点配置（getCommunityEndpoint / isAllowedCommunityEndpoint）
+- `mobile/src/services/communityApi.ts` — CommunityApiError 类 + normalizeCommunityEndpoint（dashboardApi 依赖）
+- `mobile/src/services/dashboardApi.ts` — 仪表盘 API 客户端（完整契约，defaultDashboardFetch 适配 Tauri 环境，去掉 Electron bridge 分支）
+- `mobile/src/features/dashboard/dashboardModel.ts` — 仪表盘纯函数逻辑层（formatCount / cachePieSegments / balanceText / swapSlots / normalizeLayout / chartValues 等）
+- `mobile/src/features/dashboard/dashboardModel.test.ts` — 对应单元测试（从桌面端同步，2 条用例）
+
+**Check 结果**：
+- `npm run typecheck` ✅ 零错误
+- `npm test` ✅ 393 tests passed（21 files），dashboardModel.test.ts 新增 2 用例通过
+
+**剩余差距（更新 2026-11-02 基线）**：
+- services 层：cloudBag*（5）、mockBridge、versionDiff、codeDataLookup/State 仍缺失；communityConfig/communityApi/dashboardApi 已补齐
+- features 层：auth/community/conversation/dashboard(DashboardPanel)/graph/map/plugins/project/workspace 仍缺失；settings 缺 tabs；modTools 缺 ReportModal、TranslationRepairModal
+- stores 层：桌面端 workspace + 9 slices；手机端仅 workspace 单文件
+- components 层和 styles 层差距最大
+
+**是否完全对齐**：否
+
+**下一步计划**：
+1. 延续之前计划：补齐 `translationRepairScan` / `translationRepairApply` bridge 实现，或补齐 `versionDiff.ts`
+2. 或另起优先级更高的：conversation store（mobile domain.ts 已有 Conversation 类型但 store 完全无对话状态管理）
+3. 长期：settings/tabs → SettingsScreen 分项展开
+
+---
