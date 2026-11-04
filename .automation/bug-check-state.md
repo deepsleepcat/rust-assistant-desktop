@@ -206,3 +206,54 @@
 - 根目录 `npm run check` 全量通过，与修复前基线一致（4 个 Linux vs Windows 假阳性）
 - desktop 与 mobile 同名路径处理差异已核对，未发现类似 mobile AI 的功能性 bug
 - **连续无 bug 计数**：0（本轮清零）
+
+## 2026-11-04 上午（第 5 次运行）
+
+- **日期**：2026-11-04
+- **时段**：上午（08:06 执行）
+- **连续无 bug 次数**：1（本次未发现新 bug，计数 +1；上一轮 2026-11-03 晚上发现 bug 清零）
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| npm run typecheck | ✅ 通过 | 无 TypeScript 错误 |
+| npm run lint | ✅ 通过 | 无 ESLint 错误 |
+| npm run test | ✅ 1318/1318 通过（5 skip） | 全绿，上轮 `it.skipIf(platform !== 'win32')` 门控已让 engineDlc/Security 用例合理跳过；game.test.ts 的路径穿越用例修复后全绿 |
+| npm run build | ✅ 通过 | build:renderer + build:electron 全过，仅 chunk size >500kB 与 INEFFECTIVE_DYNAMIC_IMPORT 体积警告（既有提示） |
+| npm run dev:web | ✅ Vite ready in 219ms | 仅有 ESM/CommonJS 混合配置的非关键警告 |
+
+### 代码审查范围
+
+- Git log：main 分支自 f0c6450（文档）后无新 commit；bug-check 分支 HEAD=1d4db8a，3 个既有修复 commit 已完整审阅 diff
+- **Electron 主进程全量复查**（60+ 文件）：engineDlcHost 并发队列（concurrency/maxPending 边界、`void this.execute(job)` 未 await 但有 finally 保证活跃槽释放）、engineDlcProcess 进程杀树（SIGKILL 兜底）、engineDlcSession 会话管理器（close Promise.race 5s 宽限、stdout 64MB 失控保护、空闲超时自愈、关闭清理链）、fsIpc 原子写入 + 临时文件同目录断言、cloudbagRestore zip-slip 防线、aiIpc/ai 历史、communityIpc/communityAuth、appIpc、gitTools 等核心 IPC 边界
+- **异步竞态**：EngineDlcHost.pump 在 for-of 循环中修改 pending Map（Node 14+ Map 迭代器允许安全删除当前元素）；cloudBagAutoSync 的 reconcileQueue 串行队列、confirmDirtySwitch 队列守卫——未发现漏 await/回调地狱
+- **错误处理**：fsIpc 写文件 try-catch-finally 清理临时文件；engineDlc 渲染 finally 清理临时目录；engineDlcProcess finally 清除 abort 监听——未发现资源泄漏
+- **空 catch 审计**：仅 modOptimization.ts 的 rmdir 清理一处，属尽力而为逻辑
+- **安全边界**：paths.ts isAnyPlatformAbsolute 覆盖 6 处安全敏感位置已生效；game/fs/engineDlc 的 isPathInside 边界双检；preload bridge 签名校验
+- **状态管理**：zustand workspace store + projectFilesSlice/TreeSlice 并发守卫
+
+### 测试失败分析
+
+本次运行前已确认远程分支修复完整（isAnyPlatformAbsolute + it.skipIf 门控），npm run check 全绿无失败。
+
+### 发现并修复的 Bug
+
+本次未发现新 bug。前 4 轮运行修复的问题（跨平台路径安全、mobile AI 中止链路）在本轮复查中确认修复完整且正确。
+
+### 运行验证
+
+- `npm run dev:web` — Vite 启动 219ms，HTTP 200，页面正常
+- `npm run build` — build:renderer + build:electron 全过
+- 控制台无报错、无未捕获异常
+
+### 结论
+
+- **本次未发现新 bug**
+- 前 4 轮修复的代码经本轮全量复查确认完整有效
+- 仓库状态稳定，main 分支 4 天无新 commit
+- **连续无 bug 计数**：1
+- 观察项（暂不动）：
+  - mobile `extractZip` 未显式覆盖 UNC 与盘符路径（Android POSIX 下天然安全）
+  - `engineDlc.ts:166` entry 校验未用 isAnyPlatformAbsolute（当前已双检覆盖盘符；UNC 在 Windows 上被 path.isAbsolute 拒）
+  - INEFFECTIVE_DYNAMIC_IMPORT 警告（体积优化项，非功能缺陷）
