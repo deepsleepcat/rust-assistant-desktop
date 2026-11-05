@@ -303,4 +303,47 @@
   - mobile `extractZip` 未显式覆盖 UNC 与盘符路径（Android POSIX 下天然安全）
   - `engineDlc.ts:166` entry 校验未用 isAnyPlatformAbsolute（当前已双检）
   - INEFFECTIVE_DYNAMIC_IMPORT 体积警告（非功能缺陷）
-  - POSIX 开发机上 engineDlc 脚本式 DLC 仍可遗留 detached 孤儿进程（纯 JS 无法触达二次 setsid 的孙进程；产品发行目标 Windows 由 Job 对象保证，不受影响）
+  - POSIX 开发机上 engineDlc 脚式 DLC 仍可遗留 detached 孤儿进程（纯 JS 无法触达二次 setsid 的孙进程；产品发行目标 Windows 由 Job 对象保证，不受影响）
+
+## 2026-11-05 晚上（第 7 次运行）
+
+- **日期**：2026-11-05
+- **时段**：晚上（20:01 执行）
+- **连续无 bug 次数**：0（本次发现并修复 1 个真实产品 bug，计数清零；上一轮早上为 2）
+
+### 运行事故与纠正（重复了早上那轮的坑，再次记录）
+
+- 本沙箱克隆 refspec 仅映射 `refs/heads/main`：首轮 `git fetch origin` + `git branch -a` 看不到远程 `automation/bug-check`，再次误判「分支不存在」而从 origin/main 重建本地分支。
+- 在过时基线（f0c6450）上重复产出了与 400f595 相同的盘符校验 + 平台门控修复与 4 个测试失败误报；推送被拒后按规则 `git fetch origin automation/bug-check` 发现远程分支，`git pull --rebase` 冲突解决时对 3 个重复文件取远端版本，丢弃重复改动（未曾推送，无残留）。
+- **后续运行务必先 `git fetch origin automation/bug-check`（或显式 refspec）再判断分支存在性**——早上那轮已记录过同样的坑。
+
+### 基础检查结果（基于远程分支最新状态 1584db9）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| npm run typecheck | ✅ 通过 | 无 TypeScript 错误 |
+| npm run lint | ✅ 通过 | 无 ESLint 错误 |
+| npm run test | ✅ 1318/1318 通过（5 skip） | 上轮（006f36a 基线）实测通过；1584db9 仅追加状态记录，未单独复跑 |
+
+### 代码审查与发现（本轮新覆盖）
+
+- 审查范围：`src/stores/slices/`（projectSlice/projectTreeSlice/projectFilesSlice/projectShared）、`WorkspaceSidebar.tsx`、`ProjectPanel.tsx`、`src/utils/tree.ts`、`electron/game.ts`、`electron/modPack.ts`、`electron/engineDlcProcess.ts`、`electron/engineDlcSession.ts`、`src/services/cloudBagAutoSync.ts` + `CloudBagAutoSyncService.tsx`（自动同步重入/竞态/current() 守卫）、mobile `stores/workspace.ts` 与桌面端差异。
+- **发现并修复 1 个真实 bug**（`src/stores/slices/projectSlice.ts` `removeProject`）：
+  - 问题：移除项目时无条件 `historyByTab.clear()` 并清空 `openTabs/activeTabId/treeRoot` 与全部弹窗状态。侧边栏对**非活动**项目点「移除」时：① 当前项目的打开标签（含未保存修改）被静默丢弃；② `treeRoot` 置 null 后无任何代码触发 `refreshTree`，文件面板永久卡在「正在加载项目文件…」（`ProjectPanel` 对 `project` 存在但 `treeRoot` 为 null 的渲染分支只有 loading 态）。
+  - 复现：项目 A 激活且打开文件 → 侧边栏对项目 B 点 X 移除并确认 → A 的标签全部关闭、文件树卡加载态。
+  - 修复：非活动项目仅清理其自身数据（projects/conversations/lastActiveConversationByProject）后提前返回；活动项目路径保持原有「整工作区重置」行为。新增回归测试 `tests/store.test.ts`「移除非活动项目不影响当前项目的标签、文件树与活动状态（回归）」。
+  - 提交：458c641「修复: 移除非活动项目时清空当前项目标签且文件树卡加载态」（仅 projectSlice.ts + store.test.ts，37 insertions）。
+- 其余审查点均未发现问题：自动同步租约与 running 集合防重入、`importModBuffer` 两阶段校验与回滚、`engineDlcProcess` 进程组清理与 stderr 截断、`deployMod` 符号链接拒绝、文件树 `dirLoadSeqs` 并发守卫、`deleteItem`/`renameItem` 的父目录局部刷新（绝对路径下根级文件也能正确取到项目根）。
+
+### 运行验证
+
+- `npm run check`（rebase 后最终代码）→ EXIT 0；**1319 passed / 5 skipped**（基线 1318 + 新增回归测试）。
+- `npm run dev:web` 实跑 + 浏览器实测：页面正常渲染（标题「铁锈工坊」、工作区/状态栏完整），控制台无 error、无未捕获异常。
+- `npm run build` → EXIT 0（renderer + electron 编译通过）。
+
+### 结论
+
+- 本次发现并修复 1 个真实产品 bug（removeProject 非活动项目路径），双重验证通过
+- **连续无 bug 计数**：0
+- 交付：458c641 已推送至 `origin/automation/bug-check`，长期 PR #9 自动更新
+- 观察项沿袭上轮，无新增
