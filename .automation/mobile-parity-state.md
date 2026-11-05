@@ -129,3 +129,33 @@
 3. 长期：settings/tabs → SettingsScreen 分项展开
 
 ---
+
+### 2026-11-05（第 4 次运行）
+
+**背景**：`automation/mobile-parity` 此前已在 11-02/11-03/11-04 完成 3 次补齐，今天运行首次从 `origin/main` 切出新分支后发现远端已存在 parity 分支（3 个历史提交）。本地新建 commit（configSyntax + rustLint）经 `git pull --rebase origin automation/mobile-parity` 与远端对齐：configSyntax.ts 在 11-02 已补齐（保留远端版本），rustLint.ts 接入 configSyntax 的改动是本次真正的增量。
+
+**补齐功能**：
+- `mobile/src/features/editor/rustLint.ts`：移除内联的 `splitTopLevel` 函数（40 行），改为 `import { splitTopLevelConfigValue } from '../../services/configSyntax'` 并通过别名 `const splitTopLevel = splitTopLevelConfigValue` 保持原调用点不变。
+
+**增量健壮性**：原函数只按英文逗号 `,` 做顶层分段；现在委托 `splitTopLevelConfigValue` 后，值中的中文逗号 `，` 也会被正确作为顶层分隔符（spawnUnits 参数值、枚举列表值里出现中文逗号时不再整段误校验）。
+
+**Check 结果**：
+- `mobile/` 目录下 `npx tsc --noEmit` ✅ 通过
+- `npm test` ✅ 21 files / 393 tests passed（与 11-04 相同基线）
+- 注意：首次运行时误判 parity 分支不存在，走 `git checkout -b ... origin/main` 创建本地新分支 → 直接 push 被拒（远端已有 parity）→ 按任务指令 `git pull --rebase origin automation/mobile-parity` 对齐，冲突手动解决。
+
+**剩余差距（更新 2026-11-02 基线）**：
+- services 层：cloudBag*（5）、mockBridge、versionDiff、codeDataLookup/State 仍缺失；translationRepair、configSyntax、communityConfig/communityApi/dashboardApi 已补齐
+- bridge 接口仍待补：`translationRepairScan` / `translationRepairApply`（modTools 翻译修复功能未贯通）
+- features 层：auth/community/conversation/dashboard(DashboardPanel)/graph/map/plugins/project/workspace 仍缺失；settings 缺 tabs；modTools 缺 ReportModal、TranslationRepairModal
+- stores 层：桌面端 workspace + 9 slices；手机端仅 workspace 单文件
+- components 层和 styles 层差距最大（手机端 UI 范式不同）
+
+**是否完全对齐**：否
+
+**下一步计划**：
+1. 补齐 bridge 的 `translationRepairScan` / `translationRepairApply`（纯文件扫描 + 保守修复，mobile 已有 services/translationRepair.ts）—— 打通 modTools 翻译修复流程
+2. 或补齐 `versionDiff.ts`（版本差异可视化，需要 mobile/codeData 已有 alias 数据支持）
+3. 长期：settings/tabs → SettingsScreen 分项展开
+
+---
