@@ -12,6 +12,7 @@ import { linter } from '@codemirror/lint'
 import type { EditorView } from '@codemirror/view'
 import type { ValueTypeInfo } from '../../services/codeData'
 import { findCodeByCode, findValueType, getAllCodes, getKeyZhToEnDict, getZhToEnDict, loadCodeData, versionNameToNumber, zhToEnKeySegments } from '../../services/codeData'
+import { splitTopLevelConfigValue } from '../../services/configSyntax'
 import { classifyLine } from './rustLanguage'
 import { runSemanticChecks, semanticIssuesToDiagnostics, type CustomRule } from './semanticChecks'
 import { defaultSemanticCheckerConfig, enabledRuleIds } from './semanticChecks/registry'
@@ -31,24 +32,9 @@ const SPAWN_UNITS_PARAMS = new Set([
   'offsetheight', 'offsetrandomdir', 'offsetdir', 'addresources', 'spawnsource', 'copywaypointsfrom',
 ])
 
-/** 按逗号分段（括号深度内的逗号不算分隔；spawnUnits 参数值可含函数调用嵌套） */
-function splitTopLevel(value: string): string[] {
-  const segs: string[] = []
-  let depth = 0
-  let cur = ''
-  for (const ch of value) {
-    if (ch === '(') depth++
-    else if (ch === ')') depth = Math.max(0, depth - 1)
-    if (ch === ',' && depth === 0) {
-      segs.push(cur)
-      cur = ''
-      continue
-    }
-    cur += ch
-  }
-  segs.push(cur)
-  return segs
-}
+/** 按逗号分段（括号深度内的逗号不算分隔；spawnUnits 参数值可含函数调用嵌套）。
+ * 委托 services/configSyntax.splitTopLevelConfigValue，统一支持英文/中文逗号。 */
+const splitTopLevel = splitTopLevelConfigValue
 
 /**
  * spawnUnits 值结构校验（引擎 ci.java:55-80）：
