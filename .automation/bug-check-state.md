@@ -257,3 +257,50 @@
   - mobile `extractZip` 未显式覆盖 UNC 与盘符路径（Android POSIX 下天然安全）
   - `engineDlc.ts:166` entry 校验未用 isAnyPlatformAbsolute（当前已双检覆盖盘符；UNC 在 Windows 上被 path.isAbsolute 拒）
   - INEFFECTIVE_DYNAMIC_IMPORT 警告（体积优化项，非功能缺陷）
+
+## 2026-11-05 早上（第 6 次运行）
+
+- **日期**：2026-11-05
+- **时段**：早上（11:49 执行）
+- **连续无 bug 次数**：2（本次未发现新 bug，计数 +1；上一轮 2026-11-04 上午计数 1）
+
+### 运行事故与纠正（重要，供后续运行避坑）
+
+- 本仓库为**单分支克隆**（refspec 仅映射 `refs/heads/main`），首次 `git fetch origin` 后 `git branch -a` 看不到远程 `automation/bug-check` 分支，导致本轮开头误判「分支不存在」而从 origin/main 重建了本地分支。
+- 在过时基线上做的一轮审查产生了 4 个测试失败误报与一份与 400f595 重复的修复 commit；经显式 `git fetch origin automation/bug-check` 发现远程分支后，已 `git reset --hard` 到远程 HEAD（006f36a）丢弃重复工作，**该重复 commit 未曾推送，无残留**。
+- 后续运行务必先执行 `git fetch origin automation/bug-check` 再判断分支是否存在。
+
+### 基础检查结果（基于远程分支最新状态 006f36a）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| npm run typecheck | ✅ 通过 | 无 TypeScript 错误 |
+| npm run lint | ✅ 通过 | 无 ESLint 错误 |
+| npm run test | ✅ 1318/1318 通过（5 skip） | 与上轮基线一致，无回归 |
+
+### 代码审查范围（本轮新增覆盖 + 有效性说明）
+
+- 本轮新覆盖（前几轮未深入）：
+  - `modPack.ts`：importModBuffer 两阶段导入（存在性预检 → 写盘失败回滚，回滚仅删本次计划文件、不误删既有文件，空目录自底向上清理）；packModBufferWithCount 内存上限（单文件 512MB/总量 2GB）与 visitedDirs 防环形 junction——未发现问题
+  - `modOptimization.ts`：逐项 try/catch、临时文件+rename 原子替换、删除前 readdir 复核防空目录误删、prune 递归返回值语义——未发现问题
+  - `cloudbagSave.ts`：受信 sender 双重断言（对话框前后各一次）、同目录临时文件 wx+rename、finally 兜底清理——未发现问题
+  - `cloudBagOperation.ts`：租约身份校验删除（陈旧 lease 双重释放无害）——未发现问题
+  - `cloudBagApi.ts`：上传超时线性放宽公式与边界（非正数回退 60s）——未发现问题
+  - `useAppShortcuts.ts`：keydown 监听器正确清理——未发现问题
+- 复核有效性说明：前 4 个修复 commit 只改动 `electron/*` 与 `mobile/*`，`src/` 渲染层与 main 完全一致，因此本轮早前在过时基线上完成的渲染进程审查（projectTabsSlice 保存/外部修改轮询、App.tsx 定时器清理、cloudBagAutoSync 主循环租约与 current() 守卫、engineDlcSession/process/host 生命周期）结论全部有效
+- 空值/边界/竞态专项：saveTab 保存期间继续输入的 L1 比对、checkExternalChanges 的 stat-only 轮询与删除文件分支、EngineDlcHost pump 的 Map 迭代中删除——均已核对，未发现新问题
+
+### 运行验证
+
+- `npm run dev:web` — Vite 启动正常，HTTP 200
+- 浏览器实测（仪表盘/设置/快捷键/外观切换交互）：页面渲染完整、控制台无 error、无未捕获异常、交互无崩溃，3 项冒烟全部 PASS
+
+### 结论
+
+- **本次未发现新 bug**；远程分支上 4 个既有修复（跨平台路径 ×2、mobile AI 中止 ×1、平台门控 ×1）经本轮独立复查确认有效
+- **连续无 bug 计数**：2
+- 观察项（沿袭上轮，未新增）：
+  - mobile `extractZip` 未显式覆盖 UNC 与盘符路径（Android POSIX 下天然安全）
+  - `engineDlc.ts:166` entry 校验未用 isAnyPlatformAbsolute（当前已双检）
+  - INEFFECTIVE_DYNAMIC_IMPORT 体积警告（非功能缺陷）
+  - POSIX 开发机上 engineDlc 脚本式 DLC 仍可遗留 detached 孤儿进程（纯 JS 无法触达二次 setsid 的孙进程；产品发行目标 Windows 由 Job 对象保证，不受影响）
