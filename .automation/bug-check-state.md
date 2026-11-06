@@ -391,3 +391,41 @@
 - **连续无 bug 计数**：0
 - 交付：b34b582（修复）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新
 - 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增
+
+## 2026-11-06 晚上（第 9 次运行）
+
+- **日期**：2026-11-06
+- **时段**：晚上（20:01 执行）
+- **连续无 bug 次数**：0（本次发现并修复 3 个真实问题，计数清零；上一轮 2026-11-06 早上为 0）
+
+### 运行事故与纠正（refspec 坑第 4 次出现，本轮按早上固化的流程完成自纠）
+
+- 开头 `git fetch origin` + `git branch -a` 仍看不到远程 `automation/bug-check`（refspec 仅映射 main），第 4 次误判「分支不存在」从 origin/main（f0c6450）重建，并在过时基线上把 11-01/11-02 已修复的问题全部「重新发现」了一遍（盘符校验、3 个 Windows 专属用例假失败），做了重复修复并写了重复的状态记录。
+- 推送被拒后按规则检查：`git ls-remote origin` 见 `refs/heads/automation/bug-check`（f23098f8）与 PR #9 → 用 `git reset --soft FETCH_HEAD` 落位到远程最新，丢弃与远程重复的 3 处改动（game.ts 的 isAnyPlatformAbsolute 版本、两个测试的整用例 skipIf 门控——远程实现更完善），仅保留 mobile 两文件的本轮新修复。
+- **教训固化（再次确认）**：判断分支存在性的唯一可靠方式是 `git fetch origin automation/bug-check` / `git ls-remote origin`；`git branch -a` 在本沙箱永远看不到该分支。建议后续运行开头直接执行 `git fetch origin automation/bug-check && git reset --hard FETCH_HEAD`（存在时）。
+
+### 本轮真实发现（远程最新 f23098f8 上仍然存在的问题）
+
+1. 【阻断级·手机端 Rust】`mobile/src-tauri/src/commands.rs:199` 编译错误：`emit(&AiStreamEvent::Error { message: '请求已被中止' })` 用单引号包了多字符字符串——Rust 字符字面量只允许一个 codepoint，`cargo check` 直接失败，**远程分支上手机端 Tauri 无法构建**（11-04 的 1d4db8a 引入，该轮未跑 cargo check）。证据：对远程原始树 `cargo check` → `error: character literal may only contain one codepoint`（最小 rustc 复现同报错）。
+2. 【真实缺陷·手机端 Rust】`truncate` 仍按字节切片 `&s[..max]`：DeepSeek 错误响应体含中文时字节 500 极可能落在多字节字符中间 → panic，真实错误信息丢失。
+3. 【真实缺陷·手机端异步竞态】超时路径不调用 `ai_stream_abort` 且事件不带请求标识：120s 超时后 Rust 流继续跑，迟到的 `Done`/`Delta` 会被下一次 `chatOnce` 收到——旧文本/旧工具调用被误当新回合结果执行（有误写文件风险）。另外全局 `ABORT_FLAG` 在每次 ai_stream 开始时重置，跨请求仍有干扰窗口。
+
+### 修复方案（mobile/commands.rs + mobile/aiClient.ts 两个文件）
+
+- `commands.rs`：以 per-request AbortRegistry 重写中止机制（`Mutex<HashSet<String>>` + `AbortGuard` 所有 return 路径自动清理），`ai_stream` 接受并回显 `requestId`（serde flatten 包一层 TaggedAiStreamEvent），流循环每分片检查；`ai_stream_abort` 真正生效并按 requestId 定向；`truncate` 回退到最近字符边界再截断。顺带消除上述编译错误（Error 变体的 abort 发射点被 invoke 的 Err 返回取代）。
+- `aiClient.ts`：`chatOnce` 生成 `requestId` 并传给 invoke；事件按 `request_id` 过滤（僵尸流迟到事件不再串扰）；超时调用 `invoke('ai_stream_abort', { requestId })`；超时文案对齐实际（原写「30s 无事件」实为 120s 总时长）；**保留 11-04 引入的停止按钮看门狗**（`isAborted` 轮询 → 定向 abort → reject('已中止')，`runAgentChat` 按中止语义优雅返回）。
+
+### 运行验证
+
+- 远程原始树 `cargo check`：**失败**（编译错误，见上）；修复后 `cargo check`：**通过**（仅既有 warning：`AiStreamEvent::Error` 变体未构造）。
+- `truncate`/AbortRegistry 独立 rustc 用例：中文体（900 字节截 500 → 166 汉字+…）、ASCII、短体、abort 标记与 guard 清理全部通过。
+- mobile `npm run check`（合并后最终代码）：21 文件 **393 测试全绿**。
+- 桌面 `npm run check`（合并后最终代码）：**EXIT 0**；79 文件 **1319 通过 / 5 跳过**，与远程基线一致，本次修复无回归。
+- `npm run dev:web` + 浏览器实测（本轮早段于过时基线执行）：页面正常渲染、遍历主要导航无控制台报错、无未捕获异常、无 vite error overlay（合并后基线差异仅在已验证的 mobile 两文件，桌面未改动）。
+
+### 结论
+
+- 本次发现并修复 3 个真实问题（手机端 Tauri 编译失败、truncate UTF-8 panic、AI 僵尸流串扰），双重验证通过
+- **连续无 bug 计数**：0
+- 交付：本轮修复 commit 推送至 `origin/automation/bug-check`，长期 PR #9 自动更新
+- 观察项沿袭上轮，无新增

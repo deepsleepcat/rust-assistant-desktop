@@ -27,12 +27,12 @@ export interface ChatOnceResult {
 /** 单次流式请求（Rust 代理 → SSE 事件）
  *
  * 中止链路：UI 停止按钮 → runAgentChat 的 isAborted() 为 true
- *  → chatOnce 检测到后 invoke('ai_stream_abort') 设置 Rust 端全局标志
- *  → ai_stream 的 SSE 循环在下一轮迭代时提前终止并 emit Error 事件
- *  → chatOnce 的 listen 收到 error 后 reject
+ *  → chatOnce 看门狗检测到后 invoke('ai_stream_abort', { requestId }) 标记该请求
+ *  → ai_stream 的 SSE 循环在下一轮迭代时提前终止（错误经 invoke reject 回流）
  *
- * 这条链路把「停止」从一个 UI 状态提升到真正的 HTTP 请求级中止，
- * 避免用户点停止后后端还在继续下载、API 继续计费。
+ * 每个请求带唯一 requestId：Rust 端每个事件都回显，前端据此过滤——
+ * 超时/中止后旧流（僵尸流）的迟到 Done/Delta 不会串扰下一次请求
+ * （否则旧文本/旧工具调用会被误当新回合结果执行）。
  */
 export async function chatOnce(
   settings: AiSettings,
@@ -43,13 +43,14 @@ export async function chatOnce(
     let unlisten: UnlistenFn | null = null
     let fullText = ''
     let toolCallsJson: string | null = null
+    const requestId = crypto.randomUUID()
     let abortNotified = false
     const abortWatchdog = setInterval(() => {
       if (opts.isAborted?.()) {
         clearInterval(abortWatchdog)
         if (!abortNotified) {
           abortNotified = true
-          void invoke('ai_stream_abort').catch(() => undefined)
+          void invoke('ai_stream_abort', { requestId }).catch(() => undefined)
           unlisten?.()
           clearTimeout(timer)
           reject(new Error('已中止'))
@@ -63,17 +64,21 @@ export async function chatOnce(
     }
     const timer = setTimeout(() => {
       cleanup()
-      reject(new Error('AI 响应超时（30s 无事件），请重试'))
+      // 尽力中止 Rust 侧仍在跑的流，避免僵尸流继续消耗网络与产生迟到事件
+      void invoke('ai_stream_abort', { requestId }).catch(() => undefined)
+      reject(new Error('AI 响应超时（120 秒未完成），请重试'))
     }, 120_000)
 
     listen<unknown>(AI_EVENT_CHANNEL, (ev) => {
       const payload = ev.payload as {
+        request_id?: string
         type: 'start' | 'delta' | 'done' | 'error'
         text?: string
         full_text?: string
         tool_calls?: string | null
         message?: string
       }
+      if (payload.request_id !== requestId) return
       if (payload.type === 'delta' && payload.text) {
         fullText += payload.text
         opts.onDelta(payload.text)
@@ -104,6 +109,7 @@ export async function chatOnce(
       unlisten = fn
       void invoke('ai_stream', {
         request: {
+          requestId,
           apiKey: settings.deepseekApiKey,
           model: settings.deepseekModel,
           systemPrompt: RUST_ASSISTANT_SYSTEM_PROMPT,
@@ -146,7 +152,7 @@ export async function runAgentChat(opts: AgentChatOptions): Promise<string> {
     try {
       result = await chatOnce(opts.settings, messages, { onDelta: opts.onDelta, isAborted: opts.isAborted })
     } catch {
-      // abortWatchdog 触发中止时 chatOnce 会 reject('已中止')，按 abort 语义优雅返回
+      // 看门狗/超时触发中止时 chatOnce 会 reject，按中止语义优雅返回（不打断整个页面）
       return finalText || '（已中止）'
     }
     finalText = result.fullText
