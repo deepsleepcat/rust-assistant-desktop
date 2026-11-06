@@ -1,17 +1,35 @@
 // AI 流式代理命令（独立模块：tauri::command 宏在子模块展开，避免与 lib 顶层命名空间冲突）
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use futures_util::StreamExt;
 use tauri::Emitter;
 
-/// 全局中止标志：ai_stream_abort() 置真，ai_stream 循环内检查并提前终止。
-/// 手机端单用户场景足够；并发 AI 流请求（多模型并行）需要更细粒度的 per-request 方案。
-static ABORT_FLAG: AtomicBool = AtomicBool::new(false);
-
 /// AI 流式代理：转发 DeepSeek（OpenAI 兼容）SSE 流到前端。
 /// 事件经 `ai://event` 推送给渲染层；重活下沉 Rust，UI 零阻塞。
 pub const AI_EVENT_CHANNEL: &str = "ai://event";
+
+/// 已请求中止的 ai_stream requestId 集合（前端超时后调用 ai_stream_abort 标记，
+/// 流循环每个分片检查一次并提前退出，避免僵尸流继续消耗网络与产生迟到事件）。
+fn aborts() -> &'static Mutex<HashSet<String>> {
+    static ABORTS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    ABORTS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn is_aborted(request_id: &str) -> bool {
+    aborts().lock().map(|set| set.contains(request_id)).unwrap_or(false)
+}
+
+/// 离开作用域时自动从 abort 集合移除本请求（所有 return 路径都清理，防集合泄漏）。
+struct AbortGuard(String);
+impl Drop for AbortGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = aborts().lock() {
+            set.remove(&self.0);
+        }
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +51,9 @@ pub struct AiStreamRequest {
     /// 是否已禁用工具调用（写文件审批等待时由前端置 true，避免工具循环）
     #[serde(default)]
     pub no_tools: bool,
+    /// 请求标识：回显到每个事件，前端据此过滤旧流迟到的事件（超时后僵尸流不再串扰新请求）
+    #[serde(default)]
+    pub request_id: String,
     /// 每次流式事件的字符串增量上限（SSE 行过长时截断防前端卡顿）
     #[serde(default = "default_delta_limit")]
     pub delta_limit: usize,
@@ -52,14 +73,29 @@ pub enum AiStreamEvent {
     Error { message: String },
 }
 
+#[derive(Clone, Serialize)]
+pub struct TaggedAiStreamEvent {
+    pub request_id: String,
+    #[serde(flatten)]
+    pub event: AiStreamEvent,
+}
+
 #[tauri::command]
 pub async fn ai_stream(
     app: tauri::AppHandle,
     request: AiStreamRequest,
 ) -> Result<(), String> {
-    ABORT_FLAG.store(false, Ordering::SeqCst);
-    let emit = |ev: &AiStreamEvent| {
-        let _ = app.emit(AI_EVENT_CHANNEL, ev);
+    let request_id = request.request_id;
+    let _guard = AbortGuard(request_id.clone());
+    if is_aborted(&request_id) {
+        return Err("AI 请求已中止".into());
+    }
+    let emit_request_id = request_id.clone();
+    let emit = move |ev: &AiStreamEvent| {
+        let _ = app.emit(
+            AI_EVENT_CHANNEL,
+            TaggedAiStreamEvent { request_id: emit_request_id.clone(), event: ev.clone() },
+        );
     };
     emit(&AiStreamEvent::Start);
 
@@ -111,11 +147,10 @@ pub async fn ai_stream(
 
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();
-    let mut aborted = false;
     while let Some(chunk) = stream.next().await {
-        if ABORT_FLAG.load(Ordering::SeqCst) {
-            aborted = true;
-            break;
+        // 前端超时/停止后标记中止：尽早退出，不再产生迟到事件
+        if is_aborted(&request_id) {
+            return Err("AI 请求已中止".into());
         }
         let chunk = chunk.map_err(|e| format!("流式读取失败：{e}"))?;
         buf.push_str(&String::from_utf8_lossy(&chunk));
@@ -195,21 +230,19 @@ pub async fn ai_stream(
         Some(serde_json::to_string(&arr).unwrap_or_default())
     };
 
-    if aborted {
-        emit(&AiStreamEvent::Error { message: '请求已被中止' });
-    } else {
-        emit(&AiStreamEvent::Done {
-            full_text,
-            tool_calls,
-        });
-    }
+    emit(&AiStreamEvent::Done {
+        full_text,
+        tool_calls,
+    });
     Ok(())
 }
 
-/// 中止当前 AI 流式请求：设置全局 ABORT_FLAG，ai_stream 的 SSE 循环会在下一轮迭代时提前终止。
+/// 中止指定流（前端看门狗超时用）：标记 requestId，流循环检测后退出并清理。
 #[tauri::command]
-pub fn ai_stream_abort() -> Result<(), String> {
-    ABORT_FLAG.store(true, Ordering::SeqCst);
+pub fn ai_stream_abort(request_id: String) -> Result<(), String> {
+    if let Ok(mut set) = aborts().lock() {
+        set.insert(request_id);
+    }
     Ok(())
 }
 
@@ -217,6 +250,11 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}…", &s[..max])
+        // 按字符边界截断：错误体常含中文，直接按字节切片会 panic（byte index not a char boundary）
+        let mut end = max;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}…", &s[..end])
     }
 }
