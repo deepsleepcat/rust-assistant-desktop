@@ -347,3 +347,47 @@
 - **连续无 bug 计数**：0
 - 交付：458c641 已推送至 `origin/automation/bug-check`，长期 PR #9 自动更新
 - 观察项沿袭上轮，无新增
+
+## 2026-11-06 早上（第 8 次运行）
+
+- **日期**：2026-11-06
+- **时段**：早上（08:00 执行）
+- **连续无 bug 次数**：0（本次发现并修复 2 个真实问题，计数清零；上一轮 2026-11-05 晚上为 0）
+
+### 运行事故与纠正（同一个坑第三次出现，务必根除）
+
+- 本沙箱克隆 refspec 仅映射 `refs/heads/main`：开头 `git fetch origin` + `git branch -a` 再次看不到远程 `automation/bug-check`，第三次误判「分支不存在」而从 origin/main（f0c6450，过时基线）重建本地分支，并在过时基线上复现了「4 个测试失败误报」。
+- 推送被拒后按规则 `git fetch origin automation/bug-check` 发现远程分支（HEAD=bf7ac6c），删除本地误建的状态文件后 `git pull --rebase` 干净落位（修复 commit rebase 为 b34b582，无冲突）。
+- **教训固化**：判断分支存在性的唯一可靠方式是 `git fetch origin automation/bug-check` 或显式 refspec；`git branch -a` 在本沙箱永远看不到该分支。
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| npm run typecheck | ✅ 通过 | 过时基线与 rebase 后基线均通过 |
+| npm run lint | ✅ 通过 | 同上 |
+| npm run test（过时基线 f0c6450） | ⚠️ 4 failed / 1317 passed | 全部为已知的平台差异误报（该基线缺 skipIf 门控与 isAnyPlatformAbsolute 修复） |
+| npm run test（rebase 后最终代码） | ✅ **1319/1319 通过（5 skip）** | 与远程基线一致，本次修复无回归 |
+
+### 代码审查与发现（本轮新覆盖 + 修复）
+
+- 审查范围：`projectTabsSlice`（打开/编辑/撤销/保存/关闭全链路）、`EditorArea` 的「保存并关闭」、`Modal.tsx` ConfirmDialog 的 saveThen 链路（含 cancelledRef 取消保护）、`projectFilesSlice`「保存并切换」、`cloudBagApi`（awaitWithSignal 的 abort 监听配对、readLimitedBytes 的 reader.cancel/releaseLock、信封解析）、`engineDlcSession`（waiter 生命周期/close 宽限/帧再校验）、`engineDlcIpc`（参数收敛、sender 生命周期）、`engineDlcProcess`（进程组杀树）、`TurretEditorView`（RAF 泵/会话开闭/writeTurretIni/setValue 边界）、`bridge.ts` 与 `mobile/src/services/bridge.ts`（engineDlc 缺失安全降级）、已删模块残留引用（无残留）。
+- **发现并修复 bug 1**（`src/stores/slices/projectTabsSlice.ts` `saveTab` 过期快照竞态）：
+  - 问题：`tab` 在进入时捕获，经外部修改检查的 `await readFile` 后，仍用旧快照做「`!tab.dirty && !tab.pendingRepair` 提前返回成功」判断，并用 `tab.content` 写盘。真实场景：炮塔编辑器保存期间用户可继续拖动手柄（无弹窗遮挡，RAF 泵 60Hz 回写内容）→ 最后一次坐标覆盖不会被写盘；代码注释里的 L1 比对只保证脏标记正确，写盘内容仍是旧的。
+  - 修复：await 后重取最新标签（`latest`）再决定是否写盘与写什么；标签已被关闭则返回 false。
+- **发现并修复 bug 2**（`electron/engineDlcIpc.ts` dlc:render 的 sender 销毁处理）：
+  - 问题：destroyed 回调调用 `sessions.cancelAll()`，会杀掉**所有** owner 的常驻会话，与 `dlc:sessionOpen` 路径的 `sessions.close(owner)` 契约不一致。当前单 BrowserWindow 下无实际影响，多窗口/多 WebContents 时会误杀其他窗口正在使用的炮塔会话。
+  - 修复：改为 `void sessions.close(owner)`（host.cancel(owner) 保持不变）。
+- 其余审查点未发现问题：ConfirmDialog 保存期间取消已有 cancelledRef 保护、closeTabChecked 由焦点陷阱阻断并发输入、awaitWithSignal 在 abort 赢得竞态后原 promise 的 reject 有 handler 接住（无 unhandledrejection）、TurretEditorView setValue 的中间态 NaN 仅产生瞬时无效覆盖且可自恢复、mobile 端无 TurretEditorView 引用。
+
+### 运行验证
+
+- `npm run dev:web` 实跑 + 浏览器实测：页面正常渲染、控制台无 error 级输出、无未捕获异常；编辑器入口在 Web 预览环境因无项目/未登录受阻（预期行为）。
+- rebase 后 `npm run check` 复跑全绿（1319 passed / 5 skipped），双重验证通过。
+
+### 结论
+
+- 本次发现并修复 2 个真实问题（saveTab 过期快照写盘竞态、DLC 会话跨窗口误杀），双重验证通过
+- **连续无 bug 计数**：0
+- 交付：b34b582（修复）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新
+- 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增
