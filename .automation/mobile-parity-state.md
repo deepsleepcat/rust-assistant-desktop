@@ -118,7 +118,11 @@
 - services 层：mockBridge、versionDiff、communityApi、cloudBag*、dashboardApi、codeDataLookup/State
 - 详见上方差距总览表
 
-**检查结果**：`mobile npm run check` ✅（tsc --noEmit + 22 test files / 403 tests passed，含新增 10 例）；根目录 `npm run check` typecheck/lint ✅，vitest 有 4 个预存失败（engineDlc 2、engineDlcSecurity 1、game 1），stash 对比确认在干净 origin/main 上同样存在，与本次改动无关。
+**顺带修复远端分支预存问题（commit「修复: 手机端优化扫描与模组工具类型错误」）**：
+1. `mobile/src/services/bridge.ts` optimizeScan：plugin-fs 的 readDir 不返回 size，原实现 `e.size ?? 0` 恒为 0，导致所有文件被判成「空文件」并可一键误删——现改为逐文件 `stat` 取真实大小，stat 失败记为 -1（未知，不判空）；同文件 globalOp 与 optimizeScan 的 `DirEntry[]` 误注解（本地富类型 vs plugin-fs 裸类型）改为遍历所需的最小字段类型，修复 mobile 自身 `tsc --noEmit` 的 2 个 TS2322；
+2. `mobile/src/screens/ModToolsScreen.tsx`：OptimizeView/GlobalOpView 的 `onBack` prop 从未被使用（TS6133 ×2）——返回入口已由共享顶栏承担，删除冗余 prop。修复后 mobile `npm run check` 首次在本分支全绿（此前 2026-11-06 运行只跑根目录 typecheck，未覆盖 mobile/）。
+
+**检查结果**：`mobile npm run check` ✅（tsc --noEmit + 24 test files / 414 tests passed，含新增 10 例）；根目录 `npm run check` typecheck/lint ✅，vitest 有 4 个预存失败（engineDlc 2、engineDlcSecurity 1、game 1），stash 对比确认在干净 origin/main 上同样存在，与本次改动无关。
 
 **是否已完全对齐**：❌ 否
 

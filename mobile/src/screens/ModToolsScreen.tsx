@@ -41,8 +41,8 @@ export function ModToolsScreen() {
       </header>
       <div className="m-scroll">
         {view === "home" && <HomeView onPick={setView} />}
-        {view === "optimize" && <OptimizeView onBack={() => setView("home")} />}
-        {view === "globalOp" && <GlobalOpView onBack={() => setView("home")} />}
+        {view === "optimize" && <OptimizeView />}
+        {view === "globalOp" && <GlobalOpView />}
       </div>
     </div>
   )
@@ -84,7 +84,7 @@ function HomeView({ onPick }: { onPick: (v: View) => void }) {
   )
 }
 
-function OptimizeView({ onBack }: { onBack: () => void }) {
+function OptimizeView() {
   const activeProject = useWorkspace((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const [items, setItems] = useState<OptItem[] | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -283,7 +283,7 @@ function OptimizeView({ onBack }: { onBack: () => void }) {
   )
 }
 
-function GlobalOpView({ onBack }: { onBack: () => void }) {
+function GlobalOpView() {
   const activeProject = useWorkspace((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const [kind, setKind] = useState<"replace" | "prepend" | "append">("replace")
   const [find, setFind] = useState("")
