@@ -19,7 +19,7 @@ import {
   type PendingSave,
 } from '../features/editor/editSession'
 
-export type MobileTab = 'projects' | 'editor' | 'library' | 'inspect' | 'ai' | 'settings'
+export type MobileTab = 'projects' | 'editor' | 'library' | 'inspect' | 'modTools' | 'ai' | 'settings'
 
 /**
  * 编辑器跳转请求（检查结果 / 大纲「定位」→ 编辑器）。

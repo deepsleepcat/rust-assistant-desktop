@@ -1,6 +1,6 @@
 /**
  * 铁锈工坊 · 应用外壳：
- * 主题（跟随系统/深浅色）+ 底部导航 5 Tab（项目 / 模板 / 检查 / AI / 设置）。
+ * 主题（跟随系统/深浅色）+ 底部导航 6 Tab（项目 / 模板 / 检查 / 工具 / AI / 设置）。
  * 编辑页为全屏模态（从项目进入），不占底部导航。
  */
 import { useEffect } from "react";
@@ -11,6 +11,7 @@ import { ProjectsScreen } from "./screens/ProjectsScreen";
 import { EditorScreen } from "./screens/EditorScreen";
 import { LibraryScreen } from "./screens/LibraryScreen";
 import { InspectScreen } from "./screens/InspectScreen";
+import { ModToolsScreen } from "./screens/ModToolsScreen";
 import { AiScreen } from "./screens/AiScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import "./styles/tokens.css";
@@ -28,6 +29,7 @@ const TABS: TabDef[] = [
   { key: "projects", label: "项目", icon: "folder" },
   { key: "library", label: "模板", icon: "tower" },
   { key: "inspect", label: "检查", icon: "check" },
+  { key: "modTools", label: "工具", icon: "tools" },
   { key: "ai", label: "AI", icon: "sparkle" },
   { key: "settings", label: "设置", icon: "settings" },
 ]
@@ -81,6 +83,7 @@ function App() {
         {activeTab === "editor" && <EditorScreen />}
         {activeTab === "library" && <LibraryScreen />}
         {activeTab === "inspect" && <InspectScreen />}
+        {activeTab === "modTools" && <ModToolsScreen />}
         {activeTab === "ai" && <AiScreen />}
         {activeTab === "settings" && <SettingsScreen />}
       </main>
