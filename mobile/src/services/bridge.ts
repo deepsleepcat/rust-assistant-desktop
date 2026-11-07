@@ -685,19 +685,16 @@ function createMobileBridge(): BridgeApi {
         while (stack.length > 0) {
           const rel = stack.pop()!
           const abs = rel ? `${rootPath}/${rel}` : rootPath
-          let entries: DirEntry[] = []
+          // plugin-fs readDir 不带 size/mtime，只取遍历需要的字段
+          let entries: Array<{ name: string; isDirectory: boolean }> = []
           try {
             entries = await fsReadDir(abs)
           } catch {
             continue
           }
-          // 记录目录自身
+          // 记录目录自身（size 未用，占位 0）
           if (rel) {
-            let dirSize = 0
-            for (const e of entries) {
-              dirSize += e.size ?? 0
-            }
-            files.push({ rel, abs, isDir: true, size: dirSize })
+            files.push({ rel, abs, isDir: true, size: 0 })
           }
           for (const e of entries) {
             const childRel = rel ? `${rel}/${e.name}` : e.name
@@ -705,11 +702,19 @@ function createMobileBridge(): BridgeApi {
               if (childRel === 'rules' || childRel.startsWith('.')) continue
               stack.push(childRel)
             } else {
+              // 空文件判定需要真实大小：readDir 不给 size，逐个 stat（仅本工具用，可接受）
+              // stat 失败记为 -1（未知），不能当 0——否则会把读不到信息的文件误判成空文件
+              let size = -1
+              try {
+                size = (await stat(`${abs}/${e.name}`)).size
+              } catch {
+                // 保持 -1
+              }
               files.push({
                 rel: childRel,
                 abs: `${abs}/${e.name}`,
                 isDir: false,
-                size: e.size ?? 0,
+                size,
               })
             }
           }
@@ -890,7 +895,8 @@ function createMobileBridge(): BridgeApi {
         while (stack.length > 0) {
           const rel = stack.pop()!
           const abs = rel ? `${rootPath}/${rel}` : rootPath
-          let entries: DirEntry[] = []
+          // plugin-fs readDir 只需 name/isDirectory（不要误注成本地富 DirEntry 类型）
+          let entries: Array<{ name: string; isDirectory: boolean }> = []
           try {
             entries = await fsReadDir(abs)
           } catch {
