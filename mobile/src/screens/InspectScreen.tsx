@@ -125,7 +125,7 @@ export function InspectScreen() {
       // line=0 表示「整档级」问题（基础 lint），不跳转
       line: item.line > 0 ? item.line : undefined,
     })
-    if (!result.ok) setError(result.error)
+    if (!result.ok && !result.cancelled) setError(result.error)
   }
 
   const count = items ? { error: items.filter((i) => i.severity === "error").length, warning: items.filter((i) => i.severity === "warning").length } : null
