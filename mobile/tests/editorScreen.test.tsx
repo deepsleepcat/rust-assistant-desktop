@@ -31,6 +31,7 @@ vi.mock('../src/services/codeData', () => ({
   getEnToZhDict: () => new Map([['name', '名称']]),
   getZhToEnDict: () => new Map([['名称', 'name']]),
   getKeyZhToEnDict: () => new Map([['名称', 'name']]),
+  getSectionZhToEnDict: () => new Map([['核心', 'core']]),
   findCodeByCode: () => undefined,
   findValueType: () => undefined,
   getAllCodes: () => [],
