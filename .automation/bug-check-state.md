@@ -477,3 +477,51 @@
 - **连续无 bug 计数**：0
 - 交付：本轮修复 commit（commands.rs + AiScreen.tsx）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新。
 - 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增。
+
+## 2026-11-07 晚上（第 11 次运行）
+
+- **日期**：2026-11-07
+- **时段**：晚上（20:01 执行）
+- **连续无 bug 次数**：0（本次发现并修复 1 个真实问题，计数清零；上一轮 2026-11-07 早上为 0）
+
+### 分支与基线（refspec 坑第 5 次出现，已按固化流程自纠）
+
+- 开头只执行 `git fetch origin` + `git branch -a`，克隆 refspec 仅映射 main，再次误判 `automation/bug-check` 不存在，从过时基线 f0c6450 重建分支；在该基线上跑出的「4 个测试失败」以及 game.test 盘符用例、engineDlc 大小写/正斜杠用例，均为 11-01/11-02 已在远程修复的陈旧基线假象（远程已有 `skipIf` 门控与 `isAnyPlatformAbsolute`），不是新缺陷。
+- 推送被拒后执行 `git fetch origin automation/bug-check`，发现远程 HEAD `095984e`（第 10 次运行），`git rebase FETCH_HEAD` 落位；状态文件 add/add 冲突取远端版本后追加本记录；本轮未触碰 main。
+- 固化建议（第 5 次重申）：运行开始直接 `git fetch origin automation/bug-check`，存在则 `git reset --hard FETCH_HEAD` 后再判断工作区；`git branch -a` 在本沙箱永远看不到该分支。
+
+### 基础检查结果（rebase 后最终代码）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check` | ✅ EXIT 0 | 79 文件 **1319 通过 / 5 跳过**；typecheck/lint 全绿 |
+| mobile `npm run check` | ✅ EXIT 0 | 22 文件 **396 通过**（393 + 本轮新增 3 条回归） |
+| mobile `npm run build` | ✅ EXIT 0 | 仅有既有 >500kB chunk 体积提示 |
+| 桌面 `npm run build` | ✅ EXIT 0 | renderer 与 electron tsc 均通过（既有 INEFFECTIVE_DYNAMIC_IMPORT 提示） |
+
+### 代码审查范围（本轮新覆盖）
+
+- 手机端打开/保存链路：`mobile/src/features/editor/openFile.ts`、`EditorScreen.tsx`（保存/关闭/历史栈/pendingExit）、`editSession.ts`、`entryName.ts`、`InspectScreen.tsx`、`App.tsx` 与 `ProjectsScreen.tsx` 的导航可达性。
+- 桌面端异步与资源：`cloudBagAutoSync`（租约/待处理操作/索引缺失降级）、`CloudBagAutoSyncService` 计时器清理、`projectTabsSlice`/`projectSlice` 打开与外部变更竞态、`electron/fsIpc.ts`/`paths.ts` 主进程边界与路径编码、`cloudbagWatch` watcher 释放、`projectSearch` 异常分支、`Modal/focusTrap/modalStack`。
+- 桌面与手机差异：桌面 `openFile` 已有 `activeProjectId` 守卫，手机端缺失（本轮修复点）；`mobile/src-tauri` 未改动。
+
+### 发现并修复的 Bug
+
+1. 【真实缺陷·手机端异步竞态】`openFileInEditor` 读盘期间不校验当前项目/最新点击：
+   - 问题：用户在文件树/检查结果点开文件 A 后，读盘或首次加载中文词典期间切到「项目」并打开项目 B（或连续点开 A、B 两个文件），先发起、后完成的请求仍会 `openEditorSession`。结果是编辑会话里是旧项目 A 的文件（或先点的文件），而 `activeProjectId` 已是 B / 最后一次点击是 B，界面文件与当前项目、点击目标不一致，后续保存/工具操作也作用在错误上下文。
+   - 复现：手机端打开较大文件或首次开启中文显示（`loadTranslationDict` 较慢）时切换项目；连续点开两个文件时慢读盘的先返回。
+   - 修复：`openFile.ts` 增加模块级打开请求序号 + `activeProjectId` 双重校验（读盘后、`loadTranslationDict` 后各校验一次），过期请求返回 `cancelled` 且不写会话；`EditorScreen`/`InspectScreen` 对 `cancelled` 不弹错误。新增 `mobile/tests/openFile.test.ts` 3 条回归（正常打开、切项目、连点乱序返回）。
+   - 验证：修复后 3/3 通过；临时回退 `openFile.ts` 后 2/3 失败，确认用例能捕获该竞态；mobile 全量 396 测试通过。
+
+### 运行验证
+
+- `npm run dev:web` 实跑 + 浏览器实测（rebase 后最终代码）：工作区正常渲染；依次点击「仪表盘 / 设置 / 云仓库」均正常切换，控制台仅 log/debug/info，无 error 级消息与未捕获异常。
+- 桌面 `npm run check`、`npm run build`，mobile `npm run check`、`npm run build` 均通过（见上表）。
+- 说明：mobile 为 Tauri 工程，本环境无 Android 模拟器/桌面 Tauri 依赖，未做真机运行；以单测 + 构建验证。
+
+### 结论
+
+- 本次发现并修复 1 个真实问题（手机端打开文件的项目切换/连点竞态），双重验证通过。
+- **连续无 bug 计数**：0
+- 交付：本轮修复 commit（openFile.ts + 两个调用点 + 回归测试）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新（`gh` 在本沙箱无 GH_TOKEN，无法追加评论；PR 描述维持既有内容）。
+- 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增。
