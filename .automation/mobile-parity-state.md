@@ -133,5 +133,6 @@
 - 避开桌面特有（community/cloudBag/git/plugins）
 
 **备注**：
-- 本次运行开始时 `git fetch origin` 未列出该远端分支（本地基线停在 origin/main f0c6450），推送时被拒才发现远端已有 6 个 commit；按规则 `git pull --rebase origin automation/mobile-parity` 完成 rebase，仅状态文件 add/add 冲突（已合并双方内容），代码文件无冲突且 mobile 检查全绿
+- 本次运行开始时 `git fetch origin` 未列出该远端分支（本地基线停在 origin/main f0c6450），推送时被拒才发现远端已有 6 个 commit；按规则 `git pull --rebase origin automation/mobile-parity` 完成 rebase，仅状态文件 add/add 冲突（已合并双方内容），代码文件无冲突，rebase 后 mobile 检查全绿
 - 本次实现前未读到远端状态文件，选题「单位表单面板」与远端差距表（UnitFormPanel UI 缺失）恰好一致，无重复劳动
+- 交付：2 个 commit 已推送至 origin/automation/mobile-parity（f843333..a0020a2），远端分支保持领先 main；GH_TOKEN 仍未配置，无法用 gh 确认/创建/评论 PR——若 PR 已存在，推送已自动更新；若不存在，待配置凭据后用 `gh pr create --repo deepsleepcat/rust-assistant-desktop --base main --head automation/mobile-parity` 创建
