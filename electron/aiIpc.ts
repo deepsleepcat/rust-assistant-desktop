@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import type { WebContents } from 'electron'
 import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
-import { normalizePath } from './paths'
+import { isAnyPlatformAbsolute, normalizePath } from './paths'
 import { checkCommunity, checkDeepSeek, communityInfo, streamAgent } from './ai'
 import { getHistory } from './aiHistory'
 import type { AiApprovalResponse, AiChatParams, AiSettings } from '../src/types/ai'
@@ -23,7 +23,7 @@ function requireHistoryRelPath(ctx: IpcContext, rootPath: unknown, relPath: unkn
   // 与 writeFile 工具 resolveInside 对齐：剥前导斜杠（AI 可能用 /units/a.txt 写法；
   // win32 上 path.isAbsolute('/units/a.txt') === true，不剥会误拒）
   const rel = relPath.replace(/^\/+/, '')
-  if (!rel || path.isAbsolute(rel) || rel.includes('..')) {
+  if (!rel || isAnyPlatformAbsolute(rel) || rel.includes('..')) {
     throw new Error('无效的文件路径')
   }
   requireInsideRoot(ctx, rootPath, path.join(rootPath, rel))

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { windowsJobCommand, SYSTEM_POWERSHELL } from './engineDlcWindowsJob'
+import { isAnyPlatformAbsolute } from './paths'
 
 interface ProcessOptions {
   command: string
@@ -46,7 +47,7 @@ export async function executeEngineDlc(options: ProcessOptions): Promise<{ code:
     if (!SYSTEM_POWERSHELL.test(launch.command)) return rejected
   } else if (launch.command !== process.execPath) {
     const rel = options.execRoot ? path.relative(options.execRoot, launch.command) : ''
-    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return rejected
+    if (rel === '' || rel.startsWith('..') || isAnyPlatformAbsolute(rel)) return rejected
   }
   const child = spawn(launch.command, launch.argv, {
     cwd: options.cwd, shell: false, windowsHide: true,

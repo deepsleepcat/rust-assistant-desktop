@@ -211,7 +211,8 @@ export function EditorScreen() {
   const doOpenText = useCallback(async (path: string, name: string) => {
     setError('')
     const result = await openFileInEditor({ path, name })
-    if (!result.ok) setError(result.error)
+    // cancelled：读盘期间项目/点击目标已变化，本次结果作废，不打扰用户
+    if (!result.ok && !result.cancelled) setError(result.error)
   }, [])
 
   /**
