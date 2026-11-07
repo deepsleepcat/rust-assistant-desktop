@@ -176,9 +176,12 @@ pub async fn ai_stream(
                         if !text.is_empty() {
                             full_text.push_str(text);
                             // 增量事件限长（防超长行卡渲染）
+                            // 切分点必须在 UTF-8 字符边界：中文 delta 直接按字节 split_at 会 panic
+                            let limit = request.delta_limit.max(1);
                             let mut pending = text.to_string();
-                            while pending.len() > request.delta_limit {
-                                let (head, rest) = pending.split_at(request.delta_limit);
+                            while pending.len() > limit {
+                                let at = delta_split_index(&pending, limit);
+                                let (head, rest) = pending.split_at(at);
                                 emit(&AiStreamEvent::Delta { text: head.to_string() });
                                 pending = rest.to_string();
                             }
@@ -246,15 +249,32 @@ pub fn ai_stream_abort(request_id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// 返回 ≤ index 的最近 UTF-8 字符边界（index 超出长度时返回长度）。
+fn char_boundary_floor(s: &str, index: usize) -> usize {
+    let mut end = index.min(s.len());
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    end
+}
+
+/// 流式增量的切分位置：在 limit 处向前找字符边界；若 limit 落在首个多字节字符内部，
+/// 至少取完该字符，保证循环一定前进（否则 limit < 字符宽度时会死循环）。
+fn delta_split_index(s: &str, limit: usize) -> usize {
+    let floor = char_boundary_floor(s, limit);
+    if floor > 0 {
+        floor
+    } else {
+        s.chars().next().map(|c| c.len_utf8()).unwrap_or(0)
+    }
+}
+
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
         // 按字符边界截断：错误体常含中文，直接按字节切片会 panic（byte index not a char boundary）
-        let mut end = max;
-        while end > 0 && !s.is_char_boundary(end) {
-            end -= 1;
-        }
+        let end = char_boundary_floor(s, max);
         format!("{}…", &s[..end])
     }
 }
