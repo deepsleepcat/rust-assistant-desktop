@@ -36,7 +36,17 @@ export function AiScreen() {
   const [busy, setBusy] = useState(false)
   const [approval, setApproval] = useState<Approval | null>(null)
   const abortRef = useRef(false)
+  /** 待审批写文件的 resolver（停止时必须一并拒绝，否则对话循环永远卡在 approval 上） */
+  const approvalRef = useRef<Approval | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  /** 关闭审批弹窗并结算等待中的写入请求（批准/拒绝/停止共用同一入口） */
+  const settleApproval = (approved: boolean) => {
+    const pending = approvalRef.current
+    approvalRef.current = null
+    setApproval(null)
+    pending?.resolve(approved)
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -67,7 +77,9 @@ export function AiScreen() {
 
     const approveWrite = (req: { tool: string; path: string; contentPreview: string }): Promise<boolean> =>
       new Promise((resolve) => {
-        setApproval({ ...req, resolve })
+        const entry = { ...req, resolve }
+        approvalRef.current = entry
+        setApproval(entry)
       })
 
     try {
@@ -127,6 +139,9 @@ export function AiScreen() {
             className="m-btn"
             onClick={() => {
               abortRef.current = true
+              // 停止也拒绝在途审批：否则 runAgentChat 会永久挂在 approveWrite 上，
+              // 且旧对话仍占着审批单槽，用户再次发送会互相覆盖 resolver
+              settleApproval(false)
               setBusy(false)
             }}
           >
@@ -199,19 +214,13 @@ export function AiScreen() {
             <div className="ai-approval-actions">
               <button
                 className="m-btn"
-                onClick={() => {
-                  approval.resolve(false)
-                  setApproval(null)
-                }}
+                onClick={() => settleApproval(false)}
               >
                 拒绝
               </button>
               <button
                 className="m-btn primary"
-                onClick={() => {
-                  approval.resolve(true)
-                  setApproval(null)
-                }}
+                onClick={() => settleApproval(true)}
               >
                 批准写入
               </button>

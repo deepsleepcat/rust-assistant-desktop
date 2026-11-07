@@ -429,3 +429,51 @@
 - **连续无 bug 计数**：0
 - 交付：本轮修复 commit 推送至 `origin/automation/bug-check`，长期 PR #9 自动更新
 - 观察项沿袭上轮，无新增
+
+## 2026-11-07 早上（第 10 次运行）
+
+- **日期**：2026-11-07
+- **时段**：早上（08:07 执行）
+- **连续无 bug 次数**：0（本次发现并修复 2 个真实问题，计数清零；上一轮 2026-11-06 晚上为 0）
+
+### 分支与基线
+
+- 开头 `git fetch origin` 后按固化流程执行 `git fetch origin automation/bug-check`，确认本地/远程基线为 `4633027`（第 9 次运行修复 commit），本地从 FETCH_HEAD 建分支，未再误判分支不存在；未触碰 main。
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| npm run check（桌面，改动前基线） | ✅ EXIT 0 | 79 文件 **1319 通过 / 5 跳过**；typecheck/lint/test 全绿 |
+| npm run check（mobile，改动后最终代码） | ✅ EXIT 0 | 21 文件 **393 通过**；typecheck 通过（先 `npm install` 补依赖） |
+| cargo check（mobile/src-tauri，改动后） | ✅ EXIT 0 | 2m16s 编译通过；仅既有 warning：`AiStreamEvent::Error` 变体未构造 |
+
+### 代码审查范围（本轮新覆盖）
+
+- 桌面 AI 链路：`aiSlice`（5 分钟看门狗/终态/审批/质检反馈/用量统计）、`aiIpc`（stream 锁、abort 拒绝在途审批、hardKill、审批单槽）、`ai.ts streamAgent`（beforeToolCall 审批 120s、applyDiff 预演、toolCallId 关联、feedback 窗口）、`rustAgentTools`（路径/链接校验、grep 预算、快照）。
+- 手机端：`aiClient.ts`（requestId 过滤、看门狗、120s 超时）、`AiScreen.tsx`（停止/审批/并发发送）、`commands.rs`（SSE 解析、delta 切分、abort 注册表、truncate）。
+- 其他：`projectTabsSlice`（open/save/reload 竞态）、`knowledgePack`（SSRF/清理/回滚）、`tmx`（解析/序列化边界）、`translationRepair`、`cloudbagWatch`、`communityAuth`、`aiHistory`、`secureCredentials`、`unitFormSync`、`plugins state/runtime/renderer`、`modalStack/focusTrap`。
+- 排除项：桌面端没有「停止」按钮，看门狗超时后已释放 `aiStreamingConversationId` 并通知主进程 abort（在途审批由主进程 `ai:stream:abort` resolve(false)），未构成同类挂起；其余模块未发现新增真实缺陷。
+
+### 发现并修复的 Bug
+
+1. 【真实缺陷·手机端 Rust】`commands.rs` 流式增量按字节切分（`pending.split_at(request.delta_limit)`）：
+   - 问题：单条 SSE `delta.content` 超过 `delta_limit`（默认 64KB）且含中文/emoji 时，切分点落在多字节字符中间 → `split_at` panic，整条流失败（与第 9 次修复的 `truncate` 同一类问题，但该处当时遗漏）。另 `delta_limit=0` 时旧循环永不前进。
+   - 修复：新增 `char_boundary_floor` / `delta_split_index`，切分点回退到最近 UTF-8 字符边界；`limit` 至少为 1，且 limit 小于首字符宽度时至少取完该字符，保证循环前进；`truncate` 复用同一字符边界函数。
+   - 验证：独立 `rustc` 用例覆盖中文/混合/emoji × limit 1..40 × 多组截断，内容拼接与原串一致且无 panic；`cargo check` EXIT 0。
+2. 【真实缺陷·手机端 UI 异步】停止按钮与写文件审批互斥缺失（`AiScreen.tsx`）：
+   - 问题：写文件审批弹窗等待期间点「停止」只置中止标志并 `setBusy(false)`，审批 Promise 未结算 → `runAgentChat` 永久挂在 `approveWrite`，旧助手消息一直 streaming；`busy=false` 又允许立即再次发送，新旧对话会互相覆盖审批 resolver，旧对话彻底卡死且写入请求泄漏。
+   - 修复：新增 `approvalRef` 与统一入口 `settleApproval`；批准/拒绝/停止三条路径都经同一处结算并清空弹窗，停止即按「拒绝」结算在途审批。
+   - 验证：mobile `npm run check`（typecheck + 393 测试）通过。
+
+### 运行验证
+
+- `npm run dev:web` 实跑 + 浏览器实测：页面正常渲染；依次打开「工作区/仪表盘/设置/云仓库/启动游戏」5 个入口均正常，无错误覆盖层；控制台仅 log/debug/info，无 error 级消息与未捕获异常。
+- 桌面 `npm run check`、mobile `npm run check`、`cargo check` 均通过（见上表）。
+
+### 结论
+
+- 本次发现并修复 2 个真实问题（手机端流式中文增量切分 panic、停止时写审批挂起/并发发送），双重验证通过。
+- **连续无 bug 计数**：0
+- 交付：本轮修复 commit（commands.rs + AiScreen.tsx）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新。
+- 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增。
