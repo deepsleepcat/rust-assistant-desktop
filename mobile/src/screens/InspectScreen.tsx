@@ -5,9 +5,9 @@
 import { useEffect, useRef, useState } from "react"
 import { useWorkspace } from "../stores/workspace"
 import { getBridge } from "../services/bridge"
-import { runSemanticChecks } from "../features/editor/semanticChecks"
+import { runSemanticChecks, loadProjectRuleSets, type CustomRule } from "../features/editor/semanticChecks"
 import { lintIniText } from "../features/editor/rustLint"
-import { findCodeByCode, findValueType, getKeyZhToEnDict, getZhToEnDict, getAllCodes, loadCodeData } from "../services/codeData"
+import { findCodeByCode, findValueType, getKeyZhToEnDict, getZhToEnDict, getAllCodes, loadCodeData, versionNameToNumber } from "../services/codeData"
 import { enabledRuleIds } from "../features/editor/semanticChecks/registry"
 import { openFileInEditor } from "../features/editor/openFile"
 import { AppIcon } from "../components/AppIcon"
@@ -64,6 +64,14 @@ export function InspectScreen() {
       }
       // 扫描单位名（引用检查）
       const { unitNames } = await bridge.mod.scanResources(root).catch(() => ({ files: [], unitNames: [] }))
+      // 项目自定义规则（rules/*.json，声明式；与编辑器波浪线/AI 写后质检共用）
+      const customRules: CustomRule[] = (await loadProjectRuleSets(root).catch(() => ({ sets: [], errors: [] }))).sets.flatMap(
+        (s) => s.rules,
+      )
+      // 目标游戏版本（版本兼容检查；空 = 跟随最新）
+      const targetVersionNumber = settings.targetGameVersion
+        ? versionNameToNumber(settings.targetGameVersion)
+        : undefined
       const zhToEnDict = getZhToEnDict()
       const keyZhToEnDict = getKeyZhToEnDict()
       const lintData = {
@@ -86,8 +94,11 @@ export function InspectScreen() {
             ...lintData,
             codes: getAllCodes().map((c) => c.code),
             unitNames: new Set(unitNames),
+            targetVersionNumber,
             file: rel,
           },
+          customRules,
+          customRuleConfig: settings.semanticCheckers,
         })
         for (const it of issues) {
           out.push({ file: rel, line: it.line, severity: it.severity, message: it.message, suggestion: it.suggestion })

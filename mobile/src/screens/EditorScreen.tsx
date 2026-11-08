@@ -380,6 +380,7 @@ export function EditorScreen() {
               key={activeProject.id}
               projectRoot={activeProject.rootPath}
               showHidden={settings.showHiddenFiles}
+              fileSort={settings.fileSort}
               refreshToken={refreshToken}
               onOpenText={handleOpenText}
               onOpenAsset={(path, name) => setAsset({ path, name })}
