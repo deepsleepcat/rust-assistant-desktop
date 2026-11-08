@@ -525,3 +525,50 @@
 - **连续无 bug 计数**：0
 - 交付：本轮修复 commit（openFile.ts + 两个调用点 + 回归测试）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新（`gh` 在本沙箱无 GH_TOKEN，无法追加评论；PR 描述维持既有内容）。
 - 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增。
+
+## 2026-11-08 早上（第 12 次运行）
+
+- **日期**：2026-11-08
+- **时段**：早上（08:06 执行）
+- **连续无 bug 次数**：0（本次发现并修复 1 个真实问题，计数清零；上一轮 2026-11-07 晚上为 0）
+
+### 分支与基线
+
+- 开头按固化流程 `git fetch origin automation/bug-check` 并 `git reset --hard origin/automation/bug-check`，基线 `2723a89`（第 11 次运行修复 commit），未触碰 main。
+- 远程 `automation/bug-check` 与 PR #9 均存在（PR 状态 OPEN，base main）。本沙箱 `gh` 无 GH_TOKEN，从 `/run/shared/git/credentials` 的 x-access-token 注入后可用，PR 查询成功。
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check` | ✅ EXIT 0 | 79 文件 **1319 通过 / 5 跳过**；typecheck/lint/test 全绿 |
+| mobile `npm run check` | ✅ EXIT 0 | 23 文件 **397 通过**（396 + 本轮新增 1 条回归） |
+| 桌面 `npm run dev:web` 实跑 | ✅ | 页面正常渲染；仪表盘/设置/云仓库切换正常，控制台仅 log/debug/info，无 error 与未捕获异常 |
+
+### 代码审查范围（本轮新覆盖）
+
+- 手机端文件树与编辑链路：`FileTreePanel.tsx`（新建/重命名/删除、展开缓存、异步序号）、`EditorMirror.tsx`（补全/跳转/IME/可视视口）、`completion.ts`（资源扫描超时/缓存/缩略图）、`AssetPreview.tsx`、`editSession.ts`、`openFile.ts`、`translation.ts`、`entryName.ts`、`paths.ts`。
+- 手机端 AI 与工具：`aiClient.ts`（requestId 过滤/超时/中止）、`rustAgentTools.ts`（safeRelPath/工具结果消息）、`applyDiff.ts`（hunk 区间重叠/上下文校验/换行保持）、`projectPath.ts`。
+- 手机端其他：`ProjectsScreen.tsx`（导入/删除/打包）、`LibraryScreen.tsx`、`modTools/modInfo.ts`、`modTools/sampleProject.ts`、`modTools/packArchive.ts`、`bridge.ts`（readDir/rename/delete/scanResources 路径边界）。
+- 桌面端本次未改动；核对近期 diff 均为此前自动化修复，无回归。
+
+### 发现并修复的 Bug
+
+1. 【真实缺陷·手机端文件树】重命名「已展开目录」后目录折叠且重载读取旧路径（`FileTreePanel.tsx`）：
+   - 问题：`handlePromptConfirm` 重命名成功后直接 `reloadAll()`，`expanded` 仍保留改名前的旧路径。于是重载会去 `readDir` 一个已不存在的旧目录（真机上报「目录读取失败」），改名后的新目录不在展开集合里被折叠——用户眼前刚打开的目录及其文件突然消失，需要重新逐层展开。
+   - 复现：手机端文件树展开 `units`（内有 `a.ini`）→ 该目录「更多操作 → 重命名」为 `units2` → 新目录折叠、子文件不可见；真机上还伴随旧路径读取错误提示。
+   - 修复：目录重命名成功后把 `expanded` 中旧路径及其所有子路径前缀映射到新路径（文件重命名不涉及），再用映射后的集合重载；新目录保持展开、不再请求旧路径。
+   - 验证：新增 `mobile/tests/fileTreePanel.test.tsx`（真实组件 + 内存桥）覆盖该交互；修复前用 `git checkout` 临时回退 `FileTreePanel.tsx` 后用例失败（`a.ini` 不再出现），恢复修复后通过；mobile 全量 397 测试通过。
+
+### 运行验证
+
+- `npm run dev:web` 实跑 + 浏览器实测：主工作区正常渲染；依次点击「仪表盘 / 设置 / 云仓库」均正常切换；控制台仅 log/debug/info，无 error 级消息与未捕获异常。
+- 桌面 `npm run check`、mobile `npm run check` 均 EXIT 0（见上表）。
+- 说明：mobile 为 Tauri 工程，本环境无 Android 模拟器/桌面 Tauri 依赖，未做真机运行；以组件测试 + 全量单测验证。
+
+### 结论
+
+- 本次发现并修复 1 个真实问题（手机端重命名已展开目录导致折叠/读旧路径），双重验证通过。
+- **连续无 bug 计数**：0
+- 交付：本轮修复 commit（FileTreePanel.tsx + 回归测试）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新。
+- 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增。

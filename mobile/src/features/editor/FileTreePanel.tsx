@@ -154,6 +154,7 @@ export function FileTreePanel({ projectRoot, showHidden, refreshToken, onOpenTex
   async function handlePromptConfirm(value: string) {
     if (!prompt) return
     const bridge = getBridge()
+    let expandedAfter = [...expanded]
     setBusy(true)
     setError('')
     try {
@@ -163,13 +164,22 @@ export function FileTreePanel({ projectRoot, showHidden, refreshToken, onOpenTex
         await bridge.project.createFolder(projectRoot, prompt.dir, value)
       } else if (prompt.target) {
         const target = prompt.target
-        await bridge.project.rename(projectRoot, target.path, `${prompt.dir}/${value}`)
+        const newPath = `${prompt.dir}/${value}`
+        await bridge.project.rename(projectRoot, target.path, newPath)
+        if (target.isDirectory) {
+          // 目录改名后同步「已展开」路径：否则重载会去读已不存在的旧目录，
+          // 且改名后的目录会丢失展开状态（里面的文件突然从界面上消失）
+          expandedAfter = [...expanded].map((dir) =>
+            dir === target.path ? newPath : dir.startsWith(`${target.path}/`) ? `${newPath}/${dir.slice(target.path.length + 1)}` : dir,
+          )
+          setExpanded(new Set(expandedAfter))
+        }
       }
       setPrompt(null)
       setMenuFor(null)
       // 重命名可能跨目录、删除可能带走子目录：整体重载而不是只刷一个目录，
       // 否则其它已展开目录会短暂空白（缓存被清、又没有重新加载）
-      await reloadAll()
+      await reloadAll(expandedAfter)
       onMutated?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : '操作失败')
