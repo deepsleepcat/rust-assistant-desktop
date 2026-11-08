@@ -160,7 +160,7 @@
 - features/graph 关系图、plugins 插件系统、ai/usageStats 用量统计
 - 桌面特有不对齐项（有意不做）：community/CloudBag、auth、map、Git 面板、workspace 双栏布局
 
-**检查结果**：`mobile npm run check` ✅（tsc --noEmit + vitest 21 test files / 393 tests passed；rebase 后需复跑确认合并无语义冲突，见交付记录）
+**检查结果**：`mobile npm run check` ✅——实现后 21 test files / 393 tests；rebase 合并远端 9 个 commit 后复跑 24 test files / 414 tests 全绿（tsc --noEmit + vitest），确认合并没有语义冲突。
 
 **是否已完全对齐**：❌ 否
 
