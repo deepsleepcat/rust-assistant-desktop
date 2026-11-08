@@ -136,3 +136,36 @@
 - 本次运行开始时 `git fetch origin` 未列出该远端分支（本地基线停在 origin/main f0c6450），推送时被拒才发现远端已有 6 个 commit；按规则 `git pull --rebase origin automation/mobile-parity` 完成 rebase，仅状态文件 add/add 冲突（已合并双方内容），代码文件无冲突，rebase 后 mobile 检查全绿
 - 本次实现前未读到远端状态文件，选题「单位表单面板」与远端差距表（UnitFormPanel UI 缺失）恰好一致，无重复劳动
 - 交付：2 个 commit 已推送至 origin/automation/mobile-parity（f843333..a0020a2），远端分支保持领先 main；GH_TOKEN 仍未配置，无法用 gh 确认/创建/评论 PR——若 PR 已存在，推送已自动更新；若不存在，待配置凭据后用 `gh pr create --repo deepsleepcat/rust-assistant-desktop --base main --head automation/mobile-parity` 创建
+
+---
+
+### 2026-11-08
+
+**补齐的功能**（对齐桌面端 `features/settings/EditorSettingsTab` + `features/project/ProjectPanel` 的相关能力）：
+1. `mobile/src/screens/SettingsScreen.tsx` 扩展（缩小 settings 差距行）：
+   - 新增「编辑器与文件树」组：编辑器字体选择（fontFamily，FONT_OPTIONS）、文件树排序（fileSort：名称/类型/大小/修改时间）、显示隐藏文件开关（showHiddenFiles）；
+   - 新增「语义检查」组：目标游戏版本下拉（targetGameVersion，异步 loadCodeData + getGameVersions，与桌面端同款「跟随最新」语义）、16 条语义检查器独立开关（ALL_SEMANTIC_CHECKERS，复用已有 checker-list 样式）。
+2. `mobile/src/features/editor/FileTreePanel.tsx`：新增 `sortEntries`（文件夹始终优先，组内按名称/类型/大小/修改时间，对齐桌面端 `sortChildren`），文件树排序真正生效；此前 fileSort 在手机端是「死设置」（有字段、无 UI、无效果）。`EditorScreen` 接线 `settings.fileSort`。
+3. `mobile/src/screens/InspectScreen.tsx`：检查页对齐桌面端检查语义——补上项目自定义规则（rules/*.json，loadProjectRuleSets）与目标游戏版本兼容检查（versionNameToNumber → ctx.targetVersionNumber），与编辑器 rustLintExtension 共用同一套配置。
+4. `mobile/src/styles/mobile.css`：新增 `.m-group-desc` 与设置页 checker-list 展开样式（手机页内不裁剪滚动）。
+
+**与远端分支的合并**：本次运行本地基线又停在 origin/main（f0c6450），实现完成后推送被拒才发现远端已有 9 个 commit（11-06/11-07 运行产出）。按规则 `git pull --rebase` 完成合并：仅状态文件 add/add 冲突（已合并双方内容），代码文件无冲突。本次改动的 SettingsScreen/InspectScreen/FileTreePanel 远端均未触及，无重复劳动；EditorScreen/mobile.css 与远端改动（UnitFormPanel 入口等）自动合并成功。
+
+**剩余差距**（结合远端差距总览表更新，本次已补的不重复列）：
+- modTools：modReport 模组报告、TranslationRepairModal/CreateUnitModal/CheckModal 弹窗 UI（translationRepair 服务层已补）
+- features/editor：bilingualLabels、VersionDiffModal、CodeTableModal、UnitLibraryModal、unitPreview
+- features/dashboard：UI 面板（数据层 dashboardModel/dashboardApi 已补）
+- settings：ValueTypeModal、GameSettingsTab、项目自定义规则清单展示（EditorSettingsTab 的 rules/*.json 列表部分）
+- services：versionDiff、mockBridge、codeDataLookup/State
+- features/graph 关系图、plugins 插件系统、ai/usageStats 用量统计
+- 桌面特有不对齐项（有意不做）：community/CloudBag、auth、map、Git 面板、workspace 双栏布局
+
+**检查结果**：`mobile npm run check` ✅（tsc --noEmit + vitest 21 test files / 393 tests passed；rebase 后需复跑确认合并无语义冲突，见交付记录）
+
+**是否已完全对齐**：❌ 否
+
+**下一步计划**：
+- 优先补 modReport 模组报告（纯前端计算，可挂检查页或 ModToolsScreen 入口）+ TranslationRepairModal 弹窗 UI（服务层已就绪）
+- 然后 bilingualLabels 或 settings 项目自定义规则清单
+- 之后 VersionDiffModal + services/versionDiff（版本对比）
+- 避开桌面特有（community/cloudBag/git/plugins）

@@ -296,6 +296,21 @@
   letter-spacing: .04em;
 }
 
+/* 分组说明文字（如语义检查器开关的共用说明） */
+.m-group-desc {
+  margin: 0;
+  padding: 0 16px 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 设置页语义检查器清单：手机页内直接展示，不裁剪滚动 */
+.m-screen .checker-list {
+  max-height: none;
+  margin: 0 12px;
+  padding-right: 0;
+}
+
 /* ---------- 文件树 ---------- */
 .file-tree {
   padding: 6px 0;

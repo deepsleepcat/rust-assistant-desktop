@@ -16,10 +16,13 @@ import { AppIcon, type AppIconName } from '../../components/AppIcon'
 import { ConfirmModal, PromptModal } from '../../components/MobileDialog'
 import { validateEntryName } from '../../utils/entryName'
 import { decideOpenMode, isPreviewableImage, isRustConfigFile } from '../../utils/paths'
+import type { FileSort } from '../../types/domain'
 
 interface FileTreePanelProps {
   projectRoot: string
   showHidden: boolean
+  /** 文件树排序方式（文件夹始终优先；名称/类型/大小/修改时间） */
+  fileSort: FileSort
   /** 变化时重载已展开目录（AI 写入 / 模板创建 / 保存后由父层自增） */
   refreshToken: number
   /** 打开文本文件（进编辑器） */
@@ -52,7 +55,26 @@ function parentOf(path: string): string {
   return idx > 0 ? path.slice(0, idx) : path
 }
 
-export function FileTreePanel({ projectRoot, showHidden, refreshToken, onOpenText, onOpenAsset, onMutated }: FileTreePanelProps) {
+/** 排序同层条目：文件夹始终优先，组内按所选字段（名称/类型/大小/修改时间；对齐桌面端文件树） */
+function sortEntries(entries: DirEntry[], sort: FileSort): DirEntry[] {
+  const byName = (a: DirEntry, b: DirEntry) => a.name.localeCompare(b.name, 'zh-CN')
+  const cmp: Record<FileSort, (a: DirEntry, b: DirEntry) => number> = {
+    name: byName,
+    type: (a, b) => {
+      const extA = a.name.includes('.') ? a.name.slice(a.name.lastIndexOf('.') + 1).toLowerCase() : ''
+      const extB = b.name.includes('.') ? b.name.slice(b.name.lastIndexOf('.') + 1).toLowerCase() : ''
+      return extA.localeCompare(extB) || byName(a, b)
+    },
+    size: (a, b) => b.size - a.size || byName(a, b),
+    mtime: (a, b) => b.mtimeMs - a.mtimeMs || byName(a, b),
+  }
+  const c = cmp[sort]
+  const dirs = entries.filter((x) => x.isDirectory)
+  const files = entries.filter((x) => !x.isDirectory)
+  return [...dirs].sort(c).concat([...files].sort(c))
+}
+
+export function FileTreePanel({ projectRoot, showHidden, fileSort, refreshToken, onOpenText, onOpenAsset, onMutated }: FileTreePanelProps) {
   const [dirs, setDirs] = useState<Map<string, DirEntry[]>>(new Map())
   const [expanded, setExpanded] = useState<Set<string>>(new Set([projectRoot]))
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set())
@@ -209,7 +231,7 @@ export function FileTreePanel({ projectRoot, showHidden, refreshToken, onOpenTex
         </p>
       ) : null
     }
-    const entries = dirs.get(dirPath) ?? []
+    const entries = sortEntries(dirs.get(dirPath) ?? [], fileSort)
     if (entries.length === 0) {
       return (
         <p className="file-empty" key={`${dirPath}-empty`} style={{ paddingLeft: 16 + depth * 16 }}>
