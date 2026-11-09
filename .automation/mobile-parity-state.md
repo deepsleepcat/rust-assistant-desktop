@@ -202,3 +202,7 @@
 - 之后 VersionDiffModal + services/versionDiff（版本对比）
 - 避开桌面特有（community/cloudBag/git/plugins）
 
+**备注**：
+- 交付：2 个 commit 已推送至 origin/automation/mobile-parity（54f5bdc..51f96bf：73f7fb8 功能 + 51f96bf 文档）；GH_TOKEN 仍未配置，无法用 gh 确认/创建/评论 PR——若 PR 已存在，推送已自动更新；若不存在，待配置凭据后用 `gh pr create --repo deepsleepcat/rust-assistant-desktop --base main --head automation/mobile-parity` 创建
+- git 身份沿用仓库既有提交作者（repo 级配置，沙箱无全局身份）
+
