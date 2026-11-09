@@ -1,10 +1,11 @@
 /**
  * AI 对话页（BYOK）：消息流 + 流式输出 + 工具卡片 + 写文件审批弹窗。
  * 使用用户自配的 DeepSeek API Key（仅存本机，见设置页）。
+ * 写文件后自动质检（与检查页同一套规则）：清单挂工具卡片，问题回传 AI 自纠。
  */
 import { useEffect, useRef, useState } from "react"
 import { useWorkspace } from "../stores/workspace"
-import type { AiChatMessage } from "../types/ai"
+import type { AiChatMessage, AiLintItem } from "../types/ai"
 import { runAgentChat } from "../features/ai/aiClient"
 import { AppIcon } from "../components/AppIcon"
 import { formatRelativeTime } from "../utils/conversation"
@@ -17,7 +18,7 @@ interface UiMessage {
   /** 流式输出中的增量文本 */
   streaming?: boolean
   createdAt: number
-  tools?: Array<{ name: string; ok: boolean; summary: string }>
+  tools?: Array<{ name: string; ok: boolean; summary: string; lint?: AiLintItem[] }>
 }
 
 interface Approval {
@@ -82,7 +83,7 @@ export function AiScreen() {
           setMessages((m) =>
             m.map((x) =>
               x.id === assistantMsg.id
-                ? { ...x, tools: [...(x.tools ?? []), { name: ev.name, ok: ev.ok, summary: ev.summary }] }
+                ? { ...x, tools: [...(x.tools ?? []), { name: ev.name, ok: ev.ok, summary: ev.summary, lint: ev.lint }] }
                 : x,
             ),
           )
@@ -103,6 +104,8 @@ export function AiScreen() {
         },
         approveWrite,
         isAborted: () => abortRef.current,
+        // AI 写后自动质检：与检查页同一套语义检查开关与目标版本
+        quality: { semanticCheckers: settings.semanticCheckers, targetVersionName: settings.targetGameVersion },
       })
       setMessages((m) => m.map((x) => (x.id === assistantMsg.id ? { ...x, streaming: false } : x)))
     } catch (err) {
@@ -156,10 +159,29 @@ export function AiScreen() {
               {m.tools && m.tools.length > 0 && (
                 <div className="ai-tools">
                   {m.tools.map((t, i) => (
-                    <div key={i} className={`ai-tool ${t.ok ? "ok" : "fail"}`}>
-                      <AppIcon name={t.ok ? "check" : "cross"} size={12} />
-                      <span>{t.name}</span>
-                      <span className="ai-tool-summary">{t.summary.slice(0, 60)}</span>
+                    <div key={i} className={`ai-tool-wrap ${t.ok ? "ok" : "fail"}`}>
+                      <div className={`ai-tool ${t.ok ? "ok" : "fail"}`}>
+                        <AppIcon name={t.ok ? "check" : "cross"} size={12} />
+                        <span>{t.name}</span>
+                        <span className="ai-tool-summary">{t.summary.slice(0, 60)}</span>
+                      </div>
+                      {t.lint && t.lint.length > 0 && (
+                        <div className="ai-lint">
+                          <div className="ai-lint-head">
+                            <AppIcon name="warn" size={12} />
+                            自动质检发现 {t.lint.length} 个问题，已让 AI 自行修复
+                          </div>
+                          {t.lint.map((it, j) => (
+                            <div key={j} className={`ai-lint-item ${it.severity}`}>
+                              <span className="ai-lint-line">{it.line > 0 ? `第${it.line}行` : "汇总"}</span>
+                              <span className="ai-lint-msg">
+                                {it.message}
+                                {it.suggestion && <span className="ai-lint-tip">（建议：{it.suggestion}）</span>}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

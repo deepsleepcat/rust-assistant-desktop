@@ -553,6 +553,58 @@
   flex: 1;
 }
 
+/* AI 写后自动质检清单（挂在写文件工具卡片下方） */
+.ai-tool-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ai-lint {
+  margin: 2px 0 0 18px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.ai-lint-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--warning);
+  font-weight: 500;
+}
+
+.ai-lint-item {
+  display: flex;
+  gap: 6px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.ai-lint-item.error .ai-lint-line { color: var(--danger); }
+.ai-lint-item.warning .ai-lint-line { color: var(--warning); }
+
+.ai-lint-line {
+  flex-shrink: 0;
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-lint-msg {
+  flex: 1;
+  word-break: break-word;
+}
+
+.ai-lint-tip {
+  color: var(--text-muted);
+}
+
 .ai-input-bar {
   display: flex;
   gap: 8px;
