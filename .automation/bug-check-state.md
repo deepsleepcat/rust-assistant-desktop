@@ -572,3 +572,48 @@
 - **连续无 bug 计数**：0
 - 交付：本轮修复 commit（FileTreePanel.tsx + 回归测试）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新。
 - 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增。
+
+## 2026-11-09 早上（第 13 次运行）
+
+- **日期**：2026-11-09
+- **时段**：早上（08:16 执行）
+- **连续无 bug 次数**：0（本次发现并修复 1 个真实问题，计数清零；上一轮 2026-11-08 早上为 0）
+
+### 分支与基线（refspec 坑第 6 次出现，已按固化流程自纠）
+
+- 开头只执行 `git fetch origin` + `git branch -a`，克隆 refspec 仅映射 main，再次误判 `automation/bug-check` 不存在，从过时基线 f0c6450 重建分支，并在旧基线上重复产出了「4 个平台测试失败」的误报与 11-01/11-02 已修复的测试门控改动。
+- 推送被拒后用 `git fetch origin automation/bug-check` 发现远程 HEAD `fad55b4`（第 12 次运行），`git rebase --abort` + `git reset --hard FETCH_HEAD` 落位；重复改动全部丢弃（未推送，无残留）。本轮最终交付基于远程最新基线。
+- 固化建议（第 6 次重申）：运行开始直接 `git fetch origin automation/bug-check`（存在则 `git reset --hard FETCH_HEAD`）；`git branch -a` 在本沙箱永远看不到该分支。
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check`（修复前基线） | ✅ EXIT 0 | 79 文件 **1319 通过 / 5 跳过**；typecheck/lint 全绿 |
+| 桌面 `npm run check`（修复后） | ✅ EXIT 0 | 80 文件（含新增回归所在文件）**1320 通过 / 5 跳过** |
+| 桌面 `npm run build` | ✅ EXIT 0 | renderer + electron tsc 通过（既有 chunk/INEFFECTIVE_DYNAMIC_IMPORT 体积提示） |
+| `npm run dev:web` 实跑 + 浏览器实测 | ✅ | HTTP 200；页面正常渲染（标题「铁锈工坊」，导航/项目面板/文件面板/状态栏完整），控制台无 error 与未捕获异常 |
+
+### 代码审查范围（本轮新覆盖）
+
+- 路径工具与文件操作域：`src/stores/slices/projectShared.ts`（normPath/sameTabPath/pathStartsWith/replacePathPrefix）、`projectFilesSlice.ts`（重命名/删除时的标签与收藏同步）、`ProjectPanel.tsx` 删除脏标签确认。
+- 外观与媒体信任链：`BackgroundSettingsTab.tsx`、`electron/mediaPolicy.ts`（背景图允许集合持久化/恢复、20MB 限制、MIME 白名单）。
+- 云仓库纯逻辑：`cloudBagData.ts`（树构建、路径校验、锚点解析、四分态判定）、`CloudBagPublish.tsx`（版本校验/分享链接）。
+- 手机端复核：`EditorScreen.tsx`、`FileTreePanel.tsx`——确认文件树只在「无已打开会话」时渲染，排除了「重命名父目录后编辑会话路径失效」的怀疑场景（不可达，未改动）。
+- 其余核对：`electron/paths.ts`、`fsIpc.ts`、`projectSearch.ts`、`modPack.ts`、`cloudbagWatch.ts`、`dashboardApi.ts`、`cloudBagApi.ts`、`cloudBagAutoSync.ts` 的异常分支与资源释放，未发现新问题。
+
+### 发现并修复的 Bug
+
+1. 【真实缺陷·桌面端标签同步】`pathStartsWith` 的「自身」判定在归一化之前用严格字符串比较：
+   - 问题：`pathStartsWith(path, target)` 先 `path === target`，再比较 `normPath(path).startsWith(normPath(target) + '/')`。同一文件若以不同写法存在（单位库/扫描结果经 `joinProjectPath` 拼成「根反斜杠 + /units/x.ini」的混合路径，文件树节点是纯反斜杠路径；或大小写不同），归一化后虽然相等，却既不满足严格相等、也不满足「目录前缀 + /」，返回 false。
+   - 后果：① 从单位库打开 `units/rifle.ini` 后在文件树里重命名该文件 → 标签 path/name 不跟随，保存仍写回旧文件名（旧文件被重建、改名后文件收不到修改）；② 删除该文件 → 标签不被关闭，继续保存会把已删除文件写回来；③ `ProjectPanel` 删除确认的脏标签统计同样漏算。
+   - 复现：单位库打开 `units/rifle.txt`（标签路径为 `C:\...\units/rifle.txt`）→ 文件树对 `C:\...\units\rifle.txt` 执行重命名 → 标签仍指向旧路径。
+   - 修复：`pathStartsWith` 先对双方 `normPath` 再判断 `p === t || p.startsWith(t + '/')`，让自身判定也覆盖分隔符/大小写差异。
+   - 验证：`tests/paths.test.ts` 增加「同一文件两种写法/大小写」断言；`tests/store.test.ts` 增加端到端回归（相对路径打开 → 反斜杠路径重命名/删除，检查标签跟随与关闭）。修复前该用例在 08:18 的基线运行中失败（paths.test.ts:60），修复后通过；全量 `npm run check` 1320 通过 / 5 跳过。
+
+### 结论
+
+- 本次发现并修复 1 个真实问题（混合分隔符/大小写路径下标签不跟随重命名与删除），双重验证通过。
+- **连续无 bug 计数**：0
+- 交付：本轮修复（`projectShared.ts` + 2 处回归测试）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新。
+- 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增。

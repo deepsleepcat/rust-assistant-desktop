@@ -247,6 +247,26 @@ describe('工作区 store 业务流', () => {
     expect(final).not.toContain('新文件夹')
   })
 
+  it('重命名/删除时同步单位库打开的正斜杠标签（分隔符差异回归）', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    // 单位库/扫描结果给相对路径，openFile 会拼成「根反斜杠 + /units/rifle.txt」的混合写法
+    await store.getState().openFile('units/rifle.txt')
+    expect(store.getState().openTabs[0].path).toContain('/units/rifle.txt')
+
+    await store.getState().renameItem(`${MOCK_PROJECT_ROOT}\\units\\rifle.txt`, 'rifle2.txt')
+    const renamed = store.getState().openTabs[0]
+    expect(renamed.path.replace(/\\/g, '/')).toContain('/units/rifle2.txt')
+    expect(renamed.name).toBe('rifle2.txt')
+
+    // 删除文件时，同名的正斜杠标签也必须被关闭（否则保存会重新写出已删除的文件）
+    store.getState().closeTab(renamed.id)
+    await store.getState().openFile('units/tank.txt')
+    expect(store.getState().openTabs).toHaveLength(1)
+    await store.getState().deleteItem(`${MOCK_PROJECT_ROOT}\\units\\tank.txt`)
+    expect(store.getState().openTabs).toHaveLength(0)
+  })
+
   it('刷新项目树后仍可正常工作', async () => {
     await store.getState().init()
     await store.getState().openProject()
