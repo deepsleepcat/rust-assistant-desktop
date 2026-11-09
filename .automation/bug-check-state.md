@@ -617,3 +617,36 @@
 - **连续无 bug 计数**：0
 - 交付：本轮修复（`projectShared.ts` + 2 处回归测试）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新。
 - 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告），无新增。
+
+## 2026-11-09 晚上（第 14 次运行）
+
+- **时段**：晚上（20:02 执行）
+- **连续无 bug 计数（进入本轮）**：0（上轮 2026-11-09 早上发现并修复 1 个真实问题）
+
+### refspec 陷阱第 7 次复发（已按固化流程自纠）
+
+- 开头仍按惯性 `git fetch origin` + `git branch -a`，克隆 refspec 仅映射 main，再次误判 `automation/bug-check` 不存在，在过时基线 f0c6450 上重建分支。
+- 在旧基线上 `npm run check` 出现 4 处失败，逐一定性为 Windows 路径语义用例缺平台守卫（正斜杠 root、混合大小写、detached 孙进程组杀、C:/evil.png 盘符判定），并据此产出了 4 处测试门控修复提交——随后发现全部与远端 11-01/11-02 已修复内容重复（远端用 `it.skipIf` 门控 + `isAnyPlatformAbsolute` 产品级统一修复，方案更优）。
+- 推送被拒后按固化流程 `git fetch origin automation/bug-check` 落位远程 HEAD 18a2fc5；rebase 冲突全部以远端版本为准解决，重复测试改动全部丢弃（未推送，无残留）。
+- 固化建议第 7 次重申：运行开始直接 `git fetch origin automation/bug-check`，存在则 `git reset --hard FETCH_HEAD`；`git branch -a` 在本沙箱永远看不到该分支。
+
+### 基础检查结果（真实基线 18a2fc5）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check` | ✅ EXIT 0 | typecheck + lint 全绿；79 文件 **1320 通过 / 5 跳过** |
+| 桌面 `npm run build` | ✅ EXIT 0 | renderer + electron tsc 通过（既有 INEFFECTIVE_DYNAMIC_IMPORT 提示） |
+| `npm run dev:web` | ✅ | HTTP 200；`/src/main.tsx`、`/src/App.tsx` 模块转换正常。本沙箱缺 libatk 等 GUI 库，无头浏览器深层控制台检查不可行，以构建 + 模块转换替代 |
+
+### 代码审查范围与结论
+
+- 复核 main(f0c6450)..18a2fc5 全部产品代码 diff（11 个文件）：`isAnyPlatformAbsolute` 在 aiIpc/cloudbagRestore/engineDlcProcess/gitTools/modTranslationRepair/game 的统一铺开、`pathStartsWith` 自身归一化、`removeProject` 非活动项目只清自身数据、`saveTab` await 后重取最新标签、`engineDlcIpc` 会话清理改为 `sessions.close(owner)`——逻辑正确、均带回归测试，未发现新问题。
+- 定点深读：`aiSlice` 流式状态机（发送互斥锁、5 分钟看门狗、done/error/catch 全路径清理订阅与审批态）、`workspace.ts` generation 防竞态、`launchGame` spawn 异步错误处理、`gameIpc` 输入校验、`paths.ts` 边界——未发现新 bug。
+- 移动端 4 个历史修复（Tauri 编译/UTF-8 截断/会话串台/目录重命名折叠）为各轮已验证交付，本轮未改动 mobile，未重复验证。
+
+### 结论
+
+- 本次未发现新 bug（旧基线上的 4 处失败经定性均为已修复项的重复误报，非产品缺陷）。
+- **连续无 bug 计数：1**
+- 交付：本记录提交推送至 `origin/automation/bug-check`，长期 PR #9 追加评论。无代码改动，无空提交。
+- 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检——现已有 `/^[A-Za-z]:/` 兜底、INEFFECTIVE_DYNAMIC_IMPORT 体积提示），无新增。
