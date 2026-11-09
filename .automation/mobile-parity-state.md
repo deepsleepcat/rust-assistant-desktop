@@ -9,7 +9,7 @@
 
 | 桌面端模块 | 手机端状态 | 影响等级 |
 | --- | --- | --- |
-| features/ai/aiQualityCheck.ts + usageStats.ts | ❌ 缺失 | 高 |
+| features/ai/aiQualityCheck.ts + usageStats.ts | ⚠️ aiQualityCheck 已补（2026-11-09，含自纠闭环）；usageStats 仍缺失 | 高 |
 | features/auth/LoginScreen.tsx | ❌ 缺失 | 中（社区功能前置） |
 | features/community/（CloudBag 14 个文件） | ❌ 整个缺失 | 高 |
 | features/conversation/（对话面板 2 个文件） | ❌ 缺失 | 中 |
@@ -169,3 +169,36 @@
 - 然后 bilingualLabels 或 settings 项目自定义规则清单
 - 之后 VersionDiffModal + services/versionDiff（版本对比）
 - 避开桌面特有（community/cloudBag/git/plugins）
+
+---
+
+### 2026-11-09
+
+**补齐的功能**（对齐桌面端 `features/ai/aiQualityCheck.ts`，即 11-06/11-07 既定的最高优先项）：
+1. `mobile/src/features/ai/aiQualityCheck.ts`（新增）——AI 写文件后自动质检核心：
+   - 基础 lint（lintIniText）+ 16 项语义检查器合并为统一可操作清单（行号/原因/严重度/修复建议/证据），200 条上限折叠为汇总条目（与桌面端同口径，避免大文件数万条诊断拖垮渲染）；
+   - 行号用单趟预计算起始偏移表 O(1) 查；`getFreshUnitNames` 单位名扫描 2s 窗口共享缓存（AI 连续写 N 个文件只扫一次，刚写入的单位在引用检查中立即可见）；
+   - WebView 适配：无 Buffer，`lintItemsToFeedback` 字节预算改用 TextEncoder（与 applyDiff 同口径）；质检数据层支持测试注入（node 测试环境无内置资源 fetch）；
+   - `checkAiWrittenFile` 读取刚写入文件跑质检，非 ini/template/读取失败/超大文件（5MB）返回 null 跳过，绝不影响对话循环；项目自定义规则（rules/*.json）同样生效。
+2. `mobile/src/features/ai/aiClient.ts`：runAgentChat 接入质检与自纠闭环——writeFile/applyDiff 成功后自动质检，清单随 onTool 事件挂到工具卡片；本轮问题合并为一条「自动质检反馈」user 消息回传模型自动修复（受 MAX_TOOL_ROUNDS=8 约束；质检异常降级为无清单，不打断对话）。对应桌面端 M26-3 自纠闭环（桌面走主进程 feedbackLint 通道，手机版在客户端循环内实现）。
+3. `mobile/src/screens/AiScreen.tsx` + `mobile/src/styles/mobile.css`：写文件工具卡片下方渲染质检清单（行号/严重度配色/建议，warn 图标 + 「已让 AI 自行修复」提示）；质检遵循设置页语义检查开关（settings.semanticCheckers）与目标游戏版本（settings.targetGameVersion，11-08 已补的设置项直接复用）。
+4. `mobile/tests/aiQualityCheck.test.ts`（新增）：14 项测试——行号表/偏移换算（含 \r\n）、建议映射、清单折叠（200 上限/汇总计数不失真）、语义合并（ruleId/evidence）、中文显示层回译检出、配置过滤、unitNames 引用检查、dont_load 跳过、超大文件跳过、自纠反馈格式化（30 条截断/字节预算 ≤8KB）。
+
+**与远端分支的合并**：本次本地基线又停在 origin/main（f0c6450），commit 完成后推送被拒才发现远端已领先（11-06/11-07/11-08 三次运行产出）。按规则 `git pull --rebase origin automation/mobile-parity` 完成合并：**代码文件零冲突**（本次改动的 aiClient/AiScreen/mobile.css ai-tools 区段远端均未触及；选题与远端差距表「aiQualityCheck ❌ 缺失·高」一致，无重复劳动）；状态文件为本地新建与远端冲突，删除本地版后以远端为准追加本条记录。rebase 后复跑 `mobile npm run check` ✅（25 test files / 434 tests 全绿 + tsc --noEmit），确认与远端演进无语义冲突。
+
+**剩余差距**（结合远端差距总览表更新，本次已补的不重复列）：
+- features/ai：usageStats 本地用量统计（调用次数/估算 token/今日与近 7 天汇总，桌面端设置页 AI 页签可见）——手机端 aiClient 直连无记录入口
+- modTools：modReport 模组报告、CreateUnitModal/CheckModal/TranslationRepairModal 弹窗 UI（translationRepair 服务层已补）
+- features/editor：bilingualLabels、VersionDiffModal、CodeTableModal、UnitLibraryModal、unitPreview
+- features/dashboard：UI 面板（数据层已补）；settings：ValueTypeModal、GameSettingsTab、自定义规则清单展示
+- services：versionDiff、mockBridge、codeDataLookup/State；features/graph 关系图、plugins 插件系统
+- 桌面特有不对齐项（有意不做）：community/CloudBag、auth、map、Git 面板、workspace 双栏布局
+
+**是否已完全对齐**：❌ 否
+
+**下一步计划**：
+- 优先补 usageStats 用量统计（纯逻辑 + aiClient 记录 + SettingsScreen AI 组展示，工作量小、与本次质检同属 AI 差距行收尾）
+- 然后 modReport 模组报告（11-08 既定计划）或 bilingualLabels
+- 之后 VersionDiffModal + services/versionDiff（版本对比）
+- 避开桌面特有（community/cloudBag/git/plugins）
+
