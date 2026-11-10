@@ -650,3 +650,45 @@
 - **连续无 bug 计数：1**
 - 交付：本记录提交推送至 `origin/automation/bug-check`，长期 PR #9 追加评论。无代码改动，无空提交。
 - 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检——现已有 `/^[A-Za-z]:/` 兜底、INEFFECTIVE_DYNAMIC_IMPORT 体积提示），无新增。
+
+## 2026-11-10 早上（第 15 次运行）
+
+- **日期**：2026-11-10
+- **时段**：早上（08:0x 执行）
+- **连续无 bug 次数**：0（本次发现并修复 1 个真实问题，计数清零；上一轮 2026-11-09 晚上为 1）
+
+### 分支与基线（refspec 陷阱第 8 次出现，已按固化流程自纠）
+
+- 开头仍只执行 `git fetch origin` + `git branch -a`，本沙箱克隆 refspec 仅映射 main，再次误判 `automation/bug-check` 不存在，从 `origin/main`（f0c6450）重建分支；在该过时基线上跑出的「4 个用例失败」（engineDlc 大小写/正斜杠、detached 孙进程、game `C:/evil.png`）均为 11-01/11-02 已在远程修复的陈旧基线假象，不是新缺陷。
+- 推送被拒后按固化流程 `git fetch origin automation/bug-check`，发现远程 HEAD `2d540fa`；`git rebase --abort` + `git reset --hard FETCH_HEAD` 落位后，在远程最新代码上重新落地本轮修复。
+- 固化建议第 8 次重申：运行开始直接 `git fetch origin automation/bug-check`（存在则 `git reset --hard FETCH_HEAD`）；`git branch -a` 在本沙箱永远看不到该分支。
+
+### 基础检查结果（真实基线 2d540fa + 本轮修复）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check` | ✅ EXIT 0 | typecheck + lint 全绿；79 个测试文件 **1320 通过 / 5 跳过** |
+| 桌面 `npm run build` | ✅ EXIT 0 | renderer + electron tsc 通过（既有 chunk/INEFFECTIVE_DYNAMIC_IMPORT 体积提示） |
+| `npm run dev:web` + 浏览器实测 | ✅ | HTTP 200；主界面完整渲染（标题「铁锈工坊」，导航/项目面板/欢迎区/状态栏），控制台仅 log/debug/info，无 error 与未捕获异常，网络请求均 200 |
+
+### 代码审查范围
+
+- Electron 主进程：`main.ts`（窗口 close / before-quit 落盘确认链）、`appIpc.ts`（app:flush-done）、`ipcContext.ts`（lifecycle）、`fsIpc.ts`、`game.ts`、`engineDlc*.ts`、`aiIpc.ts`（流锁/abort/hardKill/审批单槽）、`cloudbagWatch.ts`、`cloudbagSave.ts`、`store.ts`。
+- 渲染层：`projectTabsSlice`（保存/外部修改轮询）、`projectTreeSlice`（dirLoadSeqs）、`aiSlice`（看门狗/流式状态）、`focusTrap`/`modalStack`、`cloudBagTreeState`/`cloudBagApi`/`cloudBagSync`、`EditorMirror`、`translationRepair`、`tmx`。
+- 手机端：`mobile/src/services/bridge.ts`（Tauri fs/zip 解压/路径边界）与 `utils/entryName.ts`、`pathPrefix.ts`。
+
+### 发现并修复的 Bug
+
+1. 【真实缺陷·桌面端关闭链路】窗口 close 路径未消费 `app:flush-done` 确认，固定等 1s 兜底强杀：
+   - 问题：渲染层收到 `app:before-close` 后执行 `flushPersist()`，完成后调用 `app:flush-done`（preload `confirmClose`）。主进程 `app:flush-done` 只处理 before-quit 的 `flushResolve`，窗口 close 路径没有销毁回调 → 只能等 `main.ts` 的 1s 兜底定时器销毁窗口。后果：① 每次关窗固定延迟约 1s；② 若落盘耗时超过 1s（会话/项目记录较大、磁盘慢），窗口会被提前销毁，最后写入可能丢失。
+   - 修复：`lifecycle` 新增 `closeFlushResolve`；`main.ts` 的 close 事件挂起「清定时器 + destroy」回调，`closed` 时清理残留状态；`app:flush-done` 在无 before-quit 等待时执行该回调并返回 true。无待确认流程时仍返回 false，保持「渲染层不能凭空销毁窗口」的安全约束。
+   - 回归用例：`tests/ipc.test.ts` 增加 close 路径确认用例（closeFlushResolve 被调用、兜底定时器被清空）。
+   - 验证：`npx vitest run tests/ipc.test.ts` 65 通过；全量 `npm run check` 1320 通过 / 5 跳过；`npm run build` 通过。
+
+### 结论
+
+- 本次发现并修复 1 个真实问题（关窗落盘确认未生效，固定延迟且可能丢失最后写入），双重验证通过。
+- **连续无 bug 计数**：0
+- 交付：本轮修复（`electron/main.ts` + `appIpc.ts` + `ipcContext.ts` + `tests/ipc.test.ts`）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新。
+- 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积提示），无新增。
+
