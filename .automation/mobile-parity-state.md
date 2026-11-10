@@ -9,7 +9,7 @@
 
 | 桌面端模块 | 手机端状态 | 影响等级 |
 | --- | --- | --- |
-| features/ai/aiQualityCheck.ts + usageStats.ts | ⚠️ aiQualityCheck 已补（2026-11-09，含自纠闭环）；usageStats 仍缺失 | 高 |
+| features/ai/aiQualityCheck.ts + usageStats.ts | ✅ 均已补（aiQualityCheck 2026-11-09 含自纠闭环；usageStats 2026-11-10） | - |
 | features/auth/LoginScreen.tsx | ❌ 缺失 | 中（社区功能前置） |
 | features/community/（CloudBag 14 个文件） | ❌ 整个缺失 | 高 |
 | features/conversation/（对话面板 2 个文件） | ❌ 缺失 | 中 |
@@ -205,4 +205,37 @@
 **备注**：
 - 交付：2 个 commit 已推送至 origin/automation/mobile-parity（54f5bdc..51f96bf：73f7fb8 功能 + 51f96bf 文档）；GH_TOKEN 仍未配置，无法用 gh 确认/创建/评论 PR——若 PR 已存在，推送已自动更新；若不存在，待配置凭据后用 `gh pr create --repo deepsleepcat/rust-assistant-desktop --base main --head automation/mobile-parity` 创建
 - git 身份沿用仓库既有提交作者（repo 级配置，沙箱无全局身份）
+
+---
+
+### 2026-11-10
+
+**本次基线**：本地起点又停在 origin/main（f0c6450），最初误按 main 基线重复实现了 aiQualityCheck（与 11-09 重复），推送被拒后发现远端已领先，`git pull --rebase` 冲突后放弃本地重复实现，`git reset --hard` 到远端 c2272f0（含 11-06~11-09 全部成果）后按既定「下一步计划」做 usageStats。教训已吸收：**每次运行必须先核对远端分支最新状态再选题**。
+
+**补齐的功能**（对齐桌面端 `features/ai/usageStats.ts`，M23 本地 AI 用量统计，11-09 计划的最高优先项）：
+1. `mobile/src/features/ai/usageStats.ts`（新增）——纯函数与桌面端同口径：estimateTokens（字符数/4 向上取整）、addUsageRecord（2000 条上限丢最旧）、summarizeUsage（今日 = 本地时区自然日、近 7 天 = 7×24h、累计）、parseStoredUsage（损坏数据逐字段容错）；`recordAiUsage` 走桥 store 键 `aiUsage`（与桌面端同名同格式，文档化便于未来服务器阶段对接），任何失败静默不影对话。
+2. `mobile/src/features/ai/aiClient.ts`：runAgentChat 以 try/finally 记录用量——任一轮 chatOnce 完成即记一笔（多轮工具调用的输出累加、失败/中止轮次按估算如实记录）；输入取最后一条 user 消息，provider/model 与桌面端同规则（deepseek → deepseekModel）。
+3. `mobile/src/screens/SettingsScreen.tsx`：AI 组显示用量汇总（今日/近 7 天/累计的次数与估算 token），store 不可用时静默不显示。
+4. `mobile/tests/usageStats.test.ts`（新增）：9 项测试——token 估算边界、上限丢最旧、汇总分组与自然日边界（零点前后各一例）、损坏数据容错。
+
+**验证**：mobile `npm run check` 通过（tsc --noEmit + vitest 26 test files / 443 tests 全绿，其中新增 9 个）。
+
+**剩余差距**（结合差距总览表，已补项不重复列）：
+- features/editor：bilingualLabels、VersionDiffModal + services/versionDiff、CodeTableModal、UnitLibraryModal、unitPreview
+- modTools：modReport 模组报告、CreateUnit/Check/TranslationRepair 弹窗 UI
+- features/dashboard：UI 面板（数据层已补）；settings：ValueTypeModal、GameSettingsTab
+- conversation：对话历史持久化（手机端对话仍为内存态）
+- services：mockBridge、codeDataLookup/State 拆分；graph/map/plugins/auth/community：桌面特有或重依赖，维持有意不对齐
+
+**是否已完全对齐**：❌ 否
+
+**下一步计划**：
+- 优先补 modReport 模组报告（296 行纯逻辑 + 检查页/模组工具入口，11-07/11-08 既定计划）
+- 然后 bilingualLabels（编辑器双语标签，依赖 codeData 已具备）
+- 之后 VersionDiffModal + services/versionDiff（版本对比）
+- 避开桌面特有（community/cloudBag/git/plugins）
+
+**备注**：
+- 交付：1 个功能 commit 推送至 origin/automation/mobile-parity；PR 状态见下一节交付记录
+
 

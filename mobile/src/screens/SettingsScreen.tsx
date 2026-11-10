@@ -10,6 +10,7 @@ import { AppIcon } from '../components/AppIcon'
 import { FONT_OPTIONS, FILE_SORTS } from '../utils/settings'
 import { ALL_SEMANTIC_CHECKERS } from '../features/editor/semanticChecks/registry'
 import { getGameVersions, loadCodeData, type GameVersionInfo } from '../services/codeData'
+import { parseStoredUsage, summarizeUsage, type AiUsageSummary } from '../features/ai/usageStats'
 import type { FileSort, ThemeMode } from '../types/domain'
 
 /** 文件树排序方式的界面文案 */
@@ -25,6 +26,8 @@ export function SettingsScreen() {
   const updateSettings = useWorkspace((s) => s.updateSettings)
   // 目标游戏版本下拉数据（异步加载版本表；失败时只显示「跟随最新」）
   const [gameVersions, setGameVersions] = useState<GameVersionInfo[]>([])
+  // 本地 AI 用量汇总（M23：纯本地 store 键 aiUsage；读取失败只是不显示，不影响设置）
+  const [usage, setUsage] = useState<AiUsageSummary | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -33,6 +36,15 @@ export function SettingsScreen() {
         if (alive) setGameVersions(getGameVersions())
       })
       .catch(() => {})
+    void (async () => {
+      try {
+        const { getBridge } = await import('../services/bridge')
+        const raw = await getBridge().store.get('aiUsage')
+        if (alive) setUsage(summarizeUsage(parseStoredUsage(raw)))
+      } catch {
+        // store 不可用（浏览器预览等）忽略
+      }
+    })()
     return () => {
       alive = false
     }
@@ -150,6 +162,12 @@ export function SettingsScreen() {
         </div>
 
         <p className="m-group-title">AI（M5 上线）</p>
+        {usage && usage.totalCalls > 0 && (
+          <p className="m-group-desc">
+            本地用量（token 为估算）：今日 {usage.todayCalls} 次 / {usage.todayTokens} tok ·
+            近 7 天 {usage.weekCalls} 次 · 累计 {usage.totalCalls} 次 / {usage.totalTokens} tok
+          </p>
+        )}
         <div className="m-field">
           <label>DeepSeek API Key（仅存本机）</label>
           <input
