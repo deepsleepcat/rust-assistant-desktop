@@ -239,4 +239,56 @@
 - 交付：功能 commit `a9cbf8a` 已推送至 origin/automation/mobile-parity（c2272f0..a9cbf8a）
 - PR：已存在长期 PR #10（OPEN，"补齐：手机端逐步对齐桌面端功能"），推送自动更新；GH_TOKEN 缺失但 git 凭据存储（/run/shared/git/credentials）中的 x-access-token 可供 gh 使用——已通过 REST API 更新 PR #10 描述（补记 11-09/11-10 两次运行、刷新差距与下一步计划；`gh pr edit` 因 GraphQL projectCards 弃用报错，改用 `gh api pulls/10 PATCH` 成功）
 
+---
+
+### 2026-11-10（中午）
+
+**本次基线**：本地起点又停在 origin/main，按任务指引 `git fetch origin` 后发现远端已有 4 个历史 commit（c5abb06 最新为 11-10 上午运行）。本地新建分支后 commit 被拒，`git pull --rebase` 出现状态文件和 translationRepair.ts 冲突。`git reset --hard origin/automation/mobile-parity` 后用 `cherry-pick` 搬运本地 commit，解决冲突后完成合并。
+
+**补齐的功能**：
+1. `mobile/src/services/versionDiff.ts`（新增，354 行）——版本差异服务（M17），从桌面端移植：
+   - `getVersionDiff` 计算两个游戏版本之间的字段新增/弃用/改版替代
+   - `buildUpgradeReport` 扫描项目 ini/template 生成「升级到目标版本的改动清单」
+   - `upgradeReportToText` 纯文本导出（脱敏）
+   - 依赖 codeData（getAllCodes / loadCodeData / versionNameToNumber / versionNumberToName 等）和 semanticChecks/helpers（parseIni / toEnKey），别名功能暂用空映射（桌面端有 aliases.json 手机端未同步）
+2. `mobile/src/features/editor/unitPreview/recipe.ts`（新增，603 行）——单位预览配方解析器，从桌面端完整移植：
+   - `parseGraphicsRecipe` 从单位文件 [graphics] 节解析配方（多帧引用、队伍着色模式、三态动画、多向动画、战争迷雾视野）
+   - `parsePreviewTurrets` 解析炮塔（位置 + 节内图像覆盖）
+   - `computeDrawLayout` 计算完整绘制布局（阴影/主体/炮塔/残骸）
+   - `computeFrames` 帧切片（frame_width 优先，total_frames 兜底）
+   - `computeSightGeometry` 视野圆几何（含 Canvas 钳制）
+   - `animationFrameNumber` 播放帧号计算（含 pingPong 往返）
+   - 完整的图像引用命名空间解析（NONE/AUTO/ROOT:/CUSTOM:/CORE:/SHARED:）
+3. **translationRepair.ts 冲突处理**：远端已有版本（222 行），差异仅为正则表达式 Unicode 转义格式（远端 `\u4e00-\u9fff` vs 本地 `一-鿿`）和少量注释风格；采用远端版本（`git checkout --theirs`）
+
+**验证**：mobile `npm run check` ✅——npx tsc --noEmit 通过，vitest 21 test files / 393 tests 全绿。
+
+**与远端分支的合并**：cherry-pick 冲突 2 处（状态文件 add/add、translationRepair.ts add/add）：
+- translationRepair.ts：远端已有版本，采用远端版
+- 状态文件：采用远端完整历史，追加本次记录
+- versionDiff.ts 和 recipe.ts 为纯新增，远端无冲突
+
+**剩余差距**（结合 11-10 上午的差距表，已补的不重复列）：
+- ✅ services/versionDiff —— 已补（本次）
+- ✅ features/editor/unitPreview/recipe.ts —— 已补（本次，纯逻辑层；UnitPreviewModal.tsx compositor.ts 仍缺）
+- features/editor：bilingualLabels、VersionDiffModal、CodeTableModal、UnitLibraryModal
+- modTools：modReport 模组报告、CreateUnit/Check/TranslationRepair 弹窗 UI
+- features/dashboard：UI 面板；settings：ValueTypeModal、GameSettingsTab
+- services：mockBridge、codeDataLookup/State 拆分
+- conversation：对话历史持久化
+- 桌面特有不对齐项：community/CloudBag、auth、map、Git 面板、workspace 双栏布局、plugins
+
+**是否已完全对齐**：❌ 否
+
+**下一步计划**：
+- 优先补 features/editor/bilingualLabels.ts（74 行纯函数 + BilingualLabel 组件，依赖 codeData 已就绪，11-07/11-08 既定计划）
+- 然后 modReport 模组报告（纯逻辑）或 VersionDiffModal（有 versionDiff 服务层支撑了）
+- 之后 codeDataLookup/State 拆分（让手机端 codeData 与桌面端架构对齐）
+- 避开桌面特有（community/cloudBag/git/plugins）
+
+**备注**：
+- 本次推送被拒后用 cherry-pick 搬运本地 commit 到远端分支，解决 2 处冲突后完成合并
+- PR #10 已存在，推送自动更新
+- 关键教训：下次运行必须先 fetch + reset 到远端最新分支，再基于远端状态选题
+
 
