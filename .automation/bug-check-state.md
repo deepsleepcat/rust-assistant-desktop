@@ -746,3 +746,68 @@
 
 ---
 
+
+## 2026-11-10 晚上（第 17 次运行）
+
+- **日期**：2026-11-10
+- **时段**：晚上（20:26 执行）
+- **连续无 bug 次数**：0（本次发现并修复 1 个真实安全问题，计数清零；上一轮 2026-11-10 补跑为 0）
+
+### 分支与基线
+
+- 开头按固化流程执行：`git fetch origin automation/bug-check && git reset --hard FETCH_HEAD`
+- 基线 `53dc726`（第 16 次运行修复 commit：补全资源缓存失效竞态）
+- 本沙箱 refspec 仍只映射 main，`git branch -a` 看不到远程分支——第 7+ 次重申固化流程已生效，未再误判分支不存在
+- 未触碰 main
+
+### 基础检查结果（改动后最终代码）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check` | ✅ EXIT 0 | typecheck + lint 全绿；**79 文件 1321 通过 / 5 跳过** |
+| 桌面 `npm run build` | ✅ EXIT 0 | renderer + electron tsc 通过（既有 INEFFECTIVE_DYNAMIC_IMPORT 体积提示） |
+
+### 代码审查范围（本轮聚焦：engineDlc 进程生命周期与 POSIX 子进程树清理）
+
+- **engineDlcProcess.ts 深度审计**：killTree 在非 Windows 平台用 `process.kill(-child.pid, 'SIGKILL')` 杀进程组，但 DLC 脚本内部 `spawn({ detached: true, unref() })` 创建独立进程组，不在进程组树内；且 child 退出时内核立即把子孙 reparent 到 init，事后 pgrep 找不到。
+- 关联测试 `engineDlcSecurity.test.ts > detached unref worker`：DLC spawn detached 子进程后立即 exit，测试预期该子进程被清理，实际逃逸。
+- 复核：前几轮已确认 POSIX 的 detached 进程安全——本轮把"无法触达二次 setsid 孙进程"从观察项升级为可修复问题，通过在 child 存活期间持续追踪进程树解决。
+- 其他快速复核：paths.ts 的 isAnyPlatformAbsolute 覆盖 game/aiIpc/cloudbagRestore/engineDlcProcess/gitTools/modTranslationRepair 共 6 处安全敏感位置，均已生效；engineDlc.test.ts 的平台门控已加 skipIf；gitTools.ts 的 isValidRelPath 同样只做 path.isAbsolute 仍属观察项（POSIX 下 join 不逃逸）。
+
+### 发现并修复的 Bug（真实安全缺陷·进程生命周期）
+
+**DLC detached/unref 子进程无法清理：恶意/有 bug 的 DLC 可在应用退出后继续运行**
+
+- 位置：`electron/engineDlcProcess.ts` 的 `killTree()` + `executeEngineDlc()`
+- 根因链：
+  1. `executeEngineDlc` spawn DLC 进程时用 `detached: platform !== 'win32'`（line 53），子进程成为新 session leader + 新进程组 leader
+  2. DLC 脚本内部可以 `spawn({ detached: true }).unref()` 创建独立进程组，这个孙子进程不在 child.pid 所属进程组内
+  3. 原 `killTree` 只做 `process.kill(-child.pid, 'SIGKILL')` 杀进程组，孙子进程不受影响
+  4. child 退出时内核立即把所有子孙 reparent 到 init（PID 1），事后任何基于 pgrep -P child.pid 的查找都失败
+  5. 结果：DLC 可以启动持久化后台进程（监听端口、读写文件、持续消耗资源），用户关闭应用后进程继续运行
+- 修复方案：
+  1. 新增 `trackDescendants(rootPid)`：持续用 pgrep -P 广度优先遍历，追踪所有子孙 PID。暴露 `scanOnce()` 手动扫描接口
+  2. 新增 `burstScan(tracker)`：spawn 后立即启动 5ms 间隔 × 40 次（200ms）密集扫描，覆盖 DLC 启动后立即 spawn detached 然后 exit 的时序窗口。常规 200ms 轮询保持到 child close
+  3. 改进 `killTree(child, platform, trackedPids)`：先杀进程组，再逐个 SIGKILL 所有追踪到的 PID（跳过 child.pid 本身避免与进程组 kill 重复），最后兜底 child.kill
+  4. `executeEngineDlc` 中 spawn 后立即启动 tracker + burstScan，stop() 前先调 tracker.scanOnce() 紧急扫最后一次，finally 里停掉 interval
+- 验证：
+  - **独立 Node 脚本**模拟完整时序：burstScan 在 200ms 内成功追踪到 detached 子进程 PID，确认方案有效
+  - `npm run check` 79 文件全绿，**engineDlcSecurity.test.ts 的 detached worker 清理测试通过**（修复前此用例失败）
+  - ESLint 0 error（prefer-const / no-useless-escape 均已处理）
+  - TypeScript 两 config 均无错误
+
+### 运行验证
+
+- `npm run build` ✅ EXIT 0
+- 无 dev:web 实跑（本轮改动仅限 Electron 主进程 engineDlcProcess.ts，不影响渲染层）
+
+### 结论
+
+- 本次发现并修复 1 个真实安全缺陷（DLC detached 子进程逃逸），双重验证通过。
+- **连续无 bug 计数：0**
+- 交付：本轮修复 commit（engineDlcProcess.ts 新增 trackDescendants + burstScan + 改进 killTree）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 追加中文摘要。
+- 观察项更新：原"POSIX 开发机上 engineDlc 脚式 DLC 仍可遗留 detached 孤儿进程"已修复，**移出观察项**。
+- 其他观察项沿袭：mobile extractZip UNC/盘符、`engineDlc.ts` entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告；无新增。
+
+---
+
