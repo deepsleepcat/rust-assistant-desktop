@@ -692,3 +692,57 @@
 - 交付：本轮修复（`electron/main.ts` + `appIpc.ts` + `ipcContext.ts` + `tests/ipc.test.ts`）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 自动更新。
 - 观察项沿袭上轮（mobile extractZip UNC/盘符、engineDlc.ts:166 entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积提示），无新增。
 
+---
+
+## 2026-11-10 上午补跑（第 16 次运行）
+
+- 时段：上午 10:05–10:2x（**补跑**：同日 08:0x 的第 15 次运行已记录；本次属额外触发，不计为独立的早上/晚上时段，不影响「连续 3 个不同时段」判定）
+- 进入本轮时连续无 bug 次数：0（第 15 次发现并修复关窗确认问题）
+- 基线：`870330e`（origin/automation/bug-check HEAD）
+
+### 流程事故：refspec 陷阱第 9 次复发（务必显式 fetch）
+
+- `git fetch origin` + `git branch -a` 仍只看到 `main`，于是从 `origin/main` 新建了 `automation/bug-check` 并重复修复了第 15 次已修的「关窗 1s 延迟」与更早已修的「盘符绝对路径校验」。
+- 显式 `git fetch origin automation/bug-check:refs/remotes/origin/automation/bug-check` 后确认远程分支已存在（870330e），随即丢弃全部重复改动（未提交、未推送、工作区无残留）。
+- 结论：远程 `origin.remote.fetch` 仅跟踪 main；本任务每次必须显式 fetch 目标分支，不能凭 `git branch -a` 判断分支不存在。
+
+### 基础检查结果（修复前基线 870330e）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check` | ✅ EXIT 0 | typecheck + lint 全绿；**1320 通过 / 5 跳过** |
+
+### 代码审查范围（本轮重点：此前未覆盖的补全资源缓存与数据面板）
+
+- 新增覆盖：`src/features/editor/completion.ts`（项目资源扫描缓存/在途去重/超时降级）、`src/services/codeDataState.ts`（加载代次、词典重建、插件字典失败回滚）、`src/features/dashboard/DashboardPanel.tsx`（账号切换代次、布局保存队列与刷新竞态）、`src/features/editor/unitPreview/*`（DLC 渲染代次/图像缓存/帧切片边界）。
+- 复核：Electron `main.ts`/`appIpc.ts`/`fsIpc.ts`/`paths.ts`/`cloudbagWatch.ts`/`cloudbagRestore.ts`/`store.ts`；渲染层 `projectTreeSlice`/`projectTabsSlice`/`codeDataState`；`mobile/src/features/editor/completion.ts` 与桌面端的一致性。
+
+### 发现并修复的 Bug（桌面端 + 手机端）
+
+**补全资源扫描缓存失效竞态：失效发生在扫描途中时，旧文件列表被当作成功结果长期缓存**
+
+- 位置：`src/features/editor/completion.ts`、`mobile/src/features/editor/completion.ts`（`loadProjectResources` / `invalidateResourceCache`）
+- 问题：`invalidateResourceCache()` 只清 `resourceCache`，不清「在途扫描」。若扫描进行中用户新建/重命名/删除文件或保存（都会调用失效），扫描完成后仍**无条件**写回 `resourceCache`；成功结果没有 TTL，会一直被复用。后果：`@file` / 单位名补全在一段时间内看不到新文件，且仍列出已删除/改名前的旧文件名，直到下一次失效或切换项目。大项目、网络盘、扫描接近 5s 超时时窗口最明显。
+- 修复：新增失效代次 `resourceCacheGeneration`，`invalidateResourceCache()` 自增；扫描完成时仅当代次未变才回写缓存（本次结果仍返回给当前这次补全，不阻塞输入）。同时把 `finally` 的在途清理改为按条目身份判断，避免切换项目后旧扫描落地时清掉新项目刚建立的条目（桌面端原有 root 比较在跨项目同根场景不够精确，手机端原为无条件清空）。
+- 回归用例：`tests/completion.test.ts` 新增「扫描进行中失效：旧结果不回写缓存，下次补全重新扫描」。
+- 反证：临时 `git stash` 掉 `src/features/editor/completion.ts` 后该用例失败（扫描只调用 1 次、第二次返回旧列表 `['a.png']`），恢复修复后通过。
+
+### 验证结果（修复后）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check` | ✅ EXIT 0 | typecheck + lint 全绿；**1321 通过 / 5 跳过**（新增 1 条回归用例） |
+| 手机端 `npm run check`（mobile/） | ✅ EXIT 0 | typecheck 通过；23 个测试文件 **397 通过** |
+| 桌面 `npm run build` | ✅ EXIT 0 | renderer + electron tsc 通过（既有 INEFFECTIVE_DYNAMIC_IMPORT 体积提示） |
+| `npm run dev:web` + 浏览器实测 | ✅ | HTTP 200；标题「铁锈工坊」、导航/欢迎区/状态栏完整渲染；控制台无 error、无未捕获异常；命令面板可正常打开 |
+| 模块级冒烟 | ✅ | `/`、`/src/main.tsx`、completion、DashboardPanel、workspace store 均 200，无转换错误 |
+
+### 结论
+
+- 本次发现并修复 1 个真实问题（补全资源缓存失效竞态，桌面端与手机端同源），双重验证通过。
+- **连续无 bug 计数：0**
+- 交付：3 个代码文件 + 本记录推送至 `origin/automation/bug-check`，长期 PR #9 追加中文摘要。
+- 观察项沿袭：mobile extractZip UNC/盘符、`engineDlc.ts` entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积提示；无新增。
+
+---
+
