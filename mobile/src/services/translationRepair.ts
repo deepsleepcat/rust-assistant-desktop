@@ -1,4 +1,7 @@
-/** 已翻译 INI 的保守恢复规则。 */
+/**
+ * 已翻译 INI 的保守恢复规则（与桌面端 src/services/translationRepair.ts 保持一致）。
+ * 纯逻辑层，零平台依赖，可独立测试。
+ */
 
 export interface RepairSectionInfo {
   code: string
@@ -23,19 +26,9 @@ export type TranslationRepairChangeKind = 'section' | 'key' | 'boolean' | 'logic
 
 /** 从代码表与逻辑函数表构建唯一的 self 中文标识符映射。
  * 短字段（maxHp）和完整 self 条目都可提供别名；冲突项删除，不猜测。
- *
- * @param codes 代码表条目（code 如 `self.hp` / `invisible` 等）
- * @param logicNames 已知逻辑函数全名集合（`hp`, `lessThan` 等）
- * @param translations 代码表翻译条目（可选，code 形如 `self.hp`）
  */
-export function buildLogicIdentifierMap(
-  codes: RepairCodeInfo[],
-  logicNames: Iterable<string>,
-  translations: Array<{ en: string; zh: string }> = [],
-): Map<string, string> {
-  const known = new Set(
-    [...logicNames].map((name) => name.trim().replace(/^self\./i, '').replace(/\(\)$/, '').toLowerCase()).filter(Boolean),
-  )
+export function buildLogicIdentifierMap(codes: RepairCodeInfo[], logicNames: Iterable<string>, translations: Array<{ en: string; zh: string }> = []): Map<string, string> {
+  const known = new Set([...logicNames].map((name) => name.trim().replace(/^self\./i, '').replace(/\(\)$/, '').toLowerCase()).filter(Boolean))
   const candidates = new Map<string, string>()
   const ambiguous = new Set<string>()
   const add = (alias: string, identifier: string) => {
@@ -162,7 +155,7 @@ function restoreBoolean(raw: string, field: string, booleanFields: Set<string>):
  */
 function restoreKnownLogicIdentifiers(raw: string, logicIdentifiers?: Map<string, string>): string {
   if (!logicIdentifiers || logicIdentifiers.size === 0) return raw
-  return raw.replace(/self\.([\u4e00-\u9fff][\u4e00-\u9fff0-9_]*)/g, (full, name: string) => {
+  return raw.replace(/self\.([一-鿿][一-鿿0-9_]*)/g, (full, name: string) => {
     const restored = logicIdentifiers.get(name)
     return restored ? `self.${restored}` : full
   })
