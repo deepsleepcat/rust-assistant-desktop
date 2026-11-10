@@ -6,14 +6,26 @@ import { CompletionContext } from '@codemirror/autocomplete'
 import {
   commitText,
   computeRustCompletions,
+  invalidateResourceCache,
   localVariableCompletions,
   logicCompletionText,
+  realResourcesDataSource,
   rustCompletionSource,
   setCompletionChineseMode,
   withTimeout,
 } from '../src/features/editor/completion'
 import type { CompletionDataSource } from '../src/features/editor/completion'
 import { parseValueList } from '../src/services/codeData'
+
+const bridgeHooks = vi.hoisted(() => ({ scanResources: vi.fn() }))
+vi.mock('../src/services/bridge', () => ({
+  getBridge: () => ({ mod: { scanResources: bridgeHooks.scanResources } }),
+}))
+vi.mock('../src/stores/workspace', () => ({
+  useWorkspaceStore: {
+    getState: () => ({ projects: [{ id: 'p1', rootPath: '/proj' }], activeProjectId: 'p1' }),
+  },
+}))
 
 /** 假数据源：模拟完整数据结构（含 needName 节、资源文件、单位名） */
 const fakeData: CompletionDataSource = {
@@ -495,5 +507,29 @@ describe('rustCompletionSource（真实数据集成：注释/空行守卫/等号
     const apps = result!.options.map((o) => String(o.apply))
     expect(apps).toContain('isFlying') // 中文说明命中，英文 label 不被过滤
     expect(apps).toContain('flying')
+  })
+})
+
+describe('补全资源扫描缓存失效（回归）', () => {
+  it('扫描进行中失效：旧结果不回写缓存，下次补全重新扫描', async () => {
+    let resolveScan: (value: { files: string[]; unitNames: string[] }) => void = () => undefined
+    bridgeHooks.scanResources.mockReset()
+    bridgeHooks.scanResources.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveScan = resolve }),
+    )
+    const dataSource = realResourcesDataSource()
+    const listResourceFiles = dataSource.listResourceFiles!
+    const first = listResourceFiles(['png'])
+    // 等扫描真正发起（loadProjectResources 内部先动态 import 桥与 store）
+    await vi.waitFor(() => expect(bridgeHooks.scanResources).toHaveBeenCalledTimes(1))
+    // 模拟扫描期间用户新建/改名/删除文件
+    invalidateResourceCache()
+    resolveScan({ files: ['a.png'], unitNames: [] })
+    expect(await first).toEqual(['a.png'])
+
+    // 失效后旧扫描结果不得被缓存：下次补全必须重新扫描并拿到新文件
+    bridgeHooks.scanResources.mockResolvedValueOnce({ files: ['a.png', 'b.png'], unitNames: [] })
+    expect(await listResourceFiles(['png'])).toEqual(['a.png', 'b.png'])
+    expect(bridgeHooks.scanResources).toHaveBeenCalledTimes(2)
   })
 })
