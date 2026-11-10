@@ -236,6 +236,7 @@
 - 避开桌面特有（community/cloudBag/git/plugins）
 
 **备注**：
-- 交付：1 个功能 commit 推送至 origin/automation/mobile-parity；PR 状态见下一节交付记录
+- 交付：功能 commit `a9cbf8a` 已推送至 origin/automation/mobile-parity（c2272f0..a9cbf8a）
+- PR：已存在长期 PR #10（OPEN，"补齐：手机端逐步对齐桌面端功能"），推送自动更新；GH_TOKEN 缺失但 git 凭据存储（/run/shared/git/credentials）中的 x-access-token 可供 gh 使用——已通过 REST API 更新 PR #10 描述（补记 11-09/11-10 两次运行、刷新差距与下一步计划；`gh pr edit` 因 GraphQL projectCards 弃用报错，改用 `gh api pulls/10 PATCH` 成功）
 
 
