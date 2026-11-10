@@ -90,7 +90,14 @@ function createWindow(): BrowserWindow {
     } else if (action === 'close') win.close()
   }
   ipcMain.on('window:control', controlWindow)
-  win.once('closed', () => ipcMain.removeListener('window:control', controlWindow))
+  win.once('closed', () => {
+    ipcMain.removeListener('window:control', controlWindow)
+    if (ctx.lifecycle.closeFlushTimer) {
+      clearTimeout(ctx.lifecycle.closeFlushTimer)
+      ctx.lifecycle.closeFlushTimer = null
+    }
+    ctx.lifecycle.closeFlushResolve = null
+  })
 
   // 阻止页面跳转到外部地址，防止被导航劫持（精确匹配开发服务器 origin+path，前缀劫持一律拦截）
   win.webContents.on('will-navigate', (event, url) => {
@@ -113,7 +120,16 @@ function createWindow(): BrowserWindow {
     event.preventDefault()
     if (!win.webContents.isDestroyed()) win.webContents.send('app:before-close')
     if (ctx.lifecycle.closeFlushTimer) clearTimeout(ctx.lifecycle.closeFlushTimer)
-    ctx.lifecycle.closeFlushTimer = setTimeout(() => win.destroy(), 1000)
+    // 落盘确认（app:flush-done）后立即销毁；1s 超时兜底，避免渲染层崩溃/卡死时关不掉窗口。
+    // 少了确认回调时窗口只能等满 1s，flush 较慢还会被提前销毁（丢最后写入）。
+    ctx.lifecycle.closeFlushResolve = () => {
+      ctx.lifecycle.closeFlushResolve = null
+      if (!win.isDestroyed()) win.destroy()
+    }
+    ctx.lifecycle.closeFlushTimer = setTimeout(() => {
+      ctx.lifecycle.closeFlushResolve = null
+      if (!win.isDestroyed()) win.destroy()
+    }, 1000)
   })
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 

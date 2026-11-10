@@ -1007,6 +1007,15 @@ describe('mod / game / app 通道', () => {
     expect(await invoke<boolean>(channels, 'app:flush-done')).toBe(true)
     expect(flushed).toBe(true)
 
+    // flush-done：窗口 close 路径（closeFlushResolve 挂起 → 落盘完成立即销毁并清兜底定时器）
+    let closed = false
+    ctx.lifecycle.closeFlushResolve = () => { closed = true }
+    ctx.lifecycle.closeFlushTimer = setTimeout(() => undefined, 1000)
+    expect(await invoke<boolean>(channels, 'app:flush-done')).toBe(true)
+    expect(closed).toBe(true)
+    expect(ctx.lifecycle.closeFlushResolve).toBeNull()
+    expect(ctx.lifecycle.closeFlushTimer).toBeNull()
+
     // flush-done：没有待确认退出流程时，渲染层不得凭空销毁窗口
     const destroy = vi.fn()
     ctx.windows = { getAllWindows: () => [{ isDestroyed: () => false, destroy }] }

@@ -43,6 +43,8 @@ export interface IpcContext {
     flushConfirmTimer: ReturnType<typeof setTimeout> | null
     /** 窗口 close 落盘兜底定时器 */
     closeFlushTimer: ReturnType<typeof setTimeout> | null
+    /** 窗口 close 路径：渲染层 flush 完成后的销毁回调（仅 close 流程挂起，执行后置空） */
+    closeFlushResolve: (() => void) | null
   }
   /** AI 流互斥与审批（ai:* 处理器共享；跨通道状态集中在 ctx 才能注入/断言） */
   ai: {
@@ -112,7 +114,7 @@ export function createIpcContext(deps: {
     packing: { active: false },
     musicSources: new Set<string>(),
     importedDirs: new Set<string>(),
-    lifecycle: { quitting: false, flushResolve: null, flushConfirmTimer: null, closeFlushTimer: null },
+    lifecycle: { quitting: false, flushResolve: null, flushConfirmTimer: null, closeFlushTimer: null, closeFlushResolve: null },
     ai: { pendingApproval: null, streamActive: false, cancel: null, feedbackReceiver: null },
     cloudbagRendererUrl: deps.cloudbagRendererUrl ?? null,
     cloudbagRestores: new Set<string>(),

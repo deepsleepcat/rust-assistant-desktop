@@ -19,6 +19,18 @@ export function registerAppIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       r()
       return true
     }
+    // 窗口 close 路径：close 处理器已挂起销毁回调，落盘完成即销毁（不必再等 1s 兜底）；
+    // 渲染层 flush 慢于兜底时窗口会提前销毁，因此这里的确认是数据不丢的关键。
+    if (ctx.lifecycle.closeFlushResolve) {
+      if (ctx.lifecycle.closeFlushTimer) {
+        clearTimeout(ctx.lifecycle.closeFlushTimer)
+        ctx.lifecycle.closeFlushTimer = null
+      }
+      const done = ctx.lifecycle.closeFlushResolve
+      ctx.lifecycle.closeFlushResolve = null
+      done()
+      return true
+    }
     // 没有待确认的退出流程时，渲染层不能凭空销毁主窗口。
     return false
   })
