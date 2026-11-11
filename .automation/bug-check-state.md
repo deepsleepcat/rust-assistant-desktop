@@ -811,3 +811,55 @@
 
 ---
 
+
+## 2026-11-11 早上（第 18 次运行）
+
+- **日期**：2026-11-11
+- **时段**：早上（08:03–08:3x 执行）
+- **连续无 bug 次数**：0（本次发现并修复 1 个真实崩溃缺陷，计数清零；上一轮 2026-11-10 晚上为 0）
+
+### 分支与基线（refspec 陷阱第 9 次出现）
+
+- 本沙箱为全新环境：状态文件与分支均不可见，按默认流程从 origin/main（f0c6450）重建分支并开始检查。
+- **在陈旧 main 基线上重新「发现」了 11-01～11-10 已修复的全部问题**（game.ts 盘符校验、appIpc close 路径确认、engineDlc 测试平台门控、detached 孙进程清理），并已写出重复修复——推送被拒 + rebase 冲突后才暴露真相。
+- 按「固化流程」自纠：`git rebase --abort` + `git fetch origin automation/bug-check` + `git reset --hard FETCH_HEAD` 落位真基线 1b4c95b，**丢弃全部重复修复**（远端已有更好实现：paths.ts isAnyPlatformAbsolute 覆盖 6 处、lifecycle.closeFlushResolve 关窗链、trackDescendants+burstScan、it.skipIf 门控）。
+- 固化建议第 9 次重申：运行开始必须 `git fetch origin automation/bug-check && git reset --hard FETCH_HEAD`；本沙箱 `git branch -a` 永远看不到该分支。
+
+### 基础检查结果（真基线 1b4c95b + 本轮修复）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run check` | ✅ EXIT 0 | typecheck + lint 全绿；**80 文件 1323 通过 / 5 跳过**（含本轮新增 2 个用例） |
+
+### 代码审查范围
+
+- 真基线上复核近期修复：`paths.ts` isAnyPlatformAbsolute、`appIpc.ts` closeFlushResolve、`engineDlcProcess.ts` trackDescendants/burstScan、`ipc.test.ts` close 路径用例——实现与记录一致。
+- 本轮聚焦前 17 轮未深审的区域：`engineDlcSession.ts`（DLC 常驻会话桥，0.2.2+ 新特性）、`gitTools.ts`（runGit 执行层）、`applyDiff.ts`（结论：解析/应用逻辑防御完整，未发现问题）、stores 持久化链路复核（persist 快照/AI 流式不落盘依赖退出 flush——设计如此，未发现问题）。
+
+### 发现并修复的 Bug（真实崩溃缺陷·主进程）
+
+**DLC 会话宿主死亡瞬间 stdin 在途写入 EPIPE → Electron 主进程未捕获异常崩溃**
+
+- 位置：`electron/engineDlcSession.ts` spawn 处（stdio: ['pipe','pipe','pipe']，stdin 从未挂 error 监听）
+- 根因链：
+  1. 会话帧请求含 base64 单位内容，体积可达 MB 级（MAX_MESSAGE_BYTES=4MB）；管道内核缓冲仅 64KB，大请求必然有大量数据挂在 Node 用户态 flush 队列
+  2. 宿主在请求在途时死亡（崩溃/请求超时杀/空闲超时杀/授权撤销杀——均为设计内常态路径）
+  3. 管道读端关闭 → 在途 flush 报 `write EPIPE` → Socket 发出 'error' 事件
+  4. 无监听 → unhandled 'error' → 主进程崩溃，整个应用闪退
+- 复现：独立 Node 脚本（2MB 写入 + SIGKILL + 死亡瞬间继续写）稳定复现 `Unhandled 'error' event: write EPIPE`，进程退出码 1；`tests/engineDlcSession.test.ts` 的「宿主秒死 + 2MB 在途请求」用例在修复回退时令 vitest 报 Unhandled Errors（已验证测试灵敏度）
+- 修复：spawn 后 `child.stdin?.on('error', () => undefined)`——吞掉 EPIPE，由既有 close 事件统一收尾等待者（waiters 失败/临时目录清理均已在 close handler 覆盖）
+- 回归用例：`tests/engineDlcSession.test.ts` 新增 2 用例（EPIPE 竞态 + 真实子进程 open/close 全链路）；测试文件本身刻意不挂 stdin error 监听以保持灵敏度
+- 验证：全量 `npm run check` EXIT 0（1323 通过 / 5 跳过）
+
+### 运行验证
+
+- 真基线 `npm run dev:web` + 浏览器实测：主界面完整渲染，工作区/仪表盘/设置切换正常，控制台无 error 与未捕获异常（陈旧基线阶段同样验证过，行为一致）
+
+### 结论
+
+- 本次在真基线上发现并修复 1 个真实崩溃缺陷（会话桥 EPIPE 主进程崩溃），双重验证通过（独立复现脚本 + 灵敏度验证过的回归用例）。
+- **连续无 bug 计数：0**（修复轮）
+- 交付：修复 commit（engineDlcSession.ts + tests/engineDlcSession.test.ts）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 追加中文摘要。
+- 观察项沿袭：mobile extractZip UNC/盘符、`engineDlc.ts` entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告；无新增。
+
+---
