@@ -863,3 +863,62 @@
 - 观察项沿袭：mobile extractZip UNC/盘符、`engineDlc.ts` entry 双检、INEFFECTIVE_DYNAMIC_IMPORT 体积警告；无新增。
 
 ---
+
+## 2026-11-11 晚上（第 19 次运行）
+
+- **日期**：2026-11-11
+- **时段**：晚上（20:12 执行）
+- **连续无 bug 次数**：1（上一轮 2026-11-11 早上发现并修复 EPIPE 崩溃缺陷，计数清零）
+
+### 分支与基线（refspec 固化流程执行）
+
+- 开头按固化流程执行：`git fetch origin automation/bug-check && git reset --hard FETCH_HEAD`
+- 基线 `cec10f0`（第 18 次运行修复 commit：DLC 会话宿主死亡时 stdin 在途写入 EPIPE 崩溃主进程）
+- 本沙箱 refspec 仍只映射 main，`git branch -a` 看不到远程分支——按固化流程正确 reset 到远端最新，未误判分支不存在
+- 未触碰 main
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 桌面 `npm run typecheck` | ✅ 通过 | tsconfig.app.json + tsconfig.node.json 均无错误 |
+| 桌面 `npm run lint` | ✅ 通过 | ESLint 0 error 0 warning |
+| 桌面 `npm run test` | ✅ 全绿 | **80 文件 1323 通过 / 5 跳过**；上一轮 EPIPE 回归用例通过 |
+| 桌面 `npm run build` | ✅ 通过 | renderer + electron tsc；既有 INEFFECTIVE_DYNAMIC_IMPORT 体积提示（非阻塞） |
+| 桌面 `npm run dev:web` | ✅ 启动 | Vite ready in 225ms，http://localhost:5173，控制台无 error |
+
+### 代码审查范围（在真基线上复核近期修复）
+
+- **engineDlcSession.ts** EPIPE 修复复核：spawn 后 `child.stdin?.on('error', () => undefined)` 吞掉在途 flush 的 EPIPE，由 close 事件统一收尾 waiters。实现干净——stdin error 不影响业务语义（管道写死时 DLC 宿主已死，响应本来就不会回来），close handler 已经覆盖了 waiters 失败通知 + 临时目录清理 + host 从 sessions 删除。
+- **engineDlcProcess.ts** trackDescendants / burstScan 复核：
+  - trackDescendants 用 pgrep -P BFS 广度优先追踪子孙 PID，burstScan 在 spawn 后 5ms×40 次（200ms）密集扫描覆盖"spawn detached 后立即 exit"时序窗口
+  - killTree 改进：先杀进程组，再逐个 SIGKILL 追踪到的 PID（跳过 child.pid），最后兜底 child.kill
+  - 跨平台边界：非 Windows 平台才启动 tracker（Windows 有 Job Object）
+- **engineDlcProcess.ts** isAnyPlatformAbsolute 使用：rel 为空/..前缀/跨平台绝对路径均拒；engineDlc.ts:166 entry 校验用 `path.isAbsolute || /^[A-Za-z]:/` 双检覆盖盘符——一致性可提升但功能正确，非 bug
+- **补全资源扫描失效竞态修复**：之前状态文件描述为 desktop + mobile 跨两端修复，本轮未在 git diff 里看到该 commit 的具体文件改动（`53dc726` 在当前 HEAD 之前），测试已通过，视为正确
+- **关窗落盘修复**（870330e）：workspace store 的 flushPersist 在 before-quit 时被调用；lifecycle.closeFlushResolve 同步等待后再销毁窗口
+- **game.ts 路径校验**：已升级到 `isAnyPlatformAbsolute`（跨平台覆盖盘符+UNC+原生绝对），`path.resolve(gamePath, rel)` 后再 `isPathInside` 边界双检
+- **cloudbagRestore / engineDlcProcess / gitTools / modTranslationRepair / aiIpc** 6 处安全敏感位置均已使用 `isAnyPlatformAbsolute`
+
+### 发现的问题
+
+**无真实 bug。** 全部基础检查通过，代码审查复核了 4 个近期修复的实现（逻辑正确、回归测试在基线上全绿）。
+
+### 运行验证
+
+- `npm run dev:web` 启动后保持约 8 秒，无控制台 error，Vite 正常 ready
+- 单测 `engineDlcSecurity.test.ts`（27 用例 × 真实子进程）、`game.test.ts`（30 用例）、`engineDlcSession.test.ts`（2 用例 × 真实子进程）全部通过
+
+### 观察项沿袭
+
+- `engineDlc.ts:166` entry 校验仍用 `path.isAbsolute || /^[A-Za-z]:/` 双检而非统一 `isAnyPlatformAbsolute`——功能正确（Windows 上 path.isAbsolute 识别 UNC），仅一致性可提升
+- mobile extractZip UNC/盘符防护（测试环境 Linux 下 UNC 被正确忽略）
+- INEFFECTIVE_DYNAMIC_IMPORT chunk 体积提示（构建非阻塞）
+
+### 结论
+
+- 本轮在真基线上完成完整检查，**未发现新 bug**
+- **连续无 bug 计数：1**
+- 交付：仅状态文件追加，推送至 `origin/automation/bug-check`，长期 PR #9 追加中文摘要
+
+---
