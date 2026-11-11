@@ -291,4 +291,41 @@
 - PR #10 已存在，推送自动更新
 - 关键教训：下次运行必须先 fetch + reset 到远端最新分支，再基于远端状态选题
 
+---
+
+### 2026-11-11（中午）
+
+**本次基线**：本地起点又停在 origin/main（f0c6450），最初误按 main 基线重复实现了 aiQualityCheck（与 11-09 重复），推送被拒后发现远端已领先（最新 a778f6f）。按规则 `git pull --rebase` 冲突后放弃本地重复实现，`git reset --hard FETCH_HEAD` 到远端最新，按 11-10 既定「下一步计划」补 bilingualLabels。教训（11-10 已记录）继续生效：先核对远端最新状态再选题。
+
+**补齐的功能**（对齐桌面端 `features/editor/bilingualLabels.ts` + `components/BilingualLabel`，11-10 计划的最高优先项）：
+1. `mobile/src/features/editor/bilingualLabels.ts`（新增）——编辑器双语标签 CodeMirror 扩展，从桌面端完整移植：
+   - `bilingualLabelForLine` 纯函数：节名（[turret] 等归一化后匹配节名词典）与键名（findCodeByCode）在代码表/词典有译名且译名 ≠ 原文时，返回显示范围与译名；注释行、值、路径不标注；
+   - `bilingualLabels` ViewPlugin：只对可视范围行加 Decoration.mark（`data-label` 属性 + baseTheme 用 `::before` 显示在原文上方），纯显示层——不改文档、不进事务，保存内容与原文完全一致；
+   - 依赖（findCodeByCode / getAllSections / normalizeSectionName）手机端 codeData 均已具备，零适配直接移植。
+2. `mobile/src/features/editor/EditorMirror.tsx`：`bilingualLabels` 挂入扩展列表（rustHoverExtension 之后，与桌面端同位置），常开（与桌面端一致）。
+3. `mobile/tests/bilingualLabels.test.ts`（新增）：4 项测试——键/节标注 + 注释/值/路径不标注（fetch stub 读 public/data 真实词典）、扩展不改文档内容、未知键/节不标注、译名与原文相同时不重复标注。
+
+**验证**：mobile `npm run check` ✅——npx tsc --noEmit 通过，vitest 27 test files / 447 tests 全绿（新增 4 个）。
+
+**剩余差距**（结合 11-10 中午的差距表，已补的不重复列）：
+- ✅ features/editor/bilingualLabels —— 已补（本次）
+- features/editor：VersionDiffModal（versionDiff 服务层已就绪）、CodeTableModal、UnitLibraryModal、unitPreview 的 UnitPreviewModal/compositor（recipe.ts 已补）
+- modTools：modReport 模组报告、CreateUnit/Check/TranslationRepair 弹窗 UI
+- features/dashboard：UI 面板；settings：ValueTypeModal、GameSettingsTab
+- services：mockBridge、codeDataLookup/State 拆分
+- conversation：对话历史持久化
+- 桌面特有不对齐项：community/CloudBag、auth、map、Git 面板、workspace 双栏布局、plugins
+
+**是否已完全对齐**：❌ 否
+
+**下一步计划**：
+- 优先补 modReport 模组报告（296 行纯逻辑 + 检查页/模组工具入口，11-07 起多次列入计划）
+- 然后 VersionDiffModal（服务层 versionDiff 已就绪，只差 UI）或 CodeTableModal 码表
+- 之后 dashboard UI 面板或 codeDataLookup/State 拆分
+- 避开桌面特有（community/cloudBag/git/plugins）
+
+**备注**：
+- 明日（2026-11-12）为任务硬性截止日：完成当日补齐、交付与状态记录后即暂停任务
+- PR #10 已存在（OPEN），推送自动更新
+
 
