@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 手机版功能补齐 · 运行状态
 
 目标：让 `mobile/`（Tauri 手机端）功能逐步对齐桌面端 `src/`。
@@ -355,3 +354,33 @@
   2. VersionDiffModal（versionDiff 服务层已就绪，只差 UI）；
   3. modReport 模组报告或 dashboard UI 面板。
 - 交付备注：PR #10（OPEN）推送自动更新；按任务硬性截止规则，本任务于 2026-11-12 完成当日补齐后暂停。
+
+---
+
+### 2026-11-12（补充：截止日中午补齐）
+
+**本次基线**：本地起点又误从 origin/main 创建新分支，commit 后推送被拒（远端已有完整历史）。`git rebase --abort` 后 `git checkout -b automation/mobile-parity FETCH_HEAD` 重锚到远端最新（40e50ca）。状态文件残留一处遗留冲突标记 `<<<<<<< HEAD`（此前某次合并未清理干净），直接删除。教训重申：**每次运行必须先确认远端分支状态再选题**。
+
+**补齐的功能**：
+1. `mobile/src/services/codeData.ts`：补 `getAliasDict()`（返回空 Map 占位；11-10 移植 versionDiff.ts 时就该加的接口，此前遗漏导致 `buildReplaceMap` 里别名循环恒为空转）。
+2. `mobile/src/services/codeData.ts`：补 `aliasMatches(code, query)`（桌面端搜索过滤通用函数；CodeTableModal / findCodesBySection / findCodesByQuery 都会用；无别名数据时恒返回 false，与桌面端语义一致）。
+
+**验证**：`mobile npm run check` ✅——tsc --noEmit 通过，vitest 28 test files / 455 tests 全绿。
+
+**剩余差距**（相对桌面端 src/，11-12 已补 graph + 本次补 getAliasDict/aliasMatches 后更新）：
+- features/editor：CodeTableModal、UnitLibraryModal、VersionDiffModal、unitPreview 的 UnitPreviewModal/compositor（recipe.ts 已补）
+- modTools：modReport 模组报告、CreateUnit/Check/TranslationRepair 弹窗 UI
+- features/dashboard：UI 面板（数据层已补）；settings：ValueTypeModal、GameSettingsTab
+- services：mockBridge、codeDataLookup/State 拆分
+- conversation：对话历史持久化（手机端对话仍为内存态）
+- 桌面特有不对齐项（明确不做）：community/CloudBag、auth、map、Git 面板、workspace 双栏布局、plugins
+
+**今日是否完全对齐**：❌ 否（截止日允许部分对齐，完成核心补齐即可暂停）
+
+**任务结论（2026-11-12 硬性截止）**：
+- 本分支自 2026-11-06 启动以来，已完成 8 个功能补齐 commit：aiQualityCheck/自纠闭环（11-09）→ usageStats（11-10 上午）→ versionDiff + translationRepair 强化 + unitPreview/recipe（11-10 中午）→ bilingualLabels（11-11）→ 模组关系图（11-12 上午）→ getAliasDict/aliasMatches（11-12 中午）。
+- 依赖链已打通的可移植模块（versionDiff、translationRepair、bilingualLabels、usageStats、aiQualityCheck 自纠闭环、模组关系图）全部完成对齐。
+- 剩余差距主要是 UI 弹窗（CodeTableModal/UnitLibraryModal/VersionDiffModal）和 modReport 等，均为 UI 层叠加工作，不阻塞核心数据层。
+- PR #10 保持 OPEN，后续若有新运行可直接在远端分支追加。
+
+**下一步计划（暂停后）**：无。本任务已达硬性截止日 2026-11-12，完成当日补齐、交付与状态记录后暂停。
