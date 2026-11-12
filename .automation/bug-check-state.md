@@ -1041,3 +1041,44 @@
 
 ---
 
+## 2026-11-12 晚上（20:00 时段，第 22 次检查）
+
+### 基线与前置
+
+- `git fetch origin` 后确认远程 `automation/bug-check` 已存在（tip `2db9b02`，长期 PR #9）。首次操作受 `remote.origin.fetch` 仅映射 main 的 refspec 影响，误从 `origin/main` 新建分支，进而「发现」了一个已修复的问题（见「误报复盘」）；已 rebase 到真实分支并 `git rebase --skip` 丢弃重复提交，未污染分支。
+
+### 基础检查（真实基线 2db9b02）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| `npm install` | ✅ | 完成；`package-lock.json`、`vendor/pi/.../cli.js` 被安装改写，已 `git stash` 隔离，不入提交 |
+| typecheck + lint | ✅ | 无 TS 错误，无 eslint 警告 |
+| vitest | ✅ EXIT 0 | 81 文件 / 1329 用例：1324 通过、5 跳过（平台相关用例已用 `it.skipIf` 守卫） |
+| `dev:web` 实跑 | ✅ | Vite 5173 正常渲染；控制台仅 log/debug/info，无 error；网络请求无失败 |
+
+### 代码审查
+
+- 近期改动：逐条复核 `2db9b02`（手机端流式 UTF-8 分片）、`1730a3f`（打包三引号块）、`458c641`（移除非活动项目）、`cec10f0`（DLC stdin EPIPE）、`1b4c95b`（DLC detached 子进程清理）。
+- 重点复核 `2db9b02`：`ai_stream` 改为 `Vec<u8>` 按行解码；`line[5..]` 前缀为 ASCII、切片边界安全；`buf.drain(..pos+1)` 与 `delta_split_index` 的前进性正确；`AbortGuard` 的 Drop 能清理 requestId。
+- 复核 `1730a3f`：`opensTripleQuote` 对注释行与同行成对引号判断正确，`processSourceForPack` 的 filter 与 `formatIniText` 的块状态一致，无回归。
+- 本轮另审：云仓库自动同步（`tickAutoSync` 租约获取/取消/基线推进/重试）、云仓库监听与恢复（`cloudbagWatch` 句柄释放、`cloudbagRestore` 路径校验）、Electron IPC 与路径边界（`fsIpc`/`modShared`/`projectTrust`/`mediaPolicy`/`applyDiff`）、标签保存与外部变更、快捷键/焦点/模态栈、移动端路径与命名校验、桌面与 Tauri 手机端差异——未发现新缺陷。
+
+### 误报复盘（重要）
+
+- 基于过期的 `origin/main` 时确实存在：`removeProject` 无条件清空 `openTabs/treeRoot` 并清历史，移除未激活项目会丢失当前项目未保存内容。
+- 但该问题已由分支提交 `458c641` 修复，并已有回归用例（`tests/store.test.ts`「移除非活动项目不影响当前项目的标签、文件树与活动状态」）。
+- 处理：本地重复修复与重复用例已丢弃，未产生冗余提交。这再次印证 refspec 只映射 main 的陷阱（第 8 次）。
+
+### 观察项（沿袭，未改动）
+
+- mobile extractZip UNC/盘符防护；`engineDlc.ts:166` entry 双检；INEFFECTIVE_DYNAMIC_IMPORT 体积提示；`[DONE]` 仅跳出内层循环、外层仍读到流结束（带宽浪费）；超时竞态下 requestId 残留 abort 集合（极小内存泄漏）。
+
+### 结论
+
+- 本轮未发现新 bug；检查范围见上。
+- **连续无 bug 计数：1**（上次为 0）
+- 交付：仅追加本记录（无代码改动），提交并推送至 `origin/automation/bug-check`；PR #9 追加中文摘要。
+- 截止规则：本次为 2026-11-12 晚上（20:00）时段，按硬性截止要求完成交付后暂停定时任务 `GUR2Y7BQYT3AKL`。
+
+---
+
