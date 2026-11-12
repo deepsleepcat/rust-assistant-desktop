@@ -922,3 +922,66 @@
 - 交付：仅状态文件追加，推送至 `origin/automation/bug-check`，长期 PR #9 追加中文摘要
 
 ---
+
+## 2026-11-12 早上（第 20 次运行）
+
+- **日期**：2026-11-12
+- **时段**：早上（08:03 执行）
+- **连续无 bug 次数**：0（本轮发现并修复 1 个真实缺陷，计数清零；上一轮 2026-11-11 晚上为 1）
+
+### 分支与基线
+
+- 开头 `git fetch origin` 后确认当前不在目标分支；本沙箱 `remote.origin.fetch` 仍只映射 main，`git branch -a` 看不到远程分支。
+- 按固化流程显式 `git fetch origin automation/bug-check`，用 `FETCH_HEAD` 建立本地分支；基线 `66fd141`（第 19 次运行记录 commit），`origin/main` 为 `f0c6450` 且已是 HEAD 祖先。
+- 未触碰 main，未合并/关闭 PR（PR #9 仍 OPEN，base main）。
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 依赖安装 | ✅ | 沙箱内 node_modules 缺失，`npm install` 完成（677 包） |
+| 桌面 `npm run check`（修复前） | ✅ EXIT 0 | typecheck + lint 全绿；80 文件 **1323 通过 / 5 跳过** |
+| 桌面 `npm run check`（修复后） | ✅ EXIT 0 | 80 文件 **1324 通过 / 5 跳过**（新增 1 条回归用例） |
+| 桌面 `npm run build` | ✅ EXIT 0 | renderer + electron tsc 通过；既有 INEFFECTIVE_DYNAMIC_IMPORT 体积提示（非阻塞） |
+| `npm run dev:web` + 浏览器实测 | ✅ | HTTP 200，标题「铁锈工坊」；仪表盘/设置切换正常；控制台无 error 与未捕获异常 |
+
+### 代码审查范围（本轮新覆盖）
+
+- Electron 主/渲染边界：`preload.ts`（完整 IPC 暴露面，与 `BridgeApi` 类型一致、受控方法无越权直通）、`storeIpc.ts`（保留键/大小上限）、`dialogIpc.ts`（对话框信任写入）、`updater.ts`（autoDownload 状态复位）、`communityOrigin.ts`（origin 白名单）、`cloudbagAudio.ts`（临时目录转码与清理）、`legacyMigrations.ts` + `secureCredentials.ts`（明文凭据迁移/擦除、safeStorage 基础后端拒绝）。
+- 渲染层此前未覆盖模块：`CommandPalette.tsx`、`ValueTypeModal.tsx`、`GameSettingsTab.tsx`、`GitInfoModal.tsx`、`UnitLibraryModal.tsx`、`VersionDiffModal.tsx`、`adapterRegistry.ts`/`runtimeData.ts`（插件声明式数据与 adapter 注册表）、`rustLint.ts`、`iniFormatter.ts`、`outline.ts`/`sectionFolding.ts`、`shortcutKeymap.ts`、`colorDecorations.ts`（含 8 位色 ARGB 口径核对，测试一致）、`conflictMarkers.ts`。
+- 桌面/手机端同源差异核对：`colorDecorations.ts` 完全一致；`paths.ts` 仅手机端多 `decideOpenMode`（合理）；手机端 `iniFormatter.ts` 缺少三引号/节头注释保护，但全仓库仅测试引用、未接入手机 UI，记为观察项。
+
+### 发现并修复的 Bug（真实数据损坏·打包管线）
+
+**打包开启「移除空行/移除注释/格式化代码」时，会改写三引号（`"""`）多行字符串的值内容**
+
+- 位置：`electron/modPack.ts` 的 `processSourceForPack` / `formatIniText`（PackModal 三个选项均为可选，用户勾选后对 `.ini`/`.template` 源文件生效）。
+- 根因：三引号多行字符串（引擎 ae.java:879-901）块内每一行都属于字段值，但打包清理按普通行处理：
+  1. `removeEmptyLines` 删除块内空行；
+  2. `removeComments` 删除块内以 `#` 开头的文本行；
+  3. `formatIniText` / `rawLine.trim()` 去掉块内行的缩进与行尾空白，并按首个 `:` 重排「键: 值」。
+  后果：打包出的 `.rwmod` 中多行描述/文本被静默改写（缩进、空行、以 # 开头的内容丢失），游戏内显示与源文件不一致，且源项目无法察觉。
+- 复现：单位文件包含 `desc: """` → 块内 `  第一行 # 不是注释`、空行、`  第三行: 保留` → `"""`；勾选三项打包。修复前产物中缩进与块内空行被清除（以 # 起的块内行更会被整行删除）。
+- 修复：新增 `opensTripleQuote`（注释行不触发、同行成对不算），`processSourceForPack` 过滤与 `formatIniText` 均维护块状态；块内行（含开/闭行）原样保留，块外行为不变。桌面编辑器既有 `src/features/editor/iniFormatter.ts` 的 M32 三引号保护口径与此保持一致。
+- 回归用例：`tests/modTools.test.ts` 新增「三引号多行字符串不受去空行/去注释/格式化影响」；临时 `git stash` 掉 `electron/modPack.ts` 后用例失败（`第一行` 前缩进被吃掉），恢复后通过。
+- 验证：全量 `npm run check` EXIT 0（1324 通过 / 5 跳过）；`npm run build` 通过；`npm run dev:web` + 浏览器实测通过。
+
+### 运行验证
+
+- `npm run dev:web -- --port 5199`：Vite ready 209ms，HTTP 200，标题「铁锈工坊」。
+- 浏览器实测：主界面完整渲染；依次点击「仪表盘」「设置」均正常切换；控制台仅 log/debug/info，无 error 级消息与未捕获异常。
+
+### 观察项沿袭
+
+- mobile extractZip UNC/盘符防护（Linux 测试环境下 UNC 被正确忽略）
+- `engineDlc.ts:166` entry 校验仍为 `path.isAbsolute || /^[A-Za-z]:/` 双检，功能正确、仅一致性可提升
+- INEFFECTIVE_DYNAMIC_IMPORT chunk 体积提示（构建非阻塞）
+- 新增观察项：手机端 `mobile/src/features/editor/iniFormatter.ts` 缺少三引号与节头行尾注释保护（当前仅测试引用、未接入手机 UI，未改动）
+
+### 结论
+
+- 本轮发现并修复 1 个真实缺陷（打包选项改写三引号多行字符串），双重验证通过（灵敏度失败回退 + 全量检查/构建/浏览器实跑）。
+- **连续无 bug 计数：0**
+- 交付：修复 commit（`electron/modPack.ts` + `tests/modTools.test.ts`）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 追加中文摘要。
+
+---

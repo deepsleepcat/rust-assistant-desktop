@@ -29,11 +29,33 @@ export interface PackOptions {
   formatCode?: boolean
 }
 
+/** 该行是否会开启三引号（"""）多行字符串块：注释行不触发，同行内成对也不算。 */
+function opensTripleQuote(trimmed: string): boolean {
+  if (trimmed.startsWith('#') || !trimmed.includes('"""')) return false
+  const first = trimmed.indexOf('"""')
+  return trimmed.indexOf('"""', first + 3) === -1
+}
+
 /** 按打包选项处理源文件文本（纯函数，供测试） */
 export function processSourceForPack(content: string, options: PackOptions): string {
   let lines = content.split(/\r?\n/)
-  if (options.removeEmptyLines) lines = lines.filter((l) => l.trim() !== '')
-  if (options.removeComments) lines = lines.filter((l) => !l.trimStart().startsWith('#'))
+  // 三引号多行字符串内部是值内容：空行、以 # 开头的行、缩进都属于数据，
+  // 去空行/去注释/格式化都不得改动它们（否则打包产物里的多行描述会被悄悄改写）。
+  let inString = false
+  lines = lines.filter((rawLine) => {
+    const trimmed = rawLine.trim()
+    if (inString) {
+      if (trimmed.includes('"""')) inString = false
+      return true
+    }
+    if (opensTripleQuote(trimmed)) {
+      inString = true
+      return true
+    }
+    if (options.removeEmptyLines && !trimmed) return false
+    if (options.removeComments && trimmed.startsWith('#')) return false
+    return true
+  })
   let text = lines.join('\n')
   if (options.formatCode) text = formatIniText(text)
   return text
@@ -42,8 +64,21 @@ export function processSourceForPack(content: string, options: PackOptions): str
 /** 铁锈战争 INI 格式化：行去空白、节前留空行、key: value 规整（保留值内部空格） */
 export function formatIniText(text: string): string {
   const out: string[] = []
+  let inString = false
   for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim()
+    const trimmed = rawLine.trim()
+    // 多行字符串块原样保留（含开/闭行与块内缩进、空行、注释样文本）
+    if (inString) {
+      out.push(rawLine)
+      if (trimmed.includes('"""')) inString = false
+      continue
+    }
+    if (opensTripleQuote(trimmed)) {
+      inString = true
+      out.push(rawLine)
+      continue
+    }
+    const line = trimmed
     if (!line) continue
     if (/^\[.+?\]$/.test(line)) {
       // 节前留一个空行（首节除外）
