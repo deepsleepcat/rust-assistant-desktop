@@ -985,3 +985,59 @@
 - 交付：修复 commit（`electron/modPack.ts` + `tests/modTools.test.ts`）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 追加中文摘要。
 
 ---
+
+## 2026-11-12 早上（第 21 次运行，同日复检）
+
+- **日期**：2026-11-12
+- **时段**：早上（08:39 执行；同日 08:03 已有第 20 次记录，本轮为复检轮）
+- **连续无 bug 次数**：0（本轮发现并修复 1 个真实缺陷，计数清零）
+
+### 分支与基线
+
+- 开头 `git fetch origin` 后当前不在目标分支；本沙箱 `remote.origin.fetch` 仍只映射 `refs/heads/main`，`git branch -a` 看不到远程分支。
+- 显式 `git fetch origin automation/bug-check:refs/remotes/origin/automation/bug-check` 后，本地 `automation/bug-check` 重置到远端 `1730a3f`（第 20 次修复 commit）。基线 `origin/main` 仍为 `f0c6450`，是 HEAD 祖先。
+- 注：本地分支的 upstream 仍指向 `origin/main`（`--set-upstream-to origin/automation/bug-check` 报 "not a branch"，refspec 未固化导致），推送一律用显式 `git push origin HEAD:automation/bug-check`。
+- 未触碰 main；PR #9（base main / head automation/bug-check）仍 OPEN，未合并、未关闭。
+
+### 基础检查结果
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| 依赖安装 | ✅ | `npm install` 完成（677 包）；`package-lock.json` 与 `vendor/pi/.../cli.js` 被安装改写，已 checkout 还原 |
+| 桌面 `npm run check`（修复前） | ✅ EXIT 0 | typecheck + lint 全绿；80 文件 **1324 通过 / 5 跳过** |
+| 桌面 `npm run check`（修复后） | ✅ EXIT 0 | 80 文件 **1324 通过 / 5 跳过** |
+| 桌面 `npm run build` | ✅ EXIT 0 | renderer + electron tsc 通过；既有 INEFFECTIVE_DYNAMIC_IMPORT 体积提示（非阻塞） |
+| `npm run dev:web -- --port 5199` + 浏览器实测 | ✅ | Vite ready 363ms，HTTP 200；仪表盘/设置切换正常；控制台仅 log/debug/info，无 error 与未捕获异常 |
+
+### 代码审查范围
+
+- 复核第 20 次修复（`electron/modPack.ts` 三引号块状态机）：`opensTripleQuote` 对注释行、同行成对引号的处理正确，`processSourceForPack` 与 `formatIniText` 的块状态一致，未发现回归。
+- 复核近期修复的渲染层/store 改动：`projectTabsSlice.ts` saveTab 重取最新标签、`projectSlice.ts` 移除非活动项目、`projectShared.ts` 路径归一化、手机端 `openFile.ts` 请求序号取消与 `FileTreePanel.tsx` 重命名后展开路径同步——逻辑自洽，未发现新问题。
+- 本轮新覆盖此前未审的 Rust 侧：`mobile/src-tauri/src/commands.rs`（AI 流式代理，280 行全文）、`main.rs`、`lib.rs`；并核对 `mobile/src/features/ai/aiClient.ts` 的事件过滤/中止链路。
+- 桌面/手机端差异：桌面 AI 走 pi-ai SDK，无逐分片解码；手机端 SSE 由 Rust 手工解析——差异点正好藏着下述缺陷。
+
+### 发现并修复的 Bug（手机端·AI 流式中文乱码）
+
+- 位置：`mobile/src-tauri/src/commands.rs` 的 `ai_stream`（第 148-170 行附近）。
+- 根因：每收到一个网络分片就立即 `String::from_utf8_lossy(&chunk)` 再拼进字符串缓冲。HTTP 分片边界是任意的，一旦落在多字节 UTF-8 字符中间，该字符会被解码成 `�`（U+FFFD，不可还原）：
+  1. 流式展示的 `Delta` 事件出现乱码；
+  2. 汇总的 `full_text`/`tool_calls` 参数也被污染，可能连带工具调用 JSON 解析失败或写文件内容出错。
+- 复现（独立 rustc 程序，等价逻辑）：`data: 中文测试\r\n` 在「中」的第 2、3 字节之间切分 → 修复前得到 `"��文测试"`，修复后 `"中文测试"`；把同一响应按 1 字节逐片喂入，修复实现输出仍完全正确。
+- 修复：缓冲改为 `Vec<u8>`，先按字节累积，遇到 `\n` 再对**完整行**做 `from_utf8_lossy`（行尾 `\n` 是 ASCII，能切出换行时前面的多字节字符必然完整）；`\r` 兼容、`data:` 前缀与 `[DONE]` 语义保持不变。
+- 验证：独立复现程序（修复前失败、修复后通过且逐字节分片正确）+ `rustfmt --check` 语法解析通过 + `npm run check` EXIT 0 + `npm run build` EXIT 0 + dev:web 浏览器实测通过。
+- 说明：手机端 CI（`.github/workflows/mobile.yml`）只跑 `npm run check`/`build`，不含 `cargo test`；沙箱无 crates 缓存与 webkit 系统依赖，未执行 `cargo check`，故以等价独立程序验证逻辑。
+
+### 观察项沿袭与新增
+
+- 沿袭：mobile extractZip UNC/盘符防护；`engineDlc.ts:166` entry 双检；INEFFECTIVE_DYNAMIC_IMPORT 体积提示；手机端 `iniFormatter.ts` 三引号保护（未接入 UI）。
+- 新增（未改动）：流已正常结束后前端再调 `ai_stream_abort` 时，requestId 会残留在 abort 集合中（流进行中由 `AbortGuard` 清理，只有超时竞态才可能触发，属极小内存泄漏）；`[DONE]` 只跳出内层行循环、外层仍读到流结束，属带宽浪费而非功能问题。
+
+### 结论
+
+- 本轮发现并修复 1 个真实缺陷（手机端 AI 流式响应跨分片中文乱码），双重验证通过（独立复现 + 全量检查/构建/浏览器实跑）。
+- **连续无 bug 计数：0**
+- 交付：修复 commit（`mobile/src-tauri/src/commands.rs`）+ 本记录，推送至 `origin/automation/bug-check`，长期 PR #9 追加中文摘要。
+- 截止规则：本轮为 2026-11-12 早上复检，不触发暂停；任务保留至 2026-11-12 晚上（20:00）执行检查、交付后暂停 `GUR2Y7BQYT3AKL`。
+
+---
+

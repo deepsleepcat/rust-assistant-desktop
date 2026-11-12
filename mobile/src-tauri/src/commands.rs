@@ -146,18 +146,22 @@ pub async fn ai_stream(
     let mut tool_names: std::collections::BTreeMap<u64, String> = Default::default();
 
     let mut stream = resp.bytes_stream();
-    let mut buf = String::new();
+    // 按字节累积而不是按字符串：网络分片可能落在多字节 UTF-8 字符中间，
+    // 逐片 from_utf8_lossy 会把被切开的中文替换成 �（流式中文乱码、且无法还原）。
+    // 行尾的 \n 是 ASCII，因此能切出换行时，该行之前的多字节字符一定完整。
+    let mut buf: Vec<u8> = Vec::new();
     while let Some(chunk) = stream.next().await {
         // 前端超时/停止后标记中止：尽早退出，不再产生迟到事件
         if is_aborted(&request_id) {
             return Err("AI 请求已中止".into());
         }
         let chunk = chunk.map_err(|e| format!("流式读取失败：{e}"))?;
-        buf.push_str(&String::from_utf8_lossy(&chunk));
+        buf.extend_from_slice(&chunk);
         // 按行处理（SSE 事件以 \n 分隔；兼容 \r\n）
-        while let Some(pos) = buf.find('\n') {
-            let line = buf[..pos].trim_end_matches('\r').to_string();
-            buf = buf[pos + 1..].to_string();
+        while let Some(pos) = buf.iter().position(|b| *b == b'\n') {
+            let line = String::from_utf8_lossy(&buf[..pos]).to_string();
+            let line = line.trim_end_matches('\r');
+            buf.drain(..pos + 1);
             if !line.starts_with("data:") {
                 continue;
             }
