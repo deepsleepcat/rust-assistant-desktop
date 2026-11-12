@@ -421,6 +421,18 @@ describe('M7 打包选项', () => {
     expect(lines[3]).toBe('[graphics]')
   })
 
+  it('三引号多行字符串不受去空行/去注释/格式化影响', () => {
+    const src = '[core]\n# 注释\nname: a\ndesc: """\n  第一行 # 不是注释\n\n  第三行: 保留\n"""\nmaxHp : 100\n'
+    const out = processSourceForPack(src, { removeEmptyLines: true, removeComments: true, formatCode: true })
+    // 块内缩进、空行、# 样文本与冒号都原样保留
+    expect(out).toContain('  第一行 # 不是注释')
+    expect(out).toContain('\n\n  第三行: 保留')
+    // 块外仍正常清理与格式化
+    expect(out).not.toContain('# 注释')
+    expect(out).toContain('maxHp: 100')
+    expect(formatIniText(src)).toContain('  第三行: 保留')
+  })
+
   it('打包时按选项清理源文件内容', async () => {
     const root = makeTempProject()
     try {
