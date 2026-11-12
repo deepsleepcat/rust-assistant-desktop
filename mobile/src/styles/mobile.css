@@ -1230,3 +1230,298 @@
   font-size: 11.5px;
   padding: 4px;
 }
+
+/* ---------- 检查页子页签（检查结果 / 关系图） ---------- */
+.m-subtabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  flex-shrink: 0;
+  background: var(--surface-0);
+  border-bottom: 1px solid var(--divider);
+}
+
+.m-subtabs button {
+  flex: 1;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 13px var(--font-ui);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+
+.m-subtabs button.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- 模组关系图 ---------- */
+.relgraph {
+  padding-bottom: 24px;
+}
+
+.relgraph-scanning {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.relgraph-scanning progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--accent);
+}
+
+.relgraph-error {
+  margin: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.relgraph-error p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.relgraph-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+}
+
+.relgraph-stat {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.relgraph-stat.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.relgraph-stat.warn {
+  color: #b26a00;
+  border-color: #b26a00;
+}
+
+.relgraph-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 10px;
+  padding: 0 12px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-muted);
+}
+
+.relgraph-search input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: 14px var(--font-ui);
+}
+
+.relgraph-unit-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.relgraph-unit {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface-0);
+  color: var(--text-primary);
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.relgraph-unit:last-child {
+  border-bottom: 0;
+}
+
+.relgraph-unit.active {
+  background: var(--accent-soft);
+}
+
+.relgraph-unit-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.relgraph-unit-file {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relgraph-unit-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.relgraph-empty {
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.relgraph-canvas {
+  margin: 12px;
+  padding: 8px 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.relgraph-canvas svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 260px;
+}
+
+.relgraph-node {
+  cursor: pointer;
+}
+
+.relgraph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 2px 4px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.relgraph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.relgraph-legend-item i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.relgraph-note {
+  margin: 8px 16px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.relgraph-ref {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+  color: var(--text-primary);
+  font: 13px var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.relgraph-ref.static {
+  cursor: default;
+}
+
+.relgraph-ref:active:not(.static) {
+  background: var(--surface-hover);
+}
+
+.relgraph-dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.relgraph-ref-kind {
+  flex: none;
+  width: 52px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.relgraph-ref-target {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relgraph-ref-target small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.relgraph-ref-meta {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.relgraph-ref-meta.danger {
+  color: var(--danger);
+}
+
+.relgraph-ref-meta.warn {
+  color: #b26a00;
+}

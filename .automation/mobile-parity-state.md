@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 手机版功能补齐 · 运行状态
 
 目标：让 `mobile/`（Tauri 手机端）功能逐步对齐桌面端 `src/`。
@@ -329,3 +330,28 @@
 - PR #10 已存在（OPEN），推送自动更新
 
 
+## 2026-11-12
+
+- 补齐功能：**模组关系图**（单位 → 图片 / 音效 / 弹体单位 / 炮塔引用）
+  - 新增 `mobile/src/features/graph/relationGraph.ts`：对齐桌面端数据层（[core] 单位识别、
+    引用边提取与多行合并、悬空引用、ROOT:/CUSTOM:/SHARED: 跨模组引用、进度回调）；
+  - 新增 `mobile/src/features/graph/RelationGraphView.tsx`：手机版环形图 + 引用清单，
+    含「悬空引用 / 跨模组引用」页签，点击条目定位到引用行（复用统一打开入口）；
+  - 检查页新增「检查结果 / 关系图」子页签；子视图状态移入 workspace store，
+    从编辑器返回后仍停留在关系图（`mobile/src/screens/InspectScreen.tsx`、`mobile/src/stores/workspace.ts`）；
+  - 补充移动端样式（`mobile/src/styles/mobile.css`）与单测 `mobile/tests/relationGraph.test.ts`（8 个用例）。
+- 校验：`mobile/npm run check` 通过（tsc 无错误；rebase 到远端最新后 28 个测试文件 / 455 用例全部通过）；
+  `mobile/npm run build` 通过。
+- 剩余差距（相对桌面端 src/，基于最新分支状态）：
+  - 本次补齐：`features/graph`（relationGraph + 关系图视图），此前差距表中的 graph 项已完成；
+  - 仍缺：VersionDiffModal / CodeTableModal / UnitLibraryModal、unitPreview 的 Modal+compositor、
+    modTools 的 modReport 与部分弹窗 UI、dashboard UI 面板、settings 的 ValueTypeModal/GameSettingsTab、
+    mockBridge / codeDataLookup+State 拆分、对话历史持久化；
+  - 桌面特有不对齐项（明确不做或个人判断保留）：community/CloudBag、auth、map、Git 面板、
+    workspace 双栏布局、plugins。
+- 今日是否完全对齐：**否**
+- 下一步计划：
+  1. CodeTableModal / UnitLibraryModal（代码表与单位库浏览；codeData 已就绪）；
+  2. VersionDiffModal（versionDiff 服务层已就绪，只差 UI）；
+  3. modReport 模组报告或 dashboard UI 面板。
+- 交付备注：PR #10（OPEN）推送自动更新；按任务硬性截止规则，本任务于 2026-11-12 完成当日补齐后暂停。
