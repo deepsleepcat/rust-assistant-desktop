@@ -151,9 +151,13 @@ export async function runAgentChat(opts: AgentChatOptions): Promise<string> {
     let result: ChatOnceResult
     try {
       result = await chatOnce(opts.settings, messages, { onDelta: opts.onDelta, isAborted: opts.isAborted })
-    } catch {
-      // 看门狗/超时触发中止时 chatOnce 会 reject，按中止语义优雅返回（不打断整个页面）
-      return finalText || '（已中止）'
+    } catch (err) {
+      // 用户主动中止（看门狗 reject）：按中止语义优雅返回（不打断整个页面）。
+      // 其余失败（401/网络断开/超时）必须继续上抛，让 AiScreen 的 catch 显示
+      // 错误信息——不能把所有 reject 都吞成「已中止」，否则请求失败在界面上
+      // 表现为空白回复，用户无法区分「已停止」和「请求失败」。
+      if (opts.isAborted?.()) return finalText || '（已中止）'
+      throw err
     }
     finalText = result.fullText
     if (!result.toolCalls || result.toolCalls.length === 0) {
