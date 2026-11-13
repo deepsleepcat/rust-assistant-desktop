@@ -75,10 +75,14 @@ export function normPath(p: string): string {
   return p.replace(/\\/g, '/').toLowerCase()
 }
 
-/** 路径前缀匹配（目录 target 匹配自身与子路径；分隔符/大小写不敏感） */
+/** 路径前缀匹配（目录 target 匹配自身与子路径；分隔符/大小写不敏感）
+ * 自身判定也必须先归一化：同一文件可能一份来自文件树（反斜杠）、
+ * 一份来自单位库（joinProjectPath 拼出的正斜杠），直接 `path === target` 会漏配，
+ * 导致重命名/删除时标签路径不跟随、保存写回旧路径。 */
 export function pathStartsWith(path: string, target: string): boolean {
-  if (path === target) return true
-  return normPath(path).startsWith(normPath(target) + '/')
+  const p = normPath(path)
+  const t = normPath(target)
+  return p === t || p.startsWith(`${t}/`)
 }
 
 /** 替换路径前缀（target 匹配到的最前位置；分隔符/大小写不敏感，替换段保持 replacement 原文） */

@@ -205,12 +205,24 @@ function createProjectActions(ctx: {
     },
 
     removeProject(id: string) {
-      historyByTab.clear()
       const s = get()
       // 同步清理该项目的“最后活跃对话”记录，避免残留占用
       const lastActive = { ...s.lastActiveConversationByProject }
       delete lastActive[id]
       const removingActive = s.activeProjectId === id
+      if (!removingActive) {
+        // 移除非活动项目：只清理该项目自身的数据。此前无条件清空 openTabs/treeRoot，
+        // 会把当前项目的标签页（含未保存修改）一起丢掉，且 treeRoot 置 null 后
+        // 无人触发 refreshTree，文件面板会永久卡在「正在加载项目文件…」
+        set({
+          projects: s.projects.filter((p) => p.id !== id),
+          conversations: s.conversations.filter((c) => c.projectId !== id),
+          lastActiveConversationByProject: lastActive,
+        })
+        deps.persist()
+        return
+      }
+      historyByTab.clear()
       set({
         projects: s.projects.filter((p) => p.id !== id),
         conversations: s.conversations.filter((c) => c.projectId !== id),
@@ -218,8 +230,8 @@ function createProjectActions(ctx: {
         openTabs: [],
         activeTabId: null,
         treeRoot: null,
-        activeProjectId: removingActive ? null : s.activeProjectId,
-        activeConversationId: removingActive ? null : s.activeConversationId,
+        activeProjectId: null,
+        activeConversationId: null,
         // M32：移除项目时清空其检查/优化/报告弹窗与结果（树已清空，弹窗数据不能残留）；
         // M39：translationRepair 一并清理（原版漏抄，串数据）
         modCheckResult: null,

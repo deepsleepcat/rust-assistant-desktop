@@ -81,6 +81,8 @@ let resourceCache: { root: string; data: ProjectResources | null; at: number } |
 /** 在途扫描去重（按项目根键控）：同一项目并发触发多次补全时只发起一次扫描；
  * 切项目瞬间不串用旧项目的在途结果 */
 let resourceInflight: { root: string; promise: Promise<ProjectResources | null> } | null = null
+/** 失效代次：扫描进行中若发生失效（新建/改名/删除/保存），完成结果不得回写缓存。 */
+let resourceCacheGeneration = 0
 
 /** 资源扫描超时（大项目/网络盘/锁目录）：超时放弃本次扫描降级为空资源，
  * 下次输入再试——不能为了一张候选图把整个补全卡死 */
@@ -111,6 +113,7 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: 
 /** 项目内容变化后调用：清空资源缓存，下次补全重新扫描 */
 export function invalidateResourceCache(): void {
   resourceCache = null
+  resourceCacheGeneration += 1
 }
 
 async function loadProjectResources(): Promise<ProjectResources | null> {
@@ -131,22 +134,28 @@ async function loadProjectResources(): Promise<ProjectResources | null> {
     // 切项目瞬间：旧在途结果不属于当前项目，丢弃等待重新发起
     resourceInflight = null
   }
-  resourceInflight = {
+  const generation = resourceCacheGeneration
+  const entry: { root: string; promise: Promise<ProjectResources | null> } = {
     root: project.rootPath,
     promise: (async () => {
       const { getBridge } = await import('../../services/bridge')
       // 扫描失败/超时（如目录被锁）时降级为无资源联想，不让整个补全失效
       const data = await withTimeout(getBridge().mod.scanResources(project.rootPath), RESOURCE_SCAN_TIMEOUT_MS, null).catch(() => null)
-      resourceCache = { root: project.rootPath, data, at: Date.now() }
+      // 扫描期间发生过失效（新建/改名/删除/保存）：本次结果可能缺新文件，不回写缓存，
+      // 否则旧列表会被当作成功结果长期缓存；本次仍返回结果供当前这次补全使用。
+      if (generation === resourceCacheGeneration) {
+        resourceCache = { root: project.rootPath, data, at: Date.now() }
+      }
       return data
     })(),
   }
+  resourceInflight = entry
   try {
-    return await resourceInflight.promise
+    return await entry.promise
   } finally {
     // 只清自己的在途条目：切项目后旧在途 promise 落地时不能清掉新项目刚建立的条目
     //（否则新项目同一输入会重复发起全量扫描）
-    if (resourceInflight && resourceInflight.root === project.rootPath) resourceInflight = null
+    if (resourceInflight === entry) resourceInflight = null
   }
 }
 

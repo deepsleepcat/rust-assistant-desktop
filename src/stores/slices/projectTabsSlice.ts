@@ -142,12 +142,16 @@ export function createEditorTabActions(ctx: ProjectSliceContext) {
             return false
           }
         }
+        // 外部修改检查（await 期间）内容可能已被继续修改（如炮塔编辑器的拖动回写）：
+        // 重取最新标签再决定是否写盘与写什么，避免用过期快照误判「无需保存」或漏写最后一次编辑
+        const latest = get().openTabs.find((t) => t.id === id)
+        if (!latest) return false
         // 仅查看或双语装饰不触发写盘，保留原编码、BOM、换行和分隔符字节。
         // 已有待修复文件仍按显式保存语义写回，不丢弃旧修复能力。
-        if (!tab.dirty && !tab.pendingRepair) return true
+        if (!latest.dirty && !latest.pendingRepair) return true
         // 翻译模式下：先把显示内容转回英文再写盘（追踪表精确还原；未追踪中文保留），并更新快照
-        const toWrite = contentForDisk(tab.content, tab)
-        await deps.bridge.project.writeFile(project.rootPath, tab.path, toWrite, { hasBom: tab.hasBom })
+        const toWrite = contentForDisk(latest.content, latest)
+        await deps.bridge.project.writeFile(project.rootPath, latest.path, toWrite, { hasBom: latest.hasBom })
         const savedMeta = await deps.bridge.project.readFile(project.rootPath, tab.path)
         set({
           openTabs: get().openTabs.map((t) => {

@@ -1,5 +1,7 @@
 // AI 流式代理命令（独立模块：tauri::command 宏在子模块展开，避免与 lib 顶层命名空间冲突）
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use futures_util::StreamExt;
 use tauri::Emitter;
@@ -7,6 +9,27 @@ use tauri::Emitter;
 /// AI 流式代理：转发 DeepSeek（OpenAI 兼容）SSE 流到前端。
 /// 事件经 `ai://event` 推送给渲染层；重活下沉 Rust，UI 零阻塞。
 pub const AI_EVENT_CHANNEL: &str = "ai://event";
+
+/// 已请求中止的 ai_stream requestId 集合（前端超时后调用 ai_stream_abort 标记，
+/// 流循环每个分片检查一次并提前退出，避免僵尸流继续消耗网络与产生迟到事件）。
+fn aborts() -> &'static Mutex<HashSet<String>> {
+    static ABORTS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    ABORTS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn is_aborted(request_id: &str) -> bool {
+    aborts().lock().map(|set| set.contains(request_id)).unwrap_or(false)
+}
+
+/// 离开作用域时自动从 abort 集合移除本请求（所有 return 路径都清理，防集合泄漏）。
+struct AbortGuard(String);
+impl Drop for AbortGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = aborts().lock() {
+            set.remove(&self.0);
+        }
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +51,9 @@ pub struct AiStreamRequest {
     /// 是否已禁用工具调用（写文件审批等待时由前端置 true，避免工具循环）
     #[serde(default)]
     pub no_tools: bool,
+    /// 请求标识：回显到每个事件，前端据此过滤旧流迟到的事件（超时后僵尸流不再串扰新请求）
+    #[serde(default)]
+    pub request_id: String,
     /// 每次流式事件的字符串增量上限（SSE 行过长时截断防前端卡顿）
     #[serde(default = "default_delta_limit")]
     pub delta_limit: usize,
@@ -47,13 +73,29 @@ pub enum AiStreamEvent {
     Error { message: String },
 }
 
+#[derive(Clone, Serialize)]
+pub struct TaggedAiStreamEvent {
+    pub request_id: String,
+    #[serde(flatten)]
+    pub event: AiStreamEvent,
+}
+
 #[tauri::command]
 pub async fn ai_stream(
     app: tauri::AppHandle,
     request: AiStreamRequest,
 ) -> Result<(), String> {
-    let emit = |ev: &AiStreamEvent| {
-        let _ = app.emit(AI_EVENT_CHANNEL, ev);
+    let request_id = request.request_id;
+    let _guard = AbortGuard(request_id.clone());
+    if is_aborted(&request_id) {
+        return Err("AI 请求已中止".into());
+    }
+    let emit_request_id = request_id.clone();
+    let emit = move |ev: &AiStreamEvent| {
+        let _ = app.emit(
+            AI_EVENT_CHANNEL,
+            TaggedAiStreamEvent { request_id: emit_request_id.clone(), event: ev.clone() },
+        );
     };
     emit(&AiStreamEvent::Start);
 
@@ -104,14 +146,22 @@ pub async fn ai_stream(
     let mut tool_names: std::collections::BTreeMap<u64, String> = Default::default();
 
     let mut stream = resp.bytes_stream();
-    let mut buf = String::new();
+    // 按字节累积而不是按字符串：网络分片可能落在多字节 UTF-8 字符中间，
+    // 逐片 from_utf8_lossy 会把被切开的中文替换成 �（流式中文乱码、且无法还原）。
+    // 行尾的 \n 是 ASCII，因此能切出换行时，该行之前的多字节字符一定完整。
+    let mut buf: Vec<u8> = Vec::new();
     while let Some(chunk) = stream.next().await {
+        // 前端超时/停止后标记中止：尽早退出，不再产生迟到事件
+        if is_aborted(&request_id) {
+            return Err("AI 请求已中止".into());
+        }
         let chunk = chunk.map_err(|e| format!("流式读取失败：{e}"))?;
-        buf.push_str(&String::from_utf8_lossy(&chunk));
+        buf.extend_from_slice(&chunk);
         // 按行处理（SSE 事件以 \n 分隔；兼容 \r\n）
-        while let Some(pos) = buf.find('\n') {
-            let line = buf[..pos].trim_end_matches('\r').to_string();
-            buf = buf[pos + 1..].to_string();
+        while let Some(pos) = buf.iter().position(|b| *b == b'\n') {
+            let line = String::from_utf8_lossy(&buf[..pos]).to_string();
+            let line = line.trim_end_matches('\r');
+            buf.drain(..pos + 1);
             if !line.starts_with("data:") {
                 continue;
             }
@@ -130,9 +180,12 @@ pub async fn ai_stream(
                         if !text.is_empty() {
                             full_text.push_str(text);
                             // 增量事件限长（防超长行卡渲染）
+                            // 切分点必须在 UTF-8 字符边界：中文 delta 直接按字节 split_at 会 panic
+                            let limit = request.delta_limit.max(1);
                             let mut pending = text.to_string();
-                            while pending.len() > request.delta_limit {
-                                let (head, rest) = pending.split_at(request.delta_limit);
+                            while pending.len() > limit {
+                                let at = delta_split_index(&pending, limit);
+                                let (head, rest) = pending.split_at(at);
                                 emit(&AiStreamEvent::Delta { text: head.to_string() });
                                 pending = rest.to_string();
                             }
@@ -191,16 +244,41 @@ pub async fn ai_stream(
     Ok(())
 }
 
-/// 中止当前流（前端看门狗超时/用户停止用）：v1 由前端断开订阅并忽略后续事件。
+/// 中止指定流（前端看门狗超时用）：标记 requestId，流循环检测后退出并清理。
 #[tauri::command]
-pub fn ai_stream_abort() -> Result<(), String> {
+pub fn ai_stream_abort(request_id: String) -> Result<(), String> {
+    if let Ok(mut set) = aborts().lock() {
+        set.insert(request_id);
+    }
     Ok(())
+}
+
+/// 返回 ≤ index 的最近 UTF-8 字符边界（index 超出长度时返回长度）。
+fn char_boundary_floor(s: &str, index: usize) -> usize {
+    let mut end = index.min(s.len());
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    end
+}
+
+/// 流式增量的切分位置：在 limit 处向前找字符边界；若 limit 落在首个多字节字符内部，
+/// 至少取完该字符，保证循环一定前进（否则 limit < 字符宽度时会死循环）。
+fn delta_split_index(s: &str, limit: usize) -> usize {
+    let floor = char_boundary_floor(s, limit);
+    if floor > 0 {
+        floor
+    } else {
+        s.chars().next().map(|c| c.len_utf8()).unwrap_or(0)
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}…", &s[..max])
+        // 按字符边界截断：错误体常含中文，直接按字节切片会 panic（byte index not a char boundary）
+        let end = char_boundary_floor(s, max);
+        format!("{}…", &s[..end])
     }
 }
