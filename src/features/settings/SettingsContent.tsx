@@ -66,8 +66,8 @@ function ComingSettingsTab() {
         以下功能正在规划与开发中，上线后入口将在这里开放：
       </div>
       {[
-        { icon: 'share' as const, name: '手机版 · 随身编辑', desc: '手机端本地模组编辑器，模板/检查/AI 随身带' },
-        { icon: 'cloud' as const, name: '云仓库 · 多端同步', desc: '同一账号下手机与电脑接力同一份模组' },
+        { icon: 'share' as const, name: '手机版 随身编辑', desc: '手机端本地模组编辑器，模板/检查/AI 随身带' },
+        { icon: 'cloud' as const, name: '云仓库 多端同步', desc: '同一账号下手机与电脑接力同一份模组' },
         { icon: 'sparkle' as const, name: '社区 AI', desc: '免配置的多模型 AI 服务，无需自己填 Key' },
         { icon: 'lock' as const, name: '模组加密', desc: '服务器端加密保护，防解包与盗用' },
         { icon: 'box' as const, name: '模板市场', desc: '模板浏览与一键下载' },

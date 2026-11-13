@@ -57,7 +57,7 @@ export function ReportModal({ onClose }: { onClose: () => void }) {
                 <span className={`report-badge${report.ok ? ' ok' : ' bad'}`}>{report.ok ? '✓ 通过' : `✕ ${errorCount} 个错误`}</span>
               </div>
               <div className="report-meta-sub">
-                文件 {report.meta.fileCount} · 单位 {report.meta.unitCount} · 图片 {report.meta.imageCount} · 音频 {report.meta.audioCount} · 目标版本 {report.meta.targetVersion}
+                文件 {report.meta.fileCount}，单位 {report.meta.unitCount}，图片 {report.meta.imageCount}，音频 {report.meta.audioCount}，目标版本 {report.meta.targetVersion}
               </div>
               <div className="report-meta-sub">版本兼容：{report.versionConclusion}</div>
               <div className="report-meta-sub">生成时间：{new Date(report.meta.generatedAt).toLocaleString()}</div>

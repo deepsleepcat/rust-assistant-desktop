@@ -122,8 +122,8 @@ export function VersionsView({ api, repo, canWrite, onChanged }: { api: CloudBag
             <div className="cloudbag-version-list">
               {versions.map((version) => (
                 <div className="community-card post-card" key={version.id}>
-                  <div className="post-card-title"><span>#{version.versionNo} · {version.message}</span>{version.versionNo === repo.headVersionNo && <span className="badge success">head</span>}</div>
-                  <div className="post-card-meta">{version.manifest?.title || '未命名模组'} · {version.manifest?.version || '无版本号'} · {version.fileCount} 文件 · {formatBytes(version.totalSize)} · {new Date(version.createdAt * 1000).toLocaleString()}</div>
+                  <div className="post-card-title"><span>#{version.versionNo}，{version.message}</span>{version.versionNo === repo.headVersionNo && <span className="badge success">head</span>}</div>
+                  <div className="post-card-meta">{version.manifest?.title || '未命名模组'}，{version.manifest?.version || '无版本号'}，{version.fileCount} 文件，{formatBytes(version.totalSize)}，{new Date(version.createdAt * 1000).toLocaleString()}</div>
                   {version.manifest?.brokenRefs?.length > 0 && <div className="local-note">引用缺失警告：{version.manifest.brokenRefs.join('、')}</div>}
                   <div className="post-card-foot">
                     <span className="post-card-meta">{version.parentVersionNo ? `父版本 #${version.parentVersionNo}` : '初始版本'}</span>

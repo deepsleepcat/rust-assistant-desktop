@@ -95,7 +95,7 @@ export function RelationGraphModal({ onClose }: Props) {
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card vdiff-card relgraph-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">模组关系图 · {project.name}</div>
+        <div className="modal-header">模组关系图：{project.name}</div>
         <div className="modal-body vdiff-body">
           {scanning && (
             <div className="setting-row">
@@ -155,7 +155,7 @@ export function RelationGraphModal({ onClose }: Props) {
                             <span className="relgraph-unit-name">{u.name}</span>
                             <span className="relgraph-unit-file">{u.file}</span>
                             <span className="relgraph-unit-count">
-                              {u.refs.length} 引用{missing > 0 ? ` · ${missing} 悬空` : ''}
+                              {u.refs.length} 引用{missing > 0 ? `，${missing} 悬空` : ''}
                             </span>
                           </button>
                         )
@@ -187,7 +187,7 @@ export function RelationGraphModal({ onClose }: Props) {
                           {KIND_LABELS[m.kind]}「{m.ref}」不存在
                         </span>
                         <span className="grow" />
-                        <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} onClick={() => jumpToFileLine(joinProjectPath(project.rootPath, m.file), m.line)}>
+                        <button className="btn" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => jumpToFileLine(joinProjectPath(project.rootPath, m.file), m.line)}>
                           <AppIcon name="search" size={11} /> 定位
                         </button>
                       </div>
@@ -206,7 +206,7 @@ export function RelationGraphModal({ onClose }: Props) {
                         <span className="vdiff-report-kind">跨模组</span>
                         <code>{c.ref}</code>
                         <span className="vdiff-desc">
-                          {KIND_LABELS[c.kind]} · {c.count} 处引用{c.samples.length > 0 ? `（${c.samples.join('、')}）` : ''}
+                          {KIND_LABELS[c.kind]}：{c.count} 处引用{c.samples.length > 0 ? `（${c.samples.join('、')}）` : ''}
                         </span>
                       </div>
                     ))
@@ -271,7 +271,7 @@ function UnitGraph({ unit, onJump }: { unit: UnitNode; onJump: (line: number) =>
             className="relgraph-node"
             role="button"
             tabIndex={0}
-            aria-label={`${KIND_LABELS[n.kind]}：${n.target}${n.missing ? '（悬空）' : ''} · 第 ${n.lines.join('、')} 行`}
+            aria-label={`${KIND_LABELS[n.kind]}：${n.target}${n.missing ? '（悬空）' : ''}，第 ${n.lines.join('、')} 行`}
             onClick={() => onJump(n.lines[0])}
             onKeyDown={(e) => {
               // M29：键盘激活引用节点（Enter/Space 跳转到引用行）
@@ -294,7 +294,7 @@ function UnitGraph({ unit, onJump }: { unit: UnitNode; onJump: (line: number) =>
             <text x={n.x} y={n.y + 4} textAnchor="middle" fontSize={10} fill="var(--text-primary)" style={{ pointerEvents: 'none' }}>
               {KIND_LABELS[n.kind]}
             </text>
-            <title>{`${KIND_LABELS[n.kind]}：${n.target}${n.missing ? '（悬空）' : ''}${n.crossMod ? '（跨模组）' : ''} · 第 ${n.lines.join('、')} 行`}</title>
+            <title>{`${KIND_LABELS[n.kind]}：${n.target}${n.missing ? '（悬空）' : ''}${n.crossMod ? '（跨模组）' : ''}，第 ${n.lines.join('、')} 行`}</title>
           </g>
         ))}
         {/* 中心单位 */}

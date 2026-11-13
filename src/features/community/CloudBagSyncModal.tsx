@@ -108,7 +108,7 @@ function ConflictChoice({ conflict, localChanges, onPushLocal, onPullRemote, bus
     <div className="cloudbag-conflict" role="group" aria-label="同步冲突选择">
       {/* 契约 §6.7：A（本地变更）/ B（远端 head）双栏文件级差异清单 + 差异文件数摘要 */}
       <div className="cloudbag-conflict-col">
-        <div className="community-section-title">A · 本地变更</div>
+        <div className="community-section-title">A：本地变更</div>
         {localChanges === null
           ? <div className="local-note">本地改动清单不可用（锚点基线版本树读取失败）：无法逐文件核对，请以本地工作树与 B 栏远端摘要为准。</div>
           : localChanges.length === 0
@@ -125,8 +125,8 @@ function ConflictChoice({ conflict, localChanges, onPushLocal, onPullRemote, bus
             </>}
       </div>
       <div className="cloudbag-conflict-col">
-        <div className="community-section-title">B · 远端 head（#{conflict.headVersionNo}）</div>
-        {headDetail && <div className="local-note">{headDetail.message || '（无版本说明）'} · {headDetail.fileCount} 文件 · {headDetail.totalSize > 0 ? `${headDetail.totalSize} 字节` : '大小未知'}</div>}
+        <div className="community-section-title">B：远端 head（#{conflict.headVersionNo}）</div>
+        {headDetail && <div className="local-note">{headDetail.message || '（无版本说明）'}，{headDetail.fileCount} 文件，{headDetail.totalSize > 0 ? `${headDetail.totalSize} 字节` : '大小未知'}</div>}
         {/* 摘要缺失 ≠ 远端树为空：本地判定进入冲突而无服务端摘要时，「0 个文件」是误导 */}
         {!headDetail
           ? <div className="local-note">远端版本摘要不可用，无法展示文件级差异（可先拉取该版本再核对）。</div>
@@ -415,7 +415,7 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
   const summary = anchor
     ? foreignAnchor
       ? `本项目已绑定仓库「${foreignAnchor.repoSlug}」（基线版本 #${foreignAnchor.baselineSeq}），与当前仓库「${repo.slug}」不是同一个`
-      : `绑定仓库 ${anchor.repoSlug} · 基线版本 #${anchor.baselineSeq}`
+      : `绑定仓库 ${anchor.repoSlug}，基线版本 #${anchor.baselineSeq}`
     : '本地项目尚未绑定云书包仓库（发布第一个版本后自动绑定）'
   const stateLabel: Record<SyncState, string> = {
     unbound: foreignAnchor ? '未绑定到本仓库' : '未绑定',
@@ -461,14 +461,14 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
   }
 
   return (
-    <Modal wide title={<span><AppIcon name="cloud" size={15} /> 云书包同步 · {repo.title}</span>} onClose={onClose} footer={<>
+    <Modal wide title={<span><AppIcon name="cloud" size={15} /> 云书包同步：{repo.title}</span>} onClose={onClose} footer={<>
       {/* 协作式取消必须随时可点：busy 时禁用会让取消永远无法发出（运行中恰被禁用）。
           语义是「发出取消后完成当前文件即停」（IPC 发出后不可中断），空闲时点击无害
           （下一次 run 会重置标记）。 */}
       <button className="btn" onClick={() => { abortRef.current = true }} title="发出取消：完成当前文件后停止上传/下载（传输中的单个文件不可中断）">取消同步</button>
       <button className="btn" onClick={onClose}>关闭</button>
     </>}>
-      <div className="local-note">{summary} · 本地项目：{projectName} · 状态：{stateLabel[localState]}</div>
+      <div className="local-note">{summary}，本地项目：{projectName}，状态：{stateLabel[localState]}</div>
       {/* 四分态（契约 §6.4）约束动作而不只是显示：仅本地变→引导发布；仅远端新→拉取；
           双向变→二选一；clean→无动作。 */}
       <div className="local-note" role="status">{stateHint}</div>
@@ -509,7 +509,7 @@ export function CloudBagSyncModal({ api, rootPath, projectName, repo, onClose, o
       {syncState && (
         <div className="cloudbag-sync-progress" role="status">
           {syncState.phase === 'uploading' || syncState.phase === 'hashing' || syncState.phase === 'reading'
-            ? <>上传进度：{syncState.done}/{syncState.total} {syncState.currentPath ? `· ${syncState.currentPath}` : ''}</>
+            ? <>上传进度：{syncState.done}/{syncState.total} {syncState.currentPath ? `，${syncState.currentPath}` : ''}</>
             : syncState.phase === 'committing' ? '正在提交版本…'
             : syncState.phase === 'downloading' ? '正在下载 .rwmod…'
             : syncState.phase === 'restoring' ? '正在恢复到本地项目…'

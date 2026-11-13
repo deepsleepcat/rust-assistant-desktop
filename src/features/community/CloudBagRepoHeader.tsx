@@ -26,7 +26,7 @@ export function CloudBagRepoHeader({ repo, onBack, deepLink, copied, onCopy, can
               {copied ? '已复制深链' : '复制深链'}
             </button>
           )}
-          {' · '}{repo.versionCount} 版本 · {repo.fileCount} 文件 · {formatBytes(repo.totalSize)} · 配额 {formatBytes(repo.quota?.usedBytes ?? 0)}/{formatBytes(repo.quota?.limitBytes ?? 0)}
+          {'，'}{repo.versionCount} 版本，{repo.fileCount} 文件，{formatBytes(repo.totalSize)}，配额 {formatBytes(repo.quota?.usedBytes ?? 0)}/{formatBytes(repo.quota?.limitBytes ?? 0)}
         </div>
         {repo.visibility === 'link' && <div className="local-note">在「版本与发布」中创建分享链接；完整链接仅在创建时显示，请及时复制。</div>}
         {repo.description && <p>{repo.description}</p>}

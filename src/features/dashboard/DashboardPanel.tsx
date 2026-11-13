@@ -403,7 +403,7 @@ export function DashboardPanel() {
               )}
               <footer className="dashboard-pager">
                 <span className="dashboard-muted">
-                  共 {data.logs.total} 条 · 第 {data.logs.page} / {Math.max(1, Math.ceil(data.logs.total / data.logs.pageSize))} 页
+                  共 {data.logs.total} 条，第 {data.logs.page} / {Math.max(1, Math.ceil(data.logs.total / data.logs.pageSize))} 页
                 </span>
                 <span className="grow" />
                 <button type="button" className="btn-sm" disabled={data.logs.page <= 1} onClick={() => changePage(data.logs.page - 1)}>上一页</button>
@@ -462,7 +462,7 @@ function UsageBody({ summary }: { summary: DashboardSummary }) {
         ))}
       </div>
       <div className="dashboard-usage-meta">
-        <span>调用 {summary.requestCount} 次 · 准确样本 {summary.exactRequestCount} 次</span>
+        <span>调用 {summary.requestCount} 次，准确样本 {summary.exactRequestCount} 次</span>
         <span className={`dashboard-badge dashboard-badge-${summary.coverage}`}>{coverageLabel(summary.coverage, summary.reason)}</span>
       </div>
     </div>

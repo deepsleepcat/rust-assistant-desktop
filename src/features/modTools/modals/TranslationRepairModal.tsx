@@ -70,11 +70,11 @@ export function TranslationRepairModal({ onClose }: { onClose: () => void }) {
                     </label>
                     <ul style={{ marginLeft: 20, marginTop: 2, listStyle: 'none' }}>
                       {item.changes.slice(0, 5).map((c, i) => (
-                        <li key={i} style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        <li key={i} style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                           L{c.line} {c.kind}: {c.before} → {c.after}
                         </li>
                       ))}
-                      {item.changes.length > 5 && <li style={{ fontSize: 11, color: 'var(--text-muted)' }}>…还有 {item.changes.length - 5} 处</li>}
+                      {item.changes.length > 5 && <li style={{ fontSize: 12, color: 'var(--text-muted)' }}>…还有 {item.changes.length - 5} 处</li>}
                     </ul>
                   </li>
                 ))}

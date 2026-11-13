@@ -167,12 +167,12 @@ function ApprovalDialogInner({
             <>
               <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span>
-                  新增 {added} 行 · 删除 {deleted} 行
-                  {typeof req.contentLength === 'number' && ` · 完整内容约 ${req.contentLength} 字符`}
+                  新增 {added} 行，删除 {deleted} 行
+                  {typeof req.contentLength === 'number' && `，完整内容约 ${req.contentLength} 字符`}
                 </span>
                 <button
                   className="btn"
-                  style={{ padding: '1px 8px', fontSize: 11, marginLeft: 'auto' }}
+                  style={{ padding: '1px 8px', fontSize: 12, marginLeft: 'auto' }}
                   onClick={() => setDiffOpen((open) => !open)}
                   title={diffOpen ? '收起行级对比' : '展开行级对比'}
                 >

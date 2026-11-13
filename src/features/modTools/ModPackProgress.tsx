@@ -32,7 +32,7 @@ export function ModPackProgress() {
       </div>
       <div style={{ marginTop: 6, overflowWrap: 'anywhere' }}>{task.projectName}</div>
       {task.busy && <progress aria-label={percent !== undefined ? '压缩进度' : '打包阶段进度'} max={100} value={percent} style={{ width: '100%', marginTop: 12 }} />}
-      {task.filesRead !== undefined && <div style={{ marginTop: 8 }}>已读取 {task.filesRead} 个文件 · {((task.bytesRead ?? 0) / 1024 / 1024).toFixed(2)} MB</div>}
+      {task.filesRead !== undefined && <div style={{ marginTop: 8 }}>已读取 {task.filesRead} 个文件，{((task.bytesRead ?? 0) / 1024 / 1024).toFixed(2)} MB</div>}
       {task.files !== undefined && task.phase !== 'reading' && <div>归档包含 {task.files} 个文件</div>}
       {task.currentFile && <div title={task.currentFile} style={{ marginTop: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{task.currentFile}</div>}
       {task.phase === 'compressing' && <div style={{ marginTop: 8 }}>百分比表示压缩进度，随后还需保存文件。</div>}

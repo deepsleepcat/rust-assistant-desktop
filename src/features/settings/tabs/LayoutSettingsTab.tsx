@@ -47,7 +47,7 @@ export function LayoutSettingsTab() {
         <span style={{ width: 34, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{Math.round(settings.layout.leftARatio * 100)}%</span>
         <button
           className="btn"
-          style={{ padding: '1px 8px', fontSize: 11, height: 22 }}
+          style={{ padding: '1px 8px', fontSize: 12, height: 22 }}
           onClick={() => {
             const s = useWorkspaceStore.getState()
             updateSettings({ layout: { ...s.settings.layout, leftARatio: DEFAULT_LAYOUT.leftARatio } })

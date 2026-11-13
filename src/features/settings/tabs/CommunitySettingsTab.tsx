@@ -69,7 +69,7 @@ export function CommunitySettingsTab() {
             setCommunityCheck(null)
             try {
               const result = await createCommunityApi(settings.ai.communityEndpoint).health()
-              setCommunityCheck(`✓ 在线 · ${result.version ?? '未知版本'}`)
+              setCommunityCheck(`✓ 在线，${result.version ?? '未知版本'}`)
             } catch (err) {
               setCommunityCheck(`✗ ${err instanceof Error ? err.message : String(err)}`)
             } finally {
@@ -96,7 +96,7 @@ export function CommunitySettingsTab() {
         </>}
         {communityAuth.status === 'error' && <span className="setting-error-inline">{communityAuth.error}</span>}
       </div>
-      {communityUser && <div className="local-note">当前账号：{communityUser.display_name ?? communityUser.username} · 会话已安全保存在本机</div>}
+      {communityUser && <div className="local-note">当前账号：{communityUser.display_name ?? communityUser.username}，会话已安全保存在本机</div>}
       {communityUser && communityUser.email_verified === false && <div className="setting-row community-auth-row">
         <span className="label">
           完成邮箱认证

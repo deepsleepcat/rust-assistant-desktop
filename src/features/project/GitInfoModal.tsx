@@ -218,7 +218,7 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
                       >
                         <span className="relgraph-unit-name" style={{ fontFamily: 'var(--font-mono)' }}>{c.short}</span>
                         <span className="relgraph-unit-file">{c.subject}</span>
-                        <span className="relgraph-unit-count">{c.author} · {new Date(c.at * 1000).toLocaleString()}</span>
+                        <span className="relgraph-unit-count">{c.author}，{new Date(c.at * 1000).toLocaleString()}</span>
                       </button>
                     ))}
                     {log.length === 0 && <p className="codetable-empty">还没有提交</p>}
@@ -253,11 +253,11 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
                           <code>{f.path}</code>
                           <span className="grow" />
                           {isConflict && (
-                            <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} onClick={() => void openConflict(f.path)}>
+                            <button className="btn" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => void openConflict(f.path)}>
                               <AppIcon name="edit" size={11} /> 解决冲突
                             </button>
                           )}
-                          <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} onClick={() => rollbackFile(f.path, rollbackTarget)}>
+                          <button className="btn" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => rollbackFile(f.path, rollbackTarget)}>
                             <AppIcon name="undo" size={11} /> 回滚
                           </button>
                         </div>
@@ -267,12 +267,12 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
                   {conflictOpen && conflictContent && conflictContent.file === conflictOpen && (
                     <div className="vdiff-report" style={{ marginTop: 8 }}>
                       <div className="vdiff-report-title">
-                        冲突块 {conflictContent.blocks.length} 个 · {conflictContent.file}
+                        冲突块 {conflictContent.blocks.length} 个：{conflictContent.file}
                         <span className="grow" />
-                        <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} onClick={() => void resolveConflict(conflictOpen, 'ours')}>
+                        <button className="btn" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => void resolveConflict(conflictOpen, 'ours')}>
                           全部保留 A（当前分支）
                         </button>
-                        <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} onClick={() => void resolveConflict(conflictOpen, 'theirs')}>
+                        <button className="btn" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => void resolveConflict(conflictOpen, 'theirs')}>
                           全部保留 B（另一侧）
                         </button>
                       </div>

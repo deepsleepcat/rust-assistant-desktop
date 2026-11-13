@@ -130,7 +130,7 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
   return (
     <div className="unit-form">
       <div className="unit-form-head">
-        <span>单位表单 · {tab.name}</span>
+        <span>单位表单：{tab.name}</span>
         <span className="unit-form-hint">修改即时同步到代码；切回代码模式可继续手写</span>
       </div>
       {missingRequired.length > 0 && (
@@ -174,7 +174,7 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
                           <option value="">（未设置）</option>
                           {Object.entries(field.options ?? {}).map(([k, label]) => (
                             <option key={k} value={k}>
-                              {k} · {label}
+                              {k}：{label}
                             </option>
                           ))}
                         </select>
@@ -189,7 +189,7 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
                       {field.type === 'resource' && (
                         <button
                           className="btn"
-                          style={{ padding: '2px 8px', fontSize: 11 }}
+                          style={{ padding: '2px 8px', fontSize: 12 }}
                           onClick={() => (isResourcePicker ? setPicking(null) : pickResource(group.section, field))}
                         >
                           {isResourcePicker ? '取消' : '选择…'}
@@ -205,7 +205,7 @@ export function UnitFormPanel({ tab, rootPath }: UnitFormPanelProps) {
                         ) : resScan.status === 'error' ? (
                           <div className="unit-form-picker-empty">
                             资源扫描失败：{resScan.error}
-                            <button className="btn" style={{ padding: '1px 8px', fontSize: 11, marginLeft: 8 }} onClick={retryResScan}>
+                            <button className="btn" style={{ padding: '1px 8px', fontSize: 12, marginLeft: 8 }} onClick={retryResScan}>
                               重试
                             </button>
                           </div>

@@ -421,7 +421,7 @@ export function MapViewer({ path, rootPath, content, initialCamera, onCameraChan
     const name = toPosix(path).split('/').pop() ?? 'map.tmx'
     await getBridge().project.saveText('导出规范化 TMX', name, normalized)
   }
-  const summary = map ? `${map.layers.length} 层 · ${layers.length} 个可绘制瓦片层 · ${tilesets.length} 个图块集` : ''
+  const summary = map ? `${map.layers.length} 层，${layers.length} 个可绘制瓦片层，${tilesets.length} 个图块集` : ''
   const overlayMessage = map?.infinite
     ? '无限地图（chunk）当前仅保留检查信息，真实瓦片预览暂不支持'
     : map?.orientation !== 'orthogonal'
@@ -437,7 +437,7 @@ export function MapViewer({ path, rootPath, content, initialCamera, onCameraChan
   return <div className="map-viewer">
     <div className="map-viewer-head">
       <span className="map-viewer-title">{toPosix(path).split('/').pop()}</span>
-      <span className="map-viewer-meta">{map.width}×{map.height} · 瓦片 {map.tileWidth}×{map.tileHeight} · {map.orientation}</span>
+      <span className="map-viewer-meta">{map.width}×{map.height}，瓦片 {map.tileWidth}×{map.tileHeight}，{map.orientation}</span>
       <span className="grow" />
       <button className="btn" onClick={() => void exportNormalized()}><AppIcon name="download" size={12} /> 规范化导出</button>
     </div>

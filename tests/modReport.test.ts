@@ -37,7 +37,7 @@ describe('reportToText', () => {
   it('包含项目名/统计/汇总/问题清单', () => {
     const text = reportToText(makeReport())
     expect(text).toContain('测试模组')
-    expect(text).toContain('文件 12 · 单位 3')
+    expect(text).toContain('文件 12，单位 3')
     expect(text).toContain('checkPositiveCoreStats: 2 错误 / 0 警告')
     expect(text).toContain('units/a/a.ini:5')
     expect(text).toContain('[错误]')

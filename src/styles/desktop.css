@@ -253,7 +253,7 @@ html[data-theme="dark"] .app::before {
   display: block;
   margin-top: 2px;
   color: var(--text-muted);
-  font: 10px/1.2 var(--font-ui);
+  font: 12px/1.2 var(--font-ui);
   letter-spacing: .04em;
 }
 
@@ -366,7 +366,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .mod-pack-progress progress { accent-color: var(--text-primary); }
 
 .desktop-account-name { overflow: hidden; color: var(--text-primary); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.desktop-account-status { color: var(--text-muted); font-size: 11px; }
+.desktop-account-status { color: var(--text-muted); font-size: 12px; }
 .desktop-account-menu button {
   display: flex;
   align-items: center;
@@ -405,7 +405,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .cmd-label small,
 .label-en {
   color: var(--text-muted);
-  font: 10px/1.25 var(--font-ui);
+  font: 12px/1.25 var(--font-ui);
   letter-spacing: .04em;
 }
 .settings-nav-item small { display: block; }
@@ -458,7 +458,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .titlebar-name { font-size: 13.5px; letter-spacing: .01em; }
 .titlebar-sep { color: var(--text-muted); }
 .titlebar-surface { color: var(--text-secondary); font-size: 12px; }
-.titlebar-project { max-width: 260px; color: var(--text-muted); font: 11.5px var(--font-mono); }
+.titlebar-project { max-width: 260px; color: var(--text-muted); font: 12px var(--font-mono); }
 .titlebar-search {
   width: min(430px, 40vw);
   height: 32px;
@@ -600,7 +600,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
   font-size: 12.5px;
   font-weight: 650;
 }
-.wb-project-drawer-head small { display: block; color: var(--text-muted); font: 10px var(--font-ui); }
+.wb-project-drawer-head small { display: block; color: var(--text-muted); font: 12px var(--font-ui); }
 .wb-editor-full { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .wb-editor-full > * { flex: 1; min-width: 0; min-height: 0; }
 
@@ -629,7 +629,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
   background: var(--desktop-glass-strong);
   color: var(--text-primary);
 }
-.surface-eyebrow { color: var(--text-muted); font: 10px/1.2 var(--font-mono); letter-spacing: .12em; }
+.surface-eyebrow { color: var(--text-muted); font: 12px/1.2 var(--font-mono); letter-spacing: .12em; }
 .surface-auth-gate h1,
 .surface-missing h1 { margin: 9px 0 10px; color: var(--text-primary); font: 650 24px/1.18 var(--font-display); letter-spacing: -.025em; }
 .surface-auth-gate p,
@@ -673,7 +673,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .settings-page-header h1 { margin: 8px 0 5px; color: var(--text-primary); font: 650 26px/1.2 var(--font-display); letter-spacing: -.03em; }
 .settings-page-header p { margin: 0; color: var(--text-muted); font-size: 12.5px; }
 .settings-page-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-.settings-session-badge { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.settings-session-badge { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .settings-session-badge.connected { color: var(--success); }
 .settings-session-badge.connected .sb-dot { background: var(--success); }
 .settings-close { width: 32px; height: 32px; display: grid; place-items: center; flex: none; }
@@ -774,7 +774,7 @@ body.ra-reduced-motion *::after {
   .titlebar-name, .titlebar-sep, .titlebar-surface, .titlebar-project { display: none; }
   .titlebar-search { flex: 1; width: auto; margin-left: 0; }
   .titlebar-settings { width: 32px; padding: 0; justify-content: center; }
-  .statusbar { gap: 8px; padding-inline: 8px; font-size: 10px; }
+  .statusbar { gap: 8px; padding-inline: 8px; font-size: 12px; }
   .statusbar .sb-left { display: none; }
   .statusbar .sb-connection { margin-left: auto; }
   .settings-page-header { position: relative; padding: 20px 18px 16px; padding-right: 58px; }

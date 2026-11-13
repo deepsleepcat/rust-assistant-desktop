@@ -245,7 +245,7 @@ function WelcomeView() {
         <h1>
           <span>铁锈工坊</span>
         </h1>
-        <p className="subtitle">铁锈战争 · 模组开发工作台</p>
+        <p className="subtitle">《铁锈战争》模组开发工作台</p>
         <div className="welcome-actions">
           <button className="btn" onClick={() => void importModProject()}>
             导入模组
@@ -264,7 +264,7 @@ function WelcomeView() {
                   <div className="rc-name">{p.name}</div>
                   <div className="rc-path">{truncateMiddle(p.rootPath, 48)}</div>
                 </div>
-                <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{formatRelativeTime(p.lastOpenedAt)}</span>
+                <span style={{ fontSize: 12, color: 'var(--text-3)' }}>{formatRelativeTime(p.lastOpenedAt)}</span>
               </div>
             ))}
           </div>
@@ -504,7 +504,7 @@ function EditorPane({
           </span>
           {tab.externalChanged && (
             <>
-              <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>⚠ 文件已被外部修改</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>⚠ 文件已被外部修改</span>
               <button
                 className="btn"
                 title="丢弃本地修改，重新读取磁盘上的最新内容"
@@ -525,13 +525,13 @@ function EditorPane({
               </button>
             </>
           )}
-          {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
+          {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>● 未保存</span>}
           {tab.pendingRepair && !tab.dirty && (
-            <span style={{ color: 'var(--warn, #d99014)', fontSize: 11.5 }} title="打开时已在内存中恢复中文键；保存时写回英文到磁盘">
+            <span style={{ color: 'var(--warn, #d99014)', fontSize: 12 }} title="打开时已在内存中恢复中文键；保存时写回英文到磁盘">
               ◐ 待写回修复
             </span>
           )}
-          <span className="badge" title="字段同时显示中文说明和英文原码，显示标签不写入文件">双语字段 · Bilingual</span>
+          <span className="badge" title="字段同时显示中文说明和英文原码，显示标签不写入文件">双语字段 Bilingual</span>
         </div>
         <div className="editor-head-row actions">
           <OverflowToolbar actions={actions} />

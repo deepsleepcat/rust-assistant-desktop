@@ -38,7 +38,7 @@ export function OverflowToolbar({ actions, overflowLabel = '更多' }: OverflowT
       key={a.key}
       data-key={a.key}
       className={a.active ? 'btn primary' : 'btn'}
-      style={{ padding: '2px 10px', fontSize: 11.5, flex: 'none' }}
+      style={{ padding: '2px 10px', fontSize: 12, flex: 'none' }}
       title={a.title ?? a.label}
       disabled={a.disabled}
       onClick={a.onClick}
@@ -133,7 +133,7 @@ function OverflowMenuButton({ label, hidden }: { label: string; hidden: ToolbarA
     <div style={{ position: 'relative', flex: 'none' }}>
       <button
         className={open ? 'btn primary' : 'btn'}
-        style={{ padding: '2px 10px', fontSize: 11.5 }}
+        style={{ padding: '2px 10px', fontSize: 12 }}
         onClick={() => setOpen((v) => !v)}
         title={label}
       >

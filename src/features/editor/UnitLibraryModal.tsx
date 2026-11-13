@@ -204,7 +204,7 @@ export function UnitLibraryModal({ onClose }: Props) {
                 <div className="unitlib-group">
                   <div className="unitlib-group-head">
                     <AppIcon name="star" size={12} />
-                    官方参考（{officialFiltered.length}）· 点击复制英文名
+                    官方参考（{officialFiltered.length}），点击复制英文名
                   </div>
                   <div className="unitlib-list unitlib-official-list">
                     {officialFiltered.map((u) => (
@@ -225,7 +225,7 @@ export function UnitLibraryModal({ onClose }: Props) {
               <div className="unitlib-group">
                 <div className="unitlib-group-head">
                   <AppIcon name="tower" size={12} />
-                  {source?.name ?? ''} 的单位（{projectFiltered.length}）{isCurrentProject ? '· 点击打开编辑' : '· 可复制到当前模组'}
+                  {source?.name ?? ''} 的单位（{projectFiltered.length}）{isCurrentProject ? '，点击打开编辑' : '，可复制到当前模组'}
                 </div>
                 {projectFiltered.length === 0 ? (
                   <p className="codetable-empty">
@@ -267,7 +267,7 @@ export function UnitLibraryModal({ onClose }: Props) {
             <span className="codetable-copied"><AppIcon name="check" size={12} /> 已复制 {copied}</span>
           )}
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {units && official ? `项目 ${units.length} · 官方 ${official.length}` : ''}
+            {units && official ? `项目 ${units.length}，官方 ${official.length}` : ''}
           </span>
           <span className="grow" />
           <button className="btn primary" onClick={onClose}>关闭</button>

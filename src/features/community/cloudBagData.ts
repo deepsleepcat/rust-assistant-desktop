@@ -152,7 +152,7 @@ export function summarizeDiff(entries: CloudBagDiffEntry[]): string {
   if (added) parts.push(`新增 ${added}`)
   if (modified) parts.push(`修改 ${modified}`)
   if (removed) parts.push(`删除 ${removed}`)
-  return parts.length > 0 ? parts.join(' · ') : '无差异'
+  return parts.length > 0 ? parts.join('，') : '无差异'
 }
 
 /**

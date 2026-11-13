@@ -262,10 +262,10 @@ export async function generateModReport(
 /** 报告 → 纯文本（分享用；全部相对路径） */
 export function reportToText(r: ModReport): string {
   const lines: string[] = []
-  lines.push(`铁锈工坊 · 模组质量报告`)
+  lines.push(`铁锈工坊模组质量报告`)
   lines.push(`项目：${r.meta.projectName}`)
   lines.push(`生成时间：${new Date(r.meta.generatedAt).toLocaleString()}`)
-  lines.push(`文件 ${r.meta.fileCount} · 单位 ${r.meta.unitCount} · 图片 ${r.meta.imageCount} · 音频 ${r.meta.audioCount} · 目标版本 ${r.meta.targetVersion}${r.meta.skippedLargeFiles > 0 ? ` · 跳过 ${r.meta.skippedLargeFiles} 个超大文件` : ''}${r.meta.checkFailedFiles > 0 ? ` · ${r.meta.checkFailedFiles} 个文件检查异常` : ''}`)
+  lines.push(`文件 ${r.meta.fileCount}，单位 ${r.meta.unitCount}，图片 ${r.meta.imageCount}，音频 ${r.meta.audioCount}，目标版本 ${r.meta.targetVersion}${r.meta.skippedLargeFiles > 0 ? `，跳过 ${r.meta.skippedLargeFiles} 个超大文件` : ''}${r.meta.checkFailedFiles > 0 ? `，${r.meta.checkFailedFiles} 个文件检查异常` : ''}`)
   lines.push(`总体：${r.ok ? '通过' : `发现 ${r.errorCount} 个错误`}`)
   lines.push(`版本兼容：${r.versionConclusion}`)
   lines.push('')
