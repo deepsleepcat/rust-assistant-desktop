@@ -22,6 +22,8 @@ import { AssetPreview } from '../features/editor/AssetPreview'
 import { FileTreePanel } from '../features/editor/FileTreePanel'
 import { loadTranslationDict, openFileInEditor } from '../features/editor/openFile'
 import { applyReload, checkExternalChange, isDirty, prepareSave } from '../features/editor/editSession'
+import { isUnitFile } from '../features/editor/unitForm/unitFormSync'
+import { UnitFormPanel } from '../features/editor/unitForm/UnitFormPanel'
 import { invalidateResourceCache } from '../features/editor/completion'
 import { scanSections } from '../features/editor/outline'
 import { isRustConfigFile } from '../utils/paths'
@@ -181,6 +183,7 @@ export function EditorScreen() {
   const [refreshToken, setRefreshToken] = useState(0)
   const [showModInfo, setShowModInfo] = useState(false)
   const [showOutline, setShowOutline] = useState(false)
+  const [showUnitForm, setShowUnitForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -295,6 +298,7 @@ export function EditorScreen() {
     setStatus('')
     setError('')
     setCursor({ line: 1, col: 1 })
+    setShowUnitForm(false)
   }, [session?.path])
 
   // Android 系统返回键：WebView 会把返回键变成 history.back()，这里压一层历史并接管。
@@ -323,13 +327,18 @@ export function EditorScreen() {
   }, [Boolean(session)])
 
   const requestClose = useCallback(() => {
+    // 单位表单覆盖层开着时，返回键/返回按钮先关表单（否则会误触发退出编辑器）
+    if (showUnitForm) {
+      setShowUnitForm(false)
+      return
+    }
     const current = useWorkspace.getState().editorSession
     if (current && isDirty(current)) {
       setPendingExit({ kind: 'close' })
       return
     }
     closeEditor()
-  }, [closeEditor])
+  }, [closeEditor, showUnitForm])
   requestCloseRef.current = requestClose
 
   /** 文件树点开文本文件（有未保存修改时先确认） */
@@ -371,6 +380,7 @@ export function EditorScreen() {
               key={activeProject.id}
               projectRoot={activeProject.rootPath}
               showHidden={settings.showHiddenFiles}
+              fileSort={settings.fileSort}
               refreshToken={refreshToken}
               onOpenText={handleOpenText}
               onOpenAsset={(path, name) => setAsset({ path, name })}
@@ -409,6 +419,11 @@ export function EditorScreen() {
           {dirty && <span className="m-editor-dirty" aria-label="有未保存的修改">●</span>}
           {status && <span className="m-editor-status">{status}</span>}
         </div>
+        {isUnitFile(session.content) && (
+          <button className="m-editor-btn" onClick={() => setShowUnitForm(true)} aria-label="单位表单">
+            <AppIcon name="tools" size={18} />
+          </button>
+        )}
         <button className="m-editor-btn" onClick={() => setShowOutline(true)} aria-label="大纲">
           <AppIcon name="menu" size={18} />
         </button>
@@ -471,6 +486,8 @@ export function EditorScreen() {
           onClose={() => setShowOutline(false)}
         />
       )}
+
+      {showUnitForm && <UnitFormPanel session={session} onClose={() => setShowUnitForm(false)} />}
 
       {conflict && (
         <ConfirmModal

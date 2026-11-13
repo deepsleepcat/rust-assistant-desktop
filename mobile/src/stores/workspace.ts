@@ -19,7 +19,10 @@ import {
   type PendingSave,
 } from '../features/editor/editSession'
 
-export type MobileTab = 'projects' | 'editor' | 'library' | 'inspect' | 'ai' | 'settings'
+export type MobileTab = 'projects' | 'editor' | 'library' | 'inspect' | 'modTools' | 'ai' | 'settings'
+
+/** 检查页子视图：检查结果 / 模组关系图（返回编辑器后保留所在子视图） */
+export type InspectView = 'issues' | 'graph'
 
 /**
  * 编辑器跳转请求（检查结果 / 大纲「定位」→ 编辑器）。
@@ -35,9 +38,12 @@ interface WorkspaceState {
   projects: ProjectInfo[]
   activeProjectId: string | null
   activeTab: MobileTab
+  /** 检查页当前子视图（issues=检查结果 / graph=关系图） */
+  inspectView: InspectView
   settings: AppSettings
   init(): Promise<void>
   setActiveTab(tab: MobileTab): void
+  setInspectView(view: InspectView): void
   addProject(p: ProjectInfo): void
   removeProject(id: string): void
   setActiveProject(id: string | null): void
@@ -75,6 +81,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   projects: [],
   activeProjectId: null,
   activeTab: 'projects',
+  inspectView: 'issues',
   settings: DEFAULT_SETTINGS,
   editorSession: null,
   editorJump: null,
@@ -98,6 +105,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setActiveTab(tab) {
     set({ activeTab: tab })
+  },
+
+  setInspectView(view) {
+    set({ inspectView: view })
   },
 
   addProject(p) {

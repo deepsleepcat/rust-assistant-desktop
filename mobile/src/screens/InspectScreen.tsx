@@ -5,11 +5,12 @@
 import { useEffect, useRef, useState } from "react"
 import { useWorkspace } from "../stores/workspace"
 import { getBridge } from "../services/bridge"
-import { runSemanticChecks } from "../features/editor/semanticChecks"
+import { runSemanticChecks, loadProjectRuleSets, type CustomRule } from "../features/editor/semanticChecks"
 import { lintIniText } from "../features/editor/rustLint"
-import { findCodeByCode, findValueType, getKeyZhToEnDict, getZhToEnDict, getAllCodes, loadCodeData } from "../services/codeData"
+import { findCodeByCode, findValueType, getKeyZhToEnDict, getZhToEnDict, getAllCodes, loadCodeData, versionNameToNumber } from "../services/codeData"
 import { enabledRuleIds } from "../features/editor/semanticChecks/registry"
 import { openFileInEditor } from "../features/editor/openFile"
+import { RelationGraphView } from "../features/graph/RelationGraphView"
 import { AppIcon } from "../components/AppIcon"
 import { isRustConfigFile } from "../utils/paths"
 
@@ -24,6 +25,8 @@ interface CheckItem {
 export function InspectScreen() {
   const activeProject = useWorkspace((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const settings = useWorkspace((s) => s.settings)
+  const inspectView = useWorkspace((s) => s.inspectView)
+  const setInspectView = useWorkspace((s) => s.setInspectView)
   const [items, setItems] = useState<CheckItem[] | null>(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState("")
@@ -64,6 +67,14 @@ export function InspectScreen() {
       }
       // 扫描单位名（引用检查）
       const { unitNames } = await bridge.mod.scanResources(root).catch(() => ({ files: [], unitNames: [] }))
+      // 项目自定义规则（rules/*.json，声明式；与编辑器波浪线/AI 写后质检共用）
+      const customRules: CustomRule[] = (await loadProjectRuleSets(root).catch(() => ({ sets: [], errors: [] }))).sets.flatMap(
+        (s) => s.rules,
+      )
+      // 目标游戏版本（版本兼容检查；空 = 跟随最新）
+      const targetVersionNumber = settings.targetGameVersion
+        ? versionNameToNumber(settings.targetGameVersion)
+        : undefined
       const zhToEnDict = getZhToEnDict()
       const keyZhToEnDict = getKeyZhToEnDict()
       const lintData = {
@@ -86,8 +97,11 @@ export function InspectScreen() {
             ...lintData,
             codes: getAllCodes().map((c) => c.code),
             unitNames: new Set(unitNames),
+            targetVersionNumber,
             file: rel,
           },
+          customRules,
+          customRuleConfig: settings.semanticCheckers,
         })
         for (const it of issues) {
           out.push({ file: rel, line: it.line, severity: it.severity, message: it.message, suggestion: it.suggestion })
@@ -111,10 +125,11 @@ export function InspectScreen() {
   }
 
   useEffect(() => {
+    if (inspectView !== "issues") return
     setItems(null)
     if (activeProject) void run()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeProject?.id])
+  }, [activeProject?.id, inspectView])
 
   /** 点击条目 → 打开文件并定位到行（走统一打开入口，行号交给编辑器消费） */
   async function openFile(item: CheckItem) {
@@ -134,61 +149,79 @@ export function InspectScreen() {
     <div className="m-screen">
       <header className="m-screen-header">
         <h1 className="m-screen-title">检查</h1>
-        {count && (
-          <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            {count.error > 0 && <span style={{ color: "var(--danger)" }}>{count.error} 错误</span>}
-            {count.error > 0 && count.warning > 0 && " · "}
-            {count.warning > 0 && <span style={{ color: "var(--warning)" }}>{count.warning} 警告</span>}
-          </span>
+        {inspectView === "issues" && (
+          <>
+            {count && (
+              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                {count.error > 0 && <span style={{ color: "var(--danger)" }}>{count.error} 错误</span>}
+                {count.error > 0 && count.warning > 0 && " · "}
+                {count.warning > 0 && <span style={{ color: "var(--warning)" }}>{count.warning} 警告</span>}
+              </span>
+            )}
+            <button className="m-btn" onClick={run} disabled={running}>
+              <AppIcon name="refresh" size={16} />
+              {running ? "检查中…" : "重查"}
+            </button>
+          </>
         )}
-        <button className="m-btn" onClick={run} disabled={running}>
-          <AppIcon name="refresh" size={16} />
-          {running ? "检查中…" : "重查"}
-        </button>
       </header>
-      <div className="m-scroll">
-        {error && <p className="m-empty">{error}</p>}
-        {!activeProject && (
-          <div className="m-empty">
-            <AppIcon name="check" size={36} />
-            <p>先选择一个项目，再运行语义检查</p>
-          </div>
-        )}
-        {activeProject && !items && !error && (
-          <div className="m-empty">
-            <AppIcon name="check" size={36} />
-            <p>{running ? "检查中…" : "正在扫描项目…"}</p>
-          </div>
-        )}
-        {items && items.length === 0 && (
-          <div className="m-empty">
-            <AppIcon name="check" size={36} />
-            <p>没有发现问题，模组很干净 🎉</p>
-          </div>
-        )}
-        {items && items.length > 0 && (
-          <div>
-            {items.map((item, idx) => (
-              <button
-                key={idx}
-                className="inspect-item"
-                style={{ width: "100%", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
-                onClick={() => void openFile(item)}
-              >
-                <span className={`severity ${item.severity}`} />
-                <div className="body">
-                  <p className="msg">{item.message}</p>
-                  <p className="meta">
-                    {item.file}
-                    {item.line > 0 ? `:${item.line}` : ""}
-                    {item.suggestion ? ` · ${item.suggestion}` : ""}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
+
+      <div className="m-subtabs">
+        <button className={inspectView === "issues" ? "active" : ""} onClick={() => setInspectView("issues")}>
+          检查结果
+        </button>
+        <button className={inspectView === "graph" ? "active" : ""} onClick={() => setInspectView("graph")}>
+          关系图
+        </button>
       </div>
+
+      {inspectView === "graph" ? (
+        <RelationGraphView />
+      ) : (
+        <div className="m-scroll">
+          {error && <p className="m-empty">{error}</p>}
+          {!activeProject && (
+            <div className="m-empty">
+              <AppIcon name="check" size={36} />
+              <p>先选择一个项目，再运行语义检查</p>
+            </div>
+          )}
+          {activeProject && !items && !error && (
+            <div className="m-empty">
+              <AppIcon name="check" size={36} />
+              <p>{running ? "检查中…" : "正在扫描项目…"}</p>
+            </div>
+          )}
+          {items && items.length === 0 && (
+            <div className="m-empty">
+              <AppIcon name="check" size={36} />
+              <p>没有发现问题，模组很干净 🎉</p>
+            </div>
+          )}
+          {items && items.length > 0 && (
+            <div>
+              {items.map((item, idx) => (
+                <button
+                  key={idx}
+                  className="inspect-item"
+                  style={{ width: "100%", border: "none", background: "transparent", cursor: "pointer", textAlign: "left" }}
+                  onClick={() => void openFile(item)}
+                >
+                  <span className={`severity ${item.severity}`} />
+                  <div className="body">
+                    <p className="msg">{item.message}</p>
+                    <p className="meta">
+                      {item.file}
+                      {item.line > 0 ? `:${item.line}` : ""}
+                      {item.suggestion ? ` · ${item.suggestion}` : ""}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

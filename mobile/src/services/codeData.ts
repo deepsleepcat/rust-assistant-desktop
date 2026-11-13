@@ -281,7 +281,13 @@ export function getZhToEnDict(): Map<string, string> {
   return zhToEnDict
 }
 
-/** 获取键名回译表快照（键位置回译优先查：见 keyZhToEnDict 注释） */
+/** 获取字段别名快照（旧字段名 → 现行字段名，小写键；
+ *  mobile v1 暂不加载 aliases.json，返回空 Map 保持接口兼容） */
+export function getAliasDict(): Map<string, string> {
+  return new Map()
+}
+
+/** 键名回译表快照（键位置回译优先查：见 keyZhToEnDict 注释） */
 export function getKeyZhToEnDict(): Map<string, string> {
   return keyZhToEnDict
 }
@@ -334,6 +340,18 @@ export function findCodesByQuery(query: string, limit = 40): CodeInfo[] {
 export function findCodeByCode(code: string): CodeInfo | undefined {
   const lower = code.toLowerCase()
   return codes.find((c) => c.code.toLowerCase() === lower)
+}
+
+/** 字段 code 是否有别名命中查询词（搜索过滤用；大小写不敏感；别名以子串方式匹配）。
+ *  无别名数据时恒返回 false——与 code/translate 自己的字符串匹配叠加使用。 */
+export function aliasMatches(code: string, query: string): boolean {
+  if (!query) return false
+  const q = query.toLowerCase()
+  const target = code.toLowerCase()
+  for (const [alias, resolved] of getAliasDict()) {
+    if (resolved.toLowerCase() === target && alias.includes(q)) return true
+  }
+  return false
 }
 
 /** 按值类型查代码（@type(x) 关联联想用，对齐手机版 findCodeByCodeInType）：

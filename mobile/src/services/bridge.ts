@@ -670,14 +670,295 @@ function createMobileBridge(): BridgeApi {
       async scanUnits() {
         return []
       },
-      async optimizeScan() {
-        return []
+
+      /**
+       * 优化工具扫描：空文件 / 空文件夹 / 备份文件(.bak/.old/~) /
+       * .ini 末尾空行 / .ini 注释行。
+       */
+      async optimizeScan(rootPath) {
+        type OptItem = { id: string; kind: 'emptyFile' | 'emptyFolder' | 'backupFile' | 'emptyLine' | 'comment'; rel: string; detail?: string }
+        const items: OptItem[] = []
+
+        // 收集所有文件和目录的相对路径
+        const files: Array<{ rel: string; abs: string; isDir: boolean; size: number }> = []
+        const stack = ['']
+        while (stack.length > 0) {
+          const rel = stack.pop()!
+          const abs = rel ? `${rootPath}/${rel}` : rootPath
+          // plugin-fs readDir 不带 size/mtime，只取遍历需要的字段
+          let entries: Array<{ name: string; isDirectory: boolean }> = []
+          try {
+            entries = await fsReadDir(abs)
+          } catch {
+            continue
+          }
+          // 记录目录自身（size 未用，占位 0）
+          if (rel) {
+            files.push({ rel, abs, isDir: true, size: 0 })
+          }
+          for (const e of entries) {
+            const childRel = rel ? `${rel}/${e.name}` : e.name
+            if (e.isDirectory) {
+              if (childRel === 'rules' || childRel.startsWith('.')) continue
+              stack.push(childRel)
+            } else {
+              // 空文件判定需要真实大小：readDir 不给 size，逐个 stat（仅本工具用，可接受）
+              // stat 失败记为 -1（未知），不能当 0——否则会把读不到信息的文件误判成空文件
+              let size = -1
+              try {
+                size = (await stat(`${abs}/${e.name}`)).size
+              } catch {
+                // 保持 -1
+              }
+              files.push({
+                rel: childRel,
+                abs: `${abs}/${e.name}`,
+                isDir: false,
+                size,
+              })
+            }
+          }
+        }
+
+        for (const f of files) {
+          if (f.isDir) continue
+
+          const name = f.rel.split('/').pop() ?? ''
+          // 空文件
+          if (f.size === 0) {
+            items.push({ id: `emptyFile:${f.rel}`, kind: 'emptyFile', rel: f.rel, detail: '0 字节，可安全删除' })
+            continue
+          }
+          // 备份文件
+          if (/\.(bak|old|tmp)$/i.test(name) || name.endsWith('~')) {
+            items.push({ id: `backupFile:${f.rel}`, kind: 'backupFile', rel: f.rel, detail: `备份文件（${name}），可删除` })
+          }
+        }
+
+        // 空文件夹：检查每个目录是否除了 rules/隐藏目录外完全没有文件
+        // 反向遍历（叶子节点先判断）
+        const allDirs = files.filter((f) => f.isDir).sort((a, b) => b.rel.length - a.rel.length)
+        const knownEmptyDirs = new Set<string>()
+        for (const d of allDirs) {
+          let hasContent = false
+          for (const f of files) {
+            if (f.rel === d.rel) continue
+            if (f.rel.startsWith(d.rel + '/')) {
+              // 如果内容是已知空目录，则不算
+              if (f.isDir && knownEmptyDirs.has(f.rel)) continue
+              hasContent = true
+              break
+            }
+          }
+          if (!hasContent) {
+            knownEmptyDirs.add(d.rel)
+            items.push({ id: `emptyFolder:${d.rel}`, kind: 'emptyFolder', rel: d.rel, detail: '空文件夹，可删除' })
+          }
+        }
+
+        // .ini / .template 文件：末尾空行 & 注释行
+        for (const f of files) {
+          if (f.isDir) continue
+          if (!/\.(ini|template)$/i.test(f.rel)) continue
+          try {
+            const raw = await readTextFile(f.abs)
+            const lines = raw.split(/\r?\n/)
+
+            // 末尾空行计数
+            let trailingBlank = 0
+            for (let i = lines.length - 1; i >= 0; i--) {
+              if (lines[i].trim() === '') trailingBlank++
+              else break
+            }
+            if (trailingBlank >= 2) {
+              items.push({
+                id: `emptyLine:${f.rel}`,
+                kind: 'emptyLine',
+                rel: f.rel,
+                detail: `末尾 ${trailingBlank} 行空行，可清理`,
+              })
+            }
+
+            // 注释行（# 开头且后面不是有效节/键）— 简化：纯注释且不在节声明上
+            // 节声明如 [section] 不算注释
+            // 普通 # xxx 注释行
+            const commentLines: number[] = []
+            for (let i = 0; i < lines.length; i++) {
+              const trimmed = lines[i].trim()
+              if (trimmed.startsWith('#') && !/^\[.+\]/.test(trimmed)) {
+                commentLines.push(i + 1) // 1-based 行号
+              }
+            }
+            if (commentLines.length > 0) {
+              items.push({
+                id: `comment:${f.rel}`,
+                kind: 'comment',
+                rel: f.rel,
+                detail: `${commentLines.length} 行注释（# 开头），如需精简可移除`,
+              })
+            }
+          } catch {
+            // 读取失败跳过
+          }
+        }
+
+        return items
       },
-      async optimizeApply() {
-        return { done: 0, failed: 0 }
+
+      async optimizeApply(rootPath, ids) {
+        let done = 0
+        let failed = 0
+
+        for (const id of ids) {
+          const colonIdx = id.indexOf(':')
+          if (colonIdx < 0) {
+            failed++
+            continue
+          }
+          const kind = id.slice(0, colonIdx) as 'emptyFile' | 'emptyFolder' | 'backupFile' | 'emptyLine' | 'comment'
+          const rel = id.slice(colonIdx + 1)
+          const abs = `${rootPath}/${rel}`
+
+          try {
+            if (kind === 'emptyFile' || kind === 'backupFile') {
+              assertInsideProject(rootPath, abs)
+              await remove(abs, { recursive: false })
+              done++
+            } else if (kind === 'emptyFolder') {
+              assertInsideProject(rootPath, abs)
+              await remove(abs, { recursive: true })
+              done++
+            } else if (kind === 'emptyLine') {
+              assertInsideProject(rootPath, abs)
+              const raw = await readTextFile(abs)
+              const trimmed = raw.replace(/\s+$/, '')
+              // 保留最多一个结尾换行，去掉多余
+              const cleaned = trimmed.replace(/(\r?\n)*$/, '\n')
+              if (cleaned !== raw) {
+                await fsWriteFile(abs, encodeUtf8(cleaned, false))
+                done++
+              } else {
+                // 已经无需清理
+                done++
+              }
+            } else if (kind === 'comment') {
+              assertInsideProject(rootPath, abs)
+              const raw = await readTextFile(abs)
+              const lines = raw.split(/\r?\n/)
+              // 过滤掉 # 开头的注释行（保留 [section] 节声明）
+              const filtered = lines.filter((l) => {
+                const trimmed = l.trim()
+                return !(trimmed.startsWith('#') && !/^\[.+\]/.test(trimmed))
+              })
+              // 移除可能产生的多余空行（最多连续 1 个空行）
+              let prevBlank = false
+              const deduped = filtered.filter((l) => {
+                const blank = l.trim() === ''
+                if (blank && prevBlank) return false
+                prevBlank = blank
+                return true
+              })
+              // 保持换行风格
+              const nl = raw.includes('\r\n') ? '\r\n' : '\n'
+              const joined = deduped.join(nl)
+              await fsWriteFile(abs, encodeUtf8(joined, false))
+              done++
+            }
+          } catch {
+            failed++
+          }
+        }
+        return { done, failed }
       },
-      async globalOp() {
-        return { files: 0, changed: 0, skipped: 0 }
+
+      /**
+       * 全局操作：对模组内全部 .ini / .template 源文件批量处理。
+       * kind = replace  → 把所有包含 find 的文本替换为 text（find 留空时等于删除匹配）
+       * kind = prepend  → 在每个文件开头插入 text
+       * kind = append   → 在每个文件末尾追加 text
+       */
+      async globalOp(rootPath, params) {
+        const kind = params.kind
+        const find = params.find ?? ''
+        const text = params.text ?? ''
+
+        if (kind === 'replace' && !find) {
+          throw new Error('替换文本不能为空')
+        }
+        if ((kind === 'prepend' || kind === 'append') && !text) {
+          throw new Error('附加文本不能为空')
+        }
+
+        // 收集所有 .ini / .template 文件
+        const iniFiles: string[] = []
+        const stack = ['']
+        while (stack.length > 0) {
+          const rel = stack.pop()!
+          const abs = rel ? `${rootPath}/${rel}` : rootPath
+          // plugin-fs readDir 只需 name/isDirectory（不要误注成本地富 DirEntry 类型）
+          let entries: Array<{ name: string; isDirectory: boolean }> = []
+          try {
+            entries = await fsReadDir(abs)
+          } catch {
+            continue
+          }
+          for (const e of entries) {
+            const childRel = rel ? `${rel}/${e.name}` : e.name
+            if (e.isDirectory) {
+              if (childRel.startsWith('rules') || childRel.startsWith('.')) continue
+              stack.push(childRel)
+            } else if (/\.(ini|template)$/i.test(e.name)) {
+              iniFiles.push(childRel)
+            }
+          }
+        }
+
+        let files = 0
+        let changed = 0
+        let skipped = 0
+
+        for (const rel of iniFiles) {
+          const abs = `${rootPath}/${rel}`
+          files++
+          try {
+            assertInsideProject(rootPath, abs)
+            const raw = await readTextFile(abs)
+            let next = raw
+            let modified = false
+
+            if (kind === 'replace') {
+              const count = raw.split(find).length - 1
+              if (count > 0) {
+                next = raw.split(find).join(text)
+                modified = true
+              }
+            } else if (kind === 'prepend') {
+              // 如果文件已有 BOM，保持它在最前面
+              const { content, hasBom } = decodeUtf8(await fsReadFile(abs))
+              let newContent = text
+              if (!content.startsWith('\n')) newContent += '\n'
+              newContent += content
+              next = hasBom ? '\uFEFF' + newContent.replace(/^\uFEFF/, '') : newContent
+              modified = true
+            } else if (kind === 'append') {
+              // 确保末尾有换行再追加
+              if (!raw.endsWith('\n')) next = raw + '\n'
+              next += (text.endsWith('\n') ? text : text + '\n')
+              modified = true
+            }
+
+            if (modified && next !== raw) {
+              await fsWriteFile(abs, encodeUtf8(next, false))
+              changed++
+            } else {
+              skipped++
+            }
+          } catch {
+            skipped++
+          }
+        }
+
+        return { files, changed, skipped }
       },
       async listTemplates() {
         return fetchBuiltinTemplates()

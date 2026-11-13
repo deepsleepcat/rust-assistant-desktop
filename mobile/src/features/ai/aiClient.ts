@@ -7,8 +7,10 @@
  */
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import type { AiChatMessage, AiSettings } from '../../types/ai'
-import { AI_TOOLS, runTool, toolResultToMessage, type AiToolContext } from './rustAgentTools'
+import type { AiChatMessage, AiSettings, AiLintItem } from '../../types/ai'
+import { AI_TOOLS, runTool, safeRelPath, toolResultToMessage, type AiToolContext } from './rustAgentTools'
+import { checkAiWrittenFile, getFreshUnitNames, lintItemsToFeedback } from './aiQualityCheck'
+import { recordAiUsage } from './usageStats'
 import { RUST_ASSISTANT_SYSTEM_PROMPT } from '../../ai/rustSystemPrompt'
 
 export const AI_EVENT_CHANNEL = 'ai://event'
@@ -102,12 +104,14 @@ export interface AgentChatOptions {
   projectRoot: string
   messages: AiChatMessage[]
   onDelta: (text: string) => void
-  /** 工具调用事件（UI 展示卡片用） */
-  onTool?: (ev: { name: string; args: Record<string, unknown>; ok: boolean; summary: string }) => void
+  /** 工具调用事件（UI 展示卡片用）；lint = 写文件后自动质检清单（异步检查完成后带上） */
+  onTool?: (ev: { name: string; args: Record<string, unknown>; ok: boolean; summary: string; lint?: AiLintItem[] }) => void
   /** 写文件审批（默认拒绝） */
   approveWrite: AiToolContext['approveWrite']
   /** 是否中止（UI 停止按钮） */
   isAborted?: () => boolean
+  /** AI 写后自动质检配置（缺省 = 不质检；semanticCheckers 为空 = 全部启用） */
+  quality?: { semanticCheckers?: Record<string, boolean>; targetVersionName?: string }
 }
 
 /** 完整对话循环：流式回复 + 工具调用闭环 */
@@ -115,32 +119,75 @@ export async function runAgentChat(opts: AgentChatOptions): Promise<string> {
   const messages = [...opts.messages]
   const ctx: AiToolContext = { rootPath: opts.projectRoot, approveWrite: opts.approveWrite }
   let finalText = ''
-
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-    if (opts.isAborted?.()) return finalText || '（已中止）'
-    const result = await chatOnce(opts.settings, messages, { onDelta: opts.onDelta })
-    finalText = result.fullText
-    if (!result.toolCalls || result.toolCalls.length === 0) {
-      // 模型结束（无工具调用）
-      messages.push({ role: 'assistant', content: finalText })
-      return finalText
+  // M23 本地用量统计：累计输出（多轮工具调用累加）；任一轮请求完成即记一笔
+  // （失败/中止的轮次 token 已消耗，按估算口径如实记录；统计本身失败静默，绝不影响对话）
+  const inputText = [...opts.messages].reverse().find((m) => m.role === 'user')?.content ?? ''
+  let totalOutput = ''
+  let anyRoundDone = false
+  try {
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      if (opts.isAborted?.()) return finalText || '（已中止）'
+      const result = await chatOnce(opts.settings, messages, { onDelta: opts.onDelta })
+      anyRoundDone = true
+      totalOutput += result.fullText
+      finalText = result.fullText
+      if (!result.toolCalls || result.toolCalls.length === 0) {
+        // 模型结束（无工具调用）
+        messages.push({ role: 'assistant', content: finalText })
+        return finalText
+      }
+      // 有工具调用：assistant 消息 + 逐个执行
+      messages.push({ role: 'assistant', content: finalText || '（调用工具中…）' })
+      let allOk = true
+      const writeFeedbacks: string[] = []
+      for (const tc of result.toolCalls) {
+        const toolResult = await runTool(tc.name, tc.arguments, ctx)
+        // 写文件成功后自动质检（与编辑器/检查页同一套规则）：清单挂到工具卡片，
+        // 问题回传模型自纠。质检异常绝不打断对话循环（降级为无清单）。
+        let lint: AiLintItem[] | undefined
+        if (opts.quality && toolResult.ok && (tc.name === 'writeFile' || tc.name === 'applyDiff')) {
+          const rel = safeRelPath(String(tc.arguments.path ?? ''))
+          if (rel) {
+            try {
+              // 质检用最新单位名（AI 刚写的单位在引用检查中立即可见；2s 窗口内共享扫描）
+              const unitNames = await getFreshUnitNames(opts.projectRoot)
+              lint = (await checkAiWrittenFile(opts.projectRoot, rel, {
+                semanticCheckers: opts.quality.semanticCheckers,
+                targetVersionName: opts.quality.targetVersionName,
+                unitNames,
+              })) ?? undefined
+            } catch {
+              lint = undefined
+            }
+            if (lint && lint.length > 0) writeFeedbacks.push(lintItemsToFeedback(lint))
+          }
+        }
+        opts.onTool?.({
+          name: tc.name,
+          args: tc.arguments,
+          ok: toolResult.ok,
+          summary: toolResult.ok ? toolResult.output.slice(0, 200) : toolResult.error,
+          lint,
+        })
+        messages.push(toolResultToMessage(tc.name, toolResult))
+        if (!toolResult.ok) allOk = false
+      }
+      // 自纠闭环：本轮有质检问题 → 合并为一条反馈，模型在下一轮自动修复
+      if (writeFeedbacks.length > 0 && !opts.isAborted?.()) {
+        messages.push({ role: 'user', content: writeFeedbacks.join('\n\n') })
+      }
+      // 写文件被拒/工具失败时再给模型一轮机会解释或调整
+      void allOk
     }
-    // 有工具调用：assistant 消息 + 逐个执行
-    messages.push({ role: 'assistant', content: finalText || '（调用工具中…）' })
-    let allOk = true
-    for (const tc of result.toolCalls) {
-      const toolResult = await runTool(tc.name, tc.arguments, ctx)
-      opts.onTool?.({
-        name: tc.name,
-        args: tc.arguments,
-        ok: toolResult.ok,
-        summary: toolResult.ok ? toolResult.output.slice(0, 200) : toolResult.error,
-      })
-      messages.push(toolResultToMessage(tc.name, toolResult))
-      if (!toolResult.ok) allOk = false
+    return finalText || '（工具调用轮数超限，请精简需求后重试）'
+  } finally {
+    if (anyRoundDone) {
+      void recordAiUsage(
+        inputText,
+        totalOutput,
+        opts.settings.provider,
+        opts.settings.provider === 'deepseek' ? opts.settings.deepseekModel : opts.settings.communityModel,
+      )
     }
-    // 写文件被拒/工具失败时再给模型一轮机会解释或调整
-    void allOk
   }
-  return finalText || '（工具调用轮数超限，请精简需求后重试）'
 }
