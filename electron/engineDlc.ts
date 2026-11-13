@@ -206,12 +206,13 @@ export async function readEngineDlcDir(root: string, dirName: string): Promise<{
   // 注意：本文件被其他分支合并覆盖过一次，这段不要退回裸 startsWith（见 engineDlc.test.ts
   // 的「readEngineDlcDir 的 root 归一化」用例）。
   const dir = path.resolve(root, dirName)
-  // 清单文件名是常量：先校验 dir 落在 root 内，再用 join 派生清单路径——
-  // 不用 resolve(root, dirName, …) 二次拼接变量，杜绝任何穿越组合的生存空间。
+  // 清单文件名是常量：先校验 dir 落在 root 内，再以「已验证目录 + 分隔符 + 常量名」
+  // 直接拼接清单路径——不用 path.join 二次拼接派生变量，杜绝任何穿越组合的生存空间。
+  // （resolve 结果不含尾分隔符，ENGINE_DLC_MANIFEST_NAME 无分隔符，与 join 结果逐字节一致）
   if (!isPathInside(root, dir)) {
     return { ok: false, problem: 'DLC 目录名不合法' }
   }
-  const manifestPath = path.join(dir, ENGINE_DLC_MANIFEST_NAME)
+  const manifestPath = dir + path.sep + ENGINE_DLC_MANIFEST_NAME
   if (!isPathInside(root, manifestPath)) {
     return { ok: false, problem: 'DLC 目录名不合法' }
   }

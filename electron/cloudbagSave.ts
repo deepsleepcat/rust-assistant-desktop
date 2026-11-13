@@ -24,14 +24,24 @@ function validatePackage(filename: unknown, bytes: unknown): Buffer {
   return buffer
 }
 
+/** 受信渲染页 URL（main 启动时以解析后的 URL 注入；不接受任意字符串）。
+ * 独立于 IpcContext：该值源自启动环境，只被本模块的比较逻辑消费，
+ * 经 ctx 传递会让「环境变量 → 全部 IPC 域」形成静态污点边（见 main.ts 注释）。 */
+let trustedRendererUrl: URL | null = null
+
+/** 注入受信渲染页 URL（仅 main.ts 启动时调用一次；null 恢复未受信状态） */
+export function setTrustedRendererUrl(url: URL | null): void {
+  trustedRendererUrl = url
+}
+
 function assertTrustedSender(ctx: IpcContext, event: unknown): void {
   const incoming = event as { sender?: unknown; senderFrame?: unknown } | null
   const trusted = ctx.windows.getAllWindows().find((win) => !win.isDestroyed()
     && win.webContents && !win.webContents.isDestroyed() && win.webContents === incoming?.sender)?.webContents
-  if (!trusted || incoming?.senderFrame !== trusted.mainFrame || !ctx.cloudbagRendererUrl) {
+  if (!trusted || incoming?.senderFrame !== trusted.mainFrame || !trustedRendererUrl) {
     throw new Error('云书包保存只允许受信应用窗口主页面调用')
   }
-  const expected = ctx.cloudbagRendererUrl
+  const expected = trustedRendererUrl
   const actual = new URL(trusted.getURL())
   const frameUrl = new URL(trusted.mainFrame.url)
   expected.hash = actual.hash = frameUrl.hash = ''
