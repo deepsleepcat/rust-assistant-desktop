@@ -93,6 +93,21 @@ describe('validateFormValue', () => {
     expect(validateFormValue(field, '')).toContain('必填')
   })
 
+  it('数字输入中间态放行（M32：负号/1./.5/1e 可敲入）', () => {
+    // shadowOffsetX 允许负数且无 min/max：输入过程中间态不得回退弹值
+    const field = findUnitField('shadowOffsetX')!
+    expect(validateFormValue(field, '-')).toBeNull()
+    expect(validateFormValue(field, '1.')).toBeNull()
+    expect(validateFormValue(field, '.5')).toBeNull()
+    expect(validateFormValue(field, '1e')).toBeNull()
+    expect(validateFormValue(field, '-0.5')).toBeNull()
+    expect(validateFormValue(field, 'abc')).toContain('数字')
+    // 完整数字仍受范围约束
+    const bounded = findUnitField('maxHp')!
+    expect(validateFormValue(bounded, '-')).toBeNull()
+    expect(validateFormValue(bounded, '-1')).toContain('不能小于')
+  })
+
   it('枚举校验（大小写不敏感）', () => {
     const field = findUnitField('movementType')!
     expect(validateFormValue(field, 'air')).toBeNull()
