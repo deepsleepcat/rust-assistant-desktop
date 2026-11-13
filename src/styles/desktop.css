@@ -537,6 +537,18 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .statusbar .sb-connection { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); }
 .statusbar .sb-dirty { color: var(--warning); }
 .statusbar .sb-version { color: var(--text-muted); }
+/* Git 芯片（feat/git-visual-center）：点击开合编辑器右侧 Git 面板 */
+.statusbar .sb-git {
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+}
+.statusbar .sb-git:hover { background: var(--surface-hover); color: var(--text-primary); }
+.statusbar .sb-git.active { color: var(--accent); }
 .sb-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--text-muted); }
 .sb-dot.online { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
 

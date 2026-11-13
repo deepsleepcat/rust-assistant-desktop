@@ -434,14 +434,40 @@ export interface BridgeApi {
     /** M22：读游戏资产图片为 data URL（单位预览的官方贴图；路径限制在游戏目录内） */
     readAssetImage(gamePath: string, relPath: string): Promise<string>
   }
-  /** M25 本地 git 辅助（历史/冲突/回滚；非 git 仓库或未装 git 时返回不可用） */
+  /** M25 本地 git 辅助 + feat/git-visual-center 写操作（非 git 仓库或未装 git 时返回不可用） */
   git: {
-    info(rootPath: string): Promise<{ available: boolean; isRepo: boolean; branch: string; ahead: number; behind: number; changedCount: number; branches: string[]; message?: string }>
+    info(rootPath: string): Promise<{ available: boolean; isRepo: boolean; branch: string; ahead: number; behind: number; changedCount: number; branches: string[]; hasIdentity: boolean; message?: string }>
     log(rootPath: string, limit?: number): Promise<Array<{ hash: string; short: string; author: string; at: number; subject: string }>>
     status(rootPath: string): Promise<Array<{ status: string; path: string }>>
+    /** 双列状态（X=暂存区 / Y=工作区 / ??=未跟踪），Git 面板改动列表用 */
+    statusDetailed(rootPath: string): Promise<Array<{ staged: string; unstaged: string; untracked: boolean; path: string }>>
+    /** 行数统计（工作区 vs 暂存区 / 暂存区 vs HEAD；二进制文件 add/del 为 null） */
+    numstat(rootPath: string): Promise<{ unstaged: Array<{ path: string; add: number | null; del: number | null }>; staged: Array<{ path: string; add: number | null; del: number | null }> }>
     conflicts(rootPath: string): Promise<string[]>
     diff(rootPath: string, a: string, b: string, file?: string): Promise<string>
     restore(rootPath: string, file: string, commit?: string): Promise<{ ok: boolean; message?: string }>
+    /** 暂存指定文件（未跟踪文件也会加入） */
+    stage(rootPath: string, paths: string[]): Promise<{ ok: boolean; message?: string }>
+    /** 暂存全部改动（含新增与删除） */
+    stageAll(rootPath: string): Promise<{ ok: boolean; message?: string }>
+    /** 取消暂存（改动保留在工作区） */
+    unstage(rootPath: string, paths: string[]): Promise<{ ok: boolean; message?: string }>
+    /** 丢弃单文件工作区改动（未跟踪文件直接删除） */
+    discard(rootPath: string, file: string): Promise<{ ok: boolean; message?: string }>
+    /** 提交暂存内容；缺提交者身份时 code='identity' */
+    commit(rootPath: string, message: string): Promise<{ ok: boolean; hash?: string; message?: string; code?: 'identity' }>
+    /** 切换分支（工作区冲突由 git 拒绝并透报原因） */
+    checkout(rootPath: string, branch: string): Promise<{ ok: boolean; message?: string }>
+    /** 新建分支（checkout=true 时立即切换） */
+    createBranch(rootPath: string, branch: string, checkout?: boolean): Promise<{ ok: boolean; message?: string }>
+    /** 删除分支（force=true 强删未合并分支） */
+    deleteBranch(rootPath: string, branch: string, force?: boolean): Promise<{ ok: boolean; message?: string }>
+    /** 一键初始化仓库（已存在时幂等成功） */
+    init(rootPath: string): Promise<{ ok: boolean; message?: string }>
+    /** 读仓库级配置（仅 user.name / user.email；未设置返回 null） */
+    configGet(rootPath: string, key: string): Promise<string | null>
+    /** 写仓库级配置（仅 user.name / user.email） */
+    configSet(rootPath: string, key: string, value: string): Promise<{ ok: boolean; message?: string }>
   }
   ai: {
     /** 健康检查：验证 Key/连接 */

@@ -123,7 +123,7 @@ describe('IPC 通道完整性', () => {
     expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
   })
 
-  it('十四个域注册函数覆盖全部 92 个通道，无遗漏无重复', () => {
+  it('十四个域注册函数覆盖全部通道（feat/git-visual-center 后 111 个），无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerCommunityIpc(ctx, ipc)
@@ -146,8 +146,10 @@ describe('IPC 通道完整性', () => {
       'auth:status', 'auth:startPairing', 'auth:pollPairing', 'auth:cancelPairing', 'auth:logout',
       // knowledge
       'knowledge:readDataFile', 'knowledge:info', 'knowledge:checkUpdate', 'knowledge:update', 'knowledge:rollback',
-      // git
+      // git（feat/git-visual-center：+写操作通道）
       'git:info', 'git:log', 'git:status', 'git:conflicts', 'git:diff', 'git:restore',
+      'git:statusDetailed', 'git:numstat', 'git:stage', 'git:stageAll', 'git:unstage', 'git:discard', 'git:commit',
+      'git:checkout', 'git:createBranch', 'git:deleteBranch', 'git:init', 'git:configGet', 'git:configSet',
       // dialog + project
       'dialog:openFolder', 'dialog:openImage', 'dialog:saveText', 'project:registerRoots', 'plugin:importLocal', 'plugin:forgetLocal', 'plugin:readResource',
       // fs + media
@@ -173,7 +175,7 @@ describe('IPC 通道完整性', () => {
       'dlc:sessionOpen', 'dlc:sessionUpdate', 'dlc:sessionClose',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(98)
+    expect(channels.size).toBe(111)
     const combined = createFakeIpc()
     registerIpc(ctx, combined.ipc)
     expect([...combined.channels.keys()].sort()).toEqual([...expected].sort())
@@ -1029,18 +1031,28 @@ describe('mod / game / app 通道', () => {
     expect(quitAndInstall).toHaveBeenCalled()
   })
 
-  it('git 通道参数校验与项目根登记校验（M3 加固）', async () => {
+  it('git 通道参数校验与项目根登记校验（M3 加固；feat/git-visual-center 扩展写通道）', async () => {
     const { channels, ipc } = createFakeIpc()
     registerGitIpc(ctx, ipc)
     await expect(invoke(channels, 'git:restore', 123, 'a.txt', 'HEAD')).rejects.toThrow('参数错误')
     await expect(invoke(channels, 'git:info', '')).rejects.toThrow('参数错误')
-    // 未登记项目根：一律拒绝（git:restore 是写操作，不得对任意目录执行）
+    // 未登记项目根：一律拒绝（restore/stage/commit/branch/init 是写操作，不得对任意目录执行）
     await expect(invoke(channels, 'git:info', tmp)).rejects.toThrow('未登记的项目目录')
     await expect(invoke(channels, 'git:restore', tmp, 'a.txt', 'HEAD')).rejects.toThrow('未登记的项目目录')
-    // 登记后可调用（非仓库目录返回可用性信息，不抛错）
+    await expect(invoke(channels, 'git:stage', tmp, ['a.txt'])).rejects.toThrow('未登记的项目目录')
+    await expect(invoke(channels, 'git:commit', tmp, 'msg')).rejects.toThrow('未登记的项目目录')
+    await expect(invoke(channels, 'git:checkout', tmp, 'main')).rejects.toThrow('未登记的项目目录')
+    await expect(invoke(channels, 'git:init', tmp)).rejects.toThrow('未登记的项目目录')
+    // 登记后可调用（非仓库目录返回可用性信息，不抛错）；参数校验在根校验之后
     ctx.roots.add(normalizePath(tmp))
     const info = await invoke<{ isRepo: boolean }>(channels, 'git:info', tmp)
     expect(info.isRepo).toBe(false)
+    // 参数错误：路径数组 / 描述 / 分支名 / 配置值类型
+    await expect(invoke(channels, 'git:stage', tmp, [])).rejects.toThrow('参数错误')
+    await expect(invoke(channels, 'git:stage', tmp, [123])).rejects.toThrow('参数错误')
+    await expect(invoke(channels, 'git:commit', tmp, 42)).rejects.toThrow('参数错误')
+    await expect(invoke(channels, 'git:checkout', tmp, 42)).rejects.toThrow('参数错误')
+    await expect(invoke(channels, 'git:configSet', tmp, 'user.name', 42)).rejects.toThrow('参数错误')
   })
 
   it('knowledge:readDataFile 参数校验', async () => {

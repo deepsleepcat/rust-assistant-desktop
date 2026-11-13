@@ -2,17 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useWorkspaceStore } from '../stores/workspace'
 import { SplitHandle } from './SplitHandle'
 import { AppIcon } from './AppIcon'
-import { WORKBENCH_CONSTRAINTS, WORKBENCH_DEFAULTS, fitWorkbench, layoutMode } from '../utils/layout'
+import { WORKBENCH_CONSTRAINTS, WORKBENCH_DEFAULTS, clampWidth, fitWorkbench, layoutMode } from '../utils/layout'
 import { useFocusTrap } from '../utils/focusTrap'
 import { useEscapeHandler } from '../utils/modalStack'
 
 interface WorkbenchLayoutProps {
   left: ReactNode
   editor: ReactNode
+  /** 编辑器右侧面板（feat/git-visual-center：Git 面板）；不传或紧凑模式时不占位 */
+  right?: ReactNode
 }
 
 /** Project/file rail and editor keep their DOM positions at every window size. */
-export function WorkbenchLayout({ left, editor }: WorkbenchLayoutProps) {
+export function WorkbenchLayout({ left, editor, right }: WorkbenchLayoutProps) {
   const settings = useWorkspaceStore((state) => state.settings)
   const drawerSide = useWorkspaceStore((state) => state.drawerSide)
   const setDrawerSide = useWorkspaceStore((state) => state.setDrawerSide)
@@ -21,6 +23,7 @@ export function WorkbenchLayout({ left, editor }: WorkbenchLayoutProps) {
   const projectRef = useRef<HTMLElement>(null)
   const [width, setWidth] = useState(0)
   const [liveLeft, setLiveLeft] = useState<number | null>(null)
+  const [liveRight, setLiveRight] = useState<number | null>(null)
 
   useEffect(() => {
     const element = wrapRef.current
@@ -37,9 +40,14 @@ export function WorkbenchLayout({ left, editor }: WorkbenchLayoutProps) {
   const compact = mode === 'compact'
   const leftCollapsed = settings.layout.leftCollapsed
   const drawerOpen = compact && drawerSide === 'left'
+  // feat/git-visual-center：右侧面板仅在有内容且非紧凑模式时占位（紧凑模式走抽屉语义，暂不支持右栏）
+  const rightVisible = Boolean(right) && !compact
   const fitted = useMemo(
-    () => fitWorkbench({ left: leftCollapsed ? 0 : settings.leftWidth, right: 0 }, width),
-    [leftCollapsed, settings.leftWidth, width],
+    () => fitWorkbench(
+      { left: leftCollapsed ? 0 : settings.leftWidth, right: rightVisible ? (settings.rightWidth || WORKBENCH_DEFAULTS.right) : 0 },
+      width,
+    ),
+    [leftCollapsed, settings.leftWidth, rightVisible, settings.rightWidth, width],
   )
   const constraints = WORKBENCH_CONSTRAINTS
   const leftMax = Math.max(constraints.minLeft, width - constraints.minEditor - 8)
@@ -50,6 +58,23 @@ export function WorkbenchLayout({ left, editor }: WorkbenchLayoutProps) {
     updateSettings({ leftWidth: value, layout: { ...state.settings.layout, leftCollapsed: false } })
   }, [updateSettings])
   const resetLeft = useCallback(() => commitLeft(WORKBENCH_DEFAULTS.left), [commitLeft])
+
+  // feat/git-visual-center：右栏分隔条以「编辑器宽度」为 SplitHandle 值（值语义=左侧区域宽度），
+  // 拖左 = 编辑器变窄 = 右栏变宽。提交时按容器总宽反推右栏宽并持久化到 settings.rightWidth。
+  const splitterCount = rightVisible ? (leftCollapsed ? 1 : 2) : (leftCollapsed ? 0 : 1)
+  const leftPx = liveLeft ?? fitted.left
+  const rightPx = liveRight ?? fitted.right
+  const editorWidthValue = Math.max(0, width - leftPx - 8 * splitterCount - rightPx)
+  const commitRight = useCallback((editorWidth: number) => {
+    setLiveRight(null)
+    const state = useWorkspaceStore.getState()
+    const total = wrapRef.current?.clientWidth ?? 0
+    if (total <= 0) return
+    const leftNow = state.settings.layout.leftCollapsed ? 0 : state.settings.leftWidth
+    const handles = 8 * (state.settings.layout.leftCollapsed ? 1 : 2)
+    const right = clampWidth(total - leftNow - handles - editorWidth, WORKBENCH_CONSTRAINTS.minRight, WORKBENCH_CONSTRAINTS.maxRight)
+    updateSettings({ rightWidth: right, layout: { ...state.settings.layout, rightCollapsed: false } })
+  }, [updateSettings])
 
   useEffect(() => {
     if (!compact && drawerSide || drawerSide === 'right') setDrawerSide(null)
@@ -66,11 +91,12 @@ export function WorkbenchLayout({ left, editor }: WorkbenchLayoutProps) {
   useEscapeHandler(() => setDrawerSide(null), drawerOpen)
   useFocusTrap(projectRef, drawerOpen)
   const projectHidden = compact ? !drawerOpen : leftCollapsed
-  const style = { '--wb-left': `${liveLeft ?? fitted.left}px` } as CSSProperties
+  const style = { '--wb-left': `${leftPx}px`, '--wb-right': `${rightPx}px` } as CSSProperties
 
   return (
     <div className="workbench desktop-workbench" ref={wrapRef} style={style}
-      data-mode={mode} data-left={leftCollapsed ? 'collapsed' : 'expanded'} data-drawer={drawerOpen ? 'open' : 'closed'}>
+      data-mode={mode} data-left={leftCollapsed ? 'collapsed' : 'expanded'} data-right={rightVisible ? 'expanded' : 'collapsed'}
+      data-drawer={drawerOpen ? 'open' : 'closed'}>
       {drawerOpen && <div className="wb-project-backdrop" onClick={() => setDrawerSide(null)} aria-hidden="true" />}
       <aside ref={projectRef} className="wb-left sidebar" aria-label="项目与文件"
         role={drawerOpen ? 'dialog' : undefined} aria-modal={drawerOpen || undefined}
@@ -86,6 +112,17 @@ export function WorkbenchLayout({ left, editor }: WorkbenchLayoutProps) {
       <section className="wb-editor" inert={drawerOpen}>
         {editor}
       </section>
+      {rightVisible && (
+        <SplitHandle orientation="vertical" value={editorWidthValue} min={constraints.minEditor}
+          max={Math.max(constraints.minEditor, width - leftPx - 8 * splitterCount - constraints.minRight)}
+          label="调整 Git 面板宽度 / Resize Git panel" onDrag={(v) => setLiveRight(clampWidth(width - leftPx - 8 * splitterCount - v, constraints.minRight, constraints.maxRight))}
+          onDragEnd={commitRight} />
+      )}
+      {rightVisible && (
+        <section className="wb-right">
+          {right}
+        </section>
+      )}
       {(compact && !drawerOpen || !compact && leftCollapsed) && (
         <button type="button" className="wb-project-toggle" title="打开项目与文件 / Open projects and files" aria-label="打开项目与文件"
           aria-expanded={drawerOpen} onClick={() => {

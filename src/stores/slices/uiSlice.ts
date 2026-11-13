@@ -72,6 +72,9 @@ export function createUiSlice() {
     setGitInfoOpen(open: boolean) {
       set({ gitInfoOpen: open })
     },
+    setGitPanelOpen(open: boolean) {
+      set({ gitPanelOpen: open })
+    },
     setUnitLibraryOpen(open: boolean) {
       set({ unitLibraryOpen: open })
     },

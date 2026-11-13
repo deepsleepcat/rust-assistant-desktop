@@ -235,5 +235,22 @@ function createProjectActions(ctx: {
       })
       deps.persist()
     },
+
+    /** feat/git-visual-center：刷新状态栏 Git 摘要（失败静默降级为不可用，
+     * 状态栏芯片据此隐藏；无活动项目时清空）。 */
+    async refreshGitSummary() {
+      const s = get()
+      const project = s.projects.find((item) => item.id === s.activeProjectId)
+      if (!project) {
+        set({ gitSummary: null })
+        return
+      }
+      try {
+        const info = await deps.bridge.git.info(project.rootPath)
+        set({ gitSummary: { available: info.available, isRepo: info.isRepo, branch: info.branch, changedCount: info.changedCount } })
+      } catch {
+        set({ gitSummary: null })
+      }
+    },
   }
 }
