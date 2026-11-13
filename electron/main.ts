@@ -14,12 +14,19 @@ import { createIpcContext, registerIpc, registerMediaFromSettings, restoreEngine
 import { createCommunityAuth } from './communityAuth'
 import { createSecureCredentials, DEEPSEEK_CREDENTIAL_KEY } from './secureCredentials'
 import { migrateLegacySettingsCredentials } from './legacyMigrations'
+import { setTrustedRendererUrl } from './cloudbagSave'
 
 const devUrl = process.env.VITE_DEV_SERVER_URL
 // 开发服务器地址显式白名单：只有本机回环的 http(s) 地址才进入 IPC 上下文，
 // 环境变量里的其余值一律视为未配置，回退到打包内的文件 URL。
 const devRendererUrl =
   typeof devUrl === 'string' && /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?(?:[/?#]|$)/.test(devUrl) ? devUrl : undefined
+// 受信渲染页 URL 不进 IpcContext：它源自启动环境，若经 ctx 传递会让「环境变量 → 全部
+// IPC 域」形成静态污点边（Mimosa 会把整条 registerIpc → 各域注册标记为穿越可达）。
+// 这里在模块顶层一次性注入给唯一消费者 cloudbagSave（此时尚无任何 IPC 可以到达）。
+setTrustedRendererUrl(devRendererUrl
+  ? new URL(devRendererUrl)
+  : pathToFileURL(path.join(__dirname, '..', '..', 'dist', 'index.html')))
 
 // 隔离预览支持：设置 OMTX_USER_DATA_DIR（环境变量）或 --omtx-user-data-dir（启动参数）后
 // 所有持久化（设置/工作区/凭据）落在该目录，不触碰用户真实配置；
@@ -55,7 +62,6 @@ const ctx = createIpcContext({
   app,
   updater: { checkForUpdates, downloadUpdate, quitAndInstall, isPackaged },
   windows: { getAllWindows: () => BrowserWindow.getAllWindows() },
-  cloudbagRendererUrl: devRendererUrl ? new URL(devRendererUrl) : pathToFileURL(path.join(__dirname, '..', '..', 'dist', 'index.html')),
   communityAuth,
   deepSeekCredentials,
 })

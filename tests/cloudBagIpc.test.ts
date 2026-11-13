@@ -39,6 +39,7 @@ import { initAiHistory, getHistory } from '../electron/aiHistory'
 import { normalizePath } from '../electron/paths'
 import { createIpcContext, registerCommunityIpc, registerCloudbagIpc, type IpcContext, type RegisterHandler } from '../electron/ipc'
 import { restoreRwmod } from '../electron/cloudbagRestore'
+import { setTrustedRendererUrl } from '../electron/cloudbagSave'
 
 function createFakeIpc(): { channels: Map<string, (...args: never[]) => unknown>; ipc: RegisterHandler } {
   const channels = new Map<string, (...args: never[]) => unknown>()
@@ -56,6 +57,8 @@ let tmp: string
 let ctx: IpcContext
 let cleanup: () => Promise<void>
 let saveEvent: { sender: unknown; senderFrame: unknown }
+/** 与 setTrustedRendererUrl 注入值保持一致，供「子 frame 伪造」用例断言引用 */
+let trustedRendererUrlValue: URL | null = null
 
 beforeEach(async () => {
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'ra-cloudbag-'))
@@ -82,7 +85,8 @@ beforeEach(async () => {
   const frame = { url: 'file:///trusted/dist/index.html' }
   const contents = { isDestroyed: () => false, mainFrame: frame, getURL: () => frame.url }
   saveEvent = { sender: contents, senderFrame: frame }
-  ctx.cloudbagRendererUrl = new URL(frame.url)
+  trustedRendererUrlValue = new URL(frame.url)
+  setTrustedRendererUrl(trustedRendererUrlValue)
   ctx.windows.getAllWindows = () => [{ isDestroyed: () => false, destroy: () => undefined,
     webContents: contents as NonNullable<ReturnType<IpcContext['windows']['getAllWindows']>[number]['webContents']> }]
   await store.ready()
@@ -234,14 +238,14 @@ describe('cloudbag:saveRwmod（原生对话框授权 + 真实文件 IO）', () =
     const bytes = await packageBytes()
     ctx.dialog.showSaveDialog = vi.fn(async () => ({ canceled: true, filePath: '' }))
     const handler = channels.get('cloudbag:saveRwmod')! as (...args: unknown[]) => Promise<unknown>
-    for (const event of [undefined, { sender: {}, senderFrame: saveEvent.senderFrame }, { sender: saveEvent.sender, senderFrame: { url: ctx.cloudbagRendererUrl } }]) {
+    for (const event of [undefined, { sender: {}, senderFrame: saveEvent.senderFrame }, { sender: saveEvent.sender, senderFrame: { url: trustedRendererUrlValue } }]) {
       await expect(handler(event, 'test.rwmod', bytes)).rejects.toThrow('受信应用窗口')
     }
     const frame = saveEvent.senderFrame as { url: string }
     frame.url = 'https://external.example/index.html'
     await expect(handler(saveEvent, 'test.rwmod', bytes)).rejects.toThrow('页面来源')
     frame.url = 'file:///trusted/dist/index.html'
-    ctx.cloudbagRendererUrl = null
+    setTrustedRendererUrl(null)
     await expect(handler(saveEvent, 'test.rwmod', bytes)).rejects.toThrow('受信应用窗口')
     expect(ctx.dialog.showSaveDialog).not.toHaveBeenCalled()
   })

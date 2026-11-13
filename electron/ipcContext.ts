@@ -75,8 +75,6 @@ export interface IpcContext {
    * 测试可注入真实 node 路径——Android/Termux 上 process.execPath 指向动态链接器而非 node。
    */
   nodeRuntime: string
-  /** 云书包保存仅接受此应用页面的受信窗口主 frame；由 main 以解析后的 URL 明确提供（不接受任意字符串）。 */
-  cloudbagRendererUrl: URL | null
   /** 云书包恢复按项目根互斥（正在执行 cloudbag:restore 三阶段的规范化根集合）：
    * 同根并发恢复会让「备份→写盘→移走→失败回滚」交错，产出两棵远端树的混合工作树；
    * 不同根可并行（packing 是全局单布尔，覆盖不了多项目并行场景）。 */
@@ -98,7 +96,6 @@ export function createIpcContext(deps: {
   windows: IpcContext['windows']
   /** M42：跑 .js 入口 DLC 的 JS 运行时；缺省用当前进程可执行文件（生产=Electron 二进制） */
   nodeRuntime?: string
-  cloudbagRendererUrl?: URL
   communityAuth?: CommunityAuthService | null
   deepSeekCredentials?: SecureCredentials | null
 }): IpcContext {
@@ -114,7 +111,6 @@ export function createIpcContext(deps: {
     importedDirs: new Set<string>(),
     lifecycle: { quitting: false, flushResolve: null, flushConfirmTimer: null, closeFlushTimer: null },
     ai: { pendingApproval: null, streamActive: false, cancel: null, feedbackReceiver: null },
-    cloudbagRendererUrl: deps.cloudbagRendererUrl ?? null,
     cloudbagRestores: new Set<string>(),
     communityAuth: deps.communityAuth ?? null,
     deepSeekCredentials: deps.deepSeekCredentials ?? null,

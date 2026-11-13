@@ -2,13 +2,13 @@
  * 对话框与项目根登记 IPC（M40 巨型文件拆分批次 B4）。
  * 信任写入面：openFolder/openImage 登记项目根与媒体信任；saveText 只写用户确认的文件。
  */
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
 import { normalizePath } from './paths'
 import { addAllowedMedia } from './mediaPolicy'
 import { PROJECT_ROOTS_KEY, registerRoot } from './projectTrust'
+import { writeUserConfirmedTextFile } from './userFileWrite'
 
 /** 对话框与项目根登记 */
 export function registerDialogIpc(ctx: IpcContext, ipc: RegisterHandler): void {
@@ -43,10 +43,12 @@ export function registerDialogIpc(ctx: IpcContext, ipc: RegisterHandler): void {
       defaultPath: name,
     })
     if (result.canceled || !result.filePath) return { ok: false, canceled: true }
-    // 目标用 dirname+basename 重建（basename 白名单消毒）：保存位置始终由系统对话框决定
-    const target = path.join(path.dirname(result.filePath), path.basename(result.filePath))
+    // 保存位置始终由系统对话框决定：showSaveDialog 返回的已是绝对路径，
+    // 无需 dirname+basename 重建（对绝对路径是恒等操作，basename 本就不含分隔符）；
+    // 实际落盘走 userFileWrite（对话框 IPC 与文件写入职责分离）
+    const target = result.filePath
     try {
-      await fs.writeFile(target, content, 'utf8')
+      await writeUserConfirmedTextFile(target, content)
       return { ok: true, path: target }
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }

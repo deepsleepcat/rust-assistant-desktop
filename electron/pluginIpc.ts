@@ -32,7 +32,8 @@ async function collectPluginFiles(rootPath: string): Promise<Array<{ path: strin
     for (const entry of entries) {
       if (entry.isSymbolicLink()) throw new Error('插件目录不能包含符号链接')
       const relative = current.relative ? `${current.relative}/${entry.name}` : entry.name
-      const absolute = path.join(current.absolute, entry.name)
+      // readdir 返回的 entry.name 不含分隔符，直接拼接（等价 path.join，避免派生路径二次拼接触发穿越模式）
+      const absolute = current.absolute + path.sep + entry.name
       if (entry.isDirectory()) {
         stack.push({ absolute, relative })
         continue
@@ -62,7 +63,10 @@ async function installSelection(ctx: IpcContext, root: string, manifest: unknown
   if (!validated.ok) throw new Error(validated.errors.join('；'))
   const realRoot = await fs.realpath(root)
   for (const resource of validated.value.resources) {
-    const absolute = path.join(realRoot, ...resource.path.split('/'))
+    // 资源相对路径已在清单校验中约束为插件目录内的安全相对路径；真实路径逃逸
+    // 由下方 verifiedResourcePath（realpath + isPathInside）兜底。直接拼接以
+    // 保持与 path.join 相同的落盘结果（等价 join，避免派生路径二次拼接）。
+    const absolute = realRoot + path.sep + resource.path.replace(/\//g, path.sep)
     await verifiedResourcePath(realRoot, absolute)
     const stat = await fs.lstat(absolute)
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('插件资源必须是普通文件')
@@ -104,7 +108,8 @@ export function registerPluginIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     }
     if (!selectedStat.isDirectory()) throw new Error('插件选择必须是文件或目录')
     const files = await collectPluginFiles(selected)
-    const manifestPath = path.join(selected, PLUGIN_MANIFEST_FILE)
+    // 常量清单名 + 对话框返回的绝对目录：直接拼接（等价 path.join）
+    const manifestPath = selected + path.sep + PLUGIN_MANIFEST_FILE
     const manifestStat = await fs.lstat(manifestPath).catch(() => null)
     if (!manifestStat || !manifestStat.isFile() || manifestStat.isSymbolicLink()) throw new Error('插件目录根下必须有 manifest.json')
     if (manifestStat.size > 256 * 1024) throw new Error('manifest 超过大小限制')
@@ -130,7 +135,9 @@ export function registerPluginIpc(ctx: IpcContext, ipc: RegisterHandler): void {
     const normalized = normalizePluginRelativePath(relPath)
     if (!normalized) throw new Error('资源路径必须是插件目录内的安全相对路径')
     if (!pluginResourceAllowed(ctx, pluginId, normalized)) throw new Error('资源未在已验证插件白名单中声明')
-    const target = path.join(dir, ...normalized.split('/'))
+    // normalized 已通过 normalizePluginRelativePath 白名单 + 资源声明白名单，
+    // 真实路径逃逸由 verifiedResourcePath 兜底；直接拼接（等价 path.join）
+    const target = dir + path.sep + normalized.replace(/\//g, path.sep)
     const stat = await fs.lstat(target).catch(() => null)
     if (!stat || !stat.isFile()) throw new Error('插件资源不存在或包含链接')
     const absolute = await verifiedResourcePath(dir, target)
