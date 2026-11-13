@@ -1087,3 +1087,41 @@
 
 ---
 
+## 2026-11-13（截止后收尾运行，第 23 次检查）
+
+### 基线与前置
+
+- `git fetch origin`；`remote.origin.fetch` 仍只映射 `main`（同类陷阱第 9 次），本地误从 `origin/main`（`f0c6450`）建分支；显式 `git fetch origin automation/bug-check` 后确认远端真实 tip 为 `ac3ca58`（长期 PR #9），已 `git checkout -B automation/bug-check FETCH_HEAD` 对齐。
+- `npm install` 改写的 `package-lock.json` 与 `vendor/pi/packages/ai/dist/cli.js` 已 `git stash` 隔离，不入提交。
+- 基线自上次检查（`2db9b02`）以来**源码零变化**：`4f99812` 新增一张截图、`ac3ca58` 又删除同一截图，净效果为空；差异仅状态文件。
+
+### 基础检查（真实基线 ac3ca58）
+
+| 阶段 | 结果 | 备注 |
+|------|------|------|
+| typecheck | ✅ | 无 TS 错误 |
+| lint | ✅ | 无 eslint 告警 |
+| vitest | ✅ EXIT 0 | 81 文件：80 通过 / 1 跳过；1329 用例：1324 通过 / 5 跳过 |
+
+- 说明：首轮误在 `origin/main` 上执行 check，出现 4 个平台相关失败（`engineDlc` 大小写/junction、`game.test` 盘符路径语义）。切到真实分支后，这些用例均由既有平台守卫/`it.skipIf` 覆盖并通过，**非新 bug**，也未修改测试。
+
+### 代码审查（近期改动 + 重点域）
+
+- 近期 diff：`2db9b02..HEAD` 仅状态文件与截图增删，无源码改动；上一周期已审的 5 个修复（手机端流式 UTF-8 分片、打包三引号、移除项目串数据、DLC stdin EPIPE、DLC detached 子进程清理）未回归。
+- 异步竞态：`sendAiMessage` 的 5 分钟看门狗已有用例（`tests/workspace-ai.test.ts:244`）覆盖「释放通道 + 通知主进程中止」；发现看门狗触发时只清状态、未 settle 该次 `sendAiMessage` 的 Promise（UI 以 `void` 调用且通道已释放，无用户可见阻塞），记为**低危观察项**，截止收尾阶段不改动。
+- 其余复核：持久化防抖/超限裁剪、文件树加载并发序号、云书包操作租约与锚点 CAS、fs IPC 路径与链接逃逸校验、Electron 主/渲染边界——未发现新缺陷。
+
+### 运行验证
+
+- `npm run dev:web -- --port 5199 --strictPort` 正常启动（238ms）；`curl /` 与 `/src/main.tsx` 均返回 200；日志无 error/failed。验证后已停止该进程。
+- 浏览器自动化子代理无法访问沙箱内 localhost（页面返回 Service Unavailable/502），属运行环境网络隔离，非应用报错；已改用 HTTP 探测完成同一验证。
+
+### 结论
+
+- 本轮未发现新 bug；**连续无 bug 计数：2**（上次为 1）。
+- 截止规则：运行日期 2026-11-13 晚于 2026-11-12，属收尾运行；完成记录与交付后立即暂停 `GUR2Y7BQYT3AKL`。
+- 暂停执行备注：本会话仍未提供 `Schedule` 工具（工具检索无结果），无法程序化暂停；请调度系统/用户手动暂停该定时任务。
+- 交付：仅追加本记录（无代码改动）；提交并推送至 `origin/automation/bug-check`；PR #9 追加中文摘要。
+
+---
+
