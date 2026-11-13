@@ -555,6 +555,11 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 /* The workbench keeps only the project/file rail and editor. */
 .workbench[data-mode="full"],
 .workbench[data-mode="medium"] { grid-template-columns: var(--wb-left, 280px) var(--splitter-hit, 8px) minmax(0, 1fr); }
+/* feat/git-visual-center：右栏（Git 面板）占位时恢复五列网格（选择器多一档属性，优先级更高） */
+.workbench[data-mode="full"][data-right="expanded"],
+.workbench[data-mode="medium"][data-right="expanded"] {
+  grid-template-columns: var(--wb-left, 280px) var(--splitter-hit, 8px) minmax(0, 1fr) var(--splitter-hit, 8px) var(--wb-right, 430px);
+}
 .workbench[data-left="collapsed"] { grid-template-columns: 0 var(--splitter-hit, 8px) minmax(0, 1fr); }
 .workbench[data-left="collapsed"] > .splitter { visibility: hidden; pointer-events: none; }
 
