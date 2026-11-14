@@ -8,6 +8,8 @@
   <a href="https://github.com/openai/codex"><img alt="built with Codex" src="https://img.shields.io/badge/built_with-Codex-412991?style=flat-square"></a>
   <a href="https://www.anthropic.com/claude-code"><img alt="built with Claude Code" src="https://img.shields.io/badge/built_with-Claude_Code-D97757?style=flat-square"></a>
   <img alt="built with ZCode" src="https://img.shields.io/badge/built_with-ZCode-111111?style=flat-square">
+  <a href="https://www.trae.com.cn/"><img alt="built with Trae" src="https://img.shields.io/badge/built_with-Trae-000000?style=flat-square&logo=trae&logoColor=white"></a>
+  <a href="https://qoder.com/"><img alt="built with Qoder" src="https://img.shields.io/badge/built_with-Qoder-237F95?style=flat-square"></a>
 </p>
 
 <p align="center">
