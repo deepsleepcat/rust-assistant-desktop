@@ -4,14 +4,14 @@
  * - 无标签时显示欢迎页（最近项目 + 快捷操作）
  * - 有标签时显示简易代码编辑区（行号 + 文本编辑 + 保存）
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { getEnToZhDict, getKeyZhToEnDict, getLogicIdentifierEnToZhDict, getLogicIdentifierZhToEnDict, getLogicValueKeys, getPreserveValueKeys, getSectionZhToEnDict, getZhToEnDict, isPreserveValueKey, normalizeValueForEngine } from '../../services/codeData'
 import { makeDict, zhToEn } from '../../services/translation'
 import { TurretEditorView } from '../modTools/TurretEditorView'
 import { formatRelativeTime } from '../../utils/conversation'
 import { truncateMiddle } from '../../utils/paths'
-import { FileTypeIcon, IconClose } from '../../components/icons'
+import { FileTypeIcon, IconChevronRight, IconClose } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { LogoR } from '../../components/LogoR'
 import { ConfirmBox, PromptModal } from '../../components/Modal'
@@ -57,27 +57,72 @@ export function EditorArea() {
   const activeId = activeTabId ?? tabs[0]?.id
   const activeSession = activeId ? mapSessions[activeId] : undefined
 
+  // 标签栏横向溢出：滚动条被刻意隐藏（见 .tabbar），溢出不可见，
+  // 前面的标签会被「卷」出屏幕外——两端显示翻页箭头提示还有隐藏标签
+  const tabbarRef = useRef<HTMLDivElement>(null)
+  const [tabOverflow, setTabOverflow] = useState({ left: false, right: false })
+
+  const updateTabOverflow = useCallback(() => {
+    const el = tabbarRef.current
+    if (!el) return
+    setTabOverflow({
+      left: el.scrollLeft > 1,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+    })
+  }, [])
+
+  useEffect(() => {
+    const el = tabbarRef.current
+    if (!el) return
+    updateTabOverflow()
+    // 容器尺寸变化（拖窗口/拖分栏）重新检测；标签增减本身不改变容器盒尺寸，靠 tabs.length 触发
+    const ro = new ResizeObserver(updateTabOverflow)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [updateTabOverflow, tabs.length])
+
+  const scrollTabbar = (dir: 1 | -1) => {
+    const el = tabbarRef.current
+    if (!el) return
+    el.scrollBy({ left: dir * Math.round(el.clientWidth * 0.6), behavior: 'smooth' })
+  }
+
   return (
     <section className="editor-panel panel" style={{ flex: 1, minWidth: 0 }}>
       {tabs.length > 0 && (
-        <div
-          className={`tabbar${tabs.length > 12 ? ' tabbar-many' : ''}`}
-          role="tablist"
-          aria-label="打开的文件"
-          onKeyDown={(e) => {
-            // 方向键在标签间移动（ARIA tabs 模式）：←/→ 切换相邻标签
-            const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
-            if (dir === 0) return
-            const idx = tabs.findIndex((t) => t.id === activeTabId)
-            if (idx < 0) return
-            e.preventDefault()
-            const next = tabs[Math.min(Math.max(idx + dir, 0), tabs.length - 1)]
-            if (next) setActiveTabId(next.id)
-          }}
-        >
-          {tabs.map((tab) => (
-            <EditorTabChip key={tab.id} tabId={tab.id} active={tab.id === activeTabId} onActivate={() => setActiveTabId(tab.id)} />
-          ))}
+        <div className="tabbar-row">
+          <div
+            ref={tabbarRef}
+            className={`tabbar${tabs.length > 12 ? ' tabbar-many' : ''}`}
+            role="tablist"
+            aria-label="打开的文件"
+            onScroll={updateTabOverflow}
+            onKeyDown={(e) => {
+              // 方向键在标签间移动（ARIA tabs 模式）：←/→ 切换相邻标签
+              const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+              if (dir === 0) return
+              const idx = tabs.findIndex((t) => t.id === activeTabId)
+              if (idx < 0) return
+              e.preventDefault()
+              const next = tabs[Math.min(Math.max(idx + dir, 0), tabs.length - 1)]
+              if (next) setActiveTabId(next.id)
+            }}
+          >
+            {tabs.map((tab) => (
+              <EditorTabChip key={tab.id} tabId={tab.id} active={tab.id === activeTabId} onActivate={() => setActiveTabId(tab.id)} />
+            ))}
+          </div>
+          {/* 箭头放在 tablist 外层（tablist 的子元素只应是 tab），绝对定位盖在两端 */}
+          {tabOverflow.left && (
+            <button className="tabbar-nav left" aria-label="向前翻动标签页" onClick={() => scrollTabbar(-1)}>
+              <IconChevronRight size={14} style={{ transform: 'scaleX(-1)' }} />
+            </button>
+          )}
+          {tabOverflow.right && (
+            <button className="tabbar-nav right" aria-label="向后翻动标签页" onClick={() => scrollTabbar(1)}>
+              <IconChevronRight size={14} />
+            </button>
+          )}
         </div>
       )}
       {tabs.length === 0 ? (
