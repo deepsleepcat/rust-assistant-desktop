@@ -17,7 +17,8 @@ export function TitleBar() {
     <header className="titlebar">
       <div className="titlebar-inner">
         <div className="titlebar-brand" aria-label="铁锈工坊">
-          <LogoR size="header" />
+          {/* 品牌标与 build/icon.ico 同款视觉：accent 圆角方块 + R 字形 */}
+          <span className="titlebar-brand-mark"><LogoR size="header" /></span>
           <span className="titlebar-name">铁锈工坊</span>
         </div>
         <span className="titlebar-sep" aria-hidden="true">/</span>

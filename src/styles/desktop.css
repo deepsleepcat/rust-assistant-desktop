@@ -162,10 +162,10 @@ html[data-theme="dark"] .app::before {
   display: grid;
   place-items: center;
   flex: none;
-  border: 1px solid var(--border-strong);
   border-radius: 12px;
-  background: var(--desktop-glass-strong);
-  color: var(--text-primary);
+  /* 与应用图标同款：accent 圆角方块 + R（深色主题自动反转为浅底黑字） */
+  background: var(--accent);
+  color: var(--on-accent);
   font: 700 17px/1 var(--font-display);
   letter-spacing: -.08em;
 }
@@ -455,6 +455,17 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .window-controls .window-close:hover { background: #c42b1c; color: #fff; }
 .titlebar-inner { gap: 9px; }
 .titlebar-brand { display: inline-flex; align-items: center; gap: 9px; min-width: max-content; }
+/* 品牌标（feat：与 build/icon.ico 同款）：accent 圆角方块 + R，替代无底色的长条 R 字形 */
+.titlebar-brand-mark {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
 .titlebar-name { font-size: 13.5px; letter-spacing: .01em; }
 .titlebar-sep { color: var(--text-muted); }
 .titlebar-surface { color: var(--text-secondary); font-size: 12px; }
