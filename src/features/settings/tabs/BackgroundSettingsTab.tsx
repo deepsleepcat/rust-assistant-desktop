@@ -58,7 +58,9 @@ export function BackgroundSettingsTab() {
   return (
     <div className="setting-section">
       <div className="setting-title">背景</div>
-      {/* 「无」背景时不渲染预览——透明块占位只会留一段无意义空白 */}
+      {/* 「无」背景时不渲染预览——透明块占位只会留一段无意义空白。
+          预览保持与窗口一致的完整宽高比（压扁高度会让 crop 定位裁掉画面），
+          高度上限通过收窄宽度实现：宽 ≤ 240×比例，居中放置。 */}
       {bg.kind !== 'none' && (
         <div
           className="bg-preview"
@@ -66,8 +68,8 @@ export function BackgroundSettingsTab() {
             ...previewStyle,
             position: 'relative',
             aspectRatio: ratio,
-            maxHeight: 240,
-            width: '100%',
+            width: `min(100%, ${Math.round(240 * ratio)}px)`,
+            margin: '0 auto',
             overflow: 'hidden',
             border: '1px solid var(--divider)',
             backgroundSize: 'cover',
