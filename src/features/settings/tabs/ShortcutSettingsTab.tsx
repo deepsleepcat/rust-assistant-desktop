@@ -68,7 +68,7 @@ export function ShortcutSettingsTab() {
           <div className="setting-row" style={{ flexWrap: 'wrap', gap: 8 }}>
             <label className="label" htmlFor={`${prefix}-${id}`}>
               {label}
-              <span className="desc" style={{ display: 'block' }}>{scope === 'editor' ? '编辑器' : '全局'} · 默认 {formatShortcut(defaultKey)}</span>
+              <span className="desc" style={{ display: 'block' }}>{scope === 'editor' ? '编辑器' : '全局'}，默认 {formatShortcut(defaultKey)}</span>
             </label>
             <input
               id={`${prefix}-${id}`}

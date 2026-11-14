@@ -39,7 +39,7 @@ function RepoCard({ repo, endpoint, onOpen }: { repo: CloudBagRepo; endpoint: st
           <span className="badge">{VISIBILITY_LABELS[repo.visibility] ?? repo.visibility}</span>
         </div>
         <div className="post-card-meta">
-          {repo.slug} · {repo.versionCount} 版本 · {repo.fileCount} 文件 · {formatBytes(repo.totalSize)}
+          {repo.slug}，{repo.versionCount} 版本，{repo.fileCount} 文件，{formatBytes(repo.totalSize)}
         </div>
         {repo.description && <p>{repo.description}</p>}
         <div className="mod-tags">{(repo.tags ?? []).map((tag) => <span className="badge" key={tag}>{tag}</span>)}</div>
@@ -276,7 +276,7 @@ export function ImportToCloudModal({ api, activeProjectName, activeProjectPath, 
   }
 
   const phaseLabel = progress?.phase === 'uploading' || progress?.phase === 'hashing' || progress?.phase === 'reading'
-    ? `上传进度：${progress.done}/${progress.total} ${progress.currentPath ? `· ${progress.currentPath}` : ''}`
+    ? `上传进度：${progress.done}/${progress.total} ${progress.currentPath ? `，${progress.currentPath}` : ''}`
     : progress?.phase === 'committing' ? '正在创建首个版本…' : progress?.phase === 'done' ? '导入完成' : ''
 
   return (
@@ -304,7 +304,7 @@ export function ImportToCloudModal({ api, activeProjectName, activeProjectPath, 
             ? `源目录：${activeProjectPath ?? '（未打开项目）'}`
             : `源目录：${pickedRoot ?? '尚未选择，请点击上方来源按钮'}`}
         </div>
-        <label>目标仓库<select value={target} disabled={busy} onChange={(event) => { setTarget(event.target.value); setMergePlan(null) }}><option value="new">新建仓库</option>{targets.map((repo) => <option key={repo.slug} value={repo.slug}>{repo.title} · {repo.slug}</option>)}</select></label>
+        <label>目标仓库<select value={target} disabled={busy} onChange={(event) => { setTarget(event.target.value); setMergePlan(null) }}><option value="new">新建仓库</option>{targets.map((repo) => <option key={repo.slug} value={repo.slug}>{repo.title}（{repo.slug}）</option>)}</select></label>
         {targetsError && <div className="community-warning">目标仓库列表加载失败：{targetsError}</div>}
         {target !== 'new' && <label>目标子目录（可留空）<input value={prefix} disabled={busy} onChange={(event) => { setPrefix(event.target.value); setMergePlan(null) }} placeholder="例如 mods/my-mod" /></label>}
         {mergePlan && mergePlan.overlaps.length > 0 && <div className="local-note"><strong>以下 {mergePlan.overlaps.length} 个同名文件将被替换，其余远端文件保留：</strong><div style={{ maxHeight: 180, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{mergePlan.overlaps.join('\n')}</div></div>}

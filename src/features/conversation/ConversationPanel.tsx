@@ -326,7 +326,7 @@ export function ConversationView({ id, title, onRename }: { id: string; title: s
                 ? 'AI 正在其他对话回复，请稍候'
                 : !providerReady
                   ? (communitySelected ? '社区后端即将上线，请在设置中切换回 DeepSeek' : '请先在设置中配置 AI')
-                  : 'Enter 发送 · Shift+Enter 换行'}
+                  : 'Enter 发送，Shift+Enter 换行'}
           </span>
           <button className="btn" disabled={!providerReady || aiStreaming || anyStreaming || !input.trim()} onClick={send}>
             <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
@@ -370,7 +370,7 @@ function ToolCard({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
             {tool.path && tool.snapshotId && (
               <button
                 className="btn"
-                style={{ padding: '1px 8px', fontSize: 11 }}
+                style={{ padding: '1px 8px', fontSize: 12 }}
                 title="撤销这次写入，把文件恢复到写盘前的版本"
                 onClick={() => void aiRestoreFileVersion(tool.path!, tool.snapshotId!)}
               >
@@ -385,7 +385,7 @@ function ToolCard({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
             {tool.path && (
               <button
                 className="btn"
-                style={{ padding: '1px 8px', fontSize: 11 }}
+                style={{ padding: '1px 8px', fontSize: 12 }}
                 title="查看该文件的历史版本，可恢复到任意版本"
                 onClick={() => setHistoryOpen(true)}
               >
@@ -503,14 +503,14 @@ function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: 
           <span className="tool-card-actions" onClick={(e) => e.stopPropagation()}>
             <button
               className="btn"
-              style={{ padding: '1px 8px', fontSize: 11 }}
+              style={{ padding: '1px 8px', fontSize: 12 }}
               disabled={runState === 'running' || !targetPath}
               title={targetPath ? '把用例跑在目标单位文件上查看命中' : 'AI 未指定目标文件，无法试运行'}
               onClick={() => void trialRun()}
             >
               <AppIcon name="search" size={11} /> {runState === 'running' ? '运行中…' : '试运行'}
             </button>
-            <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} onClick={() => void saveRules()}>
+            <button className="btn" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => void saveRules()}>
               <AppIcon name="check" size={11} /> 保存为项目规则
             </button>
           </span>
@@ -581,7 +581,7 @@ function LintBox({ tool, rootPath }: { tool: ToolEvent; rootPath: string }) {
               {tool.path && item.line > 0 && (
                 <button
                   className="btn"
-                  style={{ padding: '1px 8px', fontSize: 11, alignSelf: 'flex-start' }}
+                  style={{ padding: '1px 8px', fontSize: 12, alignSelf: 'flex-start' }}
                   title={`打开 ${tool.path} 并跳到第 ${item.line} 行`}
                   onClick={() => openAtLine(item)}
                 >
@@ -617,7 +617,7 @@ function HistoryModal({ rootPath, relPath, onClose }: { rootPath: string; relPat
     }
   }, [rootPath, relPath])
   return (
-    <Modal title={`修改历史 · ${relPath}`} onClose={onClose}>
+    <Modal title={`修改历史：${relPath}`} onClose={onClose}>
       {error ? (
         <p style={{ color: 'var(--danger)', fontSize: 13 }}>加载失败：{error}</p>
       ) : entries === null ? (

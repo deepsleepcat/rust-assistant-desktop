@@ -56,7 +56,7 @@ function colorCard(hex: string): string {
   const a = full.length === 8 ? (parseInt(full.slice(6, 8), 16) / 255).toFixed(2) : '1'
   return `<div style="display:flex;align-items:center;gap:8px;padding:2px 0">
     <span style="display:inline-block;width:26px;height:26px;border-radius:5px;border:1px solid rgba(127,127,127,.4);background:${hex};box-shadow:inset 0 0 0 999px rgba(255,255,255,.06)"></span>
-    <span style="font-family:var(--font-mono),monospace">${hex} · rgba(${r}, ${g}, ${b}, ${a})</span>
+    <span style="font-family:var(--font-mono),monospace">${hex}，rgba(${r}, ${g}, ${b}, ${a})</span>
   </div>`
 }
 
@@ -139,7 +139,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
             create: () => {
               const dom = document.createElement('div')
               dom.className = 'cm-hover-doc'
-              const parts = [`<b>${escapeHtml(fn)}</b>${fnEn !== fn ? ` · ${escapeHtml(fnEn)}` : ''}`]
+              const parts = [`<b>${escapeHtml(fn)}</b>${fnEn !== fn ? `，${escapeHtml(fnEn)}` : ''}`]
               if (lb.description && lb.description !== fnEn) parts.push(`<div style="margin-top:3px">${escapeHtml(lb.description)}</div>`)
               if (lb.example) parts.push(`<pre class="cm-hover-demo">${escapeHtml(lb.example)}</pre>`)
               dom.innerHTML = parts.join('')
@@ -161,7 +161,7 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       const typeHint = types
         .map((type) => [type.name, type.describe].filter(Boolean).join('：'))
         .filter(Boolean)
-        .join(' · ')
+        .join('，')
       const fullValue = valueText.trim()
       const valueZh = getValueZhDict()
       const enumTooltip = (raw: string, start: number, end: number) => {
@@ -174,8 +174,8 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
           create: () => {
             const dom = document.createElement('div')
             dom.className = 'cm-hover-doc'
-            const field = code?.translate ? `${code.code} · ${code.translate}` : code?.code
-            dom.innerHTML = `<b>${escapeHtml(raw)}</b> · ${escapeHtml(zh)}${field ? `<div class="cm-hover-muted">${escapeHtml(field)}</div>` : ''}${typeHint ? `<div class="cm-hover-muted">${escapeHtml(typeHint)}</div>` : ''}<div class="cm-hover-muted">枚举值（引擎保留原写法）</div>`
+            const field = code?.translate ? `${code.code}：${code.translate}` : code?.code
+            dom.innerHTML = `<b>${escapeHtml(raw)}</b>：${escapeHtml(zh)}${field ? `<div class="cm-hover-muted">${escapeHtml(field)}</div>` : ''}${typeHint ? `<div class="cm-hover-muted">${escapeHtml(typeHint)}</div>` : ''}<div class="cm-hover-muted">枚举值（引擎保留原写法）</div>`
             return { dom }
           },
         }
@@ -218,8 +218,8 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
           // en.code/translate 可能含 HTML 特殊字符：统一转义（key 是用户文件内容）
           parts.push(`${en.translate && en.translate !== en.code ? `<b>${escapeHtml(en.translate)}</b><br>` : ''}<small>${escapeHtml(en.code)}</small>`)
           if (en.description && en.description !== en.translate) parts.push(`<div style="margin-top:3px">${escapeHtml(en.description)}</div>`)
-          parts.push(`<div class="cm-hover-muted" style="margin-top:3px">类型：${escapeHtml(vt)}${en.section && en.section !== 'all' ? ` · 节：${escapeHtml(en.section)}` : ''}</div>`)
-          if (versionParts.length > 0) parts.push(`<div class="cm-hover-muted">${escapeHtml(versionParts.join(' · '))}</div>`)
+          parts.push(`<div class="cm-hover-muted" style="margin-top:3px">类型：${escapeHtml(vt)}${en.section && en.section !== 'all' ? `，节：${escapeHtml(en.section)}` : ''}</div>`)
+          if (versionParts.length > 0) parts.push(`<div class="cm-hover-muted">${escapeHtml(versionParts.join('，'))}</div>`)
           if (en.demo) parts.push(`<pre class="cm-hover-demo">${escapeHtml(en.demo)}</pre>`)
           dom.innerHTML = parts.join('')
           return { dom }

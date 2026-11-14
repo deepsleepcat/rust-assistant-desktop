@@ -4,9 +4,9 @@
 .cm-foldGutter { color: var(--text-muted); }
 .image-viewer { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--editor); }
 .image-viewer-toolbar { height: 36px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid var(--divider); background: var(--surface-1); }
-.image-viewer-path { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 11px; }
+.image-viewer-path { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12px; }
 .image-viewer-spacer { flex: 1; }
-.image-viewer-scale { min-width: 36px; color: var(--text-secondary); text-align: center; font-size: 11px; }
+.image-viewer-scale { min-width: 36px; color: var(--text-secondary); text-align: center; font-size: 12px; }
 .image-viewer-canvas { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 18px; background-color: #f5f5f5; background-image: linear-gradient(45deg, #e8e8e8 25%, transparent 25%), linear-gradient(-45deg, #e8e8e8 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e8e8e8 75%), linear-gradient(-45deg, transparent 75%, #e8e8e8 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0; }
 .image-viewer-canvas img { display: block; box-shadow: var(--shadow-md); }
 .image-viewer-loading, .image-viewer-error { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; text-align: center; }
@@ -18,8 +18,8 @@
 .cm-tooltip.cm-tooltip-hover { background: var(--bg-panel, #fff); border: 1px solid var(--border, #d8dee4); border-radius: 8px; box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,.12)); padding: 8px 10px; max-width: 420px; max-height: min(420px, 60vh); overflow-y: auto; z-index: 95; }
 .cm-hover-doc { font-size: 12.5px; line-height: 1.6; color: var(--text-1, #1f2328); }
 .cm-hover-doc b { font-size: 13px; }
-.cm-hover-muted { color: var(--text-muted, #8c959f); font-size: 11.5px; }
-.cm-hover-demo { margin: 6px 0 0; padding: 6px 8px; background: rgba(127,127,127,.08); border-radius: 5px; font-family: var(--font-mono, monospace); font-size: 11.5px; white-space: pre-wrap; word-break: break-all; max-height: 180px; overflow: auto; }
+.cm-hover-muted { color: var(--text-muted, #8c959f); font-size: 12px; }
+.cm-hover-demo { margin: 6px 0 0; padding: 6px 8px; background: rgba(127,127,127,.08); border-radius: 5px; font-family: var(--font-mono, monospace); font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 180px; overflow: auto; }
 
 /* M12 炮塔编辑器 */
 .turret-card { width: min(760px, 94vw); }
@@ -29,13 +29,13 @@
 .turret-table th { background: rgba(127,127,127,.06); font-weight: 600; color: var(--text-secondary, #57606a); }
 .turret-table input { width: 72px; border: 1px solid var(--border, #d8dee4); border-radius: 4px; padding: 3px 6px; font: 12.5px var(--font-ui); }
 .turret-preview { border: 1px solid var(--border, #d8dee4); border-radius: 6px; }
-.turret-dot { border-radius: 50%; border: 1.5px solid #fff; background: rgba(217, 76, 76, .85); color: #fff; font-size: 9px; font-weight: 700; display: grid; place-items: center; cursor: crosshair; box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 1; }
+.turret-dot { border-radius: 50%; border: 1.5px solid #fff; background: rgba(217, 76, 76, .85); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; cursor: crosshair; box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 1; }
 .turret-dot:hover { background: rgba(217, 76, 76, 1); transform: scale(1.15); }
 
 /* M12b 炮塔编辑器独立界面（非弹窗；底图与锚点全部来自引擎 DLC 常驻会话） */
 .turret-editor-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.turret-editor-badge { font-size: 11px; font-weight: 600; color: var(--text-secondary, #57606a); border: 1px solid var(--border, #d8dee4); border-radius: 4px; padding: 1px 6px; }
-.turret-rendering { color: var(--text-secondary, #57606a); font-size: 11.5px; }
+.turret-editor-badge { font-size: 12px; font-weight: 600; color: var(--text-secondary, #57606a); border: 1px solid var(--border, #d8dee4); border-radius: 4px; padding: 1px 6px; }
+.turret-rendering { color: var(--text-secondary, #57606a); font-size: 12px; }
 .turret-editor-body { display: flex; gap: 16px; flex: 1; min-height: 0; padding: 12px 16px; overflow: auto; }
 .turret-editor-body .turret-table { flex: 0 0 auto; max-width: 46%; }
 .turret-editor-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }

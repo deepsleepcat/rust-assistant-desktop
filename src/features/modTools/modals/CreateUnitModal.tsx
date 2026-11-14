@@ -42,7 +42,7 @@ export function CreateUnitModal({ onClose, onSubmit }: { onClose: () => void; on
     return (
       <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
         <div className="modal-card confirm-card" onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">新建单位 · 选择模板</div>
+          <div className="modal-header">新建单位：选择模板</div>
           <div className="modal-body mod-form">
             <p className="mod-tip">从基础模板包选择一个起点，选中后可修改各项属性。</p>
             <div className="template-grid">
@@ -66,7 +66,7 @@ export function CreateUnitModal({ onClose, onSubmit }: { onClose: () => void; on
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card confirm-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">新建单位 · {selected?.name}</div>
+        <div className="modal-header">新建单位：{selected?.name}</div>
         <div className="modal-body mod-form">
           <label className="mod-field">
             <span>单位英文名（文件名）<em>*</em></span>

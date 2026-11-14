@@ -251,7 +251,7 @@ export function App() {
             bottom: 34,
             right: 14,
             zIndex: 500,
-            fontSize: 11,
+            fontSize: 12,
             color: 'var(--text-3)',
             pointerEvents: 'none',
           }}

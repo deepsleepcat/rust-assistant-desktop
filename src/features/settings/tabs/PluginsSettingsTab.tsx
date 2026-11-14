@@ -131,8 +131,8 @@ export function PluginsSettingsTab() {
             <div className="setting-row" key={plugin.manifest.id}>
               <span className="label">
                 <strong>{plugin.manifest.name}</strong> <span className="badge">v{plugin.manifest.version}</span>
-                <div className="desc">{plugin.manifest.description || '无描述'} · 能力：{capabilityLabel(plugin.manifest)}</div>
-                <div className="desc">来源：本地导入 · 风险：受限声明式插件</div>
+                <div className="desc">{plugin.manifest.description || '无描述'}，能力：{capabilityLabel(plugin.manifest)}</div>
+                <div className="desc">来源：本地导入，风险：受限声明式插件</div>
               </span>
               <button className="btn-sm" disabled={busy} onClick={() => void updateEnabled(plugin.manifest.id, !plugin.enabled)}>
                 {plugin.enabled ? '禁用' : '启用'}

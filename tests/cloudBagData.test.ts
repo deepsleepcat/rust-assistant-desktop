@@ -91,7 +91,7 @@ describe('summarizeDiff（文件级三态摘要）', () => {
       { path: 'b', change: 'modified' },
       { path: 'c', change: 'modified' },
       { path: 'd', change: 'removed' },
-    ])).toBe('新增 1 · 修改 2 · 删除 1')
+    ])).toBe('新增 1，修改 2，删除 1')
     expect(summarizeDiff([])).toBe('无差异')
   })
 })

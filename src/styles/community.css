@@ -67,7 +67,7 @@
   border-radius: 2px;
   background: var(--accent);
 }
-.community-tab .count { color: var(--text-muted); font-size: 11px; }
+.community-tab .count { color: var(--text-muted); font-size: 12px; }
 .community-tab.active .count { color: var(--accent); }
 
 /* ── 内容区（唯一滚动容器，防撑破工作台） ───────────── */
@@ -137,22 +137,22 @@
 .mod-card { gap: 7px; }
 .mod-card-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .mod-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: 13px; font-weight: 600; }
-.mod-version { flex: none; color: var(--text-muted); font-size: 10.5px; font-family: var(--font-mono); }
+.mod-version { flex: none; color: var(--text-muted); font-size: 12px; font-family: var(--font-mono); }
 .mod-desc {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.6;
 }
 .mod-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.mod-tags .badge { font-size: 10.5px; }
-.mod-stats { display: flex; flex-wrap: wrap; gap: 10px; color: var(--text-muted); font-size: 11px; }
+.mod-tags .badge { font-size: 12px; }
+.mod-stats { display: flex; flex-wrap: wrap; gap: 10px; color: var(--text-muted); font-size: 12px; }
 .mod-stat { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .mod-card-foot { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-.mod-author { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 11px; }
+.mod-author { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 12px; }
 
 /* ── 网格（最新发布 / 收藏 / 创作者） ─────────────────
    min(240px, 100%)：窄容器（最小窗口宽度下编辑器列仅约 200px）时轨道收缩，
@@ -179,8 +179,8 @@
 .creator-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .creator-name { display: flex; align-items: center; gap: 5px; color: var(--text-primary); font-size: 12.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .creator-name .creator-star { flex: none; color: var(--accent); }
-.creator-tagline { color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.creator-meta { color: var(--text-muted); font-size: 10.5px; }
+.creator-tagline { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.creator-meta { color: var(--text-muted); font-size: 12px; }
 .follow-btn { flex: none; }
 .follow-btn.following { color: var(--text-muted); border-color: var(--border); }
 
@@ -199,7 +199,7 @@
 .activity-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
 .activity-creator { flex: none; color: var(--text-primary); font-weight: 600; font-size: 12.5px; }
 .activity-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: 12.5px; }
-.activity-meta { flex: none; color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.activity-meta { flex: none; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 
 /* ── 排行 ─────────────────────────────────────────── */
 .rank-filter { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -238,7 +238,7 @@
 .rank-no.top { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .rank-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .rank-name { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 12.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rank-meta { color: var(--text-muted); font-size: 11px; }
+.rank-meta { color: var(--text-muted); font-size: 12px; }
 
 /* ── 我的 ─────────────────────────────────────────── */
 .me-profile { flex-direction: row; align-items: center; gap: 12px; }
@@ -259,7 +259,7 @@
   background: var(--surface-0);
 }
 .me-stat-value { color: var(--text-primary); font: 650 15px var(--font-display); font-variant-numeric: tabular-nums; }
-.me-stat-label { color: var(--text-muted); font-size: 10.5px; }
+.me-stat-label { color: var(--text-muted); font-size: 12px; }
 
 /* ── 本地示例说明 / 禁用在线动作 ────────────────────── */
 .local-note {
@@ -268,7 +268,7 @@
   border-radius: var(--radius-sm);
   background: var(--surface-0);
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.7;
 }
 .local-note strong { color: var(--text-secondary); }
@@ -277,7 +277,7 @@
 /* ── 详情弹窗 ─────────────────────────────────────── */
 .community-detail-body { display: flex; flex-direction: column; gap: 12px; }
 .community-detail-desc { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.8; white-space: pre-wrap; }
-.detail-meta { color: var(--text-muted); font-size: 11.5px; }
+.detail-meta { color: var(--text-muted); font-size: 12px; }
 
 /* ── 背景图模式：面板/卡片使用统一 veil 语义 token（单层轻薄底色） ─────── */
 .has-backdrop .app-body .community-panel,
@@ -331,11 +331,11 @@ body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .post-card-main:hover .post-card-title { color: var(--accent); }
 .post-card-title { display: flex; align-items: center; gap: 8px; color: var(--text-primary); font-size: 14px; font-weight: 650; }
 .post-card-title > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.post-card-meta { color: var(--text-muted); font-size: 11px; }
+.post-card-meta { color: var(--text-muted); font-size: 12px; }
 .post-card-main p { margin: 7px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7; white-space: pre-wrap; }
-.post-card-foot { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; }
+.post-card-foot { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 12px; }
 .post-body { max-height: 48vh; overflow: auto; }
-.community-pagination { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 11px; padding-top: 4px; }
+.community-pagination { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 12px; padding-top: 4px; }
 .community-warning { border-color: var(--danger); color: var(--danger); }
 .community-toast { position: fixed; right: 20px; bottom: 20px; z-index: 20; max-width: min(420px, calc(100vw - 40px)); padding: 9px 13px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--text-primary); box-shadow: 0 4px 20px rgba(0,0,0,.16); font-size: 12px; cursor: pointer; }
 .resource-row, .comment-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: 12px; }
@@ -357,7 +357,7 @@ body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .community-nickname label { display: flex; flex: 1 1 240px; flex-direction: column; gap: 7px; }
 .community-nickname input { min-height: 38px; padding: 8px 11px; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; }
 .community-nickname > .btn { flex: none; min-height: 38px; }
-.community-nickname > p { flex-basis: 100%; margin: 0; color: var(--text-secondary); font-size: 11px; }
+.community-nickname > p { flex-basis: 100%; margin: 0; color: var(--text-secondary); font-size: 12px; }
 .community-form textarea { resize: vertical; min-height: 180px; line-height: 1.6; }
 .badge.success { color: var(--success, #2e7d32); border-color: currentColor; }
 /* 词表补齐：既有代码用 badge warning（components.css 只定义了 .badge.warn），
@@ -371,7 +371,7 @@ body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .cloudbag-tree-row { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 8px; border: 0; border-bottom: 1px solid var(--divider); background: transparent; color: var(--text-secondary); font: 12px var(--font-ui); text-align: left; cursor: pointer; }
 .cloudbag-tree-row:hover { background: var(--surface-hover); color: var(--text-primary); }
 .cloudbag-tree-row:last-child { border-bottom: 0; }
-.cloudbag-file-preview { max-height: 52vh; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--divider); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--text-primary); font: 11.5px/1.6 var(--font-mono, monospace); white-space: pre-wrap; word-break: break-all; }
+.cloudbag-file-preview { max-height: 52vh; overflow: auto; margin: 0; padding: 10px; border: 1px solid var(--divider); border-radius: var(--radius-sm); background: var(--surface-0); color: var(--text-primary); font: 12px/1.6 var(--font-mono, monospace); white-space: pre-wrap; word-break: break-all; }
 .cloudbag-section { display: flex; flex-direction: column; gap: 10px; }
 .cloudbag-actions, .cloudbag-issue-toolbar, .community-inline-form { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .cloudbag-issues { display: flex; flex-direction: column; gap: 18px; }
@@ -391,14 +391,14 @@ body.ra-compact .community-toolbar select { flex-basis: 104px; }
 .cloudbag-star span { border-left: 1px solid var(--divider); padding-left: 8px; }
 .cloudbag-version-list { display: flex; flex-direction: column; gap: 8px; }
 .cloudbag-diff-list { display: flex; flex-direction: column; border: 1px solid var(--divider); border-radius: var(--radius-sm); overflow: hidden; max-height: 40vh; overflow-y: auto; }
-.cloudbag-diff-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: 11.5px; }
+.cloudbag-diff-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--divider); color: var(--text-secondary); font-size: 12px; }
 .cloudbag-diff-row:last-child { border-bottom: 0; }
 .cloudbag-diff-row span:not(.badge) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cloudbag-unsupported-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* 冲突 A/B 双栏：窄窗口（社区面板 ≈360px）折为上下堆叠（桌面契约 §9.5） */
 .cloudbag-conflict { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); }
 .cloudbag-conflict-col { flex: 1 1 260px; min-width: 240px; display: flex; flex-direction: column; gap: 6px; }
-.cloudbag-sync-progress { padding: 6px 8px; border: 1px solid var(--divider); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 11.5px; }
+.cloudbag-sync-progress { padding: 6px 8px; border: 1px solid var(--divider); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 12px; }
 
 /* ── 搜索卡片网格（T8a 横向排列：每行约 3–4 个，窄窗自适应不溢出） ── */
 .post-card-grid {

@@ -308,8 +308,8 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
           <span style={{ color: 'var(--text-secondary)', display: 'grid' }}>
             <span className="turret-editor-badge">炮塔编辑</span>
           </span>
-          <span className="path" title={tab.path}>{tab.name} · 炮塔编辑模式</span>
-          {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 11.5 }}>● 未保存</span>}
+          <span className="path" title={tab.path}>{tab.name}：炮塔编辑模式</span>
+          {tab.dirty && <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>● 未保存</span>}
           {sessionReady && rendering && <span className="turret-rendering">渲染中…</span>}
           <span className="grow" />
           <button className="btn" onClick={onClose}>返回代码编辑</button>
@@ -417,8 +417,8 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
                     left: `${(t.imageX / displayFrame!.size.width) * 100}%`,
                     top: `${(t.imageY / displayFrame!.size.height) * 100}%`,
                     transform: 'translate(-50%, -50%)',
-                    width: 14,
-                    height: 14,
+                    width: 16,
+                    height: 16,
                     cursor: sessionReady ? 'grab' : 'default',
                   }}
                   onPointerDown={sessionReady ? onHandlePointerDown(t.index) : undefined}

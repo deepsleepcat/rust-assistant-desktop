@@ -349,11 +349,11 @@ export async function buildUpgradeReport(
 /** 升级报告 → 纯文本（导出/分享；全部相对路径，脱敏） */
 export function upgradeReportToText(r: UpgradeReport): string {
   const lines: string[] = []
-  lines.push(`铁锈工坊 · 版本升级改动清单`)
+  lines.push(`铁锈工坊版本升级改动清单`)
   lines.push(`项目：${r.meta.projectName}`)
   lines.push(`生成时间：${new Date(r.meta.generatedAt).toLocaleString()}`)
   lines.push(`升级方向：${r.meta.fromVersion} → ${r.meta.toVersion}`)
-  lines.push(`扫描 ${r.meta.fileCount} 个 ini/template 文件 · 必须处理 ${r.mustFixCount} 处弃用字段 · 新增字段引用 ${r.newFieldCount} 处`)
+  lines.push(`扫描 ${r.meta.fileCount} 个 ini/template 文件，必须处理 ${r.mustFixCount} 处弃用字段，新增字段引用 ${r.newFieldCount} 处`)
   lines.push('')
   if (r.items.length === 0) {
     lines.push('未发现需要处理的版本差异 ✓')

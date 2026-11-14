@@ -128,11 +128,11 @@ export function TemplateLibraryModal({ onClose }: Props) {
                     <span className={`vdiff-report-kind ${isUser ? '' : 'rep'}`}>{isUser ? '我的' : '内置'}</span>
                     <span style={{ fontWeight: 600, fontSize: 12.5 }}>{t.name}</span>
                     {t.nameEn && <span className="vdiff-desc">{t.nameEn}</span>}
-                    <code style={{ fontSize: 10.5 }}>{t.key}.json</code>
+                    <code style={{ fontSize: 12 }}>{t.key}.json</code>
                     <span className="vdiff-desc">{t.actions.length} 个输入项</span>
                     <span className="grow" />
                     {isUser && (
-                      <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} onClick={() => removeTemplate(t)}>
+                      <button className="btn" style={{ padding: '1px 8px', fontSize: 12 }} onClick={() => removeTemplate(t)}>
                         <AppIcon name="delete" size={11} /> 删除
                       </button>
                     )}

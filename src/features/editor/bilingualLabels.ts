@@ -28,7 +28,7 @@ function labels(view: EditorView): DecorationSet {
       const label = bilingualLabelForLine(line.text)
       if (label) ranges.push(Decoration.mark({
         class: 'cm-bilingual-key',
-        attributes: { 'data-label': label.label, title: `${label.label} · ${line.text.slice(label.from, label.to)}` },
+        attributes: { 'data-label': label.label, title: `${label.label}：${line.text.slice(label.from, label.to)}` },
       }).range(line.from + label.from, line.from + label.to))
       pos = line.to + 1
     }

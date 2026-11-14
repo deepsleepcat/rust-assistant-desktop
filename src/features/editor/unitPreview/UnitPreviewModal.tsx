@@ -537,7 +537,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card vdiff-card unitprev-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          单位预览 · {file.split(/[\\/]/).pop()}
+          单位预览：{file.split(/[\\/]/).pop()}
           {recipe.image && <code className="tool-path" style={{ marginLeft: 8 }}>{recipe.image}</code>}
         </div>
         <div className="modal-body vdiff-body">
@@ -551,7 +551,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
             {engineDlcName && (
               <button
                 className={`btn${engineMode ? ' primary' : ''}`}
-                style={{ padding: '2px 10px', fontSize: 11.5 }}
+                style={{ padding: '2px 10px', fontSize: 12 }}
                 title={`当前使用「${engineDlcName}」渲染，失败时停止显示预览`}
                 aria-label="切换引擎渲染"
                 disabled
@@ -562,7 +562,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
             )}
             <button
               className={`btn${showSight ? ' primary' : ''}`}
-              style={{ padding: '2px 10px', fontSize: 11.5 }}
+              style={{ padding: '2px 10px', fontSize: 12 }}
               title="显示/隐藏战争迷雾视野（地块数；不代表攻击范围）"
               aria-label="显示或隐藏战争迷雾视野"
               onClick={() => setShowSight((v) => !v)}
@@ -578,7 +578,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
                   <button
                     key={s}
                     className={`btn${animState === s ? ' primary' : ''}`}
-                    style={{ padding: '1px 8px', fontSize: 11 }}
+                    style={{ padding: '1px 8px', fontSize: 12 }}
                     title={`播放 ${s === 'idle' ? '待机' : s === 'moving' ? '移动' : '攻击'}动画帧区间`}
                     onClick={() => switchAnimState(s)}
                   >
@@ -615,7 +615,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
                 />
               </label>
             )}
-            <button className={`btn${showWreck ? ' primary' : ''}`} style={{ padding: '2px 10px', fontSize: 11.5 }} onClick={() => setShowWreck((v) => !v)}>
+            <button className={`btn${showWreck ? ' primary' : ''}`} style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setShowWreck((v) => !v)}>
               <AppIcon name="image" size={12} /> 残骸
             </button>
             <button className="icon-btn" title="缩小" onClick={() => setZoom((z) => Math.max(0.25, z - 0.25))}>−</button>
@@ -656,7 +656,7 @@ export function UnitPreviewModal({ file, content, rootPath, gamePath, zhToEn, on
               以下图像未找到：{localMissing.map((f) => f.image).join('、')}（图片应放在单位文件同目录或项目根下）
             </div>
           )}
-          {failed.length === 0 && <div className="lint-suggestion">预览正常：{recipe.image ? `${recipe.image}（${totalFrames} 帧）` : '未配置主体图像'}{turrets.length > 0 ? ` · ${turrets.length} 个炮塔` : ''}{recipe.teamColoringMode !== 'disabled' ? ` · 队伍着色：${recipe.teamColoringMode === 'pureGreen' ? '纯绿' : recipe.teamColoringMode === 'hueAdd' ? '色相叠加' : '色相偏移'}（Canvas 近似，游戏内为 GPU 着色）` : ''}</div>}
+          {failed.length === 0 && <div className="lint-suggestion">预览正常：{recipe.image ? `${recipe.image}（${totalFrames} 帧）` : '未配置主体图像'}{turrets.length > 0 ? `，${turrets.length} 个炮塔` : ''}{recipe.teamColoringMode !== 'disabled' ? `，队伍着色：${recipe.teamColoringMode === 'pureGreen' ? '纯绿' : recipe.teamColoringMode === 'hueAdd' ? '色相叠加' : '色相偏移'}（Canvas 近似，游戏内为 GPU 着色）` : ''}</div>}
         </div>
         <div className="modal-footer">
           <span className="vdiff-hint">单位中心为原点；视野 = 战争迷雾地块数 × 20 像素；不模拟建造视野/攻击范围</span>

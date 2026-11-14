@@ -183,9 +183,9 @@ export function AiSettingsTab() {
         调用次数与 token 为估算值（字符数/4），仅保存在本机，供未来服务器阶段对接成本核算。
       </div>
       <div className="data-version-list">
-        <div className="data-version-row"><span>今日</span><code>{usage ? `${usage.todayCalls} 次 · ${usage.todayTokens} token` : '…'}</code></div>
-        <div className="data-version-row"><span>近 7 天</span><code>{usage ? `${usage.weekCalls} 次 · ${usage.weekTokens} token` : '…'}</code></div>
-        <div className="data-version-row"><span>累计</span><code>{usage ? `${usage.totalCalls} 次 · ${usage.totalTokens} token` : '…'}</code></div>
+        <div className="data-version-row"><span>今日</span><code>{usage ? `${usage.todayCalls} 次，${usage.todayTokens} token` : '…'}</code></div>
+        <div className="data-version-row"><span>近 7 天</span><code>{usage ? `${usage.weekCalls} 次，${usage.weekTokens} token` : '…'}</code></div>
+        <div className="data-version-row"><span>累计</span><code>{usage ? `${usage.totalCalls} 次，${usage.totalTokens} token` : '…'}</code></div>
       </div>
       <div className="setting-row">
         <span className="label">

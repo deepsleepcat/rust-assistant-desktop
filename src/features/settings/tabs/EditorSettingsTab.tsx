@@ -204,10 +204,10 @@ export function EditorSettingsTab() {
                       <span className="checker-name">{r.title}</span>
                       <span className="checker-desc">
                         {r.description ?? r.check.type}
-                        {r.section ? ` · 节 [${r.section}]` : ''}
-                        {r.key ? ` · ${r.key}` : ''}
-                        {' · '}
-                        <code style={{ fontSize: 10.5 }}>{s.file}</code>
+                        {r.section ? `，节 [${r.section}]` : ''}
+                        {r.key ? `，${r.key}` : ''}
+                        {'，'}
+                        <code style={{ fontSize: 12 }}>{s.file}</code>
                       </span>
                     </label>
                   )

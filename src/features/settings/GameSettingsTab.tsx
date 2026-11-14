@@ -214,7 +214,7 @@ export function GameSettingsTab() {
                 <>
                   已找到：{detect.gamePath}
                   <br />
-                  官方单位 {detect.units.length} 个 · 游戏内模组 {detect.mods.length} 个
+                  官方单位 {detect.units.length} 个，游戏内模组 {detect.mods.length} 个
                 </>
               ) : (
                 '未找到游戏目录（可手动选择包含 assets/units 的安装文件夹）'
@@ -297,7 +297,7 @@ export function GameSettingsTab() {
           <span className="label">
             上次检查
             <div className="desc">
-              {new Date(settings.gameLastCheck.at).toLocaleString()} · {settings.gameLastCheck.ok ? '通过' : '未通过'}
+              {new Date(settings.gameLastCheck.at).toLocaleString()}，{settings.gameLastCheck.ok ? '通过' : '未通过'}
             </div>
           </span>
           <span style={{ fontSize: 12, color: settings.gameLastCheck.ok ? 'var(--success, #188038)' : 'var(--danger)' }}>

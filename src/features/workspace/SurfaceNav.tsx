@@ -66,7 +66,7 @@ export function SurfaceNav() {
           const active = activeSurface === item.id
           return (
             <button key={item.id} type="button" className={`desktop-rail-button${active ? ' active' : ''}`}
-              aria-current={active ? 'page' : undefined} aria-label={`${item.label} ${item.en}`} title={`${item.label} · ${item.en}`}
+              aria-current={active ? 'page' : undefined} aria-label={`${item.label} ${item.en}`} title={`${item.label} ${item.en}`}
               onClick={() => {
                 setAccountOpen(false)
                 if (item.id === 'launchGame') void runGameAction()
@@ -102,7 +102,7 @@ export function SurfaceNav() {
         )}
         <button ref={accountTrigger} type="button" className={`desktop-rail-account${accountOpen ? ' open' : ''}`}
           aria-label={`${accountLabel}，打开账号菜单`} aria-haspopup="menu" aria-expanded={accountOpen} aria-controls="desktop-account-menu"
-          title="账号：登录、邮箱认证与设备配对 · Account menu" onClick={() => setAccountOpen((open) => !open)}>
+          title="账号：登录、邮箱认证与设备配对 Account menu" onClick={() => setAccountOpen((open) => !open)}>
           <CommunityAvatar api={avatarApi} avatarPath={auth.user?.avatar_url} className="desktop-account-avatar" iconSize={18} />
           <span className="desktop-rail-tooltip" aria-hidden="true">
             <span>账号</span>
