@@ -4,6 +4,7 @@
   <a href="https://github.com/deepsleepcat/rust-assistant-desktop/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/deepsleepcat/rust-assistant-desktop?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=c0392b"></a>
   <img alt="运行平台" src="https://img.shields.io/badge/%E8%BF%90%E8%A1%8C%E5%B9%B3%E5%8F%B0-Windows%2010%2F11-0078d4">
   <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/github/license/deepsleepcat/rust-assistant-desktop?label=%E8%AE%B8%E5%8F%AF%E8%AF%81&color=2f855a"></a>
+  <a href="https://github.com/deepseek-ai/deepseek-harness"><img alt="powered by dsh" src="https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white"></a>
 </p>
 
 <p align="center">
@@ -169,7 +170,3 @@ QQ 群：**1104148783** —— 使用问题、模组开发交流与版本更新�
   - `regex-match`：值必须完整匹配 `pattern`
 
 格式错误（非法 id / 重复 / 越界区间 / 非法正则可编译等）会在设置页给出中文错误提示，坏文件只影响自身、不影响其它规则文件。
-
----
-
-[![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
