@@ -58,19 +58,23 @@ export function BackgroundSettingsTab() {
   return (
     <div className="setting-section">
       <div className="setting-title">背景</div>
-      <div
-        className="bg-preview"
-        style={{
-          ...previewStyle,
-          position: 'relative',
-          aspectRatio: ratio,
-          width: '100%',
-          overflow: 'hidden',
-          border: '1px solid var(--divider)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >{bg.kind === 'image' && imageUrl && <BackgroundImage src={imageUrl} crop={bg.imageCrop} />}</div>
+      {/* 「无」背景时不渲染预览——透明块占位只会留一段无意义空白 */}
+      {bg.kind !== 'none' && (
+        <div
+          className="bg-preview"
+          style={{
+            ...previewStyle,
+            position: 'relative',
+            aspectRatio: ratio,
+            maxHeight: 240,
+            width: '100%',
+            overflow: 'hidden',
+            border: '1px solid var(--divider)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        >{bg.kind === 'image' && imageUrl && <BackgroundImage src={imageUrl} crop={bg.imageCrop} />}</div>
+      )}
       {imageError && <p className="community-warning" role="alert">{imageError}</p>}
       {cropDraft && <Modal wide title="调整背景图片取景" onClose={() => setCropDraft(null)} footer={<><button className="btn" onClick={() => setCropDraft(null)}>取消</button><button className="btn primary" onClick={() => { updateSettings({ background: { ...bg, kind: 'image', imagePath: cropDraft.path, imageCrop: cropDraft.crop } }); setCropDraft(null) }}>使用此取景</button></>}>
         <p className="local-note">拖动图片调整位置，缩放改变取景范围。原图片保持不变。</p>
