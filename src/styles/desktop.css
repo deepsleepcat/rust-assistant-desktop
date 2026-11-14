@@ -450,17 +450,6 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .window-controls button:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: -3px; }
 .window-controls .window-close:hover { background: #c42b1c; color: #fff; }
 .titlebar-inner { gap: 9px; }
-.titlebar-brand { display: inline-flex; align-items: center; gap: 9px; min-width: max-content; }
-/* 品牌标：透明底 + 正方形黑 R（与 build/icon.ico 同款构图；LogoR header 变体紧裁居中） */
-.titlebar-brand-mark {
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  flex: none;
-  color: var(--text-primary);
-}
-.titlebar-name { font-size: 13.5px; letter-spacing: .01em; }
 .titlebar-search {
   width: min(430px, 40vw);
   height: 32px;
@@ -800,7 +789,6 @@ body.ra-reduced-motion *::after {
   .desktop-shell { grid-template-columns: 48px minmax(0, 1fr); }
   .desktop-rail-tooltip { display: none; }
   .titlebar { padding-left: 10px; padding-right: 104px; }
-  .titlebar-name { display: none; }
   .titlebar-search { flex: 1; width: auto; margin-left: 0; }
   .titlebar-settings { width: 32px; padding: 0; justify-content: center; }
   .statusbar { gap: 8px; padding-inline: 8px; font-size: 10px; }

@@ -1,6 +1,5 @@
 import { useWorkspaceStore } from '../stores/workspace'
 import { AppIcon } from './AppIcon'
-import { LogoR } from './LogoR'
 import { formatShortcut, resolveShortcuts } from '../utils/shortcuts'
 
 export function TitleBar() {
@@ -12,11 +11,6 @@ export function TitleBar() {
   return (
     <header className="titlebar">
       <div className="titlebar-inner">
-        <div className="titlebar-brand" aria-label="铁锈工坊">
-          {/* 品牌标与 build/icon.ico 同款：透明底紧裁正方形黑 R */}
-          <span className="titlebar-brand-mark"><LogoR size="header" /></span>
-          <span className="titlebar-name">铁锈工坊</span>
-        </div>
         <button
           className="titlebar-search"
           type="button"
