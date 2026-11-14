@@ -518,6 +518,16 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
   pointer-events: auto;
   transform: translateY(0);
   transition-delay: 0s;
+  z-index: 2;
+}
+/* feat/git-visual-center 交叉淡化：旧层垫底保持可见（新层在其之上淡入），不可交互 */
+.surface-layer.is-exiting {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: none;
+  transform: translateY(0);
+  transition: none;
+  z-index: 1;
 }
 .surface-layer-editor { display: block; }
 .surface-layer[data-workspace-surface="editor"] { display: block; }
