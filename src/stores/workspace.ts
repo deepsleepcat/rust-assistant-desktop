@@ -182,6 +182,8 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       relationGraphOpen: false,
       templateLibraryOpen: false,
       gitInfoOpen: false,
+      gitPanelOpen: false,
+      gitSummary: null,
       unitLibraryOpen: false,
       valueTypeOpen: false,
       turretEditorOpen: false,

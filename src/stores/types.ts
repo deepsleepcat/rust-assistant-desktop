@@ -83,6 +83,10 @@ export interface WorkspaceStoreState {
   templateLibraryOpen: boolean
   /** M25：本地 git 历史/回滚弹窗（P3 任务 4） */
   gitInfoOpen: boolean
+  /** feat/git-visual-center：编辑器右侧 Git 面板开合（状态栏芯片切换） */
+  gitPanelOpen: boolean
+  /** feat/git-visual-center：状态栏 Git 芯片摘要（null = 未加载或无项目；由 refreshGitSummary 维护） */
+  gitSummary: { available: boolean; isRepo: boolean; branch: string; changedCount: number } | null
   /** M7：单位库弹窗 */
   unitLibraryOpen: boolean
   /** M8：值类型管理弹窗 */
@@ -224,6 +228,10 @@ export interface WorkspaceStoreActions {
   setRelationGraphOpen(open: boolean): void
   setTemplateLibraryOpen(open: boolean): void
   setGitInfoOpen(open: boolean): void
+  /** feat/git-visual-center：开合右侧 Git 面板 */
+  setGitPanelOpen(open: boolean): void
+  /** feat/git-visual-center：刷新状态栏 Git 摘要（无项目/非编辑面时置 null） */
+  refreshGitSummary(): Promise<void>
   setUnitLibraryOpen(open: boolean): void
   /** M8：值类型管理弹窗 */
   setValueTypeOpen(open: boolean): void

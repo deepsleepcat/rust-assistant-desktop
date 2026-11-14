@@ -12,6 +12,7 @@ import { ApprovalDialog, ConfirmDialog } from './components/Modal'
 import { installEscapeDispatcher } from './utils/modalStack'
 import { useAppShortcuts } from './utils/useAppShortcuts'
 import { WorkbenchLayout } from './components/WorkbenchLayout'
+import { GitPanel } from './features/git/GitPanel'
 import { DesktopShell } from './components/desktop/DesktopShell'
 import { SurfaceAuthGate } from './components/desktop/SurfaceAuthGate'
 import { DashboardSurface, CloudBagSurface } from './components/desktop/surfaceModules'
@@ -71,6 +72,8 @@ export function App() {
   const templateLibraryOpen = useWorkspaceStore((s) => s.templateLibraryOpen)
   const gitInfoOpen = useWorkspaceStore((s) => s.gitInfoOpen)
   const activeProjectId = useWorkspaceStore((s) => s.activeProjectId)
+  // feat/git-visual-center：Git 面板仅在「面板开 + 编辑面 + 有项目」时占位（面板自身读取项目详情）
+  const gitPanelProject = useWorkspaceStore((s) => (s.gitPanelOpen && s.activeSurface === 'editor' ? s.projects.find((p) => p.id === s.activeProjectId) ?? null : null))
   const unitLibraryOpen = useWorkspaceStore((s) => s.unitLibraryOpen)
   const valueTypeOpen = useWorkspaceStore((s) => s.valueTypeOpen)
   const toast = useWorkspaceStore((s) => s.toast)
@@ -186,7 +189,14 @@ export function App() {
         <TitleBar />
         <main className="app-body" id="main-content">
           <SurfaceDeck pages={{
-            editor: <WorkbenchLayout left={<LeftColumn />} editor={<EditorArea />} />,
+            editor: (
+              <WorkbenchLayout
+                left={<LeftColumn />}
+                editor={<EditorArea />}
+                // feat/git-visual-center：右侧 Git 面板（key 跟随项目重挂载，避免旧项目状态残留）
+                right={gitPanelProject ? <GitPanel key={gitPanelProject.id} /> : null}
+              />
+            ),
             dashboard: signedIn
               ? <DashboardSurface key={`${settings.ai.communityEndpoint}:${communityAuth.user?.id ?? ''}`} />
               : <SurfaceAuthGate surfaceLabel="仪表盘" description="登录后才能读取真实余额、准确 Token 用量和调用日志。" />,

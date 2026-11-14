@@ -34,6 +34,8 @@ export interface GitRepoInfo {
   /** 未提交改动文件数（工作区 + 暂存区） */
   changedCount: number
   branches: string[]
+  /** 提交者身份（user.name + user.email）是否已配置（isRepo 时才检查） */
+  hasIdentity: boolean
   message?: string
 }
 
@@ -86,9 +88,9 @@ export function isValidRelPath(rel: string): boolean {
   return true
 }
 
-/** 仓库信息（可用性/分支/领先落后/改动数/分支列表） */
+/** 仓库信息（可用性/分支/领先落后/改动数/分支列表/提交者身份） */
 export async function repoInfo(root: string): Promise<GitRepoInfo> {
-  const info: GitRepoInfo = { available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [] }
+  const info: GitRepoInfo = { available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [], hasIdentity: false }
   if (!(await gitAvailable())) {
     info.message = '未检测到 git（需安装 Git for Windows）'
     return info
@@ -97,7 +99,7 @@ export async function repoInfo(root: string): Promise<GitRepoInfo> {
   try {
     await runGit(root, ['rev-parse', '--is-inside-work-tree'])
   } catch {
-    info.message = '项目不是 git 仓库（可安装 git 后在项目目录执行 git init）'
+    info.message = '项目还不是 git 仓库——可在 Git 面板一键初始化'
     return info
   }
   info.isRepo = true
@@ -118,6 +120,11 @@ export async function repoInfo(root: string): Promise<GitRepoInfo> {
   }
   info.changedCount = lines.filter((l) => !l.startsWith('## ')).length
   info.branches = (await runGit(root, ['branch', '--format=%(refname:short)']).catch(() => '')).split('\n').filter(Boolean)
+  // 提交者身份检查（空仓首次提交前必须配置；读取失败视为未配置）
+  info.hasIdentity = Boolean(
+    (await runGit(root, ['config', 'user.name']).catch(() => '')).trim()
+    && (await runGit(root, ['config', 'user.email']).catch(() => '')).trim(),
+  )
   return info
 }
 
@@ -157,12 +164,15 @@ export async function statusFiles(root: string): Promise<GitStatusEntry[]> {
   return entries
 }
 
-/** 两个提交间的文件差异文本（b 为 'working' 时对比工作区） */
+/** 两个提交间的文件差异文本（b 为 'working' 时对比工作区；'staged' 时对比暂存区） */
 export async function diffBetween(root: string, a: string, b: string, file?: string): Promise<string> {
   if (!isValidCommit(a)) throw new Error('无效的提交哈希')
   const args = ['diff', '--no-color']
   if (b === 'working') {
     args.push(a, '--')
+  } else if (b === 'staged') {
+    // 暂存区 vs 提交：git diff --cached <commit> -- <file>
+    args.push('--cached', a, '--')
   } else {
     if (!isValidCommit(b)) throw new Error('无效的提交哈希')
     args.push(a, b, '--')
@@ -208,5 +218,250 @@ export async function restoreFile(root: string, file: string, commit = 'HEAD'): 
     return { ok: true }
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message.split('\n')[0] : String(err) }
+  }
+}
+
+// ── Git 可视化中心（feat/git-visual-center）：写操作全部沿用上述安全模式 ─────────
+// 设计约束：execFile 参数数组不经 shell；路径过 isValidRelPath；分支名过白名单正则；
+// 写操作返回 {ok, message?}（不抛错），读操作失败降级为空结果。
+
+/** 双列状态条目（porcelain v1：X=暂存区状态，Y=工作区状态，??=未跟踪） */
+export interface GitStatusDetail {
+  /** 暂存区状态（M/A/D/R/C；空格 = 暂存区无变化） */
+  staged: string
+  /** 工作区状态（M/D；空格 = 工作区无进一步改动） */
+  unstaged: string
+  /** 未跟踪文件（?? 状态） */
+  untracked: boolean
+  path: string
+}
+
+/** 行数统计条目（numstat；二进制文件 add/del 为 null） */
+export interface GitNumstatEntry {
+  path: string
+  /** 新增行数（二进制文件为 null） */
+  add: number | null
+  /** 删除行数（二进制文件为 null） */
+  del: number | null
+}
+
+/** 分支名白名单（git check-ref-format 规则的安全子集）：
+ * 拒绝空名/过长、`-` 开头（防选项注入）、`..`、`~^:?*[\` 控制字符、
+ * 空格、`//`、`@{`、首尾 `/` 与 `.`、`.lock` 结尾段。 */
+export function isValidBranchName(name: string): boolean {
+  if (!name || name.length > 200) return false
+  if (name.startsWith('-') || name.endsWith('/') || name.endsWith('.')) return false
+  if (name.includes('..') || name.includes(' ') || name.includes('//') || name.includes('@{')) return false
+  // eslint-disable-next-line no-control-regex -- 分支名中的控制字符必须拒绝（防终端/参数注入）
+  if (/[\x00-\x1f\x7f]/.test(name)) return false
+  if (/[~^:?*[\\\]]/.test(name)) return false
+  if (/(^|\/)\.lock$/.test(name)) return false
+  return true
+}
+
+/** 清理提交描述：去除控制字符（保留空格）、折叠空白为单行、截断 2000 字符 */
+export function sanitizeCommitMessage(message: string): string {
+  // eslint-disable-next-line no-control-regex -- 提交信息只需要可读单行文本
+  return message.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 2000)
+}
+
+/** 统一结果包装（写操作不抛错，错误取首行给 UI 直显） */
+function toResult(err: unknown): { ok: false; message: string } {
+  return { ok: false, message: err instanceof Error ? err.message.split('\n')[0] : String(err) }
+}
+
+/** 暂存指定文件（未跟踪文件也会加入；路径过白名单校验） */
+export async function stageFiles(root: string, paths: string[]): Promise<{ ok: boolean; message?: string }> {
+  const valid = paths.filter(isValidRelPath)
+  if (valid.length === 0) return { ok: false, message: '没有有效的文件路径' }
+  try {
+    await runGit(root, ['add', '--', ...valid])
+    return { ok: true }
+  } catch (err) {
+    return toResult(err)
+  }
+}
+
+/** 暂存全部改动（含新增与删除；项目根即仓库根，等价 git add -A） */
+export async function stageAllFiles(root: string): Promise<{ ok: boolean; message?: string }> {
+  try {
+    await runGit(root, ['add', '-A'])
+    return { ok: true }
+  } catch (err) {
+    return toResult(err)
+  }
+}
+
+/** 取消暂存（改动保留在工作区）。空仓库（无 HEAD）时退回 git rm --cached。 */
+export async function unstageFiles(root: string, paths: string[]): Promise<{ ok: boolean; message?: string }> {
+  const valid = paths.filter(isValidRelPath)
+  if (valid.length === 0) return { ok: false, message: '没有有效的文件路径' }
+  try {
+    await runGit(root, ['reset', '-q', 'HEAD', '--', ...valid])
+    return { ok: true }
+  } catch {
+    // 空仓库没有 HEAD：reset 失败——改用 rm --cached 把文件移出暂存区
+    try {
+      await runGit(root, ['rm', '--cached', '-q', '--', ...valid])
+      return { ok: true }
+    } catch (err) {
+      return toResult(err)
+    }
+  }
+}
+
+/** 提交暂存内容。缺少提交者身份时 code='identity'，UI 引导配置后重试。 */
+export async function commitFiles(root: string, message: string): Promise<{ ok: boolean; hash?: string; message?: string; code?: 'identity' }> {
+  const clean = sanitizeCommitMessage(message)
+  if (!clean) return { ok: false, message: '提交描述不能为空' }
+  try {
+    await runGit(root, ['commit', '-m', clean])
+    const hash = (await runGit(root, ['rev-parse', 'HEAD'])).trim()
+    return { ok: true, hash }
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err)
+    // 典型报错：「Please tell me who you are」/「unable to auto-detect email address」
+    if (/who you are|ident|user\.name|user\.email/i.test(raw)) {
+      return { ok: false, code: 'identity', message: '需要先设置提交者身份（用户名与邮箱）' }
+    }
+    return { ok: false, message: raw.split('\n')[0] }
+  }
+}
+
+/** 新建分支（checkout=true 时立即切换；切换携带未提交改动由 git 自行拒绝并透报） */
+export async function createBranch(root: string, name: string, checkout = true): Promise<{ ok: boolean; message?: string }> {
+  if (!isValidBranchName(name)) return { ok: false, message: '分支名不合法（不能含空格 ~ ^ : ? * [ ] 与 ..，不能以 - / . 结尾）' }
+  try {
+    await runGit(root, checkout ? ['checkout', '-b', name] : ['branch', name])
+    return { ok: true }
+  } catch (err) {
+    return toResult(err)
+  }
+}
+
+/** 切换分支（工作区有冲突改动时 git 拒绝并透报原因） */
+export async function checkoutBranch(root: string, name: string): Promise<{ ok: boolean; message?: string }> {
+  if (!isValidBranchName(name)) return { ok: false, message: '分支名不合法' }
+  try {
+    await runGit(root, ['checkout', name])
+    return { ok: true }
+  } catch (err) {
+    return toResult(err)
+  }
+}
+
+/** 删除分支（默认安全删除 -d；当前分支拒绝；未合并改动需 force=true 强删） */
+export async function deleteBranch(root: string, name: string, force = false): Promise<{ ok: boolean; message?: string }> {
+  if (!isValidBranchName(name)) return { ok: false, message: '分支名不合法' }
+  try {
+    const current = (await runGit(root, ['symbolic-ref', '--short', 'HEAD']).catch(() => '')).trim()
+    if (current === name) return { ok: false, message: '不能删除当前所在的分支' }
+    await runGit(root, force ? ['branch', '-D', name] : ['branch', '-d', name])
+    return { ok: true }
+  } catch (err) {
+    return toResult(err)
+  }
+}
+
+/** 一键初始化仓库（已存在时幂等返回成功） */
+export async function initRepo(root: string): Promise<{ ok: boolean; message?: string }> {
+  try {
+    await runGit(root, ['rev-parse', '--is-inside-work-tree'])
+    return { ok: true }
+  } catch {
+    try {
+      await runGit(root, ['init'])
+      return { ok: true }
+    } catch (err) {
+      return toResult(err)
+    }
+  }
+}
+
+/** 丢弃单文件工作区改动（从暂存区恢复；未跟踪文件直接删除）。
+ * 与 restoreFile 的区别：只动工作区，不覆盖暂存区内容。 */
+export async function discardFileWorktree(root: string, file: string): Promise<{ ok: boolean; message?: string }> {
+  if (!isValidRelPath(file)) return { ok: false, message: '无效的文件路径' }
+  try {
+    await runGit(root, ['checkout', '--', file])
+    return { ok: true }
+  } catch {
+    // checkout -- 失败的多半是未跟踪文件：确认在根内后直接删除
+    const abs = path.resolve(root, file)
+    const base = path.resolve(root)
+    if (abs !== base && !abs.startsWith(base + path.sep)) return { ok: false, message: '无效的文件路径' }
+    try {
+      await fs.rm(abs, { force: true })
+      return { ok: true }
+    } catch (err) {
+      return toResult(err)
+    }
+  }
+}
+
+/** 双列状态清单（porcelain v1 -z：NUL 分隔；重命名续段为裸旧路径，跳过） */
+export async function statusDetailed(root: string): Promise<GitStatusDetail[]> {
+  const out = await runGit(root, ['status', '--porcelain=v1', '-z']).catch(() => '')
+  const parts = out.split('\u0000').filter((p) => p.length > 0)
+  const entries: GitStatusDetail[] = []
+  for (const raw of parts) {
+    const x = raw[0]
+    const y = raw[1]
+    if (raw[2] !== ' ' || !STATUS_CHARS.has(x) || !STATUS_CHARS.has(y)) continue
+    if (x === '?' && y === '?') {
+      entries.push({ staged: '', unstaged: '', untracked: true, path: raw.slice(3) })
+    } else {
+      entries.push({ staged: x === ' ' ? '' : x, unstaged: y === ' ' ? '' : y, untracked: false, path: raw.slice(3) })
+    }
+  }
+  return entries
+}
+
+/** 解析 numstat -z 单段：`add\tdel\tpath`；二进制为 `-\t-\t`；续段（裸旧路径）无 tab */
+function parseNumstatSegment(segment: string): GitNumstatEntry | null {
+  const parts = segment.split('\t')
+  if (parts.length < 3) return null
+  const [addRaw, delRaw, ...pathParts] = parts
+  const file = pathParts.join('\t')
+  if (!file) return null
+  if (addRaw === '-' || delRaw === '-') return { path: file, add: null, del: null }
+  const add = Number(addRaw)
+  const del = Number(delRaw)
+  if (!Number.isFinite(add) || !Number.isFinite(del)) return null
+  return { path: file, add, del }
+}
+
+/** 行数统计：工作区（vs 暂存区）与暂存区（vs HEAD）两组；空仓库暂存组为空 */
+export async function diffNumstat(root: string): Promise<{ unstaged: GitNumstatEntry[]; staged: GitNumstatEntry[] }> {
+  const parse = (out: string): GitNumstatEntry[] =>
+    out.split('\u0000')
+      .map(parseNumstatSegment)
+      .filter((e): e is GitNumstatEntry => e !== null)
+  const unstaged = parse(await runGit(root, ['diff', '--numstat', '-z']).catch(() => ''))
+  const staged = parse(await runGit(root, ['diff', '--cached', '--numstat', '-z']).catch(() => ''))
+  return { unstaged, staged }
+}
+
+/** 配置键白名单（仓库级 user.name / user.email，供首次提交身份引导） */
+const CONFIG_KEYS = new Set(['user.name', 'user.email'])
+
+/** 读仓库级配置（未设置返回 null；键必须白名单内） */
+export async function getRepoConfig(root: string, key: string): Promise<string | null> {
+  if (!CONFIG_KEYS.has(key)) throw new Error('不支持的配置键')
+  const out = (await runGit(root, ['config', '--local', key]).catch(() => '')).trim()
+  return out || null
+}
+
+/** 写仓库级配置（值去控制字符、单行、≤200 字符；键必须白名单内） */
+export async function setRepoConfig(root: string, key: string, value: string): Promise<{ ok: boolean; message?: string }> {
+  if (!CONFIG_KEYS.has(key)) return { ok: false, message: '不支持的配置键' }
+  // eslint-disable-next-line no-control-regex -- 配置值不允许控制字符（换行/终端注入面）
+  const clean = value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 200)
+  if (!clean) return { ok: false, message: '配置值不能为空' }
+  try {
+    await runGit(root, ['config', '--local', key, clean])
+    return { ok: true }
+  } catch (err) {
+    return toResult(err)
   }
 }

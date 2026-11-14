@@ -162,12 +162,8 @@ html[data-theme="dark"] .app::before {
   display: grid;
   place-items: center;
   flex: none;
-  border: 1px solid var(--border-strong);
-  border-radius: 12px;
-  background: var(--desktop-glass-strong);
+  /* 透明底 + 正方形黑 R（与应用图标同款构图） */
   color: var(--text-primary);
-  font: 700 17px/1 var(--font-display);
-  letter-spacing: -.08em;
 }
 
 .desktop-rail-brand-mark { transform: translateX(-1px); }
@@ -454,15 +450,13 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .window-controls button:focus-visible { outline: 2px solid var(--text-secondary); outline-offset: -3px; }
 .window-controls .window-close:hover { background: #c42b1c; color: #fff; }
 .titlebar-inner { gap: 9px; }
-.titlebar-brand { display: inline-flex; align-items: center; gap: 9px; min-width: max-content; }
-.titlebar-name { font-size: 13.5px; letter-spacing: .01em; }
-.titlebar-sep { color: var(--text-muted); }
-.titlebar-surface { color: var(--text-secondary); font-size: 12px; }
-.titlebar-project { max-width: 260px; color: var(--text-muted); font: 12px var(--font-mono); }
 .titlebar-search {
+  /* 相对整个标题栏绝对居中：右侧有 112px 窗口按钮保护区，grid 内容区中心≠窗口中心 */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   width: min(430px, 40vw);
   height: 32px;
-  margin-left: 18px;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -473,21 +467,6 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .titlebar-search:focus-visible { border-color: var(--border-strong); background: var(--desktop-glass-hover); color: var(--text-primary); }
 .titlebar-search .hint { gap: 3px; }
 .titlebar-search kbd { padding: 1px 5px; border-color: var(--divider); background: var(--surface-hover); }
-.titlebar-settings {
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text-secondary);
-  font: 12px var(--font-ui);
-  cursor: pointer;
-}
-.titlebar-settings:hover,
-.titlebar-settings:focus-visible { background: var(--desktop-glass-hover); color: var(--text-primary); }
 
 .app-body {
   position: relative;
@@ -518,6 +497,16 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
   pointer-events: auto;
   transform: translateY(0);
   transition-delay: 0s;
+  z-index: 2;
+}
+/* feat/git-visual-center 交叉淡化：旧层垫底保持可见（新层在其之上淡入），不可交互 */
+.surface-layer.is-exiting {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: none;
+  transform: translateY(0);
+  transition: none;
+  z-index: 1;
 }
 .surface-layer-editor { display: block; }
 .surface-layer[data-workspace-surface="editor"] { display: block; }
@@ -537,12 +526,29 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .statusbar .sb-connection { display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); }
 .statusbar .sb-dirty { color: var(--warning); }
 .statusbar .sb-version { color: var(--text-muted); }
+/* Git 芯片（feat/git-visual-center）：点击开合编辑器右侧 Git 面板 */
+.statusbar .sb-git {
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+}
+.statusbar .sb-git:hover { background: var(--surface-hover); color: var(--text-primary); }
+.statusbar .sb-git.active { color: var(--accent); }
 .sb-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--text-muted); }
 .sb-dot.online { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
 
 /* The workbench keeps only the project/file rail and editor. */
 .workbench[data-mode="full"],
 .workbench[data-mode="medium"] { grid-template-columns: var(--wb-left, 280px) var(--splitter-hit, 8px) minmax(0, 1fr); }
+/* feat/git-visual-center：右栏（Git 面板）占位时恢复五列网格（选择器多一档属性，优先级更高） */
+.workbench[data-mode="full"][data-right="expanded"],
+.workbench[data-mode="medium"][data-right="expanded"] {
+  grid-template-columns: var(--wb-left, 280px) var(--splitter-hit, 8px) minmax(0, 1fr) var(--splitter-hit, 8px) var(--wb-right, 430px);
+}
 .workbench[data-left="collapsed"] { grid-template-columns: 0 var(--splitter-hit, 8px) minmax(0, 1fr); }
 .workbench[data-left="collapsed"] > .splitter { visibility: hidden; pointer-events: none; }
 
@@ -761,7 +767,6 @@ body.ra-reduced-motion *::after {
   .desktop-rail-brand { width: 34px; height: 34px; }
   .desktop-rail-button, .desktop-rail-account { width: 36px; height: 36px; border-radius: 10px; }
   .titlebar-search { width: min(300px, 38vw); margin-left: 8px; }
-  .titlebar-settings span { display: none; }
   .settings-page-header { padding: 22px 22px 18px; }
   .settings-page-body .settings-nav { width: 164px; flex-basis: 164px; padding-inline: 12px; }
   .settings-page-body .settings-content { padding: 18px 22px 32px; }
@@ -771,9 +776,6 @@ body.ra-reduced-motion *::after {
   .desktop-shell { grid-template-columns: 48px minmax(0, 1fr); }
   .desktop-rail-tooltip { display: none; }
   .titlebar { padding-left: 10px; padding-right: 104px; }
-  .titlebar-name, .titlebar-sep, .titlebar-surface, .titlebar-project { display: none; }
-  .titlebar-search { flex: 1; width: auto; margin-left: 0; }
-  .titlebar-settings { width: 32px; padding: 0; justify-content: center; }
   .statusbar { gap: 8px; padding-inline: 8px; font-size: 12px; }
   .statusbar .sb-left { display: none; }
   .statusbar .sb-connection { margin-left: auto; }

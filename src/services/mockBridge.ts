@@ -208,6 +208,29 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
   // 浏览器预览模式的 DeepSeek Key（仅内存，模拟主进程 safeStorage 保管）
   let mockDeepSeekKey = ''
 
+  // feat/git-visual-center：浏览器预览的有状态模拟 git 仓库（内存态）——
+  // 让 Git 面板/弹窗在无 git 的预览环境也能走通 暂存→提交→分支 全流程。
+  type MockGitChange = { path: string; add: number | null; del: number | null; untracked: boolean; kind: 'M' | 'D' | 'A' }
+  let gitSeq = 3
+  const mockGit = {
+    branch: 'main',
+    branches: ['main', 'feat/new-unit'],
+    commits: [
+      { hash: 'a'.repeat(40), short: 'aaa1111', author: '猫猫', at: Math.floor(Date.now() / 1000) - 3600, subject: '调整坦克炮塔转向参数' },
+      { hash: 'b'.repeat(40), short: 'bbb2222', author: '猫猫', at: Math.floor(Date.now() / 1000) - 86400, subject: '新增步枪单位配置' },
+    ],
+    /** 工作区改动（staged=true 表示已进暂存区；untracked 表示新文件） */
+    changes: [
+      { path: 'ini/rifle.ini', add: 12, del: 3, untracked: false, kind: 'M', staged: false },
+      { path: 'png/icon.png', add: null, del: null, untracked: true, kind: 'A', staged: false },
+      { path: 'ini/tank.ini', add: 5, del: 1, untracked: false, kind: 'M', staged: true },
+    ] as Array<MockGitChange & { staged: boolean }>,
+  }
+  const mockOk = { ok: true }
+  /** 未跟踪文件进暂存区后状态列从 ? 变 A（与 git 一致） */
+  const stagedKindOf = (c: MockGitChange & { staged: boolean }) =>
+    c.untracked ? 'A' : c.kind
+
   const storageKey = 'rust-assistant:mock-state'
   function loadState<T>(key: string, fallback: T): T {
     try {
@@ -500,12 +523,89 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       },
     },
     git: {
-    info: async () => ({ available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [], message: '模拟环境：无 git' }),
-    log: async () => [],
-    status: async () => [],
+    info: async () => ({
+      available: true,
+      isRepo: true,
+      branch: mockGit.branch,
+      ahead: mockGit.commits.length > 1 ? 1 : 0,
+      behind: 0,
+      changedCount: mockGit.changes.length,
+      branches: [...mockGit.branches],
+      hasIdentity: true,
+    }),
+    log: async (_rootPath: string, limit?: number) => mockGit.commits.slice(0, Math.min(Math.max(limit ?? 40, 1), 200)),
+    status: async () => mockGit.changes.map((c) => ({ status: c.untracked ? '??' : c.kind, path: c.path })),
+    statusDetailed: async () => mockGit.changes.map((c) => (
+      c.untracked && !c.staged
+        ? { staged: '', unstaged: '', untracked: true, path: c.path }
+        : c.staged
+          ? { staged: stagedKindOf(c), unstaged: '', untracked: false, path: c.path }
+          : { staged: '', unstaged: c.kind, untracked: false, path: c.path }
+    )),
+    numstat: async () => ({
+      unstaged: mockGit.changes.filter((c) => !c.staged && !c.untracked).map((c) => ({ path: c.path, add: c.add, del: c.del })),
+      staged: mockGit.changes.filter((c) => c.staged && !c.untracked).map((c) => ({ path: c.path, add: c.add, del: c.del })),
+    }),
     conflicts: async () => [],
-    diff: async () => '',
-    restore: async () => ({ ok: false, message: '模拟环境：无法回滚' }),
+    diff: async (_rootPath: string, _a: string, _b: string, file?: string) => {
+      const target = file ?? 'ini/rifle.ini'
+      return [
+        `diff --git a/${target} b/${target}`,
+        `--- a/${target}`,
+        `+++ b/${target}`,
+        '@@ -12,7 +12,9 @@',
+        ' [core]',
+        '   name: 模拟文件',
+        '+hp: 850',
+        '+armor: 12',
+        '-hp: 700',
+        ' speed: 45',
+      ].join('\n')
+    },
+    restore: async () => ({ ok: false, message: '模拟环境：历史回滚不支持' }),
+    stage: async (_rootPath: string, paths: string[]) => {
+      for (const c of mockGit.changes) if (paths.includes(c.path)) c.staged = true
+      return mockOk
+    },
+    stageAll: async () => {
+      for (const c of mockGit.changes) c.staged = true
+      return mockOk
+    },
+    unstage: async (_rootPath: string, paths: string[]) => {
+      for (const c of mockGit.changes) if (paths.includes(c.path)) c.staged = false
+      return mockOk
+    },
+    discard: async (_rootPath: string, file: string) => {
+      mockGit.changes = mockGit.changes.filter((c) => c.path !== file)
+      return mockOk
+    },
+    commit: async (_rootPath: string, message: string) => {
+      const committed = mockGit.changes.filter((c) => c.staged)
+      if (committed.length === 0) return { ok: false, message: '模拟环境：暂存区为空' }
+      mockGit.changes = mockGit.changes.filter((c) => !c.staged)
+      const hash = `${String(gitSeq++).padStart(4, '0')}fe${Math.floor(Math.random() * 0xffff).toString(16).padStart(4, '0')}`.padEnd(40, 'a')
+      mockGit.commits.unshift({ hash, short: hash.slice(0, 7), author: '猫猫', at: Math.floor(Date.now() / 1000), subject: message.slice(0, 60) || '（无描述）' })
+      return { ok: true, hash }
+    },
+    checkout: async (_rootPath: string, branch: string) => {
+      if (!mockGit.branches.includes(branch)) return { ok: false, message: `分支不存在：${branch}` }
+      mockGit.branch = branch
+      return mockOk
+    },
+    createBranch: async (_rootPath: string, branch: string, checkout?: boolean) => {
+      if (mockGit.branches.includes(branch)) return { ok: false, message: `分支已存在：${branch}` }
+      mockGit.branches.push(branch)
+      if (checkout) mockGit.branch = branch
+      return mockOk
+    },
+    deleteBranch: async (_rootPath: string, branch: string) => {
+      if (mockGit.branch === branch) return { ok: false, message: '不能删除当前所在的分支' }
+      mockGit.branches = mockGit.branches.filter((b) => b !== branch)
+      return mockOk
+    },
+    init: async () => mockOk,
+    configGet: async (_rootPath: string, key: string) => (key === 'user.name' ? '猫猫' : 'mao@example.com'),
+    configSet: async () => mockOk,
   },
   ai: {
       check: async (settings) => {

@@ -1,16 +1,24 @@
 /**
- * 本地 git 辅助（M25，P3 任务 4）：历史可视化 / 冲突预览与选择 / 回滚。
+ * Git 中心弹窗（M25，P3 任务 4；feat/git-visual-center 扩展）：
  * - 状态行：分支 / 领先落后 / 未提交改动数；非 git 仓库给出提示
  * - 历史：提交列表（作者/时间/说明），选两个提交对比差异
  * - 改动：未提交文件清单；冲突文件（含 <<<<<<< 标记）可「全部保留 A/B」解决；
  *   普通文件可回滚到 HEAD 或选中的历史提交（仅工作区该文件）
- * - 仅本地单人使用；多人协作（邀请/权限）依赖服务器，不在本阶段
+ * - 分支（feat/git-visual-center）：切换 / 新建 / 删除
+ * - 云版本（feat/git-visual-center）：云书包版本列表 + 拉取任意版本覆盖本地（自动备份）
+ * - 本地 git 与云书包推送双轨并存；详细同步冲突在云仓库页的同步向导处理
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { AppIcon } from '../../components/AppIcon'
+import { PromptModal } from '../../components/Modal'
 import { useEscapeHandler } from '../../utils/modalStack'
 import { getBridge } from '../../services/bridge'
+import { getCommunityEndpoint } from '../../services/communityConfig'
+import { createCloudBagApi, type CloudBagApi, type CloudBagVersion } from '../../services/cloudBagApi'
+import { acquireCloudBagOperation } from '../../services/cloudBagOperation'
+import { pullRemoteVersion, readCloudBagAnchor, writeCloudBagAnchor } from '../../services/cloudBagSync'
+import { cloudBagGate, type CloudBagAnchor } from '../community/cloudBagData'
 import { joinProjectPath } from '../../utils/projectPath'
 import { conflictMarkers, type ConflictBlock } from '../../utils/conflictMarkers'
 
@@ -22,6 +30,8 @@ interface Props {
 export function GitInfoModal({ rootPath, onClose }: Props) {
   const notify = useWorkspaceStore((s) => s.notify)
   const requestConfirm = useWorkspaceStore((s) => s.requestConfirm)
+  const communityAuth = useWorkspaceStore((s) => s.communityAuth)
+  const setActiveSurface = useWorkspaceStore((s) => s.setActiveSurface)
   const [info, setInfo] = useState<{
     available: boolean
     isRepo: boolean
@@ -30,13 +40,14 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
     behind: number
     changedCount: number
     branches: string[]
+    hasIdentity: boolean
     message?: string
   } | null>(null)
   const [log, setLog] = useState<Array<{ hash: string; short: string; author: string; at: number; subject: string }>>([])
   const [status, setStatus] = useState<Array<{ status: string; path: string }>>([])
   const [conflicts, setConflicts] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [tab, setTab] = useState<'history' | 'changes'>('history')
+  const [tab, setTab] = useState<'history' | 'changes' | 'branches' | 'cloud'>('history')
   // 对比选择（历史 tab）：最多两个提交
   const [selected, setSelected] = useState<string[]>([])
   // 回滚目标提交（改动 tab 每行按钮用）
@@ -46,24 +57,72 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
   const [conflictContent, setConflictContent] = useState<{ file: string; blocks: ConflictBlock[] } | null>(null)
   const [diff, setDiff] = useState<{ a: string; b: string; text: string } | null>(null)
   const [diffBusy, setDiffBusy] = useState(false)
+  // 分支管理（feat/git-visual-center）
+  const [branchPrompt, setBranchPrompt] = useState(false)
+  const [branchBusy, setBranchBusy] = useState(false)
+  // 云仓库版本（feat/git-visual-center）：锚点 + 版本列表 + 拉取中的版本号
+  const [anchor, setAnchor] = useState<CloudBagAnchor | null>(null)
+  const [cloudVersions, setCloudVersions] = useState<CloudBagVersion[] | null>(null)
+  const [cloudLoading, setCloudLoading] = useState(false)
+  const [cloudPulling, setCloudPulling] = useState<number | null>(null)
+  const gate = cloudBagGate(communityAuth.status, communityAuth.user)
+  const api = useMemo<CloudBagApi | null>(() => {
+    try {
+      return createCloudBagApi(getCommunityEndpoint(), undefined, () => notify('云仓库登录已失效，请重新登录'))
+    } catch {
+      return null
+    }
+  }, [notify])
 
   useEscapeHandler(onClose)
 
   useEffect(() => {
     let alive = true
     void Promise.all([getBridge().git.info(rootPath), getBridge().git.log(rootPath), getBridge().git.status(rootPath), getBridge().git.conflicts(rootPath)])
-      .then(([i, l, st, cf]) => {
+      .then(async ([i, l, st, cf]) => {
         if (!alive) return
         setInfo(i)
         setLog(l)
         setStatus(st)
         setConflicts(cf)
+        setAnchor(await readCloudBagAnchor(getBridge(), rootPath))
       })
       .catch((err: unknown) => alive && setError(err instanceof Error ? err.message : String(err)))
     return () => {
       alive = false
     }
   }, [rootPath])
+
+  /** 云版本列表：切到云页签且已绑定时按需加载（网络失败静默降级；先让出主线程避免同步 setState） */
+  useEffect(() => {
+    if (tab !== 'cloud' || !anchor || !gate.canBrowse || !api) return
+    let alive = true
+    void (async () => {
+      await Promise.resolve()
+      if (!alive) return
+      setCloudLoading(true)
+      try {
+        const page = await api.versions(anchor.repoSlug, undefined, 30)
+        if (alive) setCloudVersions(page.items)
+      } catch {
+        if (alive) setCloudVersions(null)
+      } finally {
+        if (alive) setCloudLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [tab, anchor, gate.canBrowse, api])
+
+  /** 弹窗内全量刷新（写操作后调用） */
+  const reloadAll = async () => {
+    const [i, l, st, cf] = await Promise.all([
+      getBridge().git.info(rootPath), getBridge().git.log(rootPath), getBridge().git.status(rootPath), getBridge().git.conflicts(rootPath),
+    ])
+    setInfo(i)
+    setLog(l)
+    setStatus(st)
+    setConflicts(cf)
+  }
 
   /** 对比两个提交（或 提交 ↔ 工作区） */
   const runDiff = async (a: string, b: string) => {
@@ -110,7 +169,7 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
       await getBridge().project.writeFile(rootPath, joinProjectPath(rootPath, file), lines.join('\n'), { hasBom: false })
       setConflictOpen(null)
       setConflicts(await getBridge().git.conflicts(rootPath))
-      notify(`已保留${side === 'ours' ? ' A' : ' B'}侧内容；建议在 git 里 git add 后提交`)
+      notify(`已保留${side === 'ours' ? ' A' : ' B'}侧内容；到 Git 面板暂存并提交即可完成合并`)
     } catch (err) {
       notify(`解决失败：${err instanceof Error ? err.message : String(err)}`)
     }
@@ -143,8 +202,119 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
     })
   }
 
+  // ── 分支管理（feat/git-visual-center）──────────────────────────────────────
+  const checkoutBranch = async (branch: string) => {
+    if (branchBusy) return
+    setBranchBusy(true)
+    try {
+      const r = await getBridge().git.checkout(rootPath, branch)
+      if (r.ok) {
+        notify(`已切换到 ${branch}`)
+        await reloadAll()
+      } else {
+        notify(`切换失败：${r.message ?? '未知错误'}`)
+      }
+    } finally {
+      setBranchBusy(false)
+    }
+  }
+
+  const createBranch = async (name: string) => {
+    if (branchBusy) return
+    setBranchBusy(true)
+    try {
+      const r = await getBridge().git.createBranch(rootPath, name.trim(), true)
+      if (r.ok) {
+        notify(`已创建并切换到 ${name.trim()}`)
+        await reloadAll()
+      } else {
+        notify(`新建失败：${r.message ?? '未知错误'}`)
+      }
+    } finally {
+      setBranchBusy(false)
+    }
+  }
+
+  const deleteBranch = (branch: string) => {
+    requestConfirm({
+      title: '删除分支',
+      message: `确定删除分支「${branch}」吗？未合并的提交会丢失。`,
+      danger: true,
+      confirmText: '删除',
+      onConfirm: async () => {
+        const r = await getBridge().git.deleteBranch(rootPath, branch)
+        if (r.ok) {
+          notify(`已删除分支 ${branch}`)
+          await reloadAll()
+        } else if (/not fully merged/i.test(r.message ?? '')) {
+          // git -d 拒绝删未合并分支：引导确认后强删（-D）
+          requestConfirm({
+            title: '强制删除分支',
+            message: `「${branch}」包含尚未合并的提交，确定连同这些提交一起丢弃吗？`,
+            danger: true,
+            confirmText: '强制删除',
+            onConfirm: async () => {
+              const fr = await getBridge().git.deleteBranch(rootPath, branch, true)
+              if (fr.ok) {
+                notify(`已强制删除分支 ${branch}`)
+                await reloadAll()
+              } else {
+                notify(`删除失败：${fr.message ?? '未知错误'}`)
+              }
+            },
+          })
+        } else {
+          notify(`删除失败：${r.message ?? '未知错误'}`)
+        }
+      },
+    })
+  }
+
+  // ── 云仓库版本（feat/git-visual-center）───────────────────────────────────
+  /** 拉取指定云版本覆盖本地（restore 内置备份；成功后基线锚点推进到该版本） */
+  const pullCloudVersion = (versionNo: number) => {
+    if (!api || !anchor) return
+    requestConfirm({
+      title: '拉取云仓库版本',
+      message: `把项目恢复到云仓库「${anchor.repoSlug}」的版本 #${versionNo}？当前本地未推送的改动会被覆盖（被覆盖的文件自动备份到 .ohmytx/backup/）。`,
+      danger: true,
+      confirmText: '拉取覆盖',
+      onConfirm: async () => {
+        const lease = acquireCloudBagOperation(rootPath)
+        if (!lease) { notify('该目录已有同步操作正在进行'); return }
+        setCloudPulling(versionNo)
+        try {
+          const outcome = await pullRemoteVersion({
+            api, bridge: getBridge(), rootPath, repoSlug: anchor.repoSlug,
+            onProgress: () => undefined, isAborted: () => false, operationLease: lease,
+          }, { versionNo })
+          if (outcome.status === 'pulled') {
+            const nextAnchor: CloudBagAnchor = {
+              repoSlug: anchor.repoSlug,
+              baselineSeq: outcome.versionNo ?? versionNo,
+              baselineTreeDigest: outcome.treeDigest ?? '',
+              lastSyncedAt: Math.floor(Date.now() / 1000),
+            }
+            try {
+              await writeCloudBagAnchor(getBridge(), rootPath, nextAnchor)
+              setAnchor(nextAnchor)
+            } catch { /* 锚点写失败：下次打开走服务端基线补齐的迁移路径 */ }
+            notify(`已拉取版本 #${outcome.versionNo}：写入 ${outcome.written ?? 0} 个文件，备份 ${outcome.backedUp ?? 0} 个被覆盖文件`)
+            await reloadAll()
+          } else {
+            notify(`拉取失败：${outcome.error ?? '未知错误'}`)
+          }
+        } catch (err) {
+          notify(`拉取失败：${err instanceof Error ? err.message : String(err)}`)
+        } finally {
+          setCloudPulling(null)
+        }
+      },
+    })
+  }
+
   const statusLabel = (code: string): string =>
-    ({ M: '修改', A: '新增', D: '删除', R: '重命名', '??': '未跟踪', U: '冲突' }[code] ?? code)
+    ({ M: '修改', A: '新增', D: '删除', R: '重命名', C: '复制', '??': '未跟踪', U: '冲突' }[code] ?? code)
 
   if (error) {
     return (
@@ -167,7 +337,7 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
   return (
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card vdiff-card" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">Git 历史与回滚（本地）</div>
+        <div className="modal-header">Git 中心</div>
         <div className="modal-body vdiff-body">
           {!info ? (
             <p className="codetable-empty">加载中…</p>
@@ -181,13 +351,15 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
                 {info.behind > 0 && <span className="vdiff-stat del">落后 {info.behind}</span>}
                 <span className={`vdiff-stat ${info.changedCount > 0 ? 'del' : 'add'}`}>{info.changedCount} 个未提交改动</span>
                 <span className="grow" />
-                <span className="vdiff-hint">仅本地单人使用；多人协作不在本阶段</span>
+                <span className="vdiff-hint">本地提交与云仓库推送双轨并存</span>
               </div>
               <div className="relgraph-tabs">
                 <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')}>历史与对比</button>
                 <button className={tab === 'changes' ? 'active' : ''} onClick={() => setTab('changes')}>
                   改动{conflicts.length > 0 ? `（${conflicts.length} 冲突）` : ''}
                 </button>
+                <button className={tab === 'branches' ? 'active' : ''} onClick={() => setTab('branches')}>分支（{info.branches.length}）</button>
+                <button className={tab === 'cloud' ? 'active' : ''} onClick={() => setTab('cloud')}>云仓库版本</button>
               </div>
 
               {tab === 'history' && (
@@ -287,6 +459,78 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
                   )}
                 </div>
               )}
+
+              {tab === 'branches' && (
+                <div className="relgraph-list">
+                  <div className="vdiff-toolbar" style={{ marginBottom: 6 }}>
+                    <button className="btn" disabled={branchBusy} onClick={() => setBranchPrompt(true)}>
+                      <AppIcon name="plus" size={12} /> 新建分支
+                    </button>
+                    <span className="vdiff-hint">切换前建议先提交；工作区改动冲突时 git 会拒绝切换</span>
+                  </div>
+                  <div className="relgraph-unit-list" style={{ maxHeight: 260 }}>
+                    {info.branches.map((b) => (
+                      <div key={b} className={`relgraph-unit${b === info.branch ? ' active' : ''}`} style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span className="relgraph-unit-name" style={{ fontFamily: 'var(--font-mono)' }}>{b}</span>
+                        <span className="relgraph-unit-file">{b === info.branch ? '当前分支' : ''}</span>
+                        <span className="grow" />
+                        {b !== info.branch && (
+                          <>
+                            <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} disabled={branchBusy} onClick={() => void checkoutBranch(b)}>切换</button>
+                            <button className="btn" style={{ padding: '1px 8px', fontSize: 11 }} disabled={branchBusy} onClick={() => deleteBranch(b)}>删除</button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {info.branches.length === 0 && <p className="codetable-empty">还没有分支（首次提交后会自动创建）</p>}
+                  </div>
+                </div>
+              )}
+
+              {tab === 'cloud' && (
+                <div className="relgraph-list">
+                  {!gate.canBrowse ? (
+                    <div className="setting-error">{gate.notice}</div>
+                  ) : !anchor ? (
+                    <div className="setting-error">
+                      本项目还未绑定云仓库——在云仓库页打开你的模组仓库并同步一次即可绑定；
+                      之后「推送到云仓库」会把整个项目内容生成云端新版本。
+                      <button className="btn" style={{ marginLeft: 8 }} onClick={() => { onClose(); setActiveSurface('cloudBag') }}>去云仓库</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="vdiff-hint" style={{ marginBottom: 4 }}>
+                        云仓库「{anchor.repoSlug}」的版本列表（本地基线 #{anchor.baselineSeq}）。
+                        拉取任意版本会把整个项目恢复到那个版本（被覆盖文件自动备份）。
+                      </div>
+                      <div className="relgraph-unit-list" style={{ maxHeight: 300 }}>
+                        {cloudLoading && <p className="codetable-empty">加载云版本中…</p>}
+                        {!cloudLoading && cloudVersions?.length === 0 && <p className="codetable-empty">云仓库还没有版本</p>}
+                        {!cloudLoading && cloudVersions?.map((v) => (
+                          <div key={v.versionNo} className="relgraph-unit" style={{ cursor: 'default', display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className="relgraph-unit-name" style={{ fontFamily: 'var(--font-mono)' }}>#{v.versionNo}</span>
+                            <span className="relgraph-unit-file">{v.message || '（无描述）'}</span>
+                            <span className="relgraph-unit-count">{new Date(v.createdAt).toLocaleString()} · {v.fileCount} 文件</span>
+                            {v.versionNo === anchor.baselineSeq ? (
+                              <span className="vdiff-hint">本地基线</span>
+                            ) : (
+                              <button
+                                className="btn"
+                                style={{ padding: '1px 8px', fontSize: 11 }}
+                                disabled={cloudPulling !== null}
+                                onClick={() => pullCloudVersion(v.versionNo)}
+                              >
+                                <AppIcon name="download" size={11} />{cloudPulling === v.versionNo ? '拉取中…' : '拉取此版本'}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {!cloudLoading && cloudVersions === null && <p className="codetable-empty">云版本加载失败（网络问题或未登录）</p>}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -296,6 +540,16 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
           <button className="btn primary" onClick={onClose}>关闭</button>
         </div>
       </div>
+      {branchPrompt && (
+        <PromptModal
+          title="新建分支"
+          placeholder="分支名（如 feat/new-unit）"
+          confirmText="创建并切换"
+          validateName={false}
+          onSubmit={(value) => { setBranchPrompt(false); void createBranch(value) }}
+          onClose={() => setBranchPrompt(false)}
+        />
+      )}
     </div>
   )
 }

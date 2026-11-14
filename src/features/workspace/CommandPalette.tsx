@@ -33,6 +33,8 @@ export function CommandPalette() {
   // M29：布局折叠状态（命令面板动态显示「显示/隐藏」文案）
   const leftCollapsed = useWorkspaceStore((s) => s.settings.layout.leftCollapsed)
   const settingsKey = useWorkspaceStore((s) => resolveShortcuts(s.settings.keyboardShortcuts).settings)
+  // feat/git-visual-center：右侧 Git 面板开合状态（命令文案动态切换）
+  const gitPanelOpen = useWorkspaceStore((s) => s.gitPanelOpen)
 
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
@@ -72,7 +74,15 @@ export function CommandPalette() {
       { id: 'mod-optimize', title: '模组：优化（清理垃圾）', en: 'Mod: optimize', icon: <AppIcon name="tools" size={15} />, run: () => { setOpen(false); setModDialog('optimize') } },
       { id: 'mod-translation-repair', title: '模组：修复中文翻译损坏', en: 'Mod: repair translations', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); setModDialog('translationRepair') } },
       { id: 'template-library', title: '模板库管理（本地浏览/导入/删除）', en: 'Template library', icon: <AppIcon name="box" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setTemplateLibraryOpen(true) } },
-      { id: 'git-info', title: 'Git 历史与回滚（本地）', en: 'Git history & rollback', icon: <AppIcon name="clock" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setGitInfoOpen(true) } },
+      { id: 'git-info', title: 'Git 中心（历史对比 / 分支 / 云版本 / 回滚）', en: 'Git center', icon: <AppIcon name="clock" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setGitInfoOpen(true) } },
+      // feat/git-visual-center：右侧 Git 面板开合（状态栏芯片同一开关）
+      {
+        id: gitPanelOpen ? 'git-panel-close' : 'git-panel-open',
+        title: gitPanelOpen ? 'Git：关闭右侧面板' : 'Git：打开右侧面板（暂存/提交/分支/云仓库）',
+        en: gitPanelOpen ? 'Close Git panel' : 'Open Git panel',
+        icon: <AppIcon name="code" size={15} />,
+        run: () => { setOpen(false); useWorkspaceStore.getState().setGitPanelOpen(!useWorkspaceStore.getState().gitPanelOpen) },
+      },
       { id: 'code-table', title: '浏览代码表', en: 'Browse code table', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setCodeTableOpen(true) } },
       { id: 'version-diff', title: '版本差异对比（字段新增/弃用/迁移）', en: 'Version diff', icon: <AppIcon name="text" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setVersionDiffOpen(true) } },
       { id: 'relation-graph', title: '模组关系图（单位/资源/炮塔/弹体引用）', en: 'Relation graph', icon: <AppIcon name="zoom" size={15} />, run: () => { setOpen(false); useWorkspaceStore.getState().setRelationGraphOpen(true) } },
@@ -116,7 +126,7 @@ export function CommandPalette() {
         },
       },
     ],
-    [importModProject, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen, leftCollapsed, settingsKey],
+    [importModProject, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen, leftCollapsed, settingsKey, gitPanelOpen],
   )
 
   const filtered = useMemo(() => {
