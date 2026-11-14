@@ -56,14 +56,10 @@ body {
   border-bottom: 1px solid var(--divider);
   -webkit-app-region: drag;
 }
-.titlebar-inner { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; }
+.titlebar-inner { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 9px; width: 100%; min-width: 0; }
 .titlebar-inner > * { -webkit-app-region: no-drag; }
-.titlebar-logo { display: contents; color: var(--text-primary); }
-.titlebar-name { font: 600 13px var(--font-display); white-space: nowrap; }
-.titlebar-project { max-width: 220px; color: var(--text-secondary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.titlebar-sep { color: var(--text-muted); }
 .titlebar-search {
-  display: flex; align-items: center; gap: 8px; width: min(420px, 42vw); margin-left: 24px;
+  display: flex; align-items: center; gap: 8px; width: min(420px, 42vw);
   padding: 6px 11px; color: var(--text-muted); background: var(--surface-input);
   border: 1px solid transparent; border-radius: var(--radius);
   cursor: text; transition: border-color .15s, background .15s;
@@ -71,7 +67,6 @@ body {
 .titlebar-search:hover, .titlebar-search:focus-within { border-color: var(--border-strong); background: var(--surface-0); }
 .titlebar-search .hint { margin-left: auto; display: flex; gap: 3px; }
 .titlebar-search kbd { padding: 1px 5px; color: var(--text-secondary); background: var(--surface-0); border: 1px solid var(--border); border-radius: 4px; font: 11px var(--font-ui); }
-.titlebar-spacer { flex: 1; }
 .community-account-btn { height: 28px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); color: var(--text-secondary); font: 12px var(--font-ui); cursor: pointer; white-space: nowrap; }
 .community-account-btn:hover { background: var(--surface-hover); color: var(--accent); border-color: var(--accent); }
 .avatar-btn { width: 32px; height: 32px; margin-right: 154px; padding: 0; border: 1px solid var(--border); border-radius: 50%; overflow: hidden; background: var(--surface-1); color: var(--text-secondary); font: 600 12px/1 var(--font-ui); cursor: pointer; }

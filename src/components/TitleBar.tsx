@@ -21,7 +21,6 @@ export function TitleBar() {
           <span>搜索命令、打开项目…</span>
           {shortcuts.commandPalette && <span className="hint"><kbd>{formatShortcut(shortcuts.commandPalette)}</kbd></span>}
         </button>
-        <div className="titlebar-spacer" />
         <button className="titlebar-settings" type="button" title={shortcuts.settings ? `打开设置（${formatShortcut(shortcuts.settings)}）` : '打开设置'} onClick={() => openSettings('appearance')}>
           <AppIcon name="settings" size={14} />
           <span>设置</span>

@@ -451,9 +451,12 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .window-controls .window-close:hover { background: #c42b1c; color: #fff; }
 .titlebar-inner { gap: 9px; }
 .titlebar-search {
+  /* 相对整个标题栏绝对居中：右侧有 112px 窗口按钮保护区，grid 内容区中心≠窗口中心 */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   width: min(430px, 40vw);
   height: 32px;
-  margin-left: 18px;
   padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -465,6 +468,8 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .titlebar-search .hint { gap: 3px; }
 .titlebar-search kbd { padding: 1px 5px; border-color: var(--divider); background: var(--surface-hover); }
 .titlebar-settings {
+  grid-column: 3;
+  justify-self: end;
   height: 32px;
   display: inline-flex;
   align-items: center;
@@ -789,8 +794,7 @@ body.ra-reduced-motion *::after {
   .desktop-shell { grid-template-columns: 48px minmax(0, 1fr); }
   .desktop-rail-tooltip { display: none; }
   .titlebar { padding-left: 10px; padding-right: 104px; }
-  .titlebar-search { flex: 1; width: auto; margin-left: 0; }
-  .titlebar-settings { width: 32px; padding: 0; justify-content: center; }
+  .titlebar-settings { width: 32px; padding: 0; justify-self: end; justify-content: center; }
   .statusbar { gap: 8px; padding-inline: 8px; font-size: 10px; }
   .statusbar .sb-left { display: none; }
   .statusbar .sb-connection { margin-left: auto; }
