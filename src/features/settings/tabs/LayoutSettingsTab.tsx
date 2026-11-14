@@ -28,35 +28,6 @@ export function LayoutSettingsTab() {
       </div>
 
       <div className="setting-divider" />
-      <div className="setting-title">内部比例</div>
-      <div className="setting-row">
-        <span className="label">
-          左栏项目列表高度
-          <div className="desc">项目列表占左栏的高度比例，其余为文件树</div>
-        </span>
-        <input
-          type="range"
-          min={15}
-          max={80}
-          value={Math.round(settings.layout.leftARatio * 100)}
-          onChange={(e) => {
-            const s = useWorkspaceStore.getState()
-            updateSettings({ layout: { ...s.settings.layout, leftARatio: Number(e.target.value) / 100 } })
-          }}
-        />
-        <span style={{ width: 34, textAlign: 'right', fontSize: 12, color: 'var(--text-2)' }}>{Math.round(settings.layout.leftARatio * 100)}%</span>
-        <button
-          className="btn"
-          style={{ padding: '1px 8px', fontSize: 11, height: 22 }}
-          onClick={() => {
-            const s = useWorkspaceStore.getState()
-            updateSettings({ layout: { ...s.settings.layout, leftARatio: DEFAULT_LAYOUT.leftARatio } })
-          }}
-        >
-          恢复默认
-        </button>
-      </div>
-      <div className="setting-divider" />
       <div className="setting-title">折叠状态</div>
       <div className="desc" style={{ marginBottom: 8 }}>
         折叠后可拖分隔条或从命令面板重新打开
@@ -70,20 +41,6 @@ export function LayoutSettingsTab() {
           onClick={() => {
             const s = useWorkspaceStore.getState()
             updateSettings({ layout: { ...s.settings.layout, leftCollapsed: !s.settings.layout.leftCollapsed } })
-          }}
-        >
-          <span className="knob" />
-        </button>
-      </div>
-      <div className="setting-row">
-        <span className="label">左栏项目列表折叠</span>
-        <button
-          className={`switch${settings.layout.leftACollapsed ? ' on' : ''}`}
-          role="switch"
-          aria-checked={settings.layout.leftACollapsed}
-          onClick={() => {
-            const s = useWorkspaceStore.getState()
-            updateSettings({ layout: { ...s.settings.layout, leftACollapsed: !s.settings.layout.leftACollapsed } })
           }}
         >
           <span className="knob" />

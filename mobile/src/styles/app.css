@@ -15,7 +15,7 @@ body {
 }
 ::selection { background: rgba(26, 115, 232, .2); }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: var(--scrollbar); border: 2px solid transparent; border-radius: 6px; background-clip: content-box; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border: 2px solid transparent; border-radius: 6px; corner-shape: squircle; background-clip: content-box; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 .app { position: relative; height: 100%; display: flex; flex-direction: column; background: var(--canvas); }
@@ -68,8 +68,8 @@ body {
 .titlebar-search .hint { margin-left: auto; display: flex; gap: 3px; }
 .titlebar-search kbd { padding: 1px 5px; color: var(--text-secondary); background: var(--surface-0); border: 1px solid var(--border); border-radius: 4px; font: 11px var(--font-ui); }
 .titlebar-spacer { flex: 1; }
-.avatar-btn { width: 32px; height: 32px; margin-right: 154px; padding: 0; border: 1px solid var(--border); border-radius: 50%; overflow: hidden; background: var(--surface-1); color: var(--text-secondary); font: 600 12px/1 var(--font-ui); cursor: pointer; }
-.avatar-btn img { width: 100%; height: 100%; display: block; border-radius: 50%; object-fit: cover; object-position: center; }
+.avatar-btn { width: 32px; height: 32px; margin-right: 154px; padding: 0; border: 1px solid var(--border); border-radius: 50%; corner-shape: round; overflow: hidden; background: var(--surface-1); color: var(--text-secondary); font: 600 12px/1 var(--font-ui); cursor: pointer; }
+.avatar-btn img { width: 100%; height: 100%; display: block; border-radius: 50%; corner-shape: round; object-fit: cover; object-position: center; }
 .avatar-btn:hover { background: var(--surface-hover); color: var(--accent); border-color: var(--accent); }
 
 .app-body {
@@ -152,7 +152,7 @@ body {
 .tab.active::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); }
 .tab .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab .tab-close { margin-left: auto; width: 22px; height: 22px; }
-.dirty-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; background: var(--accent); }
+.dirty-dot { width: 6px; height: 6px; flex-shrink: 0; border-radius: 50%; corner-shape: round; background: var(--accent); }
 .welcome { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 36px; background: var(--editor); text-align: center; }
 .welcome-logo { width: 50px; height: 34px; display: grid; place-items: center; color: var(--text-primary); }
 .welcome h1 { margin: 6px 0 0; color: var(--text-primary); font: 650 24px var(--font-display); }
@@ -213,7 +213,7 @@ body {
 .command-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); color: var(--text-secondary); cursor: pointer; }
 .command-item:hover, .command-item.highlighted { background: var(--accent-soft); color: var(--accent); }
 .command-item .cmd-kbd { margin-left: auto; color: var(--text-muted); font-size: 11px; }
-.toast { position: fixed; z-index: 400; bottom: 38px; left: 50%; transform: translateX(-50%); padding: 8px 16px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-0); color: var(--text-primary); box-shadow: var(--shadow-md); font-size: 12px; }
+.toast { position: fixed; z-index: 400; bottom: 38px; left: 50%; transform: translateX(-50%); padding: 8px 16px; border: 1px solid var(--border); border-radius: 999px; corner-shape: round; background: var(--surface-0); color: var(--text-primary); box-shadow: var(--shadow-md); font-size: 12px; }
 .setting-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--divider); }
 .setting-row .label { flex: 1; color: var(--text-primary); font-size: 13px; }
 .setting-row .desc { color: var(--text-muted); font-size: 11px; }

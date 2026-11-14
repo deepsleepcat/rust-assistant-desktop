@@ -1,9 +1,10 @@
 /**
- * 左侧「文件」面板：当前项目的文件树。
- * - 文件夹懒加载（展开时才读取子目录）
- * - 双击文件在中间编辑器打开
- * - 悬停操作：重命名、删除（回收站）
- * - 顶部工具栏：刷新、新建文件、新建文件夹
+ * 左侧「项目」面板（合并版）：项目列表与文件树融为一体。
+ * - 项目行即树的根行：点击未激活项目切换并就地展开它的文件树（手风琴式，其他项目收起）
+ * - 再点激活项目行可折叠/展开其树
+ * - 文件夹懒加载（展开时才读取子目录）；双击文件在中间编辑器打开
+ * - 悬停操作：项目行=移除记录；文件行=重命名、删除（回收站）、收藏、复制路径
+ * - 顶部工具栏：搜索、排序、刷新、新建文件/文件夹、模组工具、导入模组
  */
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -17,6 +18,7 @@ import { AppIcon } from '../../components/AppIcon'
 import { BilingualLabel } from '../../components/BilingualLabel'
 import { PromptModal } from '../../components/Modal'
 import { PanelState } from '../../components/PanelState'
+import { formatRelativeTime } from '../../utils/conversation'
 
 /** 排序树节点：文件夹始终优先，组内按所选字段（名称/类型/大小/修改时间） */
 function sortChildren(children: TreeNode[], sort: FileSort): TreeNode[] {
@@ -38,6 +40,12 @@ function sortChildren(children: TreeNode[], sort: FileSort): TreeNode[] {
 }
 
 export function ProjectPanel() {
+  const projects = useWorkspaceStore((s) => s.projects)
+  const activeProjectId = useWorkspaceStore((s) => s.activeProjectId)
+  const selectProject = useWorkspaceStore((s) => s.selectProject)
+  const removeProject = useWorkspaceStore((s) => s.removeProject)
+  const importModProject = useWorkspaceStore((s) => s.importModProject)
+  const requestConfirm = useWorkspaceStore((s) => s.requestConfirm)
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const treeRoot = useWorkspaceStore((s) => s.treeRoot)
   const treeError = useWorkspaceStore((s) => s.treeError)
@@ -47,7 +55,6 @@ export function ProjectPanel() {
   const setModDialog = useWorkspaceStore((s) => s.setModDialog)
   const packModProject = useWorkspaceStore((s) => s.packModProject)
   const checkModProject = useWorkspaceStore((s) => s.checkModProject)
-  const importModProject = useWorkspaceStore((s) => s.importModProject)
   const settings = useWorkspaceStore((s) => s.settings)
   const updateSettings = useWorkspaceStore((s) => s.updateSettings)
   const [dialog, setDialog] = useState<null | { kind: 'file' | 'folder'; parent: string }>(null)
@@ -55,6 +62,8 @@ export function ProjectPanel() {
   const [modMenu, setModMenu] = useState(false)
   const modMenuButton = useRef<HTMLButtonElement>(null)
   const [modMenuPosition, setModMenuPosition] = useState({ left: 0, top: 0 })
+  /** 手风琴折叠视图状态：记录被用户手动收起的项目行（键=项目 id），不写入持久化设置 */
+  const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (!modMenu) return
@@ -180,19 +189,14 @@ export function ProjectPanel() {
     }
   }
 
-  if (!project) {
-    return (
-      <section className="panel" style={{ flex: 1, minHeight: 0 }}>
-        <div className="panel-header">
-          <IconFolderOpen2 size={13} />
-          文件
-        </div>
-        <div className="empty-state">
-          <AppIcon name="folder" size={28} />
-          <div>打开一个项目后<br />这里会显示项目文件</div>
-        </div>
-      </section>
-    )
+  /** 项目行点击：未激活 → 切换并展开；已激活 → 折叠/展开其树 */
+  const toggleProjectRow = (id: string) => {
+    if (id !== activeProjectId) {
+      void selectProject(id)
+      setCollapsedIds((s) => ({ ...s, [id]: false }))
+    } else {
+      setCollapsedIds((s) => ({ ...s, [id]: !s[id] }))
+    }
   }
 
   return (
@@ -233,7 +237,7 @@ export function ProjectPanel() {
             )}
           </div>
         ) : (
-          <span className="project-panel-name" title={project.name}>{project.name}</span>
+          <span className="project-panel-name" title={project?.name}>{project?.name}</span>
         )}
         <select
           className="sort-select"
@@ -252,14 +256,14 @@ export function ProjectPanel() {
         <button
           className="icon-btn"
           title="新建文件"
-          onClick={() => setDialog({ kind: 'file', parent: project.rootPath })}
+          onClick={() => project && setDialog({ kind: 'file', parent: project.rootPath })}
         >
           <AppIcon name="file" size={14} />
         </button>
         <button
           className="icon-btn"
           title="新建文件夹"
-          onClick={() => setDialog({ kind: 'folder', parent: project.rootPath })}
+          onClick={() => project && setDialog({ kind: 'folder', parent: project.rootPath })}
         >
           <AppIcon name="folder" size={14} />
         </button>
@@ -286,37 +290,107 @@ export function ProjectPanel() {
             </>, document.body,
           )}
         </div>
+        <button className="icon-btn" title="导入模组（文件夹或 rwmod/zip）" onClick={() => void importModProject()}>
+          <AppIcon name="plus" size={14} />
+        </button>
       </div>
-      {searchOpen && searchQuery.trim() && searchRootPath === project.rootPath ? (
-        searchState === 'loading' ? (
-          <PanelState kind="loading" title="正在搜索项目文件…" />
-        ) : searchState === 'error' ? (
-          <PanelState kind="error" title="搜索项目文件失败" description={searchError ?? undefined} onRetry={() => runSearch(searchQuery)} />
-        ) : searchResult.entries.length === 0 ? (
-          searchResult.truncated ? (
-            <PanelState kind="empty" icon="search" title="扫描提前停止，无法确认没有匹配" description="请缩短搜索范围，或刷新项目后重试" />
-          ) : (
-            <PanelState kind="empty" icon="search" title="没有匹配的文件" description="可按文件名或项目内相对路径搜索" />
-          )
-        ) : (
-          <div className="tree project-search-results" ref={treeRef} role="tree" tabIndex={0} aria-label="项目文件搜索结果" onKeyDown={onTreeKeyDown}>
-            {searchResult.truncated && <div className="project-search-truncated" role="status">扫描提前停止，当前结果可能不完整</div>}
-            {searchResult.entries.map((entry) => (
-              <SearchResultRow key={entry.path} entry={entry} onOpen={() => void useWorkspaceStore.getState().openFile(entry.path)} />
-            ))}
-          </div>
-        )
-      ) : treeError ? (
-        <div className="tree-error">无法读取项目：{treeError}</div>
-      ) : treeRoot ? (
-        <div className="tree" ref={treeRef} role="tree" tabIndex={0} aria-label="项目文件树" onKeyDown={onTreeKeyDown}>
-          <TreeRow node={treeRoot} depth={0} onRename={setRenaming} onNewIn={setDialog} />
+      {projects.length === 0 ? (
+        <div className="empty-state project-empty-state">
+          <AppIcon name="folder" size={28} />
+          <div>还没有项目</div>
+          <button className="btn" onClick={() => void importModProject()}>
+            导入模组
+          </button>
         </div>
       ) : (
-        // M29：根树加载态——「正在读取」与「空项目」不再混为一种
-        <PanelState kind="loading" title="正在加载项目文件…" />
+        <div className="projects-tree" ref={treeRef} role="tree" tabIndex={0} aria-label="项目与文件树" onKeyDown={onTreeKeyDown}>
+          {projects.map((p) => {
+            const active = p.id === activeProjectId
+            const expanded = active && !collapsedIds[p.id]
+            return (
+              <div className="project-tree-group" key={p.id}>
+                <div
+                  className={`project-item${active ? ' active' : ''}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expanded}
+                  onClick={() => toggleProjectRow(p.id)}
+                  onKeyDown={(e) => {
+                    // M29：键盘切换/折叠项目（Enter/Space）
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      toggleProjectRow(p.id)
+                    }
+                  }}
+                  title={p.rootPath}
+                >
+                  <span className={`proj-chev${expanded ? ' open' : ''}`}>
+                    <IconChevronRight size={13} />
+                  </span>
+                  <span className="proj-icon">
+                    <AppIcon name="folder" size={15} />
+                  </span>
+                  <span className="proj-name">{p.name}</span>
+                  <span className="proj-time">{formatRelativeTime(p.lastOpenedAt)}</span>
+                  <span
+                    className="row-actions"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      requestConfirm({
+                        title: '移除项目记录',
+                        message: '只移除列表记录，不会删除项目文件。确认移除？',
+                        danger: true,
+                        confirmText: '移除',
+                        onConfirm: () => removeProject(p.id),
+                      })
+                    }}
+                  >
+                    <button className="icon-btn" title="从列表移除">
+                      <AppIcon name="close" size={13} />
+                    </button>
+                  </span>
+                </div>
+                {expanded && (p.id === activeProjectId) && (
+                  <div className="project-tree-body">
+                    {searchOpen && searchQuery.trim() && searchRootPath === project?.rootPath ? (
+                      searchState === 'loading' ? (
+                        <PanelState kind="loading" title="正在搜索项目文件…" />
+                      ) : searchState === 'error' ? (
+                        <PanelState kind="error" title="搜索项目文件失败" description={searchError ?? undefined} onRetry={() => runSearch(searchQuery)} />
+                      ) : searchResult.entries.length === 0 ? (
+                        searchResult.truncated ? (
+                          <PanelState kind="empty" icon="search" title="扫描提前停止，无法确认没有匹配" description="请缩短搜索范围，或刷新项目后重试" />
+                        ) : (
+                          <PanelState kind="empty" icon="search" title="没有匹配的文件" description="可按文件名或项目内相对路径搜索" />
+                        )
+                      ) : (
+                        <div className="tree project-search-results" role="tree" aria-label="项目文件搜索结果">
+                          {searchResult.truncated && <div className="project-search-truncated" role="status">扫描提前停止，当前结果可能不完整</div>}
+                          {searchResult.entries.map((entry) => (
+                            <SearchResultRow key={entry.path} entry={entry} onOpen={() => void useWorkspaceStore.getState().openFile(entry.path)} />
+                          ))}
+                        </div>
+                      )
+                    ) : treeError ? (
+                      <div className="tree-error">无法读取项目：{treeError}</div>
+                    ) : treeRoot && treeRoot.path === p.rootPath ? (
+                      <div className="tree" role="tree" aria-label="项目文件树">
+                        {treeRoot.children?.map((child) => (
+                          <div className="tree-child" key={child.path}><TreeRow node={child} depth={0} onRename={setRenaming} onNewIn={setDialog} /></div>
+                        ))}
+                      </div>
+                    ) : (
+                      // M29：根树加载态——「正在读取」与「空项目」不再混为一种
+                      <PanelState kind="loading" title="正在加载项目文件…" />
+                    )}
+                    <FavoritesList onOpenFile={(path) => void useWorkspaceStore.getState().openFile(path)} />
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
-      <FavoritesList onOpenFile={(path) => void useWorkspaceStore.getState().openFile(path)} />
 
       {dialog && (
         <PromptModal

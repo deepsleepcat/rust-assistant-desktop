@@ -27,5 +27,5 @@
 .turret-table th { background: rgba(127,127,127,.06); font-weight: 600; color: var(--text-secondary, #57606a); }
 .turret-table input { width: 72px; border: 1px solid var(--border, #d8dee4); border-radius: 4px; padding: 3px 6px; font: 12.5px var(--font-ui); }
 .turret-preview { border: 1px solid var(--border, #d8dee4); border-radius: 6px; }
-.turret-dot { border-radius: 50%; border: 1.5px solid #fff; background: rgba(217, 76, 76, .85); color: #fff; font-size: 9px; font-weight: 700; display: grid; place-items: center; cursor: crosshair; box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 1; }
+.turret-dot { border-radius: 50%; corner-shape: round; border: 1.5px solid #fff; background: rgba(217, 76, 76, .85); color: #fff; font-size: 9px; font-weight: 700; display: grid; place-items: center; cursor: crosshair; box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 1; }
 .turret-dot:hover { background: rgba(217, 76, 76, 1); transform: scale(1.15); }

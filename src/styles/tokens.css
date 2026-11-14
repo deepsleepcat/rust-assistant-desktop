@@ -61,6 +61,18 @@
   --veil-float: color-mix(in srgb, var(--surface-1) 88%, transparent);   /* 抽屉/浮层 */
 }
 
+/* 连续曲率（squircle）：全局把 border-radius 的圆弧从「圆弧」换成「超椭圆连续曲率」。
+   只改曲率形状，圆角大小仍由 --radius-* 与各处 border-radius 控制。
+   仅 Chromium 139+（含本应用 Electron 43）支持；不支持的环境自动回退普通圆角。
+   正圆与胶囊（border-radius: 50% / 999px）已在各声明处显式回退 corner-shape: round */
+@supports (corner-shape: superellipse(2)) {
+  *,
+  *::before,
+  *::after {
+    corner-shape: squircle;
+  }
+}
+
 html[data-theme="light"] {
   color-scheme: light;
   --canvas: #ffffff;
@@ -78,9 +90,14 @@ html[data-theme="light"] {
   --text-secondary: #555555;
   --text-muted: #666666;
   --on-accent: #ffffff;
-  --accent: #111111;
-  --accent-hover: #000000;
-  --accent-soft: rgba(0, 0, 0, .07);
+  --accent: #1a73e8;
+  --accent-hover: #1557b0;
+  --accent-soft: rgba(26, 115, 232, .08);
+  /* M30：主按钮专用黑白主色（点缀色改为蔚蓝后，实底主操作保持黑白品牌） */
+  --primary: #111111;
+  --primary-hover: #000000;
+  --primary-soft: rgba(0, 0, 0, .07);
+  --on-primary: #ffffff;
   /* M29：语义状态色（浅色主题下可辨识；只用于状态表达，不改变黑白主视觉） */
   --success: #188038;
   --warning: #9a6700;
@@ -103,7 +120,7 @@ html[data-theme="light"] {
   --cm-key: #333333;
   --cm-anim: #7a3e00;
   --cm-graphic: #3d5a80;
-  --cm-selection: rgba(26, 115, 232, .18);
+  --cm-selection: color-mix(in srgb, var(--accent) 18%, transparent);
   --cm-active-line: rgba(0, 0, 0, .04);
 
   /* 旧变量兼容：组件逐步迁移时不出现透明断层 */
@@ -134,10 +151,15 @@ html[data-theme="dark"] {
   --text-primary: #e8eaed;
   --text-secondary: #bdc1c6;
   --text-muted: #9aa0a6;
-  --on-accent: #111111;
-  --accent: #eeeeef;
-  --accent-hover: #ffffff;
-  --accent-soft: rgba(255, 255, 255, .10);
+  --on-accent: #062e6f;
+  --accent: #8ab4f8;
+  --accent-hover: #aecbfa;
+  --accent-soft: rgba(138, 180, 248, .12);
+  /* M30：主按钮专用黑白主色（点缀色改为蔚蓝后，实底主操作保持黑白品牌） */
+  --primary: #eeeeef;
+  --primary-hover: #ffffff;
+  --primary-soft: rgba(255, 255, 255, .10);
+  --on-primary: #111111;
   /* M29：语义状态色（深色主题沿用 Google 暗色语义色） */
   --success: #81c995;
   --warning: #fdd663;
@@ -159,7 +181,7 @@ html[data-theme="dark"] {
   --cm-key: #c6c9ce;
   --cm-anim: #fdd663;
   --cm-graphic: #8ab4f8;
-  --cm-selection: rgba(138, 180, 248, .24);
+  --cm-selection: color-mix(in srgb, var(--accent) 24%, transparent);
   --cm-active-line: rgba(255, 255, 255, .05);
   --bg-app: var(--canvas);
   --bg-panel: var(--surface-0);

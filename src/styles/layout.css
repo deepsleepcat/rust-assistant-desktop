@@ -64,7 +64,7 @@
   height: 28px;
   padding: 0 12px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: var(--surface-0);
   color: var(--text-secondary);
   font: 12px var(--font-ui);
@@ -158,8 +158,8 @@
    只作用于 .toolbar 内的按钮，弹窗/表单里的 .btn 描边不受影响 */
 .toolbar > .btn { border-color: transparent; background: color-mix(in srgb, var(--text-primary) 4%, transparent); }
 .toolbar > .btn:hover { border-color: transparent; background: color-mix(in srgb, var(--text-primary) 9%, transparent); color: var(--text-primary); }
-.toolbar > .btn.primary { border-color: transparent; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.toolbar > .btn.primary:hover { border-color: transparent; background: color-mix(in srgb, var(--text-primary) 12%, transparent); color: var(--accent); }
+.toolbar > .btn.primary { border-color: transparent; background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.toolbar > .btn.primary:hover { border-color: transparent; background: color-mix(in srgb, var(--text-primary) 12%, transparent); color: var(--primary); }
 .toolbar > .btn:disabled { opacity: .45; cursor: not-allowed; }
 .toolbar > .btn:disabled:hover { background: color-mix(in srgb, var(--text-primary) 4%, transparent); color: inherit; }
 .toolbar-overflow-menu { position: absolute; z-index: 80; min-width: 180px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-0); box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 1px; }
