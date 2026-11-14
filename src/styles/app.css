@@ -162,6 +162,18 @@ body.ra-compact .community-account-btn span { display: none; }
 .editor-panel { background: var(--editor); }
 .tabbar { height: 36px; flex-shrink: 0; display: flex; gap: 0; padding: 0; overflow-x: auto; background: var(--surface-1); border-bottom: 1px solid var(--divider); scrollbar-width: none; }
 .tabbar::-webkit-scrollbar { display: none; }
+/* 标签栏横向溢出时两端显示翻页箭头：滚动条刻意隐藏，没有提示的话被卷出的标签「看起来消失」 */
+.tabbar-row { position: relative; flex-shrink: 0; }
+.tabbar-nav {
+  position: absolute; top: 0; bottom: 0; z-index: 1; width: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; padding: 0; cursor: pointer; color: var(--text-secondary); background: transparent;
+}
+.tabbar-nav.left { left: 0; background: linear-gradient(to right, var(--surface-1) 45%, transparent); }
+.tabbar-nav.right { right: 0; background: linear-gradient(to left, var(--surface-1) 45%, transparent); }
+.tabbar-nav:hover { color: var(--text-primary); }
+.has-backdrop .app-body .tabbar-nav.left { background: linear-gradient(to right, var(--veil-chrome) 45%, transparent); }
+.has-backdrop .app-body .tabbar-nav.right { background: linear-gradient(to left, var(--veil-chrome) 45%, transparent); }
 .tab { position: relative; display: flex; align-items: center; gap: 7px; min-width: 120px; max-width: 210px; padding: 0 10px; border: 0; border-right: 1px solid var(--divider); background: transparent; color: var(--text-secondary); font: 12.5px var(--font-ui); cursor: pointer; }
 /* M34：标签很多时压缩单个标签宽度，让更多标签可见；窄窗口再进一步收缩 */
 .tabbar-many .tab { min-width: 96px; max-width: 150px; }
