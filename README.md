@@ -5,6 +5,9 @@
   <img alt="运行平台" src="https://img.shields.io/badge/%E8%BF%90%E8%A1%8C%E5%B9%B3%E5%8F%B0-Windows%2010%2F11-0078d4">
   <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/github/license/deepsleepcat/rust-assistant-desktop?label=%E8%AE%B8%E5%8F%AF%E8%AF%81&color=2f855a"></a>
   <a href="https://github.com/deepseek-ai/deepseek-harness"><img alt="powered by dsh" src="https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white"></a>
+  <a href="https://github.com/openai/codex"><img alt="built with Codex" src="https://img.shields.io/badge/built_with-Codex-412991?style=flat-square"></a>
+  <a href="https://www.anthropic.com/claude-code"><img alt="built with Claude Code" src="https://img.shields.io/badge/built_with-Claude_Code-D97757?style=flat-square"></a>
+  <img alt="built with ZCode" src="https://img.shields.io/badge/built_with-ZCode-111111?style=flat-square">
 </p>
 
 <p align="center">
