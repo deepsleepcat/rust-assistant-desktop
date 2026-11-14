@@ -1,13 +1,9 @@
 import { useWorkspaceStore } from '../stores/workspace'
 import { AppIcon } from './AppIcon'
 import { LogoR } from './LogoR'
-import { truncateMiddle } from '../utils/paths'
-import { surfaceLabel } from './desktop/shellContract'
 import { formatShortcut, resolveShortcuts } from '../utils/shortcuts'
 
 export function TitleBar() {
-  const activeProject = useWorkspaceStore((s) => s.projects.find((project) => project.id === s.activeProjectId) ?? null)
-  const activeSurface = useWorkspaceStore((s) => s.activeSurface)
   const setCommandOpen = useWorkspaceStore((s) => s.setCommandOpen)
   const openSettings = useWorkspaceStore((s) => s.openSettings)
   const overrides = useWorkspaceStore((s) => s.settings.keyboardShortcuts)
@@ -17,18 +13,10 @@ export function TitleBar() {
     <header className="titlebar">
       <div className="titlebar-inner">
         <div className="titlebar-brand" aria-label="铁锈工坊">
-          {/* 品牌标与 build/icon.ico 同款视觉：accent 圆角方块 + R 字形 */}
+          {/* 品牌标与 build/icon.ico 同款：透明底紧裁正方形黑 R */}
           <span className="titlebar-brand-mark"><LogoR size="header" /></span>
           <span className="titlebar-name">铁锈工坊</span>
         </div>
-        <span className="titlebar-sep" aria-hidden="true">/</span>
-        <span className="titlebar-surface" aria-live="polite">{surfaceLabel(activeSurface)}</span>
-        {activeProject && activeSurface === 'editor' && (
-          <>
-            <span className="titlebar-sep" aria-hidden="true">/</span>
-            <span className="titlebar-project" title={activeProject.rootPath}>{truncateMiddle(activeProject.rootPath, 42)}</span>
-          </>
-        )}
         <button
           className="titlebar-search"
           type="button"

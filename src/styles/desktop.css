@@ -461,9 +461,6 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
   color: var(--text-primary);
 }
 .titlebar-name { font-size: 13.5px; letter-spacing: .01em; }
-.titlebar-sep { color: var(--text-muted); }
-.titlebar-surface { color: var(--text-secondary); font-size: 12px; }
-.titlebar-project { max-width: 260px; color: var(--text-muted); font: 11.5px var(--font-mono); }
 .titlebar-search {
   width: min(430px, 40vw);
   height: 32px;
@@ -803,7 +800,7 @@ body.ra-reduced-motion *::after {
   .desktop-shell { grid-template-columns: 48px minmax(0, 1fr); }
   .desktop-rail-tooltip { display: none; }
   .titlebar { padding-left: 10px; padding-right: 104px; }
-  .titlebar-name, .titlebar-sep, .titlebar-surface, .titlebar-project { display: none; }
+  .titlebar-name { display: none; }
   .titlebar-search { flex: 1; width: auto; margin-left: 0; }
   .titlebar-settings { width: 32px; padding: 0; justify-content: center; }
   .statusbar { gap: 8px; padding-inline: 8px; font-size: 10px; }
