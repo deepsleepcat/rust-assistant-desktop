@@ -56,6 +56,9 @@ describe('openFile 路径归一化（单位库相对路径契约）', () => {
     expect(pathStartsWith('C:\\proj\\units', 'C:\\proj\\units')).toBe(true) // 自身
     expect(pathStartsWith('C:\\proj\\units2\\a.txt', 'C:\\proj\\units')).toBe(false) // 同名前缀不误配
     expect(pathStartsWith('c:\\proj\\units\\a.txt', 'C:\\PROJ\\UNITS')).toBe(true) // 大小写
+    // 同一文件的两种写法（单位库正斜杠标签 vs 文件树反斜杠节点）：自身也必须匹配
+    expect(pathStartsWith('C:/proj/units/a.txt', 'C:\\proj\\units\\a.txt')).toBe(true)
+    expect(pathStartsWith('c:/PROJ/units/A.TXT', 'C:\\proj\\units\\a.txt')).toBe(true)
   })
 
   it('replacePathPrefix：混合分隔符下替换仍落在正确位置', () => {

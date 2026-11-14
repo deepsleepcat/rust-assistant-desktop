@@ -124,6 +124,10 @@ export class EngineDlcSessionManager {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
       })
+      // 宿主死亡瞬间 stdin 上可能有未 flush 完的写入（帧请求可达 MB 级）：
+      // kill 后管道读端关闭 → 在途 write 报 EPIPE。不监听会以 unhandled 'error'
+      // 直接崩溃主进程（node tests/engineDlcSession.test.ts 时序可复现）；吞掉后由 close 事件统一收尾等待者。
+      child.stdin?.on('error', () => undefined)
       kill = () => {
         if (!child.pid) return
         if (process.platform === 'win32') child.kill('SIGKILL')

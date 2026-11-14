@@ -240,7 +240,9 @@ describe('PR4 path, PNG and lifecycle regressions', () => {
     expect(await trackRender(invoke('dlc:render', request))).toMatchObject({ ok: false, reason: expect.stringContaining('PNG') })
   }, REAL_RENDER_BUDGET_MS)
 
-  it('normal parent exit cleans a real detached unref worker before returning success', async () => {
+  // 该不变式依赖 Windows Job Object（KILL_ON_JOB_CLOSE）终止整棵树；POSIX 下
+  // `detached:true` 的孙进程自建进程组，按设计逃离父进程组，不属于该断言覆盖范围。
+  it.skipIf(process.platform !== 'win32')('normal parent exit cleans a real detached unref worker before returning success', async () => {
     const pidFile = path.join(tmp, 'detached.pid')
     const valid = PNG.sync.write(new PNG({ width: 1, height: 1 }))
     const script = `const {spawn}=require('node:child_process');const fs=require('node:fs');const c=spawn(process["execPath"],['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});c.unref();fs.writeFileSync(${JSON.stringify(pidFile)},String(c.pid));const a=process["argv"];fs.writeFileSync(a[a.indexOf('--output')+1],Buffer.from(${JSON.stringify(valid.toString('base64'))},'base64'))`

@@ -7,7 +7,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createHash } from 'node:crypto'
-import { assertNoLinkEscape } from './paths'
+import { assertNoLinkEscape, isAnyPlatformAbsolute } from './paths'
 import { repairIniContent, type TranslationRepairChange, type TranslationRepairDictionary } from '../src/services/translationRepair'
 import { MAX_SCAN_READ_SIZE, resolveInside } from './modShared'
 import { isExcluded } from './modScan'
@@ -52,7 +52,7 @@ export function isRepairSourceFile(name: string): boolean {
 }
 
 export function normalizeRepairRelativePath(value: string): string {
-  if (!value || value.length > 1024 || value.includes('\0') || path.isAbsolute(value)) throw new Error('修复文件路径无效')
+  if (!value || value.length > 1024 || value.includes('\0') || isAnyPlatformAbsolute(value)) throw new Error('修复文件路径无效')
   const normalized = value.replace(/\\/g, '/')
   const parts = normalized.split('/')
   if (parts.some((part) => !part || part === '.' || part === '..')) throw new Error('修复文件路径无效')

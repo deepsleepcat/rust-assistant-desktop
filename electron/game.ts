@@ -6,7 +6,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { assertNoLinkEscape, isPathInside, normalizePath } from './paths'
+import { assertNoLinkEscape, isAnyPlatformAbsolute, isPathInside, normalizePath } from './paths'
 import { splitTopLevelConfigValue } from '../src/services/configSyntax'
 import { checkMod, escapeIniComment, isExcluded } from './modTools'
 
@@ -314,8 +314,8 @@ const MAX_ASSET_IMAGE_BYTES = 10 * 1024 * 1024
 export async function readGameAssetImage(gamePath: string, relPath: string): Promise<string> {
   if (!(await looksLikeGameDir(gamePath))) throw new Error('不是有效的铁锈战争安装目录（缺少 assets/units）')
   const rel = String(relPath).replace(/^\/+/, '').replace(/\\/g, '/')
-  // 拒绝相对穿越、盘符绝对路径（win32 上 path.join 会丢弃 gamePath 拼接绝对路径）
-  if (!rel || rel.includes('..') || path.isAbsolute(rel)) throw new Error('无效的资产路径')
+  // 拒绝相对穿越、任何平台的绝对路径（path.isAbsolute 在非 Windows 上不认识盘符/UNC，用自定义函数兜底）
+  if (!rel || rel.includes('..') || isAnyPlatformAbsolute(rel)) throw new Error('无效的资产路径')
   // 规范化后显式边界校验（与 isPathInside 同语义；内联让静态检查可见）
   const abs = path.resolve(gamePath, rel)
   const base = path.resolve(gamePath)

@@ -206,7 +206,8 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     if (event?.sender?.isDestroyed()) return { ok: false, reason: '预览窗口已关闭' }
     if (event?.sender && !owners.has(owner)) {
       owners.add(owner)
-      event.sender.once('destroyed', () => { host.cancel(owner); sessions.cancelAll(); owners.delete(owner) })
+      // 只关该 sender 自己的资源：cancelAll 会误杀其他窗口正在使用的渲染/会话
+      event.sender.once('destroyed', () => { host.cancel(owner); void sessions.close(owner); owners.delete(owner) })
     }
     const input = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
     const requestId = typeof input.requestId === 'string' ? input.requestId : 'legacy'

@@ -23,7 +23,17 @@ export interface OpenFileRequest {
   line?: number
 }
 
-export type OpenFileResult = { ok: true; session: EditSession } | { ok: false; error: string }
+export type OpenFileResult =
+  | { ok: true; session: EditSession }
+  | {
+      ok: false
+      error: string
+      /** 读盘期间项目被切换 / 又发起了新的打开请求：本次结果作废，调用方无需报错 */
+      cancelled?: boolean
+    }
+
+/** 打开请求序号：并发打开时只有最后一次请求允许落到会话，防止先发起的慢读盘后返回覆盖新文件 */
+let openRequestSeq = 0
 
 /** 从路径取文件名 */
 export function fileNameOf(path: string): string {
@@ -45,14 +55,27 @@ export async function openFileInEditor(req: OpenFileRequest): Promise<OpenFileRe
   const ws = useWorkspace.getState()
   const project = ws.projects.find((p) => p.id === ws.activeProjectId)
   if (!project) return { ok: false, error: '请先选择一个项目' }
+  const projectId = project.id
+  const requestSeq = ++openRequestSeq
+
+  /**
+   * 本次请求是否仍然有效：读盘/加载词典期间用户可能切换了项目，或又点了另一个文件。
+   * 不校验就会把旧项目的文件（或先发起的慢请求）写进当前会话，界面显示的文件与
+   * 当前项目/最后一次点击不一致。
+   */
+  const stale = (): boolean => requestSeq !== openRequestSeq || useWorkspace.getState().activeProjectId !== projectId
 
   const name = req.name ?? fileNameOf(req.path)
   try {
     const { content, hasBom, mtimeMs } = await getBridge().project.readFile(project.rootPath, req.path)
-    const chineseMode = ws.settings.translateMode && isRustConfigFile(name)
+    if (stale()) return { ok: false, error: '', cancelled: true }
+    const latest = useWorkspace.getState()
+    const chineseMode = latest.settings.translateMode && isRustConfigFile(name)
     const dict = await loadTranslationDict(chineseMode)
+    // loadCodeData 可能较慢（首次加载知识表）：加载完成后再确认一次
+    if (stale()) return { ok: false, error: '', cancelled: true }
     const session = createSession({
-      projectId: project.id,
+      projectId,
       rootPath: project.rootPath,
       path: req.path,
       name,
@@ -62,8 +85,9 @@ export async function openFileInEditor(req: OpenFileRequest): Promise<OpenFileRe
       chineseMode,
       dict,
     })
-    ws.openEditorSession(session)
-    if (req.line && req.line > 0) ws.requestEditorJump(req.line)
+    const current = useWorkspace.getState()
+    current.openEditorSession(session)
+    if (req.line && req.line > 0) current.requestEditorJump(req.line)
     return { ok: true, session }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }

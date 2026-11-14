@@ -24,35 +24,66 @@ export interface ChatOnceResult {
   toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> | null
 }
 
-/** 单次流式请求（Rust 代理 → SSE 事件） */
+/** 单次流式请求（Rust 代理 → SSE 事件）
+ *
+ * 中止链路：UI 停止按钮 → runAgentChat 的 isAborted() 为 true
+ *  → chatOnce 看门狗检测到后 invoke('ai_stream_abort', { requestId }) 标记该请求
+ *  → ai_stream 的 SSE 循环在下一轮迭代时提前终止（错误经 invoke reject 回流）
+ *
+ * 每个请求带唯一 requestId：Rust 端每个事件都回显，前端据此过滤——
+ * 超时/中止后旧流（僵尸流）的迟到 Done/Delta 不会串扰下一次请求
+ * （否则旧文本/旧工具调用会被误当新回合结果执行）。
+ */
 export async function chatOnce(
   settings: AiSettings,
   messages: AiChatMessage[],
-  opts: { tools?: boolean; onDelta: (text: string) => void },
+  opts: { tools?: boolean; onDelta: (text: string) => void; isAborted?: () => boolean },
 ): Promise<ChatOnceResult> {
   return new Promise<ChatOnceResult>((resolve, reject) => {
     let unlisten: UnlistenFn | null = null
     let fullText = ''
     let toolCallsJson: string | null = null
-    const timer = setTimeout(() => {
+    const requestId = crypto.randomUUID()
+    let abortNotified = false
+    const abortWatchdog = setInterval(() => {
+      if (opts.isAborted?.()) {
+        clearInterval(abortWatchdog)
+        if (!abortNotified) {
+          abortNotified = true
+          void invoke('ai_stream_abort', { requestId }).catch(() => undefined)
+          unlisten?.()
+          clearTimeout(timer)
+          reject(new Error('已中止'))
+        }
+      }
+    }, 100)
+    const cleanup = () => {
+      clearInterval(abortWatchdog)
+      clearTimeout(timer)
       unlisten?.()
-      reject(new Error('AI 响应超时（30s 无事件），请重试'))
+    }
+    const timer = setTimeout(() => {
+      cleanup()
+      // 尽力中止 Rust 侧仍在跑的流，避免僵尸流继续消耗网络与产生迟到事件
+      void invoke('ai_stream_abort', { requestId }).catch(() => undefined)
+      reject(new Error('AI 响应超时（120 秒未完成），请重试'))
     }, 120_000)
 
     listen<unknown>(AI_EVENT_CHANNEL, (ev) => {
       const payload = ev.payload as {
+        request_id?: string
         type: 'start' | 'delta' | 'done' | 'error'
         text?: string
         full_text?: string
         tool_calls?: string | null
         message?: string
       }
+      if (payload.request_id !== requestId) return
       if (payload.type === 'delta' && payload.text) {
         fullText += payload.text
         opts.onDelta(payload.text)
       } else if (payload.type === 'done') {
-        clearTimeout(timer)
-        unlisten?.()
+        cleanup()
         fullText = payload.full_text ?? fullText
         toolCallsJson = payload.tool_calls ?? null
         let toolCalls: ChatOnceResult['toolCalls'] = null
@@ -71,14 +102,14 @@ export async function chatOnce(
         }
         resolve({ fullText, toolCalls })
       } else if (payload.type === 'error') {
-        clearTimeout(timer)
-        unlisten?.()
+        cleanup()
         reject(new Error(payload.message ?? 'AI 请求失败'))
       }
     }).then((fn) => {
       unlisten = fn
       void invoke('ai_stream', {
         request: {
+          requestId,
           apiKey: settings.deepseekApiKey,
           model: settings.deepseekModel,
           systemPrompt: RUST_ASSISTANT_SYSTEM_PROMPT,
@@ -87,8 +118,7 @@ export async function chatOnce(
           noTools: opts.tools === false,
         },
       }).catch((err) => {
-        clearTimeout(timer)
-        unlisten?.()
+        cleanup()
         reject(new Error(typeof err === 'string' ? err : 'AI 请求失败'))
       })
     })
@@ -118,7 +148,17 @@ export async function runAgentChat(opts: AgentChatOptions): Promise<string> {
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     if (opts.isAborted?.()) return finalText || '（已中止）'
-    const result = await chatOnce(opts.settings, messages, { onDelta: opts.onDelta })
+    let result: ChatOnceResult
+    try {
+      result = await chatOnce(opts.settings, messages, { onDelta: opts.onDelta, isAborted: opts.isAborted })
+    } catch (err) {
+      // 用户主动中止（看门狗 reject）：按中止语义优雅返回（不打断整个页面）。
+      // 其余失败（401/网络断开/超时）必须继续上抛，让 AiScreen 的 catch 显示
+      // 错误信息——不能把所有 reject 都吞成「已中止」，否则请求失败在界面上
+      // 表现为空白回复，用户无法区分「已停止」和「请求失败」。
+      if (opts.isAborted?.()) return finalText || '（已中止）'
+      throw err
+    }
     finalText = result.fullText
     if (!result.toolCalls || result.toolCalls.length === 0) {
       // 模型结束（无工具调用）

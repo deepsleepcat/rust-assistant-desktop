@@ -247,6 +247,26 @@ describe('工作区 store 业务流', () => {
     expect(final).not.toContain('新文件夹')
   })
 
+  it('重命名/删除时同步单位库打开的正斜杠标签（分隔符差异回归）', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    // 单位库/扫描结果给相对路径，openFile 会拼成「根反斜杠 + /units/rifle.txt」的混合写法
+    await store.getState().openFile('units/rifle.txt')
+    expect(store.getState().openTabs[0].path).toContain('/units/rifle.txt')
+
+    await store.getState().renameItem(`${MOCK_PROJECT_ROOT}\\units\\rifle.txt`, 'rifle2.txt')
+    const renamed = store.getState().openTabs[0]
+    expect(renamed.path.replace(/\\/g, '/')).toContain('/units/rifle2.txt')
+    expect(renamed.name).toBe('rifle2.txt')
+
+    // 删除文件时，同名的正斜杠标签也必须被关闭（否则保存会重新写出已删除的文件）
+    store.getState().closeTab(renamed.id)
+    await store.getState().openFile('units/tank.txt')
+    expect(store.getState().openTabs).toHaveLength(1)
+    await store.getState().deleteItem(`${MOCK_PROJECT_ROOT}\\units\\tank.txt`)
+    expect(store.getState().openTabs).toHaveLength(0)
+  })
+
   it('刷新项目树后仍可正常工作', async () => {
     await store.getState().init()
     await store.getState().openProject()
@@ -393,6 +413,28 @@ describe('M7 收藏（书签）', () => {
     // 未激活项目时 isBookmarked 为 false（activeProjectId 为 null 场景）
     store.getState().removeProject(store.getState().projects[0].id)
     expect(store.getState().isBookmarked(`${MOCK_PROJECT_ROOT}\\mod.json`)).toBe(false)
+  })
+
+  it('移除非活动项目不影响当前项目的标签、文件树与活动状态（回归）', async () => {
+    await store.getState().init()
+    await store.getState().openProject()
+    await store.getState().openFile(`${MOCK_PROJECT_ROOT}\\mod.json`)
+    const before = store.getState()
+    expect(before.openTabs.length).toBe(1)
+    expect(before.activeTabId).not.toBeNull()
+    expect(before.treeRoot).not.toBeNull()
+    // 模拟另一个（非活动）项目
+    const other = { id: 'other-project', name: '其他项目', rootPath: 'D:\\other-mod', createdAt: 1, lastOpenedAt: 1 }
+    store.setState({ projects: [...before.projects, other] })
+    // 移除非活动项目：此前会连当前项目的 openTabs/treeRoot 一起清空，
+    // 且 treeRoot 置 null 后无人刷新，文件面板卡在「正在加载项目文件…」
+    store.getState().removeProject(other.id)
+    const after = store.getState()
+    expect(after.projects.some((p) => p.id === other.id)).toBe(false)
+    expect(after.activeProjectId).toBe(before.activeProjectId)
+    expect(after.openTabs.length).toBe(1)
+    expect(after.activeTabId).toBe(before.activeTabId)
+    expect(after.treeRoot).not.toBeNull()
   })
 
   it('删除文件夹时前缀匹配清理其内部收藏', async () => {

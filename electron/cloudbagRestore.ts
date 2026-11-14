@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto'
 import { fileFingerprint, snapshotLocalTree } from './cloudbagSnapshot'
 import path from 'node:path'
 import JSZip from 'jszip'
-import { assertNoLinkEscape, isPathInside, normalizePath, realRootOf } from './paths'
+import { assertNoLinkEscape, isAnyPlatformAbsolute, isPathInside, normalizePath, realRootOf } from './paths'
 import { isDangerousExcluded, isExcluded } from './modScan'
 import { CLOUD_BAG_MAX_UPLOAD_BYTES, cloudBagPathKey, isCloudBagTextPath, isCloudBagTreePath } from './cloudbagTree'
 import { registerCloudbagSaveIpc } from './cloudbagSave'
@@ -83,7 +83,7 @@ function resolveInside(base: string, rel: string): string {
   // 显式边界断言（zip-slip 兜底防线）：relative 为空 = 落在根自身，首段为 .. 或为绝对路径 = 越出根，
   // 两者一律拒绝。写成 path.relative 惯用式而非前缀比较，是为了让边界校验对静态扫描显式可见。
   const relative = path.relative(resolvedBase, target)
-  if (relative === '' || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  if (relative === '' || relative === '..' || relative.startsWith(`..${path.sep}`) || isAnyPlatformAbsolute(relative)) {
     throw new Error(`导入包内包含非法路径：${rel}（已中止恢复）`)
   }
   return target
