@@ -1,9 +1,9 @@
 /**
  * make-icon.mjs — 重新生成应用图标（build/icon.ico / icon-256.png / icon-1024.png）。
  *
- * 背景：旧 icon-256.png 是 256×256 画布上挤在左上角的黑 R，右下大片空白——
- * 任务栏里看起来是个歪的长方形，且黑 R 在深色任务栏上不可见。
- * 新图标：#111111（--accent 品牌色）圆角方块 + 白色居中 R，浅/深任务栏都清晰。
+ * 设计（用户拍板）：透明背景 + 黑色 R 字形（#111111，与界面 text-primary 同源），
+ * 字形紧裁后居中占满正方形画布（约 84%）——旧图标的问题是字形歪在画布左上角、
+ * 右下大片空白，任务栏里像被拉长的长方形。
  *
  * 用法：node scripts/make-icon.mjs
  * 依赖：puppeteer-core + 本机 Chrome/Edge（渲染 SVG 与 canvas 缩放）
@@ -39,10 +39,9 @@ await page.setViewport({ width: MASTER, height: MASTER, deviceScaleFactor: 1 })
 await page.setContent(`<!doctype html>
 <html><body style="margin:0;background:transparent">
 <div id="icon" style="width:${MASTER}px;height:${MASTER}px;position:relative">
-  <div style="position:absolute;inset:0;background:#111111;border-radius:${Math.round(MASTER * 0.22)}px"></div>
-  <svg viewBox="${R_VIEWBOX}" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-53%);
-       width:${Math.round(MASTER * 0.6)}px;height:${Math.round(MASTER * 0.6)}px" preserveAspectRatio="xMidYMid meet">
-    <path d="${R_PATH}" fill="#ffffff"/>
+  <svg viewBox="${R_VIEWBOX}" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-51%);
+       width:${Math.round(MASTER * 0.84)}px;height:${Math.round(MASTER * 0.84)}px" preserveAspectRatio="xMidYMid meet">
+    <path d="${R_PATH}" fill="#111111"/>
   </svg>
 </div>
 <img id="src" alt="" style="display:none">

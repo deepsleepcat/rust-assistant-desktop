@@ -1,9 +1,12 @@
-/** 透明、非正方形的品牌 R 标记。Logo 是品牌，不使用功能图标库替代。 */
+/** 透明背景的品牌 R 标记。Logo 是品牌，不使用功能图标库替代。
+ * header 用紧裁正方形 viewBox（与 build/icon.ico 同款构图：透明底黑 R 居中占满）；
+ * welcome/about 保留宽幅字形（配合大标排版）。 */
 export function LogoR({ size = 'header' }: { size?: 'header' | 'welcome' | 'about' }) {
-  const dimensions = size === 'welcome' ? { width: 50, height: 34 } : size === 'about' ? { width: 58, height: 38 } : { width: 28, height: 20 }
+  const header = size === 'header'
+  const dimensions = size === 'welcome' ? { width: 50, height: 34 } : size === 'about' ? { width: 58, height: 38 } : { width: 22, height: 22 }
   return (
     <svg
-      viewBox="0 0 42 28"
+      viewBox={header ? '6.5 4.5 18 19' : '0 0 42 28'}
       width={dimensions.width}
       height={dimensions.height}
       fill="none"
