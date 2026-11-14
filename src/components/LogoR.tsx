@@ -3,7 +3,7 @@
  * welcome/about 保留宽幅字形（配合大标排版）。 */
 export function LogoR({ size = 'header' }: { size?: 'header' | 'welcome' | 'about' }) {
   const header = size === 'header'
-  const dimensions = size === 'welcome' ? { width: 50, height: 34 } : size === 'about' ? { width: 58, height: 38 } : { width: 22, height: 22 }
+  const dimensions = size === 'welcome' ? { width: 50, height: 34 } : size === 'about' ? { width: 58, height: 38 } : { width: 19, height: 19 }
   return (
     <svg
       viewBox={header ? '6.5 4.5 18 19' : '0 0 42 28'}
