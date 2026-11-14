@@ -4,7 +4,6 @@ import { formatShortcut, resolveShortcuts } from '../utils/shortcuts'
 
 export function TitleBar() {
   const setCommandOpen = useWorkspaceStore((s) => s.setCommandOpen)
-  const openSettings = useWorkspaceStore((s) => s.openSettings)
   const overrides = useWorkspaceStore((s) => s.settings.keyboardShortcuts)
   const shortcuts = resolveShortcuts(overrides)
 
@@ -20,10 +19,6 @@ export function TitleBar() {
           <AppIcon name="search" size={14} />
           <span>搜索命令、打开项目…</span>
           {shortcuts.commandPalette && <span className="hint"><kbd>{formatShortcut(shortcuts.commandPalette)}</kbd></span>}
-        </button>
-        <button className="titlebar-settings" type="button" title={shortcuts.settings ? `打开设置（${formatShortcut(shortcuts.settings)}）` : '打开设置'} onClick={() => openSettings('appearance')}>
-          <AppIcon name="settings" size={14} />
-          <span>设置</span>
         </button>
       </div>
       {window.rustAssistant?.platform === 'win32' && (

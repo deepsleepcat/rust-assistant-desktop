@@ -467,23 +467,6 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .titlebar-search:focus-visible { border-color: var(--border-strong); background: var(--desktop-glass-hover); color: var(--text-primary); }
 .titlebar-search .hint { gap: 3px; }
 .titlebar-search kbd { padding: 1px 5px; border-color: var(--divider); background: var(--surface-hover); }
-.titlebar-settings {
-  grid-column: 3;
-  justify-self: end;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text-secondary);
-  font: 12px var(--font-ui);
-  cursor: pointer;
-}
-.titlebar-settings:hover,
-.titlebar-settings:focus-visible { background: var(--desktop-glass-hover); color: var(--text-primary); }
 
 .app-body {
   position: relative;
@@ -784,7 +767,6 @@ body.ra-reduced-motion *::after {
   .desktop-rail-brand { width: 34px; height: 34px; }
   .desktop-rail-button, .desktop-rail-account { width: 36px; height: 36px; border-radius: 10px; }
   .titlebar-search { width: min(300px, 38vw); margin-left: 8px; }
-  .titlebar-settings span { display: none; }
   .settings-page-header { padding: 22px 22px 18px; }
   .settings-page-body .settings-nav { width: 164px; flex-basis: 164px; padding-inline: 12px; }
   .settings-page-body .settings-content { padding: 18px 22px 32px; }
@@ -794,7 +776,6 @@ body.ra-reduced-motion *::after {
   .desktop-shell { grid-template-columns: 48px minmax(0, 1fr); }
   .desktop-rail-tooltip { display: none; }
   .titlebar { padding-left: 10px; padding-right: 104px; }
-  .titlebar-settings { width: 32px; padding: 0; justify-self: end; justify-content: center; }
   .statusbar { gap: 8px; padding-inline: 8px; font-size: 10px; }
   .statusbar .sb-left { display: none; }
   .statusbar .sb-connection { margin-left: auto; }
