@@ -178,7 +178,6 @@ body.ra-compact .community-account-btn span { display: none; }
 .welcome { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 36px; background: var(--editor); text-align: center; }
 .welcome-logo { width: 50px; height: 34px; display: grid; place-items: center; color: var(--text-primary); }
 .welcome h1 { margin: 6px 0 0; color: var(--text-primary); font: 650 24px var(--font-display); }
-.welcome .subtitle { margin: 0; color: var(--text-secondary); font-size: 13px; }
 .welcome-actions { display: flex; gap: 8px; margin-top: 16px; }
 .welcome-footer { margin-top: 20px; color: var(--text-muted); font-size: 11px; }
 .welcome-recent { width: min(520px, 100%); margin-top: 22px; text-align: left; }

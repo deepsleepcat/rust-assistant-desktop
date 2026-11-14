@@ -232,6 +232,17 @@ function EditorTabChip({ tabId, active, onActivate }: { tabId: string; active: b
   )
 }
 
+/** 欢迎屏按时段返回一句问候（进入欢迎页时取一次，不做定时刷新） */
+function welcomeGreeting(now = new Date()): string {
+  const h = now.getHours()
+  if (h >= 5 && h < 8) return '早上好呀，今天也元气满满'
+  if (h >= 8 && h < 11) return '早上好，开工顺利吗'
+  if (h >= 11 && h < 14) return '中午好呀，要不要先休息一下'
+  if (h >= 14 && h < 18) return '下午好，来推进一点小目标'
+  if (h >= 18 && h < 23) return '晚上好，今天进展如何'
+  return '夜深了，记得早点休息'
+}
+
 function WelcomeView() {
   const projects = useWorkspaceStore((s) => s.projects)
   const selectProject = useWorkspaceStore((s) => s.selectProject)
@@ -243,9 +254,8 @@ function WelcomeView() {
       <div className="stagger" style={{ display: 'contents' }}>
         <div className="welcome-logo"><LogoR size="welcome" /></div>
         <h1>
-          <span>铁锈工坊</span>
+          <span>{welcomeGreeting()}</span>
         </h1>
-        <p className="subtitle">铁锈战争 · 模组开发工作台</p>
         <div className="welcome-actions">
           <button className="btn" onClick={() => void importModProject()}>
             导入模组
