@@ -337,7 +337,7 @@
   height: 12px;
   border: 2px solid var(--border);
   border-top-color: var(--accent);
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   animation: m-spin .8s linear infinite;
 }
 
@@ -427,7 +427,7 @@
 .inspect-item .severity {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   margin-top: 5px;
   flex-shrink: 0;
 }

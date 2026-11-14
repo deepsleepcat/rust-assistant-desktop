@@ -114,8 +114,6 @@ describe('设置清洗', () => {
 
   it('M29 布局字段：比例夹紧、布尔校验、损坏数据回退', () => {
     expect(DEFAULT_SETTINGS.layout).toEqual({
-      leftARatio: 0.3,
-      leftACollapsed: false,
       rightARatio: 0.38,
       rightACollapsed: false,
       leftCollapsed: false,
@@ -135,8 +133,9 @@ describe('设置清洗', () => {
         outlineCollapsed: 1,
       },
     })
-    expect(s.layout.leftARatio).toBe(0.8)
-    expect(s.layout.leftACollapsed).toBe(false)
+    // M43：左栏项目列表已并入文件树（手风琴），leftA* 字段废弃并被清洗掉
+    expect('leftARatio' in s.layout).toBe(false)
+    expect('leftACollapsed' in s.layout).toBe(false)
     expect(s.layout.rightARatio).toBe(0.15)
     expect(s.layout.rightACollapsed).toBe(true)
     expect(s.layout.leftCollapsed).toBe(true)
@@ -149,7 +148,7 @@ describe('设置清洗', () => {
     const s = sanitizeSettings({
       layout: { leftARatio: 0.4, rightARatio: 0.5, outlineHeight: 240, outlineCollapsed: true },
     })
-    expect(s.layout.leftARatio).toBe(0.4)
+    expect('leftARatio' in s.layout).toBe(false)
     expect(s.layout.rightARatio).toBe(0.5)
     expect(s.layout.outlineHeight).toBe(240)
     expect(s.layout.outlineCollapsed).toBe(true)

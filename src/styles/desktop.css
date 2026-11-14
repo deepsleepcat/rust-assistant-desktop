@@ -276,7 +276,7 @@ html[data-theme="dark"] .app::before {
   height: 22px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   background: var(--text-primary);
   color: var(--desktop-canvas);
   font: 700 11px/1 var(--font-ui);
@@ -385,7 +385,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
   height: 26px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 50%; corner-shape: round;
   overflow: hidden;
   background: var(--surface-2);
 }
@@ -538,7 +538,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 }
 .statusbar .sb-git:hover { background: var(--surface-hover); color: var(--text-primary); }
 .statusbar .sb-git.active { color: var(--accent); }
-.sb-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--text-muted); }
+.sb-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; corner-shape: round; background: var(--text-muted); }
 .sb-dot.online { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
 
 /* The workbench keeps only the project/file rail and editor. */
@@ -585,7 +585,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
   gap: 6px;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   background: var(--desktop-glass-strong);
   color: var(--text-secondary);
   font: 12px var(--font-ui);
@@ -688,7 +688,7 @@ body.ra-low-performance .desktop-shell .wb-left { background: var(--surface-1); 
 .settings-page-body .settings-nav { width: 200px; flex-basis: 200px; padding: 20px 16px 24px; overflow-y: auto; }
 .settings-page-body .settings-content { min-height: 0; padding: 20px 28px 40px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .btn.primary { --icon-filter: brightness(0) invert(1); }
-html[data-theme="dark"] .btn.primary { --icon-filter: brightness(0); color: #111; }
+html[data-theme="dark"] .btn.primary { --icon-filter: brightness(0); }
 .settings-nav-item {
   width: 100%;
   min-height: 34px;

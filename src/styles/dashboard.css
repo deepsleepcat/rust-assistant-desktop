@@ -194,7 +194,7 @@
 
 .dashboard-badge {
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   border: 1px solid var(--border);
   font-size: 12px;
   color: var(--text-secondary);

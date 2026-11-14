@@ -38,8 +38,6 @@ export const CURSOR_EFFECT_COLORS = [
 ] as const
 
 export const DEFAULT_LAYOUT: WorkbenchLayoutSettings = {
-  leftARatio: 0.3,
-  leftACollapsed: false,
   rightARatio: 0.38,
   rightACollapsed: false,
   leftCollapsed: false,
@@ -175,8 +173,6 @@ function sanitizeEditorColors(raw: unknown): EditorColors {
 function sanitizeLayout(raw: unknown): WorkbenchLayoutSettings {
   const input = (raw && typeof raw === 'object' ? raw : {}) as Partial<WorkbenchLayoutSettings>
   return {
-    leftARatio: clamp(typeof input.leftARatio === 'number' ? input.leftARatio : DEFAULT_LAYOUT.leftARatio, INNER_RATIO_MIN, INNER_RATIO_MAX),
-    leftACollapsed: typeof input.leftACollapsed === 'boolean' ? input.leftACollapsed : DEFAULT_LAYOUT.leftACollapsed,
     rightARatio: clamp(typeof input.rightARatio === 'number' ? input.rightARatio : DEFAULT_LAYOUT.rightARatio, INNER_RATIO_MIN, INNER_RATIO_MAX),
     rightACollapsed: typeof input.rightACollapsed === 'boolean' ? input.rightACollapsed : DEFAULT_LAYOUT.rightACollapsed,
     leftCollapsed: typeof input.leftCollapsed === 'boolean' ? input.leftCollapsed : DEFAULT_LAYOUT.leftCollapsed,

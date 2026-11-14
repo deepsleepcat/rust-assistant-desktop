@@ -58,7 +58,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { box-shadow: 
   align-items: center;
   gap: 4px;
   padding: 1px 8px;
-  border-radius: 999px;
+  border-radius: 999px; corner-shape: round;
   font-size: 11px;
   font-weight: 600;
   background: var(--surface-2);
@@ -133,7 +133,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { box-shadow: 
 .panel-state .panel-state-actions { display: flex; gap: 8px; margin-top: 4px; }
 .panel-state.error { color: var(--danger); }
 .panel-state.error .panel-state-title { color: var(--danger); }
-.panel-state-spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: ra-spin .8s linear infinite; }
+.panel-state-spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; corner-shape: round; animation: ra-spin .8s linear infinite; }
 
 /* ── AI 消息复制按钮：悬停/聚焦消息时显现，键盘可达 ─────── */
 .msg-copy-btn {
