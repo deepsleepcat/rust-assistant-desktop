@@ -1,25 +1,31 @@
 /**
- * 炮塔段（[turret_N]）解析与写回（纯函数，供炮塔编辑器使用）。
- * 铁锈单位文件里武器 = [turret_N]（x/y 为炮塔相对单位图中心的像素坐标）+ [projectile_N] 弹体。
+ * 炮塔段（[turret_*]）解析与写回（纯函数，供炮塔编辑器使用）。
+ * 铁锈单位文件里武器 = [turret_数字] 或 [turret_名称]（x/y 为炮塔相对单位图中心的像素坐标）
+ * + [projectile_*] 弹体；官方单位两种混用（[turret_1]/[turret_main]/[turret_antiair1]…），
+ * 模组也会用中文命名（[turret_枪]）。引擎把文件里出现的 [turret_*] 按出现顺序编号，
+ * 会话返回的 turrets[].index 就是该顺序（1 基），因此这里同样按出现顺序编号。
  *
  * 中文显示层兼容：解析/写回可传入 zhToEn 回译函数——中文模式的内容是
  * [炮塔_1] / x坐标: 形式，经词典回译成英文键后再匹配；写回按「原始行键名」替换，
  * 不改变用户文件里的键名语言。
  */
 export interface TurretEntry {
-  /** turret_N 的编号 */
+  /** 炮塔序号（1 基，按文件中 [turret_*] 出现顺序；与 DLC 会话 turrets[].index 对应） */
   index: number
+  /** 节名后缀（[turret_枪] → 枪；[turret_1] → 1；中文显示层 [炮塔_主炮] → 主炮） */
+  name: string
   /** 键值（英文规范名 → 值） */
   values: Map<string, string>
   /** 键名（英文规范名 → 原始行键名，写回时用原文） */
   rawKeys: Map<string, string>
-  /** [turret_N] 行号（0 基） */
+  /** [turret_*] 行号（0 基） */
   startLine: number
   /** 段结束行号（不含；文件尾 = 行数） */
   endLine: number
 }
 
-const TURRET_SECTION_RE = /^\s*\[turret_(\d+)\]\s*(?:#.*)?$/i
+/** 英文节名：炮塔段后缀允许数字/字母/中文等任意非空白字符（官方就有 [turret_main] 这类命名） */
+const TURRET_SECTION_RE = /^\s*\[turret_([^\]\s]+)\]\s*(?:#.*)?$/i
 const SECTION_RE = /^\s*\[.+?\]\s*(?:#.*)?$/
 
 /** 常用炮塔键（表格编辑列） */
@@ -42,18 +48,31 @@ function toEnKey(raw: string, zhToEn?: ZhToEn): string {
   return raw
 }
 
-/** 解析文件里的全部 [turret_N] 段（中文显示层传 zhToEn 词典回译） */
+/** 识别炮塔节头并返回后缀名；不是炮塔节返回 null。
+ * 英文 [turret_*] 直接匹配；中文显示层 [炮塔_*] 先回译前缀（炮塔 → turret），后缀原样保留。 */
+function turretSectionName(line: string, zhToEn?: ZhToEn): string | null {
+  const en = TURRET_SECTION_RE.exec(line)
+  if (en) return en[1]
+  if (!zhToEn) return null
+  const header = /^\s*\[([^\]]+)\]\s*(?:#.*)?$/.exec(line)
+  if (!header) return null
+  const body = header[1]
+  const sep = body.indexOf('_')
+  if (sep <= 0 || sep >= body.length - 1) return null // 裸 [炮塔] 游戏不识别
+  const prefix = body.slice(0, sep)
+  if (toEnKey(prefix, zhToEn).toLowerCase() !== 'turret') return null
+  return body.slice(sep + 1)
+}
+
+/** 解析文件里的全部炮塔段（按出现顺序编号 1 基；中文显示层传 zhToEn 词典回译） */
 export function parseTurrets(content: string, zhToEn?: ZhToEn): TurretEntry[] {
   const lines = content.split(/\r?\n/)
   const turrets: TurretEntry[] = []
   let current: TurretEntry | null = null
   for (let i = 0; i < lines.length; i++) {
-    // 节名：英文 [turret_N] 或中文 [炮塔_N]（回译后匹配）
-    const m = TURRET_SECTION_RE.exec(lines[i])
-    const zhMatch = zhToEn ? /^\s*\[(.+?)_(\d+)\]\s*(?:#.*)?$/i.exec(lines[i]) : null
-    const index = m ? Number(m[1]) : zhMatch && toEnKey(zhMatch[1], zhToEn).toLowerCase() === 'turret' ? Number(zhMatch[2]) : null
-    if (index !== null) {
-      current = { index, values: new Map(), rawKeys: new Map(), startLine: i, endLine: i + 1 }
+    const name = turretSectionName(lines[i], zhToEn)
+    if (name !== null) {
+      current = { index: turrets.length + 1, name, values: new Map(), rawKeys: new Map(), startLine: i, endLine: i + 1 }
       turrets.push(current)
       continue
     }

@@ -532,6 +532,7 @@ export function createMockBridge(files: MockFileSpec[] = MOCK_FILES): BridgeApi 
       changedCount: mockGit.changes.length,
       branches: [...mockGit.branches],
       hasIdentity: true,
+      hasCommits: mockGit.commits.length > 0,
     }),
     log: async (_rootPath: string, limit?: number) => mockGit.commits.slice(0, Math.min(Math.max(limit ?? 40, 1), 200)),
     status: async () => mockGit.changes.map((c) => ({ status: c.untracked ? '??' : c.kind, path: c.path })),

@@ -171,6 +171,8 @@ export function createEditorTabActions(ctx: ProjectSliceContext) {
           }),
         })
         invalidateResourceCache()
+        // 保存改了磁盘内容：通知 Git 面板/状态栏摘要自动刷新
+        get().bumpGitChangeTick()
         const hadPending = tab.pendingRepair
         get().notify(hadPending ? `已保存 ${tab.name}（中文键已写回英文）` : `已保存 ${tab.name}`)
         return true

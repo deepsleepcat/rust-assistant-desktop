@@ -264,5 +264,11 @@ function createProjectActions(ctx: {
         set({ gitSummary: null })
       }
     },
+
+    /** 磁盘内容变更计数 +1：Git 面板订阅此值自动刷新；顺带刷状态栏摘要（面板没开也能更新） */
+    bumpGitChangeTick() {
+      set({ gitChangeTick: get().gitChangeTick + 1 })
+      void get().refreshGitSummary()
+    },
   }
 }

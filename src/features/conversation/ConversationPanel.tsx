@@ -466,6 +466,8 @@ function CheckCasesBox({ tool, rootPath, notify }: { tool: ToolEvent; rootPath: 
       const payload = JSON.stringify({ ...set, name: `AI 生成规则（${new Date().toLocaleDateString()}）` }, null, 2)
       await getBridge().project.writeFile(rootPath, joinProjectPath(rootPath, 'rules/ai-rules.json'), payload, { hasBom: false })
       invalidateProjectRulesCache(rootPath)
+      // 磁盘内容变了：Git 面板/状态栏摘要自动刷新
+      useWorkspaceStore.getState().bumpGitChangeTick()
       if (!mountedRef.current) return
       setSaved(true)
       notify(`已保存 ${set.rules.length} 条规则到 rules/ai-rules.json，编辑器/质检/报告即时生效`)

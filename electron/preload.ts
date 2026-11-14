@@ -37,6 +37,8 @@ const api: BridgeApi = {
   engineDlc: {
     list: () => ipcRenderer.invoke('dlc:list'),
     openDir: () => ipcRenderer.invoke('dlc:openDir'),
+    // 0.2.4+：草/沙/海/雪/石背景贴图由 DLC 提供（渲染层只传种类白名单）
+    background: (kind: string) => ipcRenderer.invoke('dlc:background', kind),
     grant: (dlcId: string, enabled: boolean) => ipcRenderer.invoke('dlc:grant', dlcId, enabled),
     render: (request) => ipcRenderer.invoke('dlc:render', request),
     cancel: (requestId) => ipcRenderer.invoke('dlc:render', { cancel: true, requestId }),

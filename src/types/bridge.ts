@@ -116,6 +116,8 @@ export interface EngineDlcEntry {
   granted?: boolean
   /** 是否可直接用于渲染（清单合法 + 入口存在 + 已授权） */
   runnable: boolean
+  /** 0.2.3+：支持按任意角度（degree）原生渲染；缺省 false 时宿主用贴图残余旋转兜底 */
+  angle?: boolean
   /** 不可用原因（仅当 runnable=false） */
   problem?: string
 }
@@ -134,14 +136,33 @@ export interface EngineDlcRenderRequest {
   projectRoot: string
   gamePath: string
   frame: number
+  /** 动画时间轴（毫秒）：设置后按时间轴渲染，与 frame 互斥；null/缺省 = 静态帧 */
+  timeMs?: number | null
+  /** 队伍号：-1 = 默认贴图，0..9 = 原版十色（0 绿 1 红 2 蓝…） */
+  team?: number
+  /** 请求回传炮塔锚点/坐标映射元数据（会话路径才有；旧 DLC 冷路径无） */
+  includeMeta?: boolean
   direction: number
+  /** 0.2.3+：任意机体角度（度，顺时针，0 = 贴图原始朝向）。给定后引擎按该角度原生渲染，direction 仅作旧版兼容。 */
+  angle?: number | null
   animationState: 'idle' | 'moving' | 'attack'
   showWreck: boolean
   width: number
   height: number
 }
 
-export type EngineDlcRenderResult = { ok: true; dataUrl: string } | { ok: false; reason: string }
+export interface EngineDlcRenderMeta {
+  /** 炮塔锚点（像素坐标，imageX/imageY 直接可用于叠加层定位） */
+  turrets?: EngineDlcSessionFrame['turrets']
+  /** 引擎相机坐标映射（imageX = originX + pixelsPerUnit * worldX） */
+  coordinateMapping?: EngineDlcSessionFrame['coordinateMapping']
+  /** 0.2.3+：本帧实际生效的机体角度（度）；缺省 = 旧 DLC/冷路径未应用 angle */
+  bodyAngle?: number
+}
+
+export type EngineDlcRenderResult =
+  | ({ ok: true; dataUrl: string } & EngineDlcRenderMeta)
+  | { ok: false; reason: string }
 
 // ── 0.2.2 常驻会话（炮塔拖动实时预览）─────────────────────────────────
 // 会话只收「要画什么/怎么改」；DLC 的选择与可执行路径全部由主进程决定。
@@ -171,6 +192,8 @@ export interface EngineDlcSessionFrame {
   }>
   animation?: unknown
   timing?: Record<string, number>
+  /** 0.2.3+：本帧实际生效的机体角度（度） */
+  bodyAngle?: number
   /** RGBA 原始像素（顶层向下、紧密行）；superseded/stale 帧可能为空 */
   pixels: Uint8Array
   bytes: number
@@ -182,6 +205,8 @@ export type EngineDlcSessionResult = { ok: true; frame: EngineDlcSessionFrame } 
 /** 会话视图（编辑器固定静态模式；不接受 frame/timeMs/turretAngle） */
 export interface EngineDlcSessionView {
   direction?: number
+  /** 0.2.3+：任意机体角度（度）；缺省 = 按 direction 档位 */
+  angle?: number | null
   animationState?: 'idle' | 'moving' | 'attack'
   showWreck?: boolean
   team?: number
@@ -195,11 +220,16 @@ export interface EngineDlcTurretOverride {
   worldY: number
 }
 
+/** 由 DLC 提供的背景贴图种类（0.2.4+；主进程只接受这几个白名单值） */
+export type EngineDlcBackgroundKind = 'grass' | 'sand' | 'sea' | 'snow' | 'stone'
+
 export interface EngineDlcApi {
   /** 列出指定目录里的 DLC 及各自状态 */
   list(): Promise<EngineDlcListResult>
   /** 在系统文件管理器里打开指定目录（不存在则创建） */
   openDir(): Promise<{ ok: boolean; message?: string; dir: string }>
+  /** 0.2.4+：读取 DLC 提供的背景贴图（草/沙/海/雪/石），无则 ok:false */
+  background?(kind: EngineDlcBackgroundKind): Promise<{ ok: true; dataUrl: string } | { ok: false; reason: string }>
   /** 授权/撤销某个 DLC 的运行许可（授权会弹主进程系统确认框） */
   grant(dlcId: string, enabled: boolean): Promise<{ ok: boolean; enabled?: boolean; name?: string; message?: string }>
   /** 调用已授权的引擎 DLC 渲染一张单位预览图 */
@@ -436,7 +466,7 @@ export interface BridgeApi {
   }
   /** M25 本地 git 辅助 + feat/git-visual-center 写操作（非 git 仓库或未装 git 时返回不可用） */
   git: {
-    info(rootPath: string): Promise<{ available: boolean; isRepo: boolean; branch: string; ahead: number; behind: number; changedCount: number; branches: string[]; hasIdentity: boolean; message?: string }>
+    info(rootPath: string): Promise<{ available: boolean; isRepo: boolean; branch: string; ahead: number; behind: number; changedCount: number; branches: string[]; hasIdentity: boolean; hasCommits: boolean; message?: string }>
     log(rootPath: string, limit?: number): Promise<Array<{ hash: string; short: string; author: string; at: number; subject: string }>>
     status(rootPath: string): Promise<Array<{ status: string; path: string }>>
     /** 双列状态（X=暂存区 / Y=工作区 / ??=未跟踪），Git 面板改动列表用 */

@@ -9,8 +9,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import {
-  checkoutBranch, commitFiles, createBranch, deleteBranch, diffNumstat, discardFileWorktree,
-  getRepoConfig, gitAvailable, initRepo, isValidBranchName, repoInfo, sanitizeCommitMessage,
+  checkoutBranch, commitFiles, createBranch, deleteBranch, diffBetween, diffNumstat, discardFileWorktree,
+  getRepoConfig, gitAvailable, initRepo, isValidBranchName, logHistory, repoInfo, sanitizeCommitMessage,
   setRepoConfig, stageAllFiles, stageFiles, statusDetailed, unstageFiles,
 } from '../electron/gitTools'
 
@@ -28,7 +28,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  fs.rmSync(repo, { recursive: true, force: true })
+  // Windows 在 git 刚提交完时会短暂持有目录句柄（Defender/索引器也会），EPERM 是瞬时的：
+  // 带重试删除，避免测试因清理阶段的环境抖动误报。
+  fs.rmSync(repo, { recursive: true, force: true, maxRetries: 8, retryDelay: 120 })
 })
 
 describe('git 写操作（feat/git-visual-center）', () => {
@@ -239,6 +241,35 @@ describe('git 写操作（feat/git-visual-center）', () => {
     expect(run(repo, ['diff', '--cached', '--name-only']).split('\n').filter(Boolean).length).toBe(2)
   })
 
+  it('空仓库（unborn HEAD）：repoInfo.hasCommits=false；建/切分支引导先提交', async () => {
+    if (!(await gitAvailable())) return
+    // beforeEach 刚 init 的仓库还没有提交
+    const before = await repoInfo(repo)
+    expect(before.hasCommits).toBe(false)
+    expect(before.branches).toEqual([])
+    // 建分支拒绝并提示先提交（否则只是顶掉占位名，旧名字「消失」）
+    const create = await createBranch(repo, 'feat/x')
+    expect(create.ok).toBe(false)
+    expect(create.message).toContain('提交')
+    const checkout = await checkoutBranch(repo, 'feat/x')
+    expect(checkout.ok).toBe(false)
+    expect(checkout.message).toContain('提交')
+    // 首次提交前：差异展开用空树兜底（staged/working 都能看到「全文件新增」），历史为空不报错
+    fs.writeFileSync(path.join(repo, 'first.txt'), 'hello')
+    expect((await stageAllFiles(repo)).ok).toBe(true)
+    const stagedDiff = await diffBetween(repo, 'HEAD', 'staged', 'first.txt')
+    expect(stagedDiff).toContain('+hello')
+    const workingDiff = await diffBetween(repo, 'HEAD', 'working', 'first.txt')
+    expect(workingDiff).toContain('+hello')
+    expect(await logHistory(repo)).toEqual([])
+    // 首次提交后：hasCommits=true，分支正常创建
+    expect((await commitFiles(repo, 'first')).ok).toBe(true)
+    const after = await repoInfo(repo)
+    expect(after.hasCommits).toBe(true)
+    expect(after.branches).toEqual(['master'])
+    expect((await createBranch(repo, 'feat/x')).ok).toBe(true)
+  })
+
   it('index.lock：残留锁（≥10s）自动清理重试；新鲜锁拒绝并提示', async () => {
     if (!(await gitAvailable())) return
     fs.writeFileSync(path.join(repo, 'c.txt'), 'c')
@@ -260,4 +291,4 @@ describe('git 写操作（feat/git-visual-center）', () => {
     // 收尾：清掉锁让 afterEach 删目录不受影响
     fs.rmSync(stale, { force: true })
   })
-})
+}, 30_000)

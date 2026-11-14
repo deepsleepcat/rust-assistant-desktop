@@ -24,6 +24,7 @@ import path from 'node:path'
 import { PNG } from 'pngjs'
 import { inflateSync } from 'node:zlib'
 import { executeEngineDlc } from './engineDlcProcess'
+import type { DlcSessionFrame } from './engineDlcSession'
 import { assertNoLinkEscape, isPathInside, normalizePath } from './paths'
 
 /** 指定目录名（位于 userData 下，由主进程拼装；渲染层无权指定） */
@@ -117,6 +118,8 @@ export interface EngineDlcListEntry {
   granted?: boolean
   /** 是否可直接用于渲染（清单合法 + 入口存在 + 已授权） */
   runnable: boolean
+  /** 0.2.3+：支持任意角度（degree）原生渲染；false 时宿主用贴图残余旋转兜底 */
+  angle: boolean
   /** 不可用原因（仅当 runnable=false） */
   problem?: string
 }
@@ -322,6 +325,7 @@ export function toEngineDlcList(
         enabled: false,
         granted: granted.has(item.dirName),
         runnable: false,
+        angle: false,
         problem: item.problem ?? '清单不合法',
       }
     }
@@ -335,6 +339,7 @@ export function toEngineDlcList(
       enabled,
       granted: granted.has(id),
       runnable: enabled,
+      angle: engineDlcSupportsAngle(version),
       ...(enabled ? {} : { problem: granted.has(id) ? '授权已失效（程序或配置变化）；可撤销后重新授权' : '尚未启用（需在设置里授权运行）' }),
     }
   })
@@ -347,15 +352,43 @@ export interface EngineDlcRenderRequest {
   projectRoot: string
   gamePath: string
   frame: number
+  /** 动画时间轴（毫秒）；冷路径不支持，忽略 */
+  timeMs?: number | null
+  /** 队伍号 -1..9；冷路径不支持，按默认贴图渲染 */
+  team?: number
+  /** 请求回传炮塔锚点/坐标映射；冷路径没有 */
+  includeMeta?: boolean
   direction: number
+  /** 0.2.3+：任意机体角度（度）。给定后由 DLC 按该角度原生渲染；旧 DLC 忽略。 */
+  angle?: number | null
   animationState: string
   showWreck: boolean
   width: number
   height: number
 }
 
-/** 渲染结果：判别联合，成功必有 dataUrl、失败必有 reason（调用方无需再防 undefined） */
-export type EngineDlcRenderResult = { ok: true; dataUrl: string } | { ok: false; reason: string }
+/** DLC 是否支持 0.2.3+ 的任意角度渲染（按清单 version 判断；解析失败按不支持处理）。 */
+export function engineDlcSupportsAngle(version: string | undefined | null): boolean {
+  if (!version) return false
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version.trim())
+  if (!match) return false
+  const major = Number(match[1])
+  const minor = Number(match[2])
+  const patch = Number(match[3])
+  if (!Number.isFinite(major) || !Number.isFinite(minor) || !Number.isFinite(patch)) return false
+  return major > 0 || minor > 2 || (minor === 2 && patch >= 3)
+}
+
+/** 渲染结果：判别联合，成功必有 dataUrl、失败必有 reason（调用方无需再防 undefined）。
+ *  turrets/coordinateMapping 仅会话路径 + includeMeta 时返回（与渲染层 bridge.ts 契约一致） */
+export type EngineDlcRenderResult =
+  | {
+      ok: true
+      dataUrl: string
+      turrets?: DlcSessionFrame['turrets']
+      coordinateMapping?: DlcSessionFrame['coordinateMapping']
+    }
+  | { ok: false; reason: string }
 
 /** 调用可执行文件时的依赖（测试注入用；生产走真实值） */
 export interface EngineDlcRunDeps {
@@ -475,6 +508,8 @@ export async function runEngineDlcRender(
       view: {
         frame: request.frame,
         direction: request.direction,
+        // 0.2.3+：任意角度；旧 DLC 的 render.cjs 不读这个键，忽略即可
+        ...(request.angle == null ? {} : { angle: request.angle }),
         animationState: request.animationState,
         showWreck: request.showWreck,
       },

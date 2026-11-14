@@ -123,7 +123,7 @@ describe('IPC 通道完整性', () => {
     expect(() => registerIpc(ctx, strictIpc)).not.toThrow()
   })
 
-  it('十四个域注册函数覆盖全部通道（feat/git-visual-center 后 111 个），无遗漏无重复', () => {
+  it('十四个域注册函数覆盖全部通道（DLC 背景瓦片后 112 个），无遗漏无重复', () => {
     const { channels, ipc } = createFakeIpc()
     registerStoreIpc(ctx, ipc)
     registerCommunityIpc(ctx, ipc)
@@ -170,12 +170,12 @@ describe('IPC 通道完整性', () => {
       // ai
       'ai:check', 'ai:credential:save', 'ai:credential:status', 'ai:credential:clear', 'ai:info', 'ai:approval:respond', 'ai:stream:abort', 'ai:history:list', 'ai:history:restore', 'ai:stream', 'ai:feedback',
       // M42 引擎渲染 DLC（宿主只提供插座，引擎由用户自备放进指定目录）
-      'dlc:list', 'dlc:openDir', 'dlc:grant', 'dlc:render',
+      'dlc:background', 'dlc:list', 'dlc:openDir', 'dlc:grant', 'dlc:render',
       // 0.2.2 常驻会话（炮塔拖动实时预览）
       'dlc:sessionOpen', 'dlc:sessionUpdate', 'dlc:sessionClose',
     ]
     expect([...channels.keys()].sort()).toEqual([...expected].sort())
-    expect(channels.size).toBe(111)
+    expect(channels.size).toBe(112)
     const combined = createFakeIpc()
     registerIpc(ctx, combined.ipc)
     expect([...combined.channels.keys()].sort()).toEqual([...expected].sort())

@@ -37,6 +37,8 @@ export interface GitRepoInfo {
   branches: string[]
   /** 提交者身份（user.name + user.email）是否已配置（isRepo 时才检查） */
   hasIdentity: boolean
+  /** 仓库是否已有提交（分支是指向提交的指针：无提交时分支不存在，建/切分支都应引导先提交） */
+  hasCommits: boolean
   message?: string
 }
 
@@ -124,7 +126,7 @@ export function isValidRelPath(rel: string): boolean {
 
 /** 仓库信息（可用性/分支/领先落后/改动数/分支列表/提交者身份） */
 export async function repoInfo(root: string): Promise<GitRepoInfo> {
-  const info: GitRepoInfo = { available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [], hasIdentity: false }
+  const info: GitRepoInfo = { available: false, isRepo: false, branch: '', ahead: 0, behind: 0, changedCount: 0, branches: [], hasIdentity: false, hasCommits: false }
   if (!(await gitAvailable())) {
     info.message = '未检测到 git（需安装 Git for Windows）'
     return info
@@ -137,6 +139,8 @@ export async function repoInfo(root: string): Promise<GitRepoInfo> {
     return info
   }
   info.isRepo = true
+  // 是否已有提交（unborn HEAD：git branch 列表为空，建分支只是占位改名）
+  info.hasCommits = (await runGit(root, ['rev-parse', '--verify', '-q', 'HEAD']).catch(() => '')).trim().length > 0
   // 状态：分支行 `## main...origin/main [ahead 1, behind 2]` + 改动行
   const status = await runGit(root, ['status', '--porcelain=v1', '-b']).catch(() => '')
   const lines = status.split('\n').filter((l) => l.trim())
@@ -198,10 +202,15 @@ export async function statusFiles(root: string): Promise<GitStatusEntry[]> {
   return entries
 }
 
+/** 空树对象哈希（git 固定常量）：首次提交前没有 HEAD，用它与暂存区/工作区对比 */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+
 /** 两个提交间的文件差异文本（b 为 'working' 时对比工作区；'staged' 时对比暂存区）。
- * a 允许 'HEAD' 字面量（Git 面板差异展开用；空仓库无 HEAD 时 git 自身报错透传）。 */
+ * a 允许 'HEAD' 字面量（Git 面板差异展开用）；空仓库无 HEAD 时用空树替代，
+ * 首次提交前也能看到「整个文件都是新增」的差异。 */
 export async function diffBetween(root: string, a: string, b: string, file?: string): Promise<string> {
   if (a !== 'HEAD' && !isValidCommit(a)) throw new Error('无效的提交哈希')
+  if (a === 'HEAD' && (await unbornHead(root))) a = EMPTY_TREE
   const args = ['diff', '--no-color']
   if (b === 'working') {
     args.push(a, '--')
@@ -385,9 +394,18 @@ export async function commitFiles(root: string, message: string): Promise<{ ok: 
   }
 }
 
+/** 仓库是否还没有任何提交（unborn HEAD）。空仓里建分支只是改占位名、
+ * 之前的名会被顶掉（分支=指向提交的指针），必须引导先提交。 */
+async function unbornHead(root: string): Promise<boolean> {
+  return (await runGit(root, ['rev-parse', '--verify', '-q', 'HEAD']).catch(() => '')).trim() === ''
+}
+
+const NO_COMMITS_HINT = '仓库还没有任何提交——先「全部暂存并提交」一次，分支才会真正创建（分支是指向提交的指针，没有提交就没有分支）'
+
 /** 新建分支（checkout=true 时立即切换；切换携带未提交改动由 git 自行拒绝并透报） */
 export async function createBranch(root: string, name: string, checkout = true): Promise<{ ok: boolean; message?: string }> {
   if (!isValidBranchName(name)) return { ok: false, message: '分支名不合法（不能含空格 ~ ^ : ? * [ ] 与 ..，不能以 - / . 结尾）' }
+  if (await unbornHead(root)) return { ok: false, message: NO_COMMITS_HINT }
   try {
     await runGit(root, checkout ? ['checkout', '-b', name] : ['branch', name])
     return { ok: true }
@@ -399,6 +417,7 @@ export async function createBranch(root: string, name: string, checkout = true):
 /** 切换分支（工作区有冲突改动时 git 拒绝并透报原因） */
 export async function checkoutBranch(root: string, name: string): Promise<{ ok: boolean; message?: string }> {
   if (!isValidBranchName(name)) return { ok: false, message: '分支名不合法' }
+  if (await unbornHead(root)) return { ok: false, message: NO_COMMITS_HINT }
   try {
     await runGit(root, ['checkout', name])
     return { ok: true }

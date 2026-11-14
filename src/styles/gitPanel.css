@@ -274,13 +274,20 @@
 }
 
 /* ── 提交区（吸底） ─────────────────────────────────────────── */
+/* 提交区固定吸底：改动列表很长（几百个文件）时不滚动到底就看不到提交框 */
 .gitp-commit {
+  position: sticky;
+  bottom: calc(var(--sp-2) * -1);
   margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-top: 4px;
+  margin-left: calc(var(--sp-2) * -1);
+  margin-right: calc(var(--sp-2) * -1);
+  padding: var(--sp-2);
+  background: var(--surface-0);
   border-top: 1px solid var(--divider);
+  z-index: 1;
 }
 
 .gitp-message {

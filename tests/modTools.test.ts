@@ -34,6 +34,7 @@ import {
 } from '../electron/modTools'
 import type { ChainRule, RawTemplate } from '../electron/modTools'
 import { parseTurrets, updateTurretValue, findUnitImage } from '../src/features/editor/turretUtils'
+import { computeFrameView } from '../src/features/modTools/turretFrameView'
 
 function makeTempProject(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'rust-modtools-'))
@@ -878,6 +879,35 @@ canAttack: true
     expect(ts[1].values.get('x')).toBe('12')
   })
 
+  it('命名炮塔节按出现顺序编号（[turret_枪]/[turret_投掷手雷]）', () => {
+    const NAMED = `[core]
+name: 步兵
+[graphics]
+image: 步兵.png
+[turret_枪]
+x: 0
+y: 0
+projectile: 子弹
+[turret_投掷手雷]
+x: 3
+y: 4
+attachedTo: 枪
+[turret_近战打击]
+x: 5
+y: 6
+`
+    const ts = parseTurrets(NAMED)
+    expect(ts.map((t) => t.index)).toEqual([1, 2, 3])
+    expect(ts.map((t) => t.name)).toEqual(['枪', '投掷手雷', '近战打击'])
+    expect(ts[1].values.get('x')).toBe('3')
+    expect(ts[1].values.get('attachedTo')).toBe('枪')
+    // 按引擎顺序写回第 2 个炮塔，不影响第 1/3 个
+    const out = updateTurretValue(NAMED, 2, 'x', '9')
+    expect(out).toContain('[turret_投掷手雷]\nx: 9')
+    expect(out).toContain('[turret_枪]\nx: 0')
+    expect(out).toContain('[turret_近战打击]\nx: 5')
+  })
+
   it('行级替换只改目标键，保留其余格式', () => {
     const out = updateTurretValue(SAMPLE, 1, 'x', '8')
     expect(out).toContain('x: 8')
@@ -945,6 +975,16 @@ y坐标: -5
     expect(out2).toContain('炮塔大小: 10')
   })
 
+  it('中文显示层命名炮塔节（[炮塔_主炮]）也能解析', () => {
+    const ZH_NAMED = '[炮塔_主炮]\nx坐标: 2\ny坐标: 3\n'
+    const ts = parseTurrets(ZH_NAMED, zhToEn)
+    expect(ts.length).toBe(1)
+    expect(ts[0].name).toBe('主炮')
+    expect(ts[0].index).toBe(1)
+    expect(ts[0].values.get('x')).toBe('2')
+    expect(ts[0].values.get('y')).toBe('3')
+  })
+
   it('CRLF 文件行尾保真 + 行内注释保留', () => {
     const crlf = '[turret_1]\r\nx: 0 # 炮塔注释\r\ny: 5\r\n'
     const out = updateTurretValue(crlf, 1, 'x', '8')
@@ -955,5 +995,29 @@ y坐标: -5
 
   it('中文 graphics 节提取 image', () => {
     expect(findUnitImage(SAMPLE_ZH, zhToEn)).toBe('示例.png')
+  })
+})
+
+describe('炮塔预览自动裁切放大（单位过小时按实际像素内容放大）', () => {
+  it('小内容居中帧：放大到画布 92% 且保持居中', () => {
+    const width = 480
+    const height = 360
+    const pixels = new Uint8Array(width * height * 4)
+    for (let y = 172; y <= 185; y++) {
+      for (let x = 229; x <= 260; x++) pixels[(y * width + x) * 4 + 3] = 255
+    }
+    const view = computeFrameView({ size: { width, height }, pixels })
+    expect(view).not.toBeNull()
+    expect(view!.scale).toBe(12) // 32x14 内容 ×12 后 384x168，仍小于画布 92%，被上限 12 截住
+    expect(view!.offsetX + 229 * view!.scale).toBeCloseTo((width - 384) / 2, 6)
+    expect(view!.offsetY + 172 * view!.scale).toBeCloseTo((height - 168) / 2, 6)
+  })
+
+  it('普通尺寸内容按 92% 适配；全透明帧不放大', () => {
+    const pixels = new Uint8Array(100 * 100 * 4)
+    for (let i = 3; i < pixels.length; i += 4) pixels[i] = 255
+    const view = computeFrameView({ size: { width: 100, height: 100 }, pixels })
+    expect(view!.scale).toBeCloseTo(0.92, 6)
+    expect(computeFrameView({ size: { width: 10, height: 10 }, pixels: new Uint8Array(400) })).toBeNull()
   })
 })

@@ -31,15 +31,27 @@
 .turret-preview { border: 1px solid var(--border, #d8dee4); border-radius: 6px; }
 .turret-dot { border-radius: 50%; corner-shape: round; border: 1.5px solid #fff; background: rgba(217, 76, 76, .85); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; cursor: crosshair; box-shadow: 0 0 0 1px rgba(0,0,0,.35); z-index: 1; }
 .turret-dot:hover { background: rgba(217, 76, 76, 1); transform: scale(1.15); }
+.turret-dot.is-active { background: rgba(230, 120, 0, .95); box-shadow: 0 0 0 3px rgba(255, 168, 0, .6), 0 0 0 1px rgba(0,0,0,.4); z-index: 3; }
+.turret-table tbody tr.is-active td { background: rgba(255, 168, 0, .16); }
+.turret-name { display: grid; gap: 1px; }
+.turret-name .turret-sub { color: var(--text-secondary, #57606a); font-size: 11px; white-space: nowrap; }
+.turret-dot { width: 16px; height: 16px; }
+.turret-handle { position: absolute; transform: translate(-50%, -50%); pointer-events: none; z-index: 2; }
+.turret-handle .turret-dot { pointer-events: auto; }
+.turret-handle-label { position: absolute; left: 50%; bottom: calc(100% + 12px); transform: translateX(-50%); background: rgba(20, 22, 26, .82); color: #fff; font-size: 11px; font-weight: 500; line-height: 1; padding: 3px 6px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
+.turret-handle-label.is-active { background: rgba(230, 120, 0, .95); }
 
 /* M12b 炮塔编辑器独立界面（非弹窗；底图与锚点全部来自引擎 DLC 常驻会话） */
 .turret-editor-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .turret-editor-badge { font-size: 12px; font-weight: 600; color: var(--text-secondary, #57606a); border: 1px solid var(--border, #d8dee4); border-radius: 4px; padding: 1px 6px; }
 .turret-rendering { color: var(--text-secondary, #57606a); font-size: 12px; }
-.turret-editor-body { display: flex; gap: 16px; flex: 1; min-height: 0; padding: 12px 16px; overflow: auto; }
-.turret-editor-body .turret-table { flex: 0 0 auto; max-width: 46%; }
+/* 窄容器（悬浮窗）自动换行堆叠：宽度不够一行并排时，渲染图挪到表格下方，
+   谁也不挡谁。旧版表格 max-width:46% + 渲染图常驻右侧，窄窗里表格内容
+   超出自身容器被白底渲染图盖住（坐标列看不见）。 */
+.turret-editor-body { display: flex; flex-wrap: wrap; gap: 16px; flex: 1; min-height: 0; padding: 12px 16px; overflow: auto; }
+.turret-editor-body .turret-table { flex: 1 1 320px; min-width: 280px; max-width: 100%; overflow-x: auto; }
 .turret-editor-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.turret-preview-pane { flex: 1; min-width: 0; display: flex; align-items: flex-start; justify-content: center; }
+.turret-preview-pane { flex: 1 1 320px; min-width: 0; display: flex; align-items: flex-start; justify-content: center; }
 .turret-canvas-wrap { position: relative; display: inline-block; max-width: 100%; border: 1px solid var(--border, #d8dee4); border-radius: 6px; overflow: auto; }
 .turret-canvas { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
 .turret-preview-note { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12.5px; color: var(--text-secondary, #57606a); background: rgba(255,255,255,.6); }

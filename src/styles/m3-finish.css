@@ -109,6 +109,26 @@
   .ct-code-desc { grid-column: 1 / -1; }
 }
 
+/* ── M7 代码表右侧面板（停靠编辑器右栏，与 Git 面板同位） ── */
+.codetable-panel .codetable-body { padding: 8px 10px 10px; }
+.codetable-panel .codetable-search { padding: 6px 9px; }
+.codetable-panel .codetable-grid { grid-template-columns: minmax(100px, 148px) minmax(0, 1fr); gap: 6px; }
+.codetable-panel .codetable-section { flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 6px; }
+.codetable-panel .codetable-code { grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 5px 6px; }
+.codetable-panel .ct-code-desc { grid-column: 1 / -1; }
+.codetable-panel .codetable-empty { margin: 6px; }
+/* 窄窗口回退：同一份代码表放在居中浮层里（卡片撑满高度，内部仍是面板布局） */
+.codetable-overlay-card { width: min(760px, 96vw); height: min(560px, 88vh); padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.codetable-overlay-card > .codetable-panel { flex: 1; min-height: 0; }
+
+/* ── 右侧面板（Git / 代码表页签，样式与编辑器文件标签一致） ── */
+.right-dock { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--surface-0); }
+.right-dock-tabs { height: 36px; flex: none; }
+.right-dock-tabs .tab { min-width: 0; flex: 0 1 auto; max-width: 55%; }
+.right-dock-tabs .tab .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.right-dock-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.right-dock-body > .panel { flex: 1; min-height: 0; }
+
 /* ── M7 单位库弹窗 ─────────────────────────────────── */
 .unitlib-card { width: min(620px, 96vw); height: min(560px, 88vh); display: flex; flex-direction: column; }
 .unitlib-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1; }
@@ -461,9 +481,24 @@
 .unitprev-canvas-wrap { flex: 1; min-height: 0; border: 1px solid var(--divider); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; overflow: auto; background: var(--surface-0); }
 .unitprev-canvas { image-rendering: pixelated; max-width: 100%; max-height: 100%; }
 
+/* ── M43 单位预览实时面板（左画布 + 右侧可折叠控制面板） ────────────── */
+.unitprev-body-row { display: flex; gap: 10px; align-items: stretch; flex: 1; min-height: 0; }
+.unitprev-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.unitprev-panel { flex: none; width: 200px; overflow-y: auto; border: 1px solid var(--divider); border-radius: var(--radius-sm); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; background: var(--surface-0); align-self: stretch; }
+.unitprev-panel-title { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.unitprev-panel-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* 背景层/引擎图/叠加层三层同格堆叠（grid 同单元），缩放由各层内联尺寸同步 */
+.unitprev-stack { display: grid; place-items: safe center; justify-content: safe center; align-content: safe center; }
+.unitprev-stack > * { grid-area: 1 / 1; max-width: none; max-height: none; }
+
 /* ── M25 Git 历史/回滚弹窗 ──────────────────────────── */
 .git-diff-pre { font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--text-primary); background: var(--surface-0); border: 1px solid var(--divider); border-radius: var(--radius-xs); padding: 8px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; }
 .git-conflict-block { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
 .git-conflict-block pre { margin: 0; }
 .conflict-ours { border-left: 3px solid var(--success); }
 .conflict-theirs { border-left: 3px solid var(--info); }
+
+/* ── M44 平滑旋转：画布可拖拽旋转 + 自转 ─────────────── */
+.unitprev-rotatable { touch-action: none; cursor: grab; user-select: none; }
+.unitprev-rotatable:active { cursor: grabbing; }
+.unitprev-rotatable img.unitprev-canvas { will-change: transform; }

@@ -9,7 +9,7 @@ import { useEscapeHandler } from '../utils/modalStack'
 interface WorkbenchLayoutProps {
   left: ReactNode
   editor: ReactNode
-  /** 编辑器右侧面板（feat/git-visual-center：Git 面板）；不传或紧凑模式时不占位 */
+  /** 编辑器右侧面板（Git / 代码表）；不传或紧凑模式时不占位 */
   right?: ReactNode
 }
 
@@ -115,7 +115,7 @@ export function WorkbenchLayout({ left, editor, right }: WorkbenchLayoutProps) {
       {rightVisible && (
         <SplitHandle orientation="vertical" value={editorWidthValue} min={constraints.minEditor}
           max={Math.max(constraints.minEditor, width - leftPx - 8 * splitterCount - constraints.minRight)}
-          label="调整 Git 面板宽度 / Resize Git panel" onDrag={(v) => setLiveRight(clampWidth(width - leftPx - 8 * splitterCount - v, constraints.minRight, constraints.maxRight))}
+          label="调整右侧面板宽度 / Resize side panel" onDrag={(v) => setLiveRight(clampWidth(width - leftPx - 8 * splitterCount - v, constraints.minRight, constraints.maxRight))}
           onDragEnd={commitRight} />
       )}
       {rightVisible && (

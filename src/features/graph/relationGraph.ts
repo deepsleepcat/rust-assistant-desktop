@@ -160,8 +160,8 @@ export async function buildRelationGraph(
 
     for (const section of ini.sections) {
       const secLower = sectionEnName(section, undefined)
-      // 炮塔节：引用边（turret_N → 该节）
-      const turretMatch = /^turret_(\d+)$/.exec(secLower)
+      // 炮塔节：引用边（turret_N / turret_命名 → 该节）
+      const turretMatch = /^turret_(.+)$/.exec(secLower)
       if (turretMatch) {
         addRef('turret', `turret_${turretMatch[1]}`, section.startLine)
       }

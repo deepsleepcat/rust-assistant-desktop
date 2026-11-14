@@ -41,6 +41,7 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
     changedCount: number
     branches: string[]
     hasIdentity: boolean
+    hasCommits?: boolean
     message?: string
   } | null>(null)
   const [log, setLog] = useState<Array<{ hash: string; short: string; author: string; at: number; subject: string }>>([])
@@ -169,6 +170,8 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
       await getBridge().project.writeFile(rootPath, joinProjectPath(rootPath, file), lines.join('\n'), { hasBom: false })
       setConflictOpen(null)
       setConflicts(await getBridge().git.conflicts(rootPath))
+      // 磁盘内容变了：Git 面板/状态栏摘要自动刷新
+      useWorkspaceStore.getState().bumpGitChangeTick()
       notify(`已保留${side === 'ours' ? ' A' : ' B'}侧内容；到 Git 面板暂存并提交即可完成合并`)
     } catch (err) {
       notify(`解决失败：${err instanceof Error ? err.message : String(err)}`)
@@ -186,6 +189,8 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
         const r = await getBridge().git.restore(rootPath, file, target)
         if (r.ok) {
           notify(`已回滚「${file}」`)
+          // 磁盘内容变了：Git 面板/状态栏摘要自动刷新
+          useWorkspaceStore.getState().bumpGitChangeTick()
           // 刷新改动清单、冲突与头部统计（info 重新拉取）
           const [st, cf, inf] = await Promise.all([
             getBridge().git.status(rootPath),
@@ -464,10 +469,13 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
               {tab === 'branches' && (
                 <div className="relgraph-list">
                   <div className="vdiff-toolbar" style={{ marginBottom: 6 }}>
-                    <button className="btn" disabled={branchBusy} onClick={() => setBranchPrompt(true)}>
+                    {/* 空仓库（无提交）分支不存在：建分支只会顶掉占位名，先引导提交 */}
+                    <button className="btn" disabled={branchBusy || info.hasCommits === false} onClick={() => setBranchPrompt(true)}>
                       <AppIcon name="plus" size={12} /> 新建分支
                     </button>
-                    <span className="vdiff-hint">切换前建议先提交；工作区改动冲突时 git 会拒绝切换</span>
+                    <span className="vdiff-hint">
+                      {info.hasCommits === false ? '还没有任何提交——先「全部暂存并提交」一次，分支才会真正创建' : '切换前建议先提交；工作区改动冲突时 git 会拒绝切换'}
+                    </span>
                   </div>
                   <div className="relgraph-unit-list" style={{ maxHeight: 260 }}>
                     {info.branches.map((b) => (

@@ -20,6 +20,8 @@ import { isPathInside, normalizePath } from './paths'
 import {
   ENGINE_DLC_LIMITS,
   engineDlcDir,
+  engineDlcSupportsAngle,
+  isPng,
   readEngineDlcDir,
   runEngineDlcRender,
   scanEngineDlcDir,
@@ -29,7 +31,7 @@ import {
 } from './engineDlc'
 import { grantEngineDlc, isEngineDlcAllowed, revokeEngineDlc, snapshotEngineDlc, sameEngineDlcGrant } from './engineDlcTrust'
 import { EngineDlcHost } from './engineDlcHost'
-import { EngineDlcSessionManager, type DlcSessionResult, type DlcSessionUpdateRequest } from './engineDlcSession'
+import { EngineDlcSessionManager, type DlcSessionRequest, type DlcSessionResult, type DlcSessionUpdateRequest } from './engineDlcSession'
 
 /** 界面传来的布尔值一律重新收敛（IPC 参数不可信） */
 function asBoolean(value: unknown): boolean {
@@ -83,6 +85,35 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
   ipc('dlc:list', async () => {
     const { dir, dlcs } = await survey()
     return { dir, dlcs }
+  })
+
+  /** 背景贴图（草/沙/海/雪/石）由 DLC 提供：读当前可用 DLC 的 backgrounds/<kind>.png。
+   *  渲染层只传白名单里的种类，不参与任何路径构造；越界/超大/非 PNG 一律拒绝。 */
+  const BACKGROUND_KINDS = new Set(['grass', 'sand', 'sea', 'snow', 'stone'])
+  ipc('dlc:background', async (_event, payload: unknown) => {
+    const kind = typeof payload === 'string' ? payload : null
+    if (!kind || !BACKGROUND_KINDS.has(kind)) return { ok: false, reason: '背景种类无效' }
+    const { active } = await survey()
+    if (!active) return { ok: false, reason: '没有已授权的引擎渲染 DLC' }
+    let dir: string
+    try {
+      dir = normalizePath(await fs.realpath(active.dir))
+    } catch {
+      return { ok: false, reason: 'DLC 目录不可读' }
+    }
+    const target = path.join(dir, 'backgrounds', `${kind}.png`)
+    let real: string
+    try {
+      real = await fs.realpath(target)
+    } catch {
+      return { ok: false, reason: '该 DLC 未提供此背景贴图' }
+    }
+    if (!isPathInside(dir, normalizePath(real))) return { ok: false, reason: '背景贴图路径越界，已拒绝' }
+    const st = await fs.stat(real).catch(() => null)
+    if (!st?.isFile() || st.size === 0 || st.size > 2 * 1024 * 1024) return { ok: false, reason: '背景贴图大小不合规' }
+    const buffer = await fs.readFile(real)
+    if (!isPng(buffer)) return { ok: false, reason: '背景贴图不是有效 PNG' }
+    return { ok: true, dataUrl: `data:image/png;base64,${buffer.toString('base64')}` }
   })
 
   /** 打开指定目录（不存在则创建）。路径由主进程拼出，渲染层传什么都不参与。 */
@@ -177,10 +208,27 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     if (frame === null || direction === null || width === null || height === null) {
       return { ok: false, reason: '渲染参数超出允许范围' }
     }
+    // 0.2.3+：任意机体角度（度）。缺省/null = 旧的方向档位渲染
+    let angle: number | null = null
+    if (input.angle !== undefined && input.angle !== null) {
+      if (typeof input.angle !== 'number' || !Number.isFinite(input.angle) || Math.abs(input.angle) > 100000) {
+        return { ok: false, reason: '角度参数超出允许范围' }
+      }
+      angle = input.angle
+    }
     const animationState = input.animationState
     if (typeof animationState !== 'string' || !['idle', 'moving', 'attack'].includes(animationState)) {
       return { ok: false, reason: '动画状态无效' }
     }
+    // 动画时间轴（与 frame 互斥）：number = 按时间轴渲染；缺省/null = 静态帧
+    let timeMs: number | null = null
+    if (input.timeMs !== undefined && input.timeMs !== null) {
+      timeMs = asInt(input.timeMs, 0, 3_600_000)
+      if (timeMs === null) return { ok: false, reason: '动画时间轴超出允许范围' }
+    }
+    const team = input.team === undefined ? -1 : asInt(input.team, -1, 9)
+    if (team === null) return { ok: false, reason: '队伍参数超出允许范围' }
+    const includeMeta = input.includeMeta === true
 
     const { active } = await survey()
     if (!active) return { ok: false, reason: '没有已授权的引擎渲染 DLC' }
@@ -192,7 +240,11 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       unitContent: typeof input.unitContent === 'string' ? input.unitContent : '',
       projectRoot: normalizedRoot,
       frame,
+      timeMs,
+      team,
+      includeMeta,
       direction,
+      angle,
       animationState,
       showWreck: asBoolean(input.showWreck),
       width,
@@ -209,6 +261,7 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
         gamePath: typeof input.gamePath === 'string' ? input.gamePath : '',
         frame,
         direction,
+        angle,
         animationState,
         showWreck: asBoolean(input.showWreck),
         width,
@@ -263,6 +316,11 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       const direction = asInt(input.direction, 0, 3599)
       if (direction === null) return { ok: false, reason: '会话朝向超出允许范围' }
       view.direction = direction
+    }
+    if (input.angle !== undefined) {
+      const angle = asFinite(input.angle, 100000)
+      if (angle === null) return { ok: false, reason: '会话角度超出允许范围' }
+      view.angle = angle
     }
     if (input.animationState !== undefined) {
       if (typeof input.animationState !== 'string' || !['idle', 'moving', 'attack'].includes(input.animationState)) {
@@ -338,7 +396,15 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     unitContent: string
     projectRoot: string
     frame: number
+    /** 动画时间轴；null = 静态帧（与 frame 互斥，二选一进 view） */
+    timeMs: number | null
+    /** 队伍号 -1..9（-1 = 默认贴图） */
+    team: number
+    /** 回传炮塔锚点/坐标映射元数据 */
+    includeMeta: boolean
     direction: number
+    /** 0.2.3+：任意机体角度；null = 按 direction 档位 */
+    angle: number | null
     animationState: string
     showWreck: boolean
     width: number
@@ -351,11 +417,29 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     if ('reason' in picked) return null // 只有旧版 DLC（无会话能力）才走冷路径
     if (signal.aborted) return { ok: false, reason: '引擎渲染已取消' }
     const key = globalOpenKey(args.unitFile, args.unitContent)
+    // view 字段直通 render-session.cjs 的 normalizeView（team/timeMs 均原生支持）；
+    // frame 与 timeMs 互斥（DLC 侧同时给两个会报错），播放走 timeMs、静态走 frame
+    const view: NonNullable<DlcSessionRequest['view']> = {
+      direction: args.direction,
+      animationState: args.animationState,
+      showWreck: args.showWreck,
+      team: args.team,
+    }
+    // 0.2.3+ DLC 按任意角度原生渲染；旧 DLC 只认 direction（忽略 angle），行为不变
+    if (args.angle !== null && engineDlcSupportsAngle(picked.dlc.version)) view.angle = args.angle
+    // timeMs 与 frame 互斥：静态帧必须显式把 timeMs 置 null，否则会话合并上一条视图的
+    // timeMs 后会报「timeMs 与 frame 不可同时设置」（播放↔暂停切换的坑）
+    if (args.timeMs !== null) {
+      view.timeMs = args.timeMs
+    } else {
+      view.timeMs = null
+      view.frame = args.frame
+    }
     const request = {
       unitFile: args.unitFile,
       unitContent: args.unitContent,
       projectRoot: args.projectRoot,
-      view: { frame: args.frame, direction: args.direction, animationState: args.animationState, showWreck: args.showWreck },
+      view,
       size: { width: args.width, height: args.height },
       outputFormat: 'png' as const,
     }
@@ -376,6 +460,17 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       const pngBase64 = result.frame.pngBase64
       if (!pngBase64) throw new Error('会话未返回 PNG 帧')
       globalSessionKey = key
+      if (args.includeMeta) {
+        // 锚点/坐标映射只有会话帧有；冷路径回退没有（调用方按缺省处理）
+        return {
+          ok: true,
+          dataUrl: `data:image/png;base64,${pngBase64}`,
+          turrets: result.frame.turrets,
+          coordinateMapping: result.frame.coordinateMapping,
+          // 0.2.3+ 会话帧会带回实际生效角度；宿主侧据此判断原生角度是否真的生效
+          ...(typeof result.frame.bodyAngle === 'number' ? { bodyAngle: result.frame.bodyAngle } : {}),
+        }
+      }
       return { ok: true, dataUrl: `data:image/png;base64,${pngBase64}` }
     } catch (error) {
       // 会话状态不可信：整关，下次渲染自动重建；本次回退冷路径保证出图

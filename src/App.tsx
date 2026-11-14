@@ -12,18 +12,18 @@ import { ApprovalDialog, ConfirmDialog } from './components/Modal'
 import { installEscapeDispatcher } from './utils/modalStack'
 import { useAppShortcuts } from './utils/useAppShortcuts'
 import { WorkbenchLayout } from './components/WorkbenchLayout'
-import { GitPanel } from './features/git/GitPanel'
 import { DesktopShell } from './components/desktop/DesktopShell'
 import { SurfaceAuthGate } from './components/desktop/SurfaceAuthGate'
 import { DashboardSurface, CloudBagSurface } from './components/desktop/surfaceModules'
 import { SurfaceDeck } from './components/desktop/SurfaceDeck'
 import { useDesktopPreferences } from './components/desktop/desktopPreferences'
 import { LeftColumn } from './features/workspace/LeftColumn'
+import { RightDock } from './features/workspace/RightDock'
 import { EditorArea } from './features/editor/EditorArea'
 import { SettingsPage } from './features/settings/SettingsPage'
 import { CommandPalette } from './features/workspace/CommandPalette'
 import { ModToolModals } from './features/modTools/ModToolModals'
-import { CodeTableModal } from './features/editor/CodeTableModal'
+import { CodeTablePanel } from './features/editor/CodeTablePanel'
 import { VersionDiffModal } from './features/editor/VersionDiffModal'
 import { RelationGraphModal } from './features/graph/RelationGraphModal'
 import { TemplateLibraryModal } from './features/modTools/TemplateLibraryModal'
@@ -67,6 +67,8 @@ export function App() {
   const communityAuth = useWorkspaceStore((s) => s.communityAuth)
   const settings = useWorkspaceStore((s) => s.settings)
   const codeTableOpen = useWorkspaceStore((s) => s.codeTableOpen)
+  const rightPanelTab = useWorkspaceStore((s) => s.rightPanelTab)
+  const setRightPanelTab = useWorkspaceStore((s) => s.setRightPanelTab)
   const versionDiffOpen = useWorkspaceStore((s) => s.versionDiffOpen)
   const relationGraphOpen = useWorkspaceStore((s) => s.relationGraphOpen)
   const templateLibraryOpen = useWorkspaceStore((s) => s.templateLibraryOpen)
@@ -80,7 +82,16 @@ export function App() {
   const dismissToast = useWorkspaceStore((s) => s.dismissToast)
   // 工作面切换不丢编辑器标签/光标/项目状态；编辑器节点始终挂载。
   const activeSurface = useWorkspaceStore((s) => s.activeSurface)
+  // 代码表停靠在编辑面右栏（与 Git 面板同位），打开时优先显示；离开编辑面后回到 Git
+  const codeTableVisible = codeTableOpen && activeSurface === 'editor'
   const desktopPreferences = useDesktopPreferences()
+  // 窄窗口（<900px）工作台切抽屉布局、右栏不渲染：代码表改用居中浮层兜底，避免按钮点了没反应
+  const [narrowWindow, setNarrowWindow] = useState(() => window.innerWidth < 900)
+  useEffect(() => {
+    const onResize = () => setNarrowWindow(window.innerWidth < 900)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   // 启动画面最短展示时长：本地初始化太快时动画只播一瞬就切走（表现为「启动动画没了」）。
   // ready 置位后补足到 600ms 再进主界面；initError 重试成功时不额外等待（已挂载超过时限）。
@@ -205,8 +216,21 @@ export function App() {
               <WorkbenchLayout
                 left={<LeftColumn />}
                 editor={<EditorArea />}
-                // feat/git-visual-center：右侧 Git 面板（key 跟随项目重挂载，避免旧项目状态残留）
-                right={gitPanelProject ? <GitPanel key={gitPanelProject.id} /> : null}
+                // 右侧面板：Git / 代码表用页签承载（任一开启且非窄窗口时占位，key 跟随项目重置）
+                right={
+                  !narrowWindow && (gitPanelProject !== null || codeTableVisible) ? (
+                    <RightDock
+                      key={gitPanelProject?.id ?? 'no-project'}
+                      gitOpen={gitPanelProject !== null}
+                      codeTableOpen={codeTableVisible}
+                      activeTab={rightPanelTab}
+                      projectId={gitPanelProject?.id ?? null}
+                      onActivateTab={setRightPanelTab}
+                      onCloseGit={() => useWorkspaceStore.getState().setGitPanelOpen(false)}
+                      onCloseCodeTable={() => useWorkspaceStore.getState().setCodeTableOpen(false)}
+                    />
+                  ) : null
+                }
               />
             ),
             dashboard: signedIn
@@ -223,7 +247,14 @@ export function App() {
 
       <CommandPalette />
       <ModToolModals />
-      {codeTableOpen && <CodeTableModal onClose={() => useWorkspaceStore.getState().setCodeTableOpen(false)} />}
+      {codeTableVisible && narrowWindow && (
+        // 窄窗口回退：右栏不渲染时用居中浮层展示同一份代码表（宽窗口仍停靠右侧）
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && useWorkspaceStore.getState().setCodeTableOpen(false)}>
+          <div className="modal-card codetable-overlay-card" onClick={(e) => e.stopPropagation()}>
+            <CodeTablePanel onClose={() => useWorkspaceStore.getState().setCodeTableOpen(false)} />
+          </div>
+        </div>
+      )}
       {versionDiffOpen && <VersionDiffModal onClose={() => useWorkspaceStore.getState().setVersionDiffOpen(false)} />}
       {relationGraphOpen && (
         <RelationGraphModal

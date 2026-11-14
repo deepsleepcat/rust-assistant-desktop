@@ -69,19 +69,22 @@ describe('engine preview React tree and effect contracts (no real GUI)', () => {
     hooks.refs[0] = { current: { width: 560, height: 420, getContext: () => ({ ...ctx, drawImage }) } }
     renderTree()
     hooks.states[0] = new Map([['body.png', { naturalWidth: 32, naturalHeight: 32 }]])
-    hooks.states[10] = 'Test DLC'
-    hooks.states[11] = true
+    const content = '[graphics]\nimage: body.png\n'
+    // M43 新增状态使 useState 索引后移：19=engineDlcName 20=engineMode 21=engineImage 22=engineNote；
+    // playing（索引 7）置 false = 静态单帧渲染语义
+    hooks.states[7] = false
+    hooks.states[19] = 'Test DLC'
+    hooks.states[20] = true
     const run = vi.fn((scene: unknown) => sceneToRenderResult(scene as PreviewScene))
     registerRendererAdapter({ pluginId: 'test.preview', run })
     if (mode === 'failure') hooks.render.mockResolvedValue({ ok: false, reason: 'test failure' })
     if (mode === 'exception') hooks.render.mockRejectedValue(new Error('test exception'))
-    const content = '[graphics]\nimage: body.png\n'
     renderTree(content)
     hooks.effects[2]() // Actual DLC request effect.
     hooks.effects.at(-1)!() // Local composer effect: must be a no-op.
     await vi.waitFor(() => {
       expect(hooks.render).toHaveBeenCalledOnce()
-      expect(hooks.states[13]).not.toBe('正在用引擎渲染…')
+      expect(hooks.states[22]).not.toBe('正在用引擎渲染…')
     })
     if (mode === 'image-error') {
       const image = elements(renderTree(content), 'img')[0]
@@ -112,9 +115,9 @@ describe('engine preview React tree and effect contracts (no real GUI)', () => {
     const hidden = elements(idle, 'canvas')[0]
     expect(hidden.props.style).toEqual({ display: 'none' })
     expect(elements(idle, 'img')).toHaveLength(0)
-    hooks.states[10] = 'Demo'
-    hooks.states[11] = true
-    hooks.states[12] = 'data:image/png;base64,test'
+    hooks.states[19] = 'Demo'
+    hooks.states[20] = true
+    hooks.states[21] = 'data:image/png;base64,test'
     const engine = renderTree()
     const retained = elements(engine, 'canvas')[0]
     expect(retained.props.ref).toBe(hidden.props.ref)
@@ -125,12 +128,12 @@ describe('engine preview React tree and effect contracts (no real GUI)', () => {
 
   it('image decode errors clear engine output without restoring the canvas', () => {
     renderTree()
-    hooks.states[11] = true
-    hooks.states[12] = 'bad-image'
+    hooks.states[20] = true
+    hooks.states[21] = 'bad-image'
     const image = elements(renderTree(), 'img')[0]
     ;(image.props.onError as () => void)()
-    expect(hooks.states[12]).toBeNull()
-    expect(hooks.states[13]).toContain('引擎图片无法显示')
+    expect(hooks.states[21]).toBeNull()
+    expect(hooks.states[22]).toContain('引擎图片无法显示')
     const after = renderTree()
     expect(elements(after, 'img')).toHaveLength(0)
     expect(elements(after, 'canvas')[0].props.style).toEqual({ display: 'none' })
@@ -138,8 +141,9 @@ describe('engine preview React tree and effect contracts (no real GUI)', () => {
 
   it('effect cleanup cancels its own request and ignores a late response', async () => {
     renderTree()
-    hooks.states[10] = 'Demo'
-    hooks.states[11] = true
+    hooks.states[19] = 'Demo'
+    hooks.states[20] = true
+    hooks.states[7] = false // 静态单帧：效果体里同步发起一次渲染
     let finish!: (value: unknown) => void
     hooks.render.mockImplementation(() => new Promise((resolve) => { finish = resolve }))
     renderTree()
@@ -153,6 +157,6 @@ describe('engine preview React tree and effect contracts (no real GUI)', () => {
     expect(hooks.cancel).toHaveBeenCalledWith(request.requestId)
     finish({ ok: true, dataUrl: 'late' })
     await Promise.resolve()
-    expect(hooks.states[12]).toBeNull()
+    expect(hooks.states[21]).toBeNull()
   })
 })

@@ -140,6 +140,16 @@ export function GitPanel() {
     return () => clearTimeout(t)
   }, [refresh])
 
+  // 保存/回滚/解决冲突改了磁盘内容（store 计数 +1）：面板自动刷新
+  // （状态栏摘要由 bumpGitChangeTick 顺带刷新）。tick===0 是首次挂载，
+  // 交给上面的初始化 effect，避免重复拉取。
+  const gitChangeTick = useWorkspaceStore((s) => s.gitChangeTick)
+  useEffect(() => {
+    if (gitChangeTick === 0) return
+    const t = setTimeout(() => { void refresh() }, 0)
+    return () => clearTimeout(t)
+  }, [gitChangeTick, refresh])
+
   /** 统一收尾：刷新面板数据 + 状态栏摘要 */
   const afterChange = useCallback(() => {
     void refresh()
@@ -394,7 +404,15 @@ export function GitPanel() {
             {info.branch && !info.branches.includes(info.branch) && <option value={info.branch}>{info.branch}</option>}
             {info.branches.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
-          <button type="button" className="icon-btn" title="新建分支" aria-label="新建分支" onClick={() => setBranchPrompt(true)}>
+          {/* 空仓库（无提交）分支不存在：建分支只会顶掉占位名，先引导提交 */}
+          <button
+            type="button"
+            className="icon-btn"
+            title={info.hasCommits === false ? '还没有提交——先提交一次，分支才会真正创建' : '新建分支'}
+            aria-label="新建分支"
+            disabled={info.hasCommits === false}
+            onClick={() => setBranchPrompt(true)}
+          >
             <AppIcon name="plus" size={14} />
           </button>
         </>
@@ -555,6 +573,11 @@ export function GitPanel() {
 
         {/* 提交区：有暂存 → 提交暂存；无暂存 → 一键全部暂存并提交 */}
         <div className="gitp-commit">
+          {info.hasCommits === false && (
+            <p className="gitp-muted" style={{ margin: 0, fontSize: 12 }}>
+              还没有任何提交：分支和历史都要在首次提交后才会出现，先提交一次吧。
+            </p>
+          )}
           <textarea
             className="input gitp-message"
             placeholder="提交描述（做什么改动？为什么？）"

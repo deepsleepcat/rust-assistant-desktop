@@ -7,6 +7,7 @@ import { useWorkspaceStore } from '../../../stores/workspace'
 import { getBridge } from '../../../services/bridge'
 import { AppIcon } from '../../../components/AppIcon'
 import { LogoR } from '../../../components/LogoR'
+import { AboutEasterEgg } from '../AboutEasterEgg'
 import { getDataVersionInfo, loadCodeData, reloadCodeData, type DataVersionInfo } from '../../../services/codeData'
 
 export function AboutSettingsTab() {
@@ -134,6 +135,7 @@ export function AboutSettingsTab() {
         遵循各自开源许可。
       </p>
       <p className="desc">本应用使用 HarmonyOS Sans Fonts（鸿蒙字体），版权所有 © 2021 Huawei Device Co., Ltd.；按 HarmonyOS Sans Fonts License Agreement 使用；完整授权随字体保存在 fonts/harmonyos/LICENSE.txt。</p>
+      <AboutEasterEgg />
       <div className="setting-divider" />
       <div className="setting-title">离线知识包</div>
       <div className="desc" style={{ marginBottom: 8 }}>

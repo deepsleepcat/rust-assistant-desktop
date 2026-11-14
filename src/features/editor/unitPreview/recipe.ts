@@ -628,3 +628,12 @@ export function computeSightGeometry(
     tileCount: tiles,
   }
 }
+
+/**
+ * 阴影关闭补丁：把内容里的 image_shadow 值临时替换为 NONE（只改发给引擎的副本，
+ * 不落盘、不改编辑器内容）。引擎原生没有「关阴影」参数（阴影烘焙在 draw 队列里），
+ * 这是零 DLC 改动的等价实现：AUTO 剪影和文件阴影都会因 NONE 而不绘制。
+ */
+export function patchShadowOff(content: string): string {
+  return content.replace(/^([ \t]*)(image_shadow)([ \t]*[:=])[^\r\n]*$/gim, '$1$2$3 NONE')
+}

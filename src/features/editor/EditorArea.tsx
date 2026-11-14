@@ -26,6 +26,7 @@ import { normPath } from '../../stores/slices/projectSlice'
 import { formatIni } from './iniFormatter'
 import { scanSections } from './outline'
 import { OverflowToolbar, type ToolbarAction } from '../../components/OverflowToolbar'
+import { FloatingWindow } from '../../components/FloatingWindow'
 import { SplitHandle } from '../../components/SplitHandle'
 import { formatShortcut, resolveShortcuts } from '../../utils/shortcuts'
 
@@ -127,11 +128,9 @@ export function EditorArea() {
       )}
       {tabs.length === 0 ? (
         <WelcomeView />
-      ) : turretEditorOpen && activeId ? (
-        // 炮塔编辑器：独立编辑子模式，独占内容区域（非弹窗）；按标签 key 挂载，
-        // 切标签/关文件自动卸载并关闭 DLC 渲染会话
-        <TurretEditorView key={activeId} tabId={activeId} onClose={() => useWorkspaceStore.getState().setTurretEditorOpen(false)} />
       ) : (
+        // key=tabId：每个标签独立挂载编辑器实例，撤销/重做历史互不串扰
+        // （共享单实例时，跨标签 Ctrl+Z 会撤销「标签切换替换」而把 A 的内容写进 B，损坏数据）
         // key=tabId：每个标签独立挂载编辑器实例，撤销/重做历史互不串扰
         // （共享单实例时，跨标签 Ctrl+Z 会撤销「标签切换替换」而把 A 的内容写进 B，损坏数据）
         <EditorPane
@@ -153,6 +152,20 @@ export function EditorArea() {
             })
           }}
         />
+      )}
+      {/* 炮塔编辑器：悬浮窗（不再独占内容区，可与代码并排看）；按标签 key 挂载，
+          切标签/关文件自动卸载并关闭 DLC 渲染会话 */}
+      {turretEditorOpen && activeId && (
+        <FloatingWindow
+          title="炮塔编辑器"
+          width={600}
+          height={470}
+          minWidth={480}
+          minHeight={380}
+          onClose={() => useWorkspaceStore.getState().setTurretEditorOpen(false)}
+        >
+          <TurretEditorView key={activeId} tabId={activeId} onClose={() => useWorkspaceStore.getState().setTurretEditorOpen(false)} />
+        </FloatingWindow>
       )}
       {previewOpen && <PreviewModalForActiveTab onClose={() => setPreviewOpen(false)} />}
     </section>
@@ -178,6 +191,7 @@ function PreviewModalForActiveTab({ onClose }: { onClose: () => void }) {
   if (!tab || !project) return null
   return (
     <UnitPreviewModal
+      floating
       file={tab.path}
       content={tab.content}
       rootPath={project.rootPath}
@@ -356,6 +370,9 @@ function EditorPane({
   const semanticCheckers = useWorkspaceStore((s) => s.settings.semanticCheckers)
   const targetVersionName = useWorkspaceStore((s) => s.settings.targetGameVersion)
   const setEditorPos = useWorkspaceStore((s) => s.setEditorPos)
+  // 代码表停靠右栏（与 Git 面板同位）：按钮做成开关，打开时高亮
+  const codeTableOpen = useWorkspaceStore((s) => s.codeTableOpen)
+  const rightPanelTab = useWorkspaceStore((s) => s.rightPanelTab)
   // M29：大纲开合的唯一状态来源是 settings.layout.outlineCollapsed（大纲按钮 = 切换它），
   // 高度来源是 settings.layout.outlineHeight；拖动期间用本地 state 暂存 live 值
   const outlineHeight = useWorkspaceStore((s) => s.settings.layout.outlineHeight)
@@ -469,8 +486,14 @@ function EditorPane({
         group: 'view',
         label: '代码表',
         icon: <AppIcon name="document" size={12} />,
-        title: '浏览代码表：字段说明 / 值类型 / 所属节',
-        onClick: () => useWorkspaceStore.getState().setCodeTableOpen(true),
+        title: !codeTableOpen ? '在右侧打开代码表：字段说明 / 值类型 / 所属节' : rightPanelTab === 'codeTable' ? '关闭右侧代码表页签' : '切换到右侧代码表页签',
+        active: codeTableOpen,
+        onClick: () => {
+          const state = useWorkspaceStore.getState()
+          if (!state.codeTableOpen) state.setCodeTableOpen(true)
+          else if (state.rightPanelTab === 'codeTable') state.setCodeTableOpen(false)
+          else state.setRightPanelTab('codeTable')
+        },
       },
     ]
     // M22：单位合成预览（帧切片/炮塔叠加/阴影，纯本地 Canvas 渲染）
@@ -490,7 +513,7 @@ function EditorPane({
         group: 'unit',
         label: '炮塔',
         icon: <AppIcon name="tower" size={12} />,
-        title: '可视化编辑 [turret_N] 炮塔坐标',
+        title: '可视化编辑 [turret_*] 炮塔坐标（数字或名称命名均可）',
         onClick: () => useWorkspaceStore.getState().setTurretEditorOpen(true),
       })
     }
@@ -536,7 +559,7 @@ function EditorPane({
       onClick: () => void saveTab(tab.id),
     })
     return list
-  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onMapEditModeChange, onOpenPreview, saveTab, undoTab, redoTab, canUndoTab, canRedoTab, keyboardShortcuts])
+  }, [tab, formatted, sections, outlineCollapsed, formMode, mapEditMode, onMapEditModeChange, onOpenPreview, saveTab, undoTab, redoTab, canUndoTab, canRedoTab, keyboardShortcuts, codeTableOpen, rightPanelTab])
 
   if (!tab) return null
   if (isPreviewableImage(tab.path) && project) {

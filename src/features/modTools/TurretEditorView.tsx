@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { useWorkspaceStore } from '../../stores/workspace'
 import { getBridge } from '../../services/bridge'
 import { parseTurrets, updateTurretValue } from '../editor/turretUtils'
+import { computeFrameView, type FrameView } from './turretFrameView'
 import { dataReady, getEnToZhDict, getZhToEnDict, loadCodeData } from '../../services/codeData'
 import type { EngineDlcSessionFrame } from '../../types/bridge'
 
@@ -52,6 +53,11 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  /** 离屏画布：putImageData 后按自动裁切变换缩放绘制到可见画布 */
+  const offscreenRef = useRef<HTMLCanvasElement | null>(null)
+  /** 当前显示变换（帧像素 → 画布像素）；拖动期冻结，松手后重算 */
+  const viewRef = useRef<FrameView | null>(null)
+  const [frameView, setFrameView] = useState<FrameView | null>(null)
   /** 进行中的拖动：炮塔编号（1 基） */
   const draggingRef = useRef<number | null>(null)
   /** 最新待渲染的炮塔覆盖（RAF 合并；null 表示没有新请求） */
@@ -80,6 +86,10 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
   }, [dictReady])
 
   const turrets = useMemo(() => (tab ? parseTurrets(tab.content, zhToEn) : []), [tab, zhToEn])
+  /** 引擎炮塔序号 → INI 炮塔段（表格与画面手柄同一套编号，用来互相核对） */
+  const turretByIndex = useMemo(() => new Map(turrets.map((t) => [t.index, t])), [turrets])
+  /** 表格行 ↔ 画面手柄互相高亮：数字节名（[turret_1]）没有含义，靠位置确认 */
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
   const writeTurretIni = useCallback((turretIndex: number, x: number, y: number) => {
     const state = useWorkspaceStore.getState()
@@ -98,19 +108,45 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
     setSaved(false)
   }, [tabId, zhToEn, enToZh])
 
-  /** 把 DLC 帧画上画布（RGBA 顶层向下直 alpha，直接进 ImageData） */
-  const drawFrame = useCallback((target: EngineDlcSessionFrame) => {
+  /** 把 DLC 帧画上画布：先按不透明内容自动裁切放大（拖动期冻结上次变换，避免手柄抖动） */
+  const drawFrame = useCallback((target: EngineDlcSessionFrame, allowRefit: boolean) => {
     const canvas = canvasRef.current
     if (!canvas || target.pixels.length === 0) return
-    if (canvas.width !== target.size.width || canvas.height !== target.size.height) {
-      canvas.width = target.size.width
-      canvas.height = target.size.height
+    const { width, height } = target.size
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width
+      canvas.height = height
     }
     const context = canvas.getContext('2d')
     if (!context) return
-    const imageData = context.createImageData(target.size.width, target.size.height)
+    if (allowRefit || !viewRef.current) {
+      const fitted = computeFrameView(target)
+      if (fitted) {
+        viewRef.current = fitted
+        setFrameView(fitted)
+      }
+    }
+    const view = viewRef.current
+    const offscreen = offscreenRef.current ?? (offscreenRef.current = document.createElement('canvas'))
+    if (offscreen.width !== width || offscreen.height !== height) {
+      offscreen.width = width
+      offscreen.height = height
+    }
+    const offContext = offscreen.getContext('2d')
+    if (!offContext) return
+    const imageData = offContext.createImageData(width, height)
     imageData.data.set(target.pixels)
-    context.putImageData(imageData, 0, 0)
+    offContext.putImageData(imageData, 0, 0)
+    context.clearRect(0, 0, width, height)
+    context.save()
+    context.imageSmoothingEnabled = false
+    if (view) {
+      context.setTransform(view.scale, 0, 0, view.scale, view.offsetX, view.offsetY)
+      context.drawImage(offscreen, 0, 0)
+    } else {
+      context.drawImage(offscreen, 0, 0)
+    }
+    context.restore()
   }, [])
 
   /** 发送一次更新（串行化：一次只有一个 in-flight；新请求合并到 pendingRef）。
@@ -137,7 +173,7 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
         if (disposedRef.current) return
         if (result.ok) {
           setFrame(result.frame)
-          drawFrame(result.frame)
+          drawFrame(result.frame, !desired)
           const dragged = desired?.index ?? draggingRef.current
           if (result.frame.turrets && dragged !== null) {
             const anchor = result.frame.turrets.find((t) => t.index === dragged)
@@ -207,7 +243,7 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
         }
         setSessionState({ kind: 'ready' })
         setFrame(result.frame)
-        drawFrame(result.frame)
+        drawFrame(result.frame, true)
       })
       .catch((error: unknown) => {
         if (!alive) return
@@ -262,9 +298,13 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
     const scaleY = target.size.height / rect.height
     const imageX = (clientX - rect.left) * scaleX
     const imageY = (clientY - rect.top) * scaleY
+    // 画布上是「自动裁切放大」后的画面：先反变换回帧像素坐标，再用 coordinateMapping 映射世界坐标
+    const view = viewRef.current
+    const frameX = view ? (imageX - view.offsetX) / view.scale : imageX
+    const frameY = view ? (imageY - view.offsetY) / view.scale : imageY
     const { originX, originY, pixelsPerUnit } = target.coordinateMapping
     if (!pixelsPerUnit) return null
-    return { worldX: (imageX - originX) / pixelsPerUnit, worldY: (imageY - originY) / pixelsPerUnit }
+    return { worldX: (frameX - originX) / pixelsPerUnit, worldY: (frameY - originY) / pixelsPerUnit }
   }
 
   const onHandlePointerDown = (index: number) => (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -318,12 +358,12 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
       <div className="turret-editor-body">
         <div className="turret-table">
           {turrets.length === 0 ? (
-            <p className="mod-tip">当前文件没有 [turret_N] 段。炮塔 = 单位上的武器挂点，格式见代码表 turret 节。</p>
+            <p className="mod-tip">当前文件没有炮塔段。炮塔 = 单位上的武器挂点，节名形如 [turret_1] 或 [turret_名称]（官方两种都有），格式见代码表 turret 节。</p>
           ) : (
             <table>
               <thead>
                 <tr>
-                  <th>炮塔</th>
+                  <th title="表格行与画面手柄会互相高亮，用位置确认编号">炮塔节名</th>
                   <th title="横坐标偏移">x</th>
                   <th title="纵坐标偏移">y</th>
                   <th title="待机朝向角度（idleDir）">待机朝向</th>
@@ -332,55 +372,73 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
                 </tr>
               </thead>
               <tbody>
-                {turrets.map((t, idx) => (
-                  <tr key={`${t.index}-${idx}`}>
-                    <td>{t.index}</td>
-                    <td>
-                      <input
-                        type="number"
-                        value={t.values.get('x') ?? '0'}
-                        onChange={(e) => setValue(t.index, 'x', e.target.value)}
-                        aria-label={`炮塔 ${t.index} 的 x 坐标`}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        value={t.values.get('y') ?? '0'}
-                        onChange={(e) => setValue(t.index, 'y', e.target.value)}
-                        aria-label={`炮塔 ${t.index} 的 y 坐标`}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        value={t.values.get('idleDir') ?? '0'}
-                        onChange={(e) => setValue(t.index, 'idleDir', e.target.value)}
-                        aria-label={`炮塔 ${t.index} 的 idleDir`}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        value={t.values.get('projectile') ?? ''}
-                        onChange={(e) => setValue(t.index, 'projectile', e.target.value)}
-                        aria-label={`炮塔 ${t.index} 的 projectile`}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        value={t.values.get('size') ?? '8'}
-                        onChange={(e) => setValue(t.index, 'size', e.target.value)}
-                        aria-label={`炮塔 ${t.index} 的 size`}
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {turrets.map((t) => {
+                  const attachedTo = t.values.get('attachedTo')
+                  const invisible = (t.values.get('invisible') ?? '').toLowerCase() === 'true'
+                  return (
+                    <tr
+                      key={`${t.index}-${t.name}`}
+                      className={activeIndex === t.index ? 'is-active' : undefined}
+                      onMouseEnter={() => setActiveIndex(t.index)}
+                      onMouseLeave={() => setActiveIndex(null)}
+                    >
+                      <td title={`第 ${t.index} 个炮塔：[turret_${t.name}]`}>
+                        <span className="turret-name">
+                          <strong>{t.name}</strong>
+                          <span className="turret-sub">
+                            [turret_{t.name}]
+                            {attachedTo ? ` · 挂载：${attachedTo}` : ''}
+                            {invisible ? ' · 隐藏' : ''}
+                          </span>
+                        </span>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={t.values.get('x') ?? '0'}
+                          onChange={(e) => setValue(t.index, 'x', e.target.value)}
+                          aria-label={`炮塔 ${t.index} 的 x 坐标`}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={t.values.get('y') ?? '0'}
+                          onChange={(e) => setValue(t.index, 'y', e.target.value)}
+                          aria-label={`炮塔 ${t.index} 的 y 坐标`}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={t.values.get('idleDir') ?? '0'}
+                          onChange={(e) => setValue(t.index, 'idleDir', e.target.value)}
+                          aria-label={`炮塔 ${t.index} 的 idleDir`}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={t.values.get('projectile') ?? ''}
+                          onChange={(e) => setValue(t.index, 'projectile', e.target.value)}
+                          aria-label={`炮塔 ${t.index} 的 projectile`}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          value={t.values.get('size') ?? '8'}
+                          onChange={(e) => setValue(t.index, 'size', e.target.value)}
+                          aria-label={`炮塔 ${t.index} 的 size`}
+                        />
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
-          <p className="mod-tip">x/y 是炮塔相对单位图中心的像素坐标（y 向下为正）。在右侧渲染图上拖动炮塔手柄可实时改坐标；松手后自动出高清帧。</p>
+          <p className="mod-tip">预览已按单位的实际像素内容自动放大（贴图里空白边距不会再让单位显得很小）。x/y 是炮塔相对单位图中心的像素坐标（y 向下为正）。在渲染图上拖动炮塔手柄可实时改坐标；松手后自动出高清帧。把鼠标移到表格行或画面手柄上，两边会互相高亮——数字节名（如 [turret_1]）没有字面含义，用它按位置确认是哪个炮塔。</p>
           <div className="turret-editor-actions">
             <button className="btn primary" onClick={() => void save()} disabled={saving || !tab.dirty}>
               {saving ? '保存中…' : '保存炮塔坐标'}
@@ -406,29 +464,41 @@ export function TurretEditorView({ tabId, onClose }: { tabId: string; onClose: (
             >
               <canvas ref={canvasRef} className="turret-canvas" width={IDLE_SIZE.width} height={IDLE_SIZE.height} />
               {sessionState.kind === 'opening' && <div className="turret-preview-note">正在打开引擎渲染会话…</div>}
-              {handlePositions.map((t, idx) => (
-                <button
-                  key={`${t.index}-${idx}`}
-                  className="turret-dot"
-                  title={`炮塔 ${t.index}（x: ${formatIniNumber(t.iniX)}, y: ${formatIniNumber(t.iniY)}）— 拖动可实时改坐标`}
-                  aria-label={`炮塔 ${t.index}`}
-                  style={{
-                    position: 'absolute',
-                    left: `${(t.imageX / displayFrame!.size.width) * 100}%`,
-                    top: `${(t.imageY / displayFrame!.size.height) * 100}%`,
-                    transform: 'translate(-50%, -50%)',
-                    width: 16,
-                    height: 16,
-                    cursor: sessionReady ? 'grab' : 'default',
-                  }}
-                  onPointerDown={sessionReady ? onHandlePointerDown(t.index) : undefined}
-                  onPointerMove={onHandlePointerMove}
-                  onPointerUp={onHandlePointerUp}
-                  onPointerCancel={onHandlePointerUp}
-                >
-                  {t.index}
-                </button>
-              ))}
+              {handlePositions.map((t) => {
+                const entry = turretByIndex.get(t.index)
+                const name = entry?.name ?? ''
+                const named = name !== '' && !/^\d+$/.test(name)
+                const active = activeIndex === t.index
+                const view = frameView
+                const canvasX = view ? view.offsetX + t.imageX * view.scale : t.imageX
+                const canvasY = view ? view.offsetY + t.imageY * view.scale : t.imageY
+                return (
+                  <div
+                    key={t.index}
+                    className="turret-handle"
+                    style={{
+                      left: `${(canvasX / displayFrame!.size.width) * 100}%`,
+                      top: `${(canvasY / displayFrame!.size.height) * 100}%`,
+                    }}
+                  >
+                    {named && <span className={`turret-handle-label${active ? ' is-active' : ''}`}>{name}</span>}
+                    <button
+                      className={`turret-dot${active ? ' is-active' : ''}`}
+                      title={`炮塔 ${t.index}${named ? `（${name}）` : ''}（x: ${formatIniNumber(t.iniX)}, y: ${formatIniNumber(t.iniY)}）— 拖动可实时改坐标`}
+                      aria-label={`炮塔 ${t.index}${named ? ` ${name}` : ''}`}
+                      style={{ cursor: sessionReady ? 'grab' : 'default' }}
+                      onMouseEnter={() => setActiveIndex(t.index)}
+                      onMouseLeave={() => setActiveIndex(null)}
+                      onPointerDown={sessionReady ? onHandlePointerDown(t.index) : undefined}
+                      onPointerMove={onHandlePointerMove}
+                      onPointerUp={onHandlePointerUp}
+                      onPointerCancel={onHandlePointerUp}
+                    >
+                      {t.index}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

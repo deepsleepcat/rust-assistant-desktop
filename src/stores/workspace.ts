@@ -183,7 +183,10 @@ export function createWorkspaceStore(bridge: BridgeApi) {
       templateLibraryOpen: false,
       gitInfoOpen: false,
       gitPanelOpen: false,
+      rightPanelTab: null,
       gitSummary: null,
+      // 磁盘内容变更计数（保存/回滚/解决冲突后 +1）：Git 面板订阅它自动刷新
+      gitChangeTick: 0,
       unitLibraryOpen: false,
       valueTypeOpen: false,
       turretEditorOpen: false,

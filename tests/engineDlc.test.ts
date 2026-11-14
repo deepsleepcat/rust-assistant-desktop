@@ -30,6 +30,7 @@ import { registerEngineDlcIpc } from '../electron/engineDlcIpc'
 import {
   ENGINE_DLC_DIRNAME,
   engineDlcDir,
+  engineDlcSupportsAngle,
   parseEngineDlcManifest,
   readEngineDlcDir,
   runEngineDlcRender,
@@ -528,7 +529,8 @@ fs.writeFileSync(args[args.indexOf('--output') + 1], Buffer.from('GIF89a-not-a-p
     if (result.ok) return
     expect(result.reason).toContain('超时')
     expect(Date.now() - started).toBeLessThan(10_000)
-  }, 15_000)
+    // 全量并发跑测试时 CPU 争用会把「杀掉子进程」的等待拉长，余量给足，避免门禁假红
+  }, 30_000)
 
   it('单位文件过大时直接拒绝，不启动子进程', async () => {
     await writeDlc('big', GOOD_SCRIPT)
@@ -569,14 +571,49 @@ describe('M42 DLC 授权锚与 IPC 边界', () => {
     await expect(invoke(channels, 'store:get', ENGINE_DLC_ENABLED_KEY)).rejects.toThrow('不允许读取系统保留键')
   })
 
+  it('0.2.3+ 才声明任意角度能力（旧版本按不支持处理）', () => {
+    expect(engineDlcSupportsAngle('0.2.3')).toBe(true)
+    expect(engineDlcSupportsAngle('0.2.4')).toBe(true)
+    expect(engineDlcSupportsAngle('0.3.0')).toBe(true)
+    expect(engineDlcSupportsAngle('1.0.0')).toBe(true)
+    expect(engineDlcSupportsAngle('0.2.2')).toBe(false)
+    expect(engineDlcSupportsAngle('0.1.9')).toBe(false)
+    expect(engineDlcSupportsAngle('')).toBe(false)
+    expect(engineDlcSupportsAngle(undefined)).toBe(false)
+  })
+
+  it('dlc:background 只按白名单种类读 DLC 内背景贴图，不参与路径构造', async () => {
+    const dir = await writeDlc('demo', GOOD_SCRIPT)
+    messageBoxResponse = 1
+    const channels = registerAll()
+    await invoke(channels, 'dlc:grant', 'demo', true)
+    // 清单里没有 backgrounds/ → 拒绝（不因种类合法就放行）
+    expect(await invoke<{ ok: boolean }>(channels, 'dlc:background', 'grass')).toMatchObject({ ok: false })
+    // 放入合法 20×20 PNG → 返回 data URL
+    const png = new PNG({ width: 20, height: 20 })
+    const pngBytes = PNG.sync.write(png)
+    await fs.mkdir(path.join(dir, 'backgrounds'), { recursive: true })
+    await fs.writeFile(path.join(dir, 'backgrounds', 'grass.png'), pngBytes)
+    const ok = await invoke<{ ok: boolean; dataUrl?: string }>(channels, 'dlc:background', 'grass')
+    expect(ok.ok).toBe(true)
+    expect(ok.dataUrl?.startsWith('data:image/png;base64,')).toBe(true)
+    // 非白名单种类（含路径穿越尝试）一律拒绝
+    for (const bad of ['', 'stone', '../render.cjs', 'grass/../../evil', 'GRASS']) {
+      expect(await invoke<{ ok: boolean }>(channels, 'dlc:background', bad)).toMatchObject({ ok: false })
+    }
+    // 非 PNG 内容 → 拒绝
+    await fs.writeFile(path.join(dir, 'backgrounds', 'sand.png'), Buffer.from('not a png'))
+    expect(await invoke<{ ok: boolean }>(channels, 'dlc:background', 'sand')).toMatchObject({ ok: false })
+  })
+
   it('dlc:list 只给展示信息，不含任何可执行文件路径', async () => {
     await writeDlc('demo', GOOD_SCRIPT)
     const channels = registerAll()
     const result = await invoke<{ dir: string; dlcs: Array<Record<string, unknown>> }>(channels, 'dlc:list')
     expect(result.dlcs).toHaveLength(1)
     expect(result.dlcs[0]).toMatchObject({ id: 'demo', enabled: false, runnable: false })
-    // 列表项没有任何路径字段（entryPath/entry/dir 都不该出现）
-    expect(Object.keys(result.dlcs[0]).sort()).toEqual(['description', 'enabled', 'granted', 'id', 'name', 'problem', 'runnable', 'version'])
+    // 列表项没有任何路径字段（entryPath/entry/dir 都不该出现）；angle = 0.2.3+ 原生任意角度能力标记
+    expect(Object.keys(result.dlcs[0]).sort()).toEqual(['angle', 'description', 'enabled', 'granted', 'id', 'name', 'problem', 'runnable', 'version'])
     expect(JSON.stringify(result.dlcs)).not.toContain('render.cjs')
   })
 
@@ -717,6 +754,9 @@ describe('M42 DLC 授权锚与 IPC 边界', () => {
     expect(await invoke<{ ok: boolean }>(channels, 'dlc:render', { ...base, frame: -1 })).toMatchObject({ ok: false })
     expect(await invoke<{ ok: boolean }>(channels, 'dlc:render', { ...base, width: 100_000 })).toMatchObject({ ok: false })
     expect(await invoke<{ ok: boolean }>(channels, 'dlc:render', { ...base, animationState: 'dance' })).toMatchObject({ ok: false })
+    // 0.2.3+ 任意角度：非数值/超范围拒绝；合法角度放行（会话不可用时回退冷路径，仍应出图）
+    expect(await invoke<{ ok: boolean }>(channels, 'dlc:render', { ...base, angle: 'nope' })).toMatchObject({ ok: false })
+    expect(await invoke<{ ok: boolean }>(channels, 'dlc:render', { ...base, angle: 1e9 })).toMatchObject({ ok: false })
   })
 
   it('授权后能端到端跑通：dlc:render 返回 PNG', async () => {

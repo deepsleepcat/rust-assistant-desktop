@@ -236,6 +236,16 @@ body.ra-compact .community-account-btn span { display: none; }
 /* 弹窗、命令面板、设置：Material 浮层 */
 .modal-overlay, .command-overlay { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 32px; background: var(--overlay); }
 .modal-card, .command-card { width: min(520px, 100%); max-height: 86vh; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-0); box-shadow: var(--shadow-lg); }
+
+/* 悬浮窗（FloatingWindow）：编辑器内容区上方的可拖动/可缩放小窗，
+ * 层级位于内容之上、模态弹窗（z 200）之下；多窗点按置顶（组件内递增） */
+.float-win { position: fixed; display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-0); box-shadow: var(--shadow-lg); overflow: hidden; }
+.float-win-head { display: flex; align-items: center; gap: 8px; flex: none; height: 34px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--divider); background: var(--surface-1); color: var(--text-primary); font: 600 12.5px var(--font-display); cursor: grab; user-select: none; touch-action: none; }
+.float-win-head:active { cursor: grabbing; }
+.float-win-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.float-win-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.float-win-resize { position: absolute; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; touch-action: none; }
+.float-win-resize::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 7px; height: 7px; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); border-bottom-right-radius: 3px; opacity: .7; }
 .modal-card.settings { width: min(640px, 100%); container: settings-modal / inline-size; }
 .modal-header { display: flex; align-items: center; gap: 10px; padding: 14px 18px 10px; color: var(--text-primary); font: 600 15px var(--font-display); }
 .modal-header .grow { flex: 1; }

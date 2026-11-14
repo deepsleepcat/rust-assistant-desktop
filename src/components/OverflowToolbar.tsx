@@ -64,34 +64,73 @@ export function OverflowToolbar({ actions, overflowLabel = '更多' }: OverflowT
     return out
   }
 
-  // 单一重算入口：读 actionsRef（最新）与测量行宽度，把放不下的动作收进溢出集合
+  // 只在溢出集合内容真正变化时才更新，避免 actions 每次重建（如每次按键）引发无谓重渲染
+  const setOverflowedIfChanged = useCallback((next: Set<string>) => {
+    setOverflowed((prev) => {
+      if (prev.size === next.size) {
+        let same = true
+        for (const k of next) {
+          if (!prev.has(k)) {
+            same = false
+            break
+          }
+        }
+        if (same) return prev
+      }
+      return next
+    })
+  }, [])
+
+  // 单一重算入口：读 actionsRef（最新）与测量行布局，把放不下的动作收进溢出集合。
+  // 前缀测量法：取测量行上每个按钮的 offsetLeft+offsetWidth 作为「前缀末端位置」，
+  // 天然包含按钮间 4px gap 与组间 8px 留白（旧版逐项累加 offsetWidth 漏算了这些缝隙，
+  // 导致行实际溢出、行尾按钮被裁切）；再按渲染顺序取最大前缀，溢出成员永远是
+  // 行尾连续按钮，与视觉顺序一致（旧版装不下时 acc 不增，后面的窄按钮仍会留在
+  // 行上，菜单成员看起来随机跳动）。
   const recompute = useCallback(() => {
     const wrap = wrapRef.current
     const measure = measureRef.current
     if (!wrap || !measure) return
     const avail = wrap.clientWidth
-    const widthByKey = new Map<string, number>()
-    for (const el of Array.from(measure.children) as HTMLElement[]) {
+    const children = Array.from(measure.children) as HTMLElement[]
+    const endByKey = new Map<string, number>()
+    const elByKey = new Map<string, HTMLElement>()
+    for (const el of children) {
       const k = el.dataset.key ?? ''
-      if (k) widthByKey.set(k, el.offsetWidth)
+      if (!k) continue
+      endByKey.set(k, el.offsetLeft + el.offsetWidth)
+      elByKey.set(k, el)
     }
-    const ordered = [
-      ...actionsRef.current.filter((a) => a.alwaysVisible).map((a) => a.key),
-      ...actionsRef.current.filter((a) => !a.alwaysVisible).map((a) => a.key),
-    ]
-    const menuW = 64 // 「更多」按钮实测宽度（icon + 两字 + padding），预留不足会横向溢出
-    let acc = 0
-    const next = new Set<string>()
-    for (const key of ordered) {
-      const w = widthByKey.get(key) ?? 0
-      if (acc === 0 || acc + w <= avail - menuW) {
-        acc += w
-      } else {
-        next.add(key)
+    // 整行（含常驻按钮）本来就能放下时无需菜单，不必为不存在的「更多」按钮预留宽度
+    const last = children[children.length - 1] as HTMLElement | undefined
+    if (!last || last.offsetLeft + last.offsetWidth <= avail) {
+      setOverflowedIfChanged(new Set<string>())
+      return
+    }
+    // 常驻按钮（保存，渲染在行尾）占宽：自身宽度 + 与前一按钮之间的间距（含组间留白）。
+    // 它所在分组唯一，无论它前面可见的是哪个按钮，组间留白结构都一致，预留始终准确。
+    let reserved = 0
+    for (const a of actionsRef.current) {
+      if (!a.alwaysVisible) continue
+      const el = elByKey.get(a.key)
+      if (!el) continue
+      reserved += el.offsetWidth
+      const idx = children.indexOf(el)
+      if (idx > 0) {
+        const prev = children[idx - 1] as HTMLElement
+        reserved += el.offsetLeft - (prev.offsetLeft + prev.offsetWidth)
       }
     }
-    setOverflowed(next)
-  }, [])
+    const menuW = 64 // 「更多」按钮实测宽度（icon + 两字 + padding），预留不足会横向溢出
+    const budget = avail - menuW - reserved - 4 // 4：可见行最后一个按钮与「更多」按钮之间的 flex gap
+    const next = new Set<string>()
+    for (const a of actionsRef.current) {
+      if (a.alwaysVisible) continue // 常驻按钮永不收进菜单
+      // 前缀末端位置沿渲染顺序单调递增：一旦超预算，其后全部进菜单（保证溢出集合是行尾连续后缀）
+      if ((endByKey.get(a.key) ?? 0) > budget) next.add(a.key)
+    }
+    setOverflowedIfChanged(next)
+  }, [setOverflowedIfChanged])
 
   // actions 变化：先同步 ref 再重算（render 期间禁止写 ref；passive effect 太晚会漏掉首次重算）
   useLayoutEffect(() => {
@@ -99,12 +138,15 @@ export function OverflowToolbar({ actions, overflowLabel = '更多' }: OverflowT
     recompute()
   }, [actions, recompute])
 
-  // ResizeObserver 只挂载一次；回调读取最新 actions（经 ref）
+  // ResizeObserver 只挂载一次；回调读取最新 actions（经 ref）。
+  // 同时观察父容器：若布局变化导致自身宽度不再跟随容器（如丢失 flex:1），
+  // 容器变宽时仍有事件触发重算，避免「吞进菜单后无声锁死」。
   useEffect(() => {
     const wrap = wrapRef.current
     if (!wrap) return
     const ro = new ResizeObserver(recompute)
     ro.observe(wrap)
+    if (wrap.parentElement) ro.observe(wrap.parentElement)
     return () => ro.disconnect()
   }, [recompute])
 
@@ -117,7 +159,7 @@ export function OverflowToolbar({ actions, overflowLabel = '更多' }: OverflowT
       <div
         ref={measureRef}
         aria-hidden="true"
-        style={{ position: 'absolute', left: 0, top: 0, visibility: 'hidden', display: 'flex', gap: 6, pointerEvents: 'none' }}
+        style={{ position: 'absolute', left: 0, top: 0, visibility: 'hidden', display: 'flex', gap: 4, pointerEvents: 'none' }}
       >
         {renderGrouped(actions)}
       </div>

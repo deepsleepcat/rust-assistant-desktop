@@ -150,6 +150,10 @@
 
 /* ── 溢出工具栏（Toolbar/OverflowToolbar） ───────────── */
 .toolbar { display: flex; align-items: center; gap: 4px; min-width: 0; }
+/* 编辑器操作行里 OverflowToolbar 独占整行：始终占满行宽，容器变宽时 ResizeObserver
+   才能感知并触发重算——否则 div 收缩到「剩余按钮」的宽度，容器变宽尺寸不变、事件
+   不触发，「更多」菜单吞掉的按钮永远吐不出来（单向棘轮锁死） */
+.editor-head-row.actions > .toolbar { flex: 1 1 auto; }
 .toolbar > .toolbar-item { flex: none; }
 /* 分组留白：相邻不同分组的动作之间用空白隔开（不画竖线） */
 .toolbar-group-gap { width: 8px; flex: none; }
@@ -162,6 +166,14 @@
 .toolbar > .btn.primary:hover { border-color: transparent; background: color-mix(in srgb, var(--text-primary) 12%, transparent); color: var(--primary); }
 .toolbar > .btn:disabled { opacity: .45; cursor: not-allowed; }
 .toolbar > .btn:disabled:hover { background: color-mix(in srgb, var(--text-primary) 4%, transparent); color: inherit; }
+/* 编辑器操作行：按钮底色与编辑区一致（var(--editor)），去掉逐钮 4% 微色阶；
+   激活态也不再铺 accent 浅底，只用文字颜色区分。hover 仅保留一次性反馈。
+   统一最小宽度：按钮 hover/点击区域不再因“预览”这类两字标签而变窄。 */
+.editor-head-row.actions > .toolbar > .btn { background: var(--editor); border-color: transparent; box-shadow: none; min-width: 88px; justify-content: center; }
+.editor-head-row.actions > .toolbar > .btn:hover { background: var(--surface-hover); border-color: transparent; }
+.editor-head-row.actions > .toolbar > .btn.primary { background: var(--editor); color: var(--accent); font-weight: 600; box-shadow: none; }
+.editor-head-row.actions > .toolbar > .btn.primary:hover { background: var(--surface-hover); color: var(--accent); }
+.editor-head-row.actions > .toolbar > .btn:disabled:hover { background: var(--editor); color: inherit; }
 .toolbar-overflow-menu { position: absolute; z-index: 80; min-width: 180px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-0); box-shadow: var(--shadow-md); display: flex; flex-direction: column; gap: 1px; }
 .toolbar-overflow-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: 12.5px var(--font-ui); text-align: left; cursor: pointer; }
 .toolbar-overflow-menu button:hover { background: var(--surface-hover); }

@@ -95,6 +95,15 @@ describe('editor toolbar stays quiet', () => {
     const source = readFileSync(resolve(__dirname, '../src/components/OverflowToolbar.tsx'), 'utf8')
     expect(source).toContain('toolbar-group-gap')
   })
+
+  it('editor actions toolbar always fills its row (overflow ratchet: shrink must not lock items in the menu)', () => {
+    // 工具栏自身收缩到「剩余按钮」宽度会让可用宽度被收纳结果塑造，容器变宽时
+    // ResizeObserver 不触发——按钮被吞进「更多」后永不吐出。必须始终占满行宽。
+    expect(layout).toMatch(/\.editor-head-row\.actions > \.toolbar\s*{[^}]*flex:\s*1 1 auto/)
+    // 兜底：ResizeObserver 同时观察父容器，布局变化后容器变宽仍能触发重算
+    const source = readFileSync(resolve(__dirname, '../src/components/OverflowToolbar.tsx'), 'utf8')
+    expect(source).toContain('ro.observe(wrap.parentElement)')
+  })
 })
 
 describe('structure is separated by contrast, not dashed borders', () => {

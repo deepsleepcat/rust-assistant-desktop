@@ -85,8 +85,12 @@ export interface WorkspaceStoreState {
   gitInfoOpen: boolean
   /** feat/git-visual-center：编辑器右侧 Git 面板开合（状态栏芯片切换） */
   gitPanelOpen: boolean
+  /** 右侧面板当前页签（Git / 代码表）；null = 无活动页签 */
+  rightPanelTab: 'git' | 'codeTable' | null
   /** feat/git-visual-center：状态栏 Git 芯片摘要（null = 未加载或无项目；由 refreshGitSummary 维护） */
   gitSummary: { available: boolean; isRepo: boolean; branch: string; changedCount: number } | null
+  /** 磁盘内容变更计数（保存/回滚/解决冲突后 +1）：Git 面板订阅它自动刷新，避免「改完文件面板不更新」 */
+  gitChangeTick: number
   /** M7：单位库弹窗 */
   unitLibraryOpen: boolean
   /** M8：值类型管理弹窗 */
@@ -230,8 +234,12 @@ export interface WorkspaceStoreActions {
   setGitInfoOpen(open: boolean): void
   /** feat/git-visual-center：开合右侧 Git 面板 */
   setGitPanelOpen(open: boolean): void
+  /** 右侧面板切换页签（Git / 代码表） */
+  setRightPanelTab(tab: 'git' | 'codeTable' | null): void
   /** feat/git-visual-center：刷新状态栏 Git 摘要（无项目/非编辑面时置 null） */
   refreshGitSummary(): Promise<void>
+  /** 磁盘内容变更计数 +1（保存/回滚/解决冲突后调用；Git 面板订阅后自动刷新） */
+  bumpGitChangeTick(): void
   setUnitLibraryOpen(open: boolean): void
   /** M8：值类型管理弹窗 */
   setValueTypeOpen(open: boolean): void

@@ -58,7 +58,16 @@ export function createUiSlice() {
       }))
     },
     setCodeTableOpen(open: boolean) {
-      set({ codeTableOpen: open })
+      if (!open) {
+        const state = get()
+        const nextTab = state.rightPanelTab === 'codeTable' ? (state.gitPanelOpen ? 'git' : null) : state.rightPanelTab
+        set({ codeTableOpen: false, rightPanelTab: nextTab })
+        return
+      }
+      // 代码表停靠在编辑面右栏：从其它工作面打开时先回到编辑面（否则右栏不渲染）
+      const current = get().activeSurface
+      if (current !== 'editor') set({ codeTableOpen: true, rightPanelTab: 'codeTable', activeSurface: 'editor', settingsOpen: false, drawerSide: null })
+      else set({ codeTableOpen: true, rightPanelTab: 'codeTable' })
     },
     setVersionDiffOpen(open: boolean) {
       set({ versionDiffOpen: open })
@@ -73,7 +82,16 @@ export function createUiSlice() {
       set({ gitInfoOpen: open })
     },
     setGitPanelOpen(open: boolean) {
-      set({ gitPanelOpen: open })
+      if (!open) {
+        const state = get()
+        const nextTab = state.rightPanelTab === 'git' ? (state.codeTableOpen ? 'codeTable' : null) : state.rightPanelTab
+        set({ gitPanelOpen: false, rightPanelTab: nextTab })
+        return
+      }
+      set({ gitPanelOpen: true, rightPanelTab: 'git' })
+    },
+    setRightPanelTab(tab: 'git' | 'codeTable' | null) {
+      set({ rightPanelTab: tab })
     },
     setUnitLibraryOpen(open: boolean) {
       set({ unitLibraryOpen: open })

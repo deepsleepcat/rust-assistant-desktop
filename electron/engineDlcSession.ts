@@ -27,7 +27,7 @@ export interface DlcSessionRequest {
   unitFile: string
   unitContent?: string
   projectRoot: string
-  view?: { direction?: number; animationState?: string; showWreck?: boolean; team?: number; position?: { x: number; y: number }; frame?: number }
+  view?: { direction?: number; angle?: number | null; animationState?: string; showWreck?: boolean; team?: number; position?: { x: number; y: number }; frame?: number; timeMs?: number | null }
   size?: { width: number; height: number }
   /** 输出格式：rgba(默认，炮塔拖动) / png+base64（单帧预览复用常驻会话） */
   outputFormat?: 'png' | 'rgba'
@@ -35,7 +35,7 @@ export interface DlcSessionRequest {
 
 /** 更新请求：视图增量 + 可选炮塔位置覆盖（拖动编辑用；DLC 内部解 INI 逆映射） */
 export interface DlcSessionUpdateRequest {
-  view?: { direction?: number; animationState?: string; showWreck?: boolean; team?: number; position?: { x: number; y: number } }
+  view?: { direction?: number; angle?: number | null; animationState?: string; showWreck?: boolean; team?: number; position?: { x: number; y: number }; frame?: number; timeMs?: number | null }
   size?: { width: number; height: number }
   turretOverrides?: Array<{ index: number; worldX: number; worldY: number }>
   turretOverridesReset?: boolean
@@ -57,6 +57,8 @@ export interface DlcSessionFrame {
   turrets?: Array<{ index: number; iniX: number; iniY: number; worldX: number; worldY: number; imageX: number; imageY: number; directionDegrees: number }>
   animation?: unknown
   timing?: Record<string, number>
+  /** 0.2.3+：本帧实际生效的机体角度（度） */
+  bodyAngle?: number
   pixels: Uint8Array
   bytes: number
   sha256?: string
@@ -413,7 +415,7 @@ export class EngineDlcSessionManager {
       bytes: pixels.length,
     }
     if (pngBase64 !== undefined) result.pngBase64 = pngBase64
-    for (const key of ['latestGeneration', 'stride', 'pixelFormat', 'rowOrder', 'premultipliedAlpha', 'coordinateMapping', 'worldBounds', 'turrets', 'animation', 'timing', 'sha256'] as const) {
+    for (const key of ['latestGeneration', 'stride', 'pixelFormat', 'rowOrder', 'premultipliedAlpha', 'coordinateMapping', 'worldBounds', 'turrets', 'animation', 'timing', 'sha256', 'bodyAngle'] as const) {
       if (frame[key] !== undefined && frame[key] !== null) result[key] = frame[key]
     }
     return result as unknown as DlcSessionFrame
