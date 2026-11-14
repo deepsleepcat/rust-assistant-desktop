@@ -18,6 +18,7 @@ import { lintGutter, lintKeymap } from '@codemirror/lint'
 import { colorDecorationExtension } from './colorDecorationsExtension'
 import { rustSectionFolding } from './sectionFolding'
 import { rustLintExtension } from './rustLint'
+import { bilingualLabels } from './bilingualLabels'
 import { loadCodeData } from '../../services/codeData'
 
 interface EditorMirrorProps {
@@ -231,6 +232,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, fontFamily, fo
         rustConfigLanguageSupport(),
         lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName })),
         rustHoverExtension,
+        bilingualLabels,
         autocompletion({ override: [rustCompletionSource], activateOnTyping: true }),
         tooltips({
           // 输入法弹起时可视视口底部上移：补全空间按 visualViewport 计算，
