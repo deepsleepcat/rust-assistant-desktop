@@ -1,17 +1,35 @@
 # 铁锈工坊 · 电脑版（Rust Assistant Desktop）
 
 <p align="center">
+  <a href="https://github.com/deepsleepcat/rust-assistant-desktop/releases/latest"><img alt="最新版本" src="https://img.shields.io/github/v/release/deepsleepcat/rust-assistant-desktop?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=c0392b"></a>
+  <img alt="运行平台" src="https://img.shields.io/badge/%E8%BF%90%E8%A1%8C%E5%B9%B3%E5%8F%B0-Windows%2010%2F11-0078d4">
+  <a href="LICENSE"><img alt="许可证" src="https://img.shields.io/github/license/deepsleepcat/rust-assistant-desktop?label=%E8%AE%B8%E5%8F%AF%E8%AF%81&color=2f855a"></a>
+</p>
+
+<p align="center">
   <img src="assets/mascot.png" alt="铁锈工坊看板娘" width="380" />
 </p>
 
 面向《铁锈战争》（Rusted Warfare）模组开发的 **Windows 桌面工作台**：
 用代码编辑器的体验写模组 ini 代码，并集成模组检查、地图预览与云仓库协作。
 
+## 下载
+
+[Releases](https://github.com/deepsleepcat/rust-assistant-desktop/releases/latest) 页面提供两种安装包：
+
+| 安装包 | 说明 |
+| --- | --- |
+| `rust-assistant-desktop-setup-*.exe` | NSIS 安装版，写入开始菜单，支持应用内自动更新 |
+| `rust-assistant-desktop-*-portable.exe` | 便携版，免安装，解压即用 |
+
+系统要求 Windows 10/11 x64。首次运行可能出现 Windows 安全提示，点「更多信息 → 仍要运行」即可。
+
 ## 特色
 
 - **可调工作台**：左侧项目/文件树 · 主编辑区多标签编辑器；分隔条可拖拽调整，面板可折叠，窄窗口自动切换抽屉模式，文件树支持键盘导航
 - **仪表盘**：连接云仓库服务器后显示真实余额与用量（请求量、Token 与覆盖率）；离线或数据不可用时不展示占位值
 - **模组专用编辑器**（CodeMirror 6）：ini 高亮、自动补全（含 `@type`/`@customType`/`${变量}` 联想与图片预览）、智能换行、节大纲、折叠、格式化、中英翻译、lint 实时检查
+- **AI 助手（BYOK）**：内置 DeepSeek 对话面板，Agent 可读写项目文件——写文件走审批 + 行级 diff 预览（可拒绝、可超时作废），写完自动质检并自纠；API Key 只进主进程 safeStorage 加密存储，界面永不回显
 - **模组工具**：新建 / 导入 / 打包 `.rwmod`、新建单位、单位检查、全局查找替换、优化清理、值类型管理（自定义补全规则）；**一键验证**——打包后自动部署到游戏 `mods/units` 目录并启动游戏（同名模组先询问是否覆盖）
 - **参考库**：代码表查字段用途（支持旧名别名搜索，如 `turretlimitingAngle` → `limitingAngle`）、单位库参考官方单位（全部带中文名与描述）、炮塔可视化编辑器（独立编辑界面，安装引擎 DLC 后拖动炮塔可实时预览引擎渲染）
 - **游戏集成**：自动检测铁锈战争安装目录，一键导入官方单位示例模组、导入游戏内已装模组、启动游戏与运行前检查
@@ -22,10 +40,11 @@
 - **声明式插件**：设置 → 插件 导入插件目录（manifest.json 声明翻译、字段别名、枚举解释、检查规则与渲染适配）；只支持声明式数据，不执行任何脚本，单个插件数据异常只影响自身
 - **单位预览（引擎渲染）**：安装并授权引擎 DLC 后可使用原版引擎渲染单位；DLC 不随桌面安装包分发
 - **模板库管理**：本地浏览/分类/导入/删除模板（内置 + 用户目录，不做在线市场）
-- **Git 历史与回滚**：本地 git 历史/分支可视化、冲突预览与「选择 A/B」解决、单文件回滚（仅本地单人，无服务器）
+- **Git 可视化中心**：编辑器右侧 Git 面板（未暂存/已暂存分组、暂存与提交、分支切换与新建、行内差异展开）+ 全屏 Git 中心（历史与分支可视化、冲突预览与「选择 A/B」解决、单文件回滚）；仅本地单人使用，无服务器
 - **地图双向桥接与真实预览**：TMX 规范化导出（图层/对象/图块集 round-trip 不丢数据，Tiled 可打开）；正交有限地图按真实 tileset 渲染（内嵌 PNG、内嵌图片、外部 TSX），支持多图块集、Tiled 翻转、缩放/拖拽与超大地图安全总览；缺资源局部降级，不再整图空白
 - **云仓库（云书包）**：左侧「云仓库」入口进入独立工作区，GitHub 风格仓库页，文件 / Issues / 版本与发布 / 成员 / 设置；启动即登录（云仓库账号 + 设备配对授权，令牌只存本机系统安全存储），支持整套仓库或单个模组下载、本地项目自动同步、Release 发布与限时分享链接、Issues 与 Star；服务器不可用或暂不想登录时可选**离线使用**，本地编辑不受影响。云仓库服务由独立的闭源后端提供，桌面端通过配置的接口访问
 - **自动更新**：一键检查更新，更新包托管在 GitHub Releases（免费）
+- **安全边界**：文件操作统一做路径校验（拒绝 `..` 越界与盘符绝对路径，跨平台同一套规则）；插件与检查规则只接受声明式数据、无脚本执行环境；引擎 DLC 子进程随会话终止清理，不遗留后台进程
 - 浅色 / 深色 / 跟随系统主题、自定义背景（可拖动/缩放取景，不修改原图）、鼠标粒子特效、命令面板（Ctrl+K）、可自定义快捷键、文件树排序、隐藏文件开关与**项目内全局文件搜索**、中文路径与 UTF-8 BOM 支持
 
 ## 快速开始
@@ -48,17 +67,37 @@ npm start          # 以生产模式启动
 npm run pack       # 打包安装版 + 便携版 exe → release/（electron-builder）
 ```
 
-> 云仓库账号会话保存在本机系统安全存储中，不写入明文配置文件。
+> 云仓库账号会话与 AI API Key 均保存在本机系统安全存储（safeStorage）中，不写入明文配置文件。
 
 ## 质量检查
 
 ```bash
-npm run check      # 类型检查 + ESLint + 1340+ 个单元测试（80 个测试文件），一键全跑
+npm run check      # 类型检查 + ESLint + 1350+ 个单元测试（85 个测试文件），一键全跑
 ```
+
+## 目录结构
+
+```text
+electron/        主进程：窗口与 IPC、云仓库、引擎 DLC 会话、自动更新
+src/             渲染进程：React 界面、编辑器、状态管理与工具函数
+mobile/          手机端（Tauri 2 + React，独立依赖与构建）
+tests/           vitest 单元测试
+assets/          图标、看板娘、AI 参考素材等静态资源
+public/          运行期静态数据（代码表数据、字体、图标）
+scripts/         开发与数据处理脚本
+build/           应用图标与构建期资源
+examples/        引擎 DLC 示例
+vendor/          第三方原生依赖（Pi 引擎，以 file: 依赖引入）
+.github/         CI：打 tag 自动发布安装包、手机端检查
+```
+
+`dist/`、`dist-electron/`、`release/` 为构建产物，不入库。
 
 ## 手机端
 
-基于 Tauri Mobile 的 Android 客户端源码位于 [`mobile/`](mobile/)，包含模组编辑器、AI 对话、导入导出及打包功能。开发和 Android 构建步骤见 [手机端说明](mobile/README.md)。
+基于 Tauri 2 Mobile 的 Android 客户端源码位于 [`mobile/`](mobile/)，是同一个模组工作台的手机版：项目与文件管理、ini 编辑器（高亮/补全/折叠/节大纲/悬停、双语标签、IME 补全守护）、手机编辑工具栏、官方单位模板库、语义检查、模组关系图、单位表单、版本差异对比、插件与自定义规则、AI 对话（BYOK，写文件需审批）与写后质检、导入导出与 `.rwmod` 打包。
+
+云仓库（云书包）与引擎实时渲染目前仅桌面端提供。开发和 Android 构建步骤见 [手机端说明](mobile/README.md)。
 
 桌面端与手机端分别安装依赖、运行检查和构建；手机端源码不进入 Electron 安装包。桌面端 `npm run check` 检查桌面工程，手机端检查从仓库根目录运行：
 
@@ -76,7 +115,9 @@ QQ 群：**1104148783** —— 使用问题、模组开发交流与版本更新�
 
 ## 技术栈
 
-Electron 43 · React 19 · TypeScript 6 · Vite 8 · Zustand 5 · CodeMirror 6 · Vitest 4
+桌面端：Electron 43 · React 19 · TypeScript 6 · Vite 8 · Zustand 5 · CodeMirror 6 · Vitest 4
+
+手机端：Tauri 2（Rust 系统层 + 系统 WebView）· React 19 · TypeScript · CodeMirror 6
 
 打包与发布：electron-builder（NSIS 安装版 + 便携版），GitHub Actions 按 `v*` 标签自动构建并发布到 GitHub Releases。
 
@@ -88,6 +129,8 @@ Electron 43 · React 19 · TypeScript 6 · Vite 8 · Zustand 5 · CodeMirror 6 �
 
 - 安装包由 GitHub Actions 在打 `v*` tag 时自动构建并发布，不从本地环境出包（供应链缓解）。
 - 首次安装可能出现 Windows 安全提示，点「更多信息 → 仍要运行」即可正常使用；更新包均带完整性校验。
+- 云仓库令牌与 AI API Key 只在本机主进程内以系统安全存储加密保存，渲染层只拿到「已配置」状态，界面上不显示明文。
+- 插件与自定义检查规则只支持声明式数据，没有脚本执行环境；DLC 引擎进程随会话结束回收。
 
 
 ## 自定义检查规则（声明式插件）
