@@ -13,6 +13,7 @@
  */
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import type { IpcContext } from './ipcContext'
 import type { RegisterHandler } from './ipcTypes'
 import { isPathInside, normalizePath } from './paths'
@@ -28,7 +29,7 @@ import {
 } from './engineDlc'
 import { grantEngineDlc, isEngineDlcAllowed, revokeEngineDlc, snapshotEngineDlc, sameEngineDlcGrant } from './engineDlcTrust'
 import { EngineDlcHost } from './engineDlcHost'
-import { EngineDlcSessionManager, type DlcSessionUpdateRequest } from './engineDlcSession'
+import { EngineDlcSessionManager, type DlcSessionResult, type DlcSessionUpdateRequest } from './engineDlcSession'
 
 /** 界面传来的布尔值一律重新收敛（IPC 参数不可信） */
 function asBoolean(value: unknown): boolean {
@@ -50,6 +51,14 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
   const sessions = new EngineDlcSessionManager()
   const owners = new Set<number>()
   let grantEpoch = 0
+
+  /** 全局常驻预渲染会话（单帧预览专用）：owner 用保留负值，不与任何 webContents id 冲突。
+   *  启动/授权后预热（内置单位 OPEN，~2s 后台完成），此后所有 dlc:render 复用这一进程：
+   *  热渲染 ~27ms、热切换单位/内容 ~300ms；旧冷路径（每次 ~1.7s+）只作回退保底。 */
+  const GLOBAL_RENDER_OWNER = -1
+  let globalSessionKey = ''
+  const globalOpenKey = (unitFile: string, unitContent: string): string =>
+    `${unitFile}\u0000${crypto.createHash('sha256').update(unitContent).digest('hex')}`
 
   /** 扫描 + 授权判定：返回界面列表与「当前可用于渲染的 DLC」 */
   const survey = async (): Promise<{ dir: string; dlcs: ReturnType<typeof toEngineDlcList>; active: ResolvedEngineDlc | null }> => {
@@ -92,6 +101,7 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       revokeEngineDlc(ctx, dlcId)
       host.cancelAll()
       sessions.cancelAll()
+      globalSessionKey = ''
       return { ok: true, enabled: false }
     }
     const root = rootOf()
@@ -127,6 +137,8 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
       return { ok: false, message: '确认期间程序或配置已变化，请重新授权' }
     }
     await grantEngineDlc(ctx, current.dlc, snapshot)
+    // 授权成功即预热全局常驻渲染会话（后台 ~2s，不阻塞授权返回）
+    void prewarmGlobalSession()
     return { ok: true, enabled: true, name: read.dlc.name }
   })
 
@@ -172,6 +184,21 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
 
     const { active } = await survey()
     if (!active) return { ok: false, reason: '没有已授权的引擎渲染 DLC' }
+
+    // ── 全局常驻会话路由：预览渲染复用启动预热的常驻进程（热态毫秒级）。
+    //    会话不可用或本次失败时返回 null，回退下方旧冷路径保底出图。 ──
+    const sessionRouted = await renderViaGlobalSession(signal, {
+      unitFile: absUnit,
+      unitContent: typeof input.unitContent === 'string' ? input.unitContent : '',
+      projectRoot: normalizedRoot,
+      frame,
+      direction,
+      animationState,
+      showWreck: asBoolean(input.showWreck),
+      width,
+      height,
+    })
+    if (sessionRouted !== null) return sessionRouted
 
     return await runEngineDlcRender(
       active,
@@ -304,6 +331,88 @@ export function registerEngineDlcIpc(ctx: IpcContext, ipc: RegisterHandler): voi
     }
     return { reason: '没有支持常驻会话的已授权引擎 DLC（需要 0.2.2+ 并在设置中授权）' }
   }
+
+  /** 单帧渲染参数（已通过 render() 顶部校验） */
+  interface GlobalRenderArgs {
+    unitFile: string
+    unitContent: string
+    projectRoot: string
+    frame: number
+    direction: number
+    animationState: string
+    showWreck: boolean
+    width: number
+    height: number
+  }
+
+  /** 走全局常驻会话渲染一帧；返回 null = 会话不可用/本次失败，调用方回退冷路径 */
+  const renderViaGlobalSession = async (signal: AbortSignal, args: GlobalRenderArgs): Promise<EngineDlcRenderResult | null> => {
+    const picked = await surveySessionDlc()
+    if ('reason' in picked) return null // 只有旧版 DLC（无会话能力）才走冷路径
+    if (signal.aborted) return { ok: false, reason: '引擎渲染已取消' }
+    const key = globalOpenKey(args.unitFile, args.unitContent)
+    const request = {
+      unitFile: args.unitFile,
+      unitContent: args.unitContent,
+      projectRoot: args.projectRoot,
+      view: { frame: args.frame, direction: args.direction, animationState: args.animationState, showWreck: args.showWreck },
+      size: { width: args.width, height: args.height },
+      outputFormat: 'png' as const,
+    }
+    try {
+      let result: DlcSessionResult
+      if (!sessions.has(GLOBAL_RENDER_OWNER)) {
+        // 常驻不空闲自杀（idleTimeoutMs=0）：预热/复用的核心，杀掉就只能回冷路径
+        result = await sessions.open(GLOBAL_RENDER_OWNER, ctx.nodeRuntime, picked.sessionHostPath, picked.dlc.dir, picked.dlc.id, request, { idleTimeoutMs: 0 })
+      } else if (key !== globalSessionKey) {
+        // 单位文件或内容变化：同一 JVM 内 RESET+OPEN（热切换 ~300ms）
+        result = await sessions.reopen(GLOBAL_RENDER_OWNER, request)
+      } else {
+        // 同单位同内容，仅视图/尺寸变化：纯热渲染（~30ms）
+        result = await sessions.update(GLOBAL_RENDER_OWNER, { view: request.view, size: request.size })
+      }
+      if (signal.aborted) return { ok: false, reason: '引擎渲染已取消' }
+      if (!result.ok) throw new Error(result.reason)
+      const pngBase64 = result.frame.pngBase64
+      if (!pngBase64) throw new Error('会话未返回 PNG 帧')
+      globalSessionKey = key
+      return { ok: true, dataUrl: `data:image/png;base64,${pngBase64}` }
+    } catch (error) {
+      // 会话状态不可信：整关，下次渲染自动重建；本次回退冷路径保证出图
+      globalSessionKey = ''
+      void sessions.close(GLOBAL_RENDER_OWNER)
+      console.warn('[engine-dlc] 全局会话渲染失败，回退冷路径：', error instanceof Error ? error.message : String(error))
+      return null
+    }
+  }
+
+  /** 启动/授权后预热：用 DLC 自带内置单位（bomber）OPEN 一次，JVM+引擎上下文整体热身。
+   *  失败静默——首次真实渲染会自动重建会话。 */
+  const prewarmGlobalSession = async (): Promise<void> => {
+    try {
+      if (sessions.has(GLOBAL_RENDER_OWNER)) return
+      const picked = await surveySessionDlc()
+      if ('reason' in picked) return
+      const engineRoot = normalizePath(path.join(picked.dlc.dir, 'engine'))
+      const warmupUnit = normalizePath(path.join(engineRoot, 'assets', 'units', 'bomber', 'bomber.ini'))
+      const st = await fs.stat(warmupUnit).catch(() => null)
+      if (!st?.isFile()) return
+      await sessions.open(GLOBAL_RENDER_OWNER, ctx.nodeRuntime, picked.sessionHostPath, picked.dlc.dir, picked.dlc.id, {
+        unitFile: warmupUnit,
+        projectRoot: engineRoot,
+        view: { frame: 0, direction: 0, animationState: 'idle', showWreck: false },
+        size: { width: 64, height: 64 },
+        outputFormat: 'png',
+      }, { idleTimeoutMs: 0 })
+      globalSessionKey = 'warmup' // 哨兵键：与任何真实渲染键不匹配 → 首次渲染走热切换 reopen
+    } catch (error) {
+      console.warn('[engine-dlc] 全局会话预热失败（首次渲染将重建）：', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  // 注册后延迟预热：避开启动瞬间的 IO 高峰；未授权时 surveySessionDlc 会直接返回
+  const prewarmTimer = setTimeout(() => void prewarmGlobalSession(), 4000)
+  prewarmTimer.unref?.()
 
   ipc('dlc:sessionOpen', async (event: Electron.IpcMainInvokeEvent | undefined, payload: unknown) => {
     const owner = event?.sender?.id ?? 0

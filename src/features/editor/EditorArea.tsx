@@ -550,13 +550,9 @@ function EditorPane({
   return (
     <div className="editor-workspace" id="editor-pane" role="tabpanel">
       <div className="editor-head">
+        {/* 完整路径已挪到状态栏左侧；顶行只承载外部修改/未保存等状态提示，无提示时不占一行 */}
+        {(tab.externalChanged || tab.dirty || tab.pendingRepair) && (
         <div className="editor-head-row top">
-          <span style={{ color: 'var(--text-secondary)', display: 'grid' }}>
-            <AppIcon name="file" size={13} />
-          </span>
-          <span className="path" title={tab.path}>
-            {truncateMiddle(tab.path, 80)}
-          </span>
           {tab.externalChanged && (
             <>
               <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>⚠ 文件已被外部修改</span>
@@ -586,8 +582,8 @@ function EditorPane({
               ◐ 待写回修复
             </span>
           )}
-          <span className="badge" title="字段同时显示中文说明和英文原码，显示标签不写入文件">双语字段 Bilingual</span>
         </div>
+        )}
         <div className="editor-head-row actions">
           <OverflowToolbar actions={actions} />
         </div>

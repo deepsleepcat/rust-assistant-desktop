@@ -85,7 +85,11 @@ export function GitPanel() {
   const [cloudBusy, setCloudBusy] = useState<'push' | 'pull' | null>(null)
   const [cloudStatus, setCloudStatus] = useState<string | null>(null)
   const aliveRef = useRef(true)
-  useEffect(() => () => { aliveRef.current = false }, [])
+  useEffect(() => {
+    // StrictMode 双调 effect：二次 setup 必须复位存活标志，否则面板永停在加载态
+    aliveRef.current = true
+    return () => { aliveRef.current = false }
+  }, [])
 
   const unstagedMap = useMemo(() => new Map(numstat.unstaged.map((e) => [e.path, e])), [numstat])
   const stagedMap = useMemo(() => new Map(numstat.staged.map((e) => [e.path, e])), [numstat])
@@ -239,9 +243,11 @@ export function GitPanel() {
 
   /** 展开文件行：懒加载差异（未暂存=工作区 vs HEAD；已暂存=暂存区 vs HEAD） */
   const toggleDiff = async (entry: StatusDetail, isStaged: boolean) => {
-    if (expanded === entry.path && diff !== null) { setExpanded(null); setDiff(null); return }
+    // 展开键带分组前缀：同名文件在已暂存/未暂存两组各自独立展开
+    const key = `${isStaged ? 's' : 'w'}:${entry.path}`
+    if (expanded === key && diff !== null) { setExpanded(null); setDiff(null); return }
     const seq = ++diffSeqRef.current
-    setExpanded(entry.path)
+    setExpanded(key)
     setDiff(null)
     setDiffBusy(true)
     try {
@@ -264,12 +270,19 @@ export function GitPanel() {
     const bridge = getBridge()
     try {
       const repo = await api.repo(anchor.repoSlug)
+      // 冲突保护：推送基线必须是本地锚点基线（本地已同步到的版本）。
+      // 远端已领先时禁止以最新 head 为 base 强推——那会把过期的本地内容
+      // 发布成新版本覆盖远端；交给云仓库页的同步向导二选一。
+      if (repo.headVersionNo > anchor.baselineSeq) {
+        notify(`云仓库已有更新的版本（云端 #${repo.headVersionNo}，本地基线 #${anchor.baselineSeq}）——请到云仓库页打开同步向导处理后再推送`)
+        return
+      }
       const outcome = await pushLocalTree({
         api, bridge, rootPath, repoSlug: anchor.repoSlug,
         onProgress: (p) => setCloudStatus(p.total > 0 ? `正在上传 ${p.done}/${p.total} 个文件…` : '正在上传…'),
         isAborted: () => false,
         operationLease: lease,
-      }, { message: message.trim() || lastSubject || '更新模组', baseVersionNo: repo.headVersionNo, clientOpId: newClientOpId() })
+      }, { message: message.trim() || lastSubject || '更新模组', baseVersionNo: anchor.baselineSeq, clientOpId: newClientOpId() })
       if (outcome.status === 'pushed' && outcome.versionNo) {
         const nextAnchor: CloudBagAnchor = {
           repoSlug: anchor.repoSlug,
@@ -298,6 +311,7 @@ export function GitPanel() {
     } catch (err) {
       notify(`推送失败：${err instanceof Error ? err.message : String(err)}`)
     } finally {
+      lease()
       setCloudStatus(null)
       if (aliveRef.current) setCloudBusy(null)
     }
@@ -351,6 +365,7 @@ export function GitPanel() {
         } catch (err) {
           notify(`拉取失败：${err instanceof Error ? err.message : String(err)}`)
         } finally {
+          lease()
           setCloudStatus(null)
           if (aliveRef.current) setCloudBusy(null)
         }
@@ -482,9 +497,10 @@ export function GitPanel() {
             <span className="grow" />
             <button
               type="button" className="btn-sm" disabled={busy || unstaged.length === 0}
+              // 必须走 stageAll（git add -A -- .）：把几百个路径塞进一条命令会超
+              // Windows 命令行长度上限（32767 字符），命令根本没跑就失败
               onClick={() => {
-                const paths = unstaged.map((s) => s.path)
-                void getBridge().git.stage(rootPath, paths).then((r) => { report(r, '已全部暂存', '暂存失败'); afterChange() })
+                void getBridge().git.stageAll(rootPath).then((r) => { report(r, '已全部暂存', '暂存失败'); afterChange() })
               }}
             >全部暂存</button>
           </div>
@@ -497,8 +513,8 @@ export function GitPanel() {
                   entry={entry}
                   kind={entry.untracked ? '?' : (entry.unstaged || 'M')}
                   stat={unstagedMap.get(entry.path) ?? null}
-                  expanded={expanded === entry.path}
-                  diff={expanded === entry.path ? diff : null}
+                  expanded={expanded === `w:${entry.path}`}
+                  diff={expanded === `w:${entry.path}` ? diff : null}
                   diffBusy={diffBusy}
                   busy={busy}
                   onToggle={() => void toggleDiff(entry, false)}
@@ -526,8 +542,8 @@ export function GitPanel() {
                   entry={entry}
                   kind={entry.staged}
                   stat={stagedMap.get(entry.path) ?? null}
-                  expanded={expanded === entry.path}
-                  diff={expanded === entry.path ? diff : null}
+                  expanded={expanded === `s:${entry.path}`}
+                  diff={expanded === `s:${entry.path}` ? diff : null}
                   diffBusy={diffBusy}
                   busy={busy}
                   onToggle={() => void toggleDiff(entry, true)}

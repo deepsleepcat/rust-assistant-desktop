@@ -9,8 +9,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { FileSort, TreeNode } from '../../types/domain'
-import type { ProjectSearchResult } from '../../types/bridge'
-import { getBridge } from '../../services/bridge'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { pathStartsWith } from '../../stores/slices/projectSlice'
 import { FileTypeIcon, FolderIcon, IconChevronRight } from '../../components/icons'
@@ -45,6 +43,7 @@ export function ProjectPanel() {
   const selectProject = useWorkspaceStore((s) => s.selectProject)
   const removeProject = useWorkspaceStore((s) => s.removeProject)
   const importModProject = useWorkspaceStore((s) => s.importModProject)
+  const fileSort = useWorkspaceStore((s) => s.settings.fileSort)
   const requestConfirm = useWorkspaceStore((s) => s.requestConfirm)
   const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
   const treeRoot = useWorkspaceStore((s) => s.treeRoot)
@@ -81,97 +80,11 @@ export function ProjectPanel() {
     if (rect) setModMenuPosition({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 248)), top: rect.bottom + 4 })
     setModMenu((open) => !open)
   }
-  // M37：搜索为本地短暂视图状态，不写入 workspace；结果来自受限主进程递归扫描。
-  const searchOpen = true
-  const [searchQuery, setSearchQuery] = useState('')
-  /** 结果所属项目根：用户切项目时不展示旧项目的异步搜索结果。 */
-  const [searchRootPath, setSearchRootPath] = useState<string | null>(null)
-  /** 当前搜索启动时的项目/隐藏文件配置；配置切换会取消并清空旧查询。 */
-  const [searchContextKey, setSearchContextKey] = useState('')
-  const [searchResult, setSearchResult] = useState<ProjectSearchResult>({ entries: [], truncated: false })
-  const [searchState, setSearchState] = useState<'idle' | 'loading' | 'error'>('idle')
-  const [searchError, setSearchError] = useState<string | null>(null)
+  // M37：文件搜索已并入标题栏命令面板（feat/git-visual-center），左栏只保留文件树。
   const treeRef = useRef<HTMLDivElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const searchSeqRef = useRef(0)
-
-  useEffect(() => () => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-  }, [])
-
-  const currentSearchContext = `${project?.id ?? ''}\u0000${settings.showHiddenFiles}`
-  useEffect(() => {
-    if (!searchOpen || !searchQuery.trim() || searchContextKey === currentSearchContext) return
-    const timer = setTimeout(() => {
-      // 项目或隐藏文件开关变化：撤销旧请求并清空，避免 A 项目结果落到 B 项目。
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-      searchSeqRef.current++
-      setSearchQuery('')
-      setSearchRootPath(null)
-      setSearchContextKey(currentSearchContext)
-      setSearchResult({ entries: [], truncated: false })
-      setSearchState('idle')
-      setSearchError(null)
-      searchInputRef.current?.focus()
-    }, 0)
-    return () => clearTimeout(timer)
-  }, [currentSearchContext, searchContextKey, searchOpen, searchQuery])
-
-  const runSearch = (value: string) => {
-    if (!project) return
-    setSearchQuery(value)
-    setSearchRootPath(project.rootPath)
-    setSearchContextKey(currentSearchContext)
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-    const request = ++searchSeqRef.current
-    const rootPath = project.rootPath
-    if (!value.trim()) {
-      setSearchRootPath(null)
-      setSearchContextKey('')
-      setSearchResult({ entries: [], truncated: false })
-      setSearchState('idle')
-      setSearchError(null)
-      return
-    }
-    setSearchState('loading')
-    setSearchError(null)
-    searchTimerRef.current = setTimeout(() => {
-      void getBridge()
-        .project.searchFiles(rootPath, value, settings.showHiddenFiles)
-        .then((result) => {
-          if (request !== searchSeqRef.current) return
-          setSearchResult(result)
-          setSearchState('idle')
-        })
-        .catch((err: unknown) => {
-          if (request !== searchSeqRef.current) return
-          setSearchError(err instanceof Error ? err.message : '搜索失败')
-          setSearchState('error')
-        })
-    }, 180)
-  }
-
-  const closeSearch = () => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
-    searchSeqRef.current++
-    setSearchQuery('')
-    setSearchRootPath(null)
-    setSearchContextKey('')
-    setSearchResult({ entries: [], truncated: false })
-    setSearchState('idle')
-    setSearchError(null)
-    searchInputRef.current?.focus()
-  }
 
   // M29：文件树键盘导航（roving tabindex：方向键在行间移动；行内 Enter/空格/左右键处理打开/展开）
   const onTreeKeyDown = (e: React.KeyboardEvent) => {
-    if (searchOpen && e.key === 'Escape') {
-      e.preventDefault()
-      if (searchQuery) runSearch('')
-      else closeSearch()
-      return
-    }
     const el = treeRef.current
     if (!el) return
     const rows = Array.from(el.querySelectorAll<HTMLElement>('[data-tree-row]'))
@@ -203,42 +116,7 @@ export function ProjectPanel() {
     <section className="panel" style={{ flex: 1, minHeight: 0 }}>
       <div className="panel-header project-panel-toolbar">
         <IconFolderOpen2 size={13} />
-        {searchOpen ? (
-          <div className="project-search-wrap" role="search">
-            <input
-              ref={searchInputRef}
-              className="project-search"
-              type="text"
-              value={searchQuery}
-              onChange={(e) => runSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Escape') return
-                e.preventDefault()
-                if (searchQuery) runSearch('')
-                else closeSearch()
-              }}
-              placeholder="搜索文件…"
-              aria-label="搜索项目文件"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                className="icon-btn project-search-clear"
-                title="清空搜索"
-                aria-label="清空搜索"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  runSearch('')
-                  searchInputRef.current?.focus()
-                }}
-              >
-                <AppIcon name="close" size={12} />
-              </button>
-            )}
-          </div>
-        ) : (
-          <span className="project-panel-name" title={project?.name}>{project?.name}</span>
-        )}
+        <span className="project-panel-name" title={project?.name}>{project?.name}</span>
         <select
           className="sort-select"
           value={settings.fileSort}
@@ -258,14 +136,14 @@ export function ProjectPanel() {
           title="新建文件"
           onClick={() => project && setDialog({ kind: 'file', parent: project.rootPath })}
         >
-          <AppIcon name="file" size={14} />
+          <AppIcon name="file-plus" size={14} />
         </button>
         <button
           className="icon-btn"
           title="新建文件夹"
           onClick={() => project && setDialog({ kind: 'folder', parent: project.rootPath })}
         >
-          <AppIcon name="folder" size={14} />
+          <AppIcon name="folder-plus" size={14} />
         </button>
         <div className="mod-tools-wrap">
           <button ref={modMenuButton} className="icon-btn" title="模组工具" aria-expanded={modMenu} onClick={toggleModMenu}>
@@ -284,7 +162,6 @@ export function ProjectPanel() {
                 <button onClick={() => { setModMenu(false); setModDialog('optimize') }}><BilingualLabel zh="优化模组" en="Optimize mod" /></button>
                 <button onClick={() => { setModMenu(false); setModDialog('translationRepair') }}><BilingualLabel zh="修复中文翻译" en="Repair translated source" /></button>
                 <button onClick={() => { setModMenu(false); setModDialog('globalOp') }}><BilingualLabel zh="全局操作" en="Global operations" /></button>
-                <button onClick={() => { setModMenu(false); useWorkspaceStore.getState().setCodeTableOpen(true) }}><BilingualLabel zh="浏览代码表" en="Code reference" /></button>
               </div>
               <div className="mod-tools-mask project-tools-mask" onClick={() => setModMenu(false)} />
             </>, document.body,
@@ -352,30 +229,12 @@ export function ProjectPanel() {
                 </div>
                 {expanded && (p.id === activeProjectId) && (
                   <div className="project-tree-body">
-                    {searchOpen && searchQuery.trim() && searchRootPath === project?.rootPath ? (
-                      searchState === 'loading' ? (
-                        <PanelState kind="loading" title="正在搜索项目文件…" />
-                      ) : searchState === 'error' ? (
-                        <PanelState kind="error" title="搜索项目文件失败" description={searchError ?? undefined} onRetry={() => runSearch(searchQuery)} />
-                      ) : searchResult.entries.length === 0 ? (
-                        searchResult.truncated ? (
-                          <PanelState kind="empty" icon="search" title="扫描提前停止，无法确认没有匹配" description="请缩短搜索范围，或刷新项目后重试" />
-                        ) : (
-                          <PanelState kind="empty" icon="search" title="没有匹配的文件" description="可按文件名或项目内相对路径搜索" />
-                        )
-                      ) : (
-                        <div className="tree project-search-results" role="tree" aria-label="项目文件搜索结果">
-                          {searchResult.truncated && <div className="project-search-truncated" role="status">扫描提前停止，当前结果可能不完整</div>}
-                          {searchResult.entries.map((entry) => (
-                            <SearchResultRow key={entry.path} entry={entry} onOpen={() => void useWorkspaceStore.getState().openFile(entry.path)} />
-                          ))}
-                        </div>
-                      )
-                    ) : treeError ? (
+                    {treeError ? (
                       <div className="tree-error">无法读取项目：{treeError}</div>
                     ) : treeRoot && treeRoot.path === p.rootPath ? (
                       <div className="tree" role="tree" aria-label="项目文件树">
-                        {treeRoot.children?.map((child) => (
+                        {/* 顶层与子目录走同一排序（此前只排子目录，根目录切排序无效） */}
+                        {sortChildren(treeRoot.children ?? [], fileSort).map((child) => (
                           <div className="tree-child" key={child.path}><TreeRow node={child} depth={0} onRename={setRenaming} onNewIn={setDialog} /></div>
                         ))}
                       </div>
@@ -535,6 +394,7 @@ function TreeRow({
             <button className="icon-btn" title="重命名" onClick={(e) => { e.stopPropagation(); onRename(node) }}>
               <AppIcon name="rename" size={12} />
             </button>
+            {/* 新建文件/文件夹用带加号的专属图标（file-plus/folder-plus），避免与普通文件/文件夹混淆 */}
             <button
               className="icon-btn"
               title="新建文件"
@@ -543,17 +403,7 @@ function TreeRow({
                 onNewIn({ kind: 'file', parent: node.path })
               }}
             >
-              <AppIcon name="add" size={12} />
-            </button>
-            <button
-              className="icon-btn"
-              title="复制路径（ROOT: 格式）"
-              onClick={(e) => {
-                e.stopPropagation()
-                void copyRelPath()
-              }}
-            >
-              <AppIcon name="copy" size={12} />
+              <AppIcon name="file-plus" size={12} />
             </button>
             <button
               className="icon-btn"
@@ -563,7 +413,7 @@ function TreeRow({
                 onNewIn({ kind: 'folder', parent: node.path })
               }}
             >
-              <AppIcon name="add" size={12} />
+              <AppIcon name="folder-plus" size={12} />
             </button>
             <button
               className="icon-btn"
@@ -638,39 +488,6 @@ function TreeRow({
           <AppIcon name="delete" size={12} />
         </button>
       </span>
-    </div>
-  )
-}
-
-/** M37：全项目搜索结果行（扁平文件列表，保持 treeitem/data-tree-row 供现有键盘导航复用）。 */
-function SearchResultRow({
-  entry,
-  onOpen,
-}: {
-  entry: { path: string; relativePath: string; name: string }
-  onOpen: () => void
-}) {
-  const selected = useWorkspaceStore((s) => (s.activeTabId ? s.openTabs.some((t) => t.id === s.activeTabId && t.path === entry.path) : false))
-  return (
-    <div
-      className={`tree-row project-search-row${selected ? ' selected' : ''}`}
-      data-tree-row
-      role="treeitem"
-      aria-selected={selected}
-      tabIndex={-1}
-      title={entry.relativePath}
-      onDoubleClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onOpen()
-        }
-      }}
-    >
-      <span className="chev placeholder"><IconChevronRight size={13} /></span>
-      <FileTypeIcon name={entry.name} />
-      <span className="tree-name">{entry.name}</span>
-      <span className="project-search-path">{entry.relativePath}</span>
     </div>
   )
 }

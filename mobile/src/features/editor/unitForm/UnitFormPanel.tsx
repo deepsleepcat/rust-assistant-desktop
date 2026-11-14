@@ -1,15 +1,17 @@
 /**
  * 单位表单面板（对齐桌面端 src/features/editor/unitForm/UnitFormPanel.tsx）：
  * 以表单方式编辑单位文件，替代在手机键盘上手写 INI。
- * - 按 Core/Graphics/Attack/Movement/Turret 分组渲染字段；
- * - 必填/推荐标注；非法值即时提示（红框 + 错误信息），非法值不写回；
- * - boolean/enum 字段用下拉选择（手机上比打字可靠）；
- * - 图片/音效字段可从项目内资源里选取（相对单位文件目录的路径写回）；
- * - 变更即时同步进编辑会话（updateEditorContent），由编辑器统一保存，
- *   中文显示层下写回保持文件原有键名语言。
+ * - 按 Core/Graphics/Attack/Movement 分组渲染；炮塔按实际节（turret_1/turret_2/…）
+ *   独立实例渲染，可添加/删除（多炮塔字段不再混在一起）；
+ * - 草稿三态（表单审计 P1/P2）：输入先保留草稿不被逐字校验弹回；number 完整且合法、
+ *   其他类型合法时即时同步代码；中间态/非法值只留草稿，失焦或关闭时校验；
+ *   打开面板即校验文件中已有的非法值；重复键提示生效行（游戏读最后一处）；
+ * - boolean/enum 字段用下拉选择；图片/音效可从项目内资源选取，
+ *   路径统一到项目根坐标再算相对单位目录（不再出现 ../../.. 误路径）；
+ * - 变更同步进编辑会话（updateEditorContent），由编辑器统一保存。
  * 桌面端面板是编辑器侧栏；手机端为全屏覆盖层，关闭后回到代码视图继续保存。
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { EditSession } from '../editSession'
 import { useWorkspace } from '../../../stores/workspace'
 import { getBridge } from '../../../services/bridge'
@@ -21,29 +23,34 @@ import {
   loadCodeData,
 } from '../../../services/codeData'
 import { AppIcon } from '../../../components/AppIcon'
-import { findUnitGroup, UNIT_FORM_GROUPS, type UnitFieldDef } from './unitFormFields'
-import { applyUnitFormValue, fillDefaults, parseUnitForm, validateFormValue, type UnitFormState } from './unitFormSync'
+import { ConfirmModal } from '../../../components/MobileDialog'
+import { UNIT_FORM_GROUPS, findUnitGroup, type UnitFieldDef, type UnitFieldGroup } from './unitFormFields'
+import {
+  appendTurretSection,
+  applyUnitFormValue,
+  fillDefaults,
+  isCompleteNumber,
+  nextTurretSectionName,
+  parseUnitForm,
+  removeUnitSection,
+  unitResourceRelPath,
+  validateFormValue,
+  type UnitFormState,
+} from './unitFormSync'
 
 interface UnitFormPanelProps {
   session: EditSession
   onClose: () => void
 }
 
-/** 相对路径计算（手工按 / 分段处理，与桌面端一致；无 node:path 依赖） */
-function relativePath(fromDir: string, toPath: string): string {
-  const from = fromDir.split('/').filter(Boolean)
-  const to = toPath.split('/').filter(Boolean)
-  let i = 0
-  while (i < from.length && i < to.length && from[i] === to[i]) i++
-  const up = from.length - i
-  const rest = to.slice(i)
-  return [...Array(up).fill('..'), ...rest].join('/')
-}
-
-/** 文件所在目录（session.path 为绝对路径） */
-function dirOf(path: string): string {
-  const idx = path.lastIndexOf('/')
-  return idx > 0 ? path.slice(0, idx) : ''
+/** 字段输入草稿（content 快照失配时自动失效，不覆盖外部变更的新内容） */
+interface FieldDraft {
+  raw: string
+  content: string
+  /** 输入过（区分「打开时的既有值」与「用户正在编辑」） */
+  dirty: boolean
+  /** 失焦过（输入过程中不报格式错误，失焦后才严格提示） */
+  settled: boolean
 }
 
 type ZhToEn = (s: string) => string | undefined
@@ -62,18 +69,22 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
     }
   }, [chineseMode])
 
-  // 组合回译：节名 → 键名 → 通用词（值）。手机端 parseUnitForm 只收一个 zhToEn，
-  // 三层词典合成一个查找链，语义与桌面端分层选项对齐；非中文模式不回译。
+  // 组合回译：节名 → 键名 → 通用词（值）。三层词典合成一个查找链，语义与桌面端分层选项对齐
   const zhToEn: ZhToEn | undefined = useMemo(() => {
     if (!chineseMode) return undefined
     return (k) => getSectionZhToEnDict().get(k) ?? getKeyZhToEnDict().get(k) ?? getZhToEnDict().get(k)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chineseMode, dictSeq])
 
-  // 表单值（每次内容变化重新解析；本地编辑态缓存带内容快照——
-  // 内容外部变更（撤销/重新载入）后旧草稿自动失效，不覆盖新内容）
-  const [draft, setDraft] = useState<Record<string, { value: string; content: string }> | null>(null)
-  const [errors, setErrors] = useState<Record<string, { msg: string; content: string }>>({})
+  const enToZh = useMemo(
+    () => (chineseMode ? (k: string) => getEnToZhDict().get(k) : undefined),
+    [chineseMode, dictSeq],
+  )
+
+  // 输入草稿（key = 节名.字段名）
+  const [drafts, setDrafts] = useState<Record<string, FieldDraft>>({})
+  // 待删除的炮塔节名（确认弹窗）
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
 
   // 项目内资源列表（图片/音频，相对项目根）
   const [resScan, setResScan] = useState<
@@ -81,10 +92,8 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
   >({ status: 'loading' })
   const [resSeq, setResSeq] = useState(0)
   const [picking, setPicking] = useState<string | null>(null)
-  const scanRootRef = useRef('')
 
   useEffect(() => {
-    scanRootRef.current = session.rootPath
     let alive = true
     setResScan({ status: 'loading' })
     void getBridge()
@@ -114,18 +123,75 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
     [session.content, zhToEn],
   )
 
-  /** 提交表单值到编辑会话（实时双向同步；中文显示层新键写回中文键名） */
-  const commit = (groupSection: string, field: UnitFieldDef, value: string) => {
-    const err = validateFormValue(field, value)
-    setErrors((prev) => ({ ...prev, [`${groupSection}.${field.key}`]: { msg: err ?? '', content: session.content } }))
-    if (err) return // 非法值不写回（内容保持上一次合法值，表单显示红框）
-    setDraft((prev) => ({ ...(prev ?? {}), [`${groupSection}.${field.key}`]: { value, content: session.content } }))
+  /** 渲染顺序：非炮塔组按组名；炮塔组按文件中的实际节（turret_1/turret_2/…）逐实例 */
+  const sectionKeys = useMemo(() => {
+    const keys: Array<{ group: UnitFieldGroup; sectionName: string }> = []
+    for (const group of UNIT_FORM_GROUPS) {
+      if (group.section === 'turret') {
+        for (const k of Object.keys(formState).filter((k) => /^turret(_|$)/.test(k))) {
+          keys.push({ group, sectionName: k })
+        }
+      } else {
+        keys.push({ group, sectionName: group.section })
+      }
+    }
+    return keys
+  }, [formState])
+
+  const syncValue = (sectionName: string, field: UnitFieldDef, value: string, baseContent: string = session.content) => {
     updateEditorContent(
-      applyUnitFormValue(session.content, groupSection, field.key, value.trim(), {
-        zhToEn,
-        enToZh: chineseMode ? (k) => getEnToZhDict().get(k) : undefined,
-      }),
+      applyUnitFormValue(baseContent, sectionName, field.key, value.trim(), { zhToEn, enToZh }),
     )
+  }
+
+  /** 输入草稿：任何输入先保留（不被逐字校验弹回）；完整且合法的值即时同步 */
+  const onChangeInput = (sectionName: string, field: UnitFieldDef, raw: string) => {
+    const key = `${sectionName}.${field.key}`
+    setDrafts((prev) => ({ ...prev, [key]: { raw, content: session.content, dirty: true, settled: false } }))
+    const complete = field.type === 'number' ? isCompleteNumber(raw) : true
+    if (complete && !validateFormValue(field, raw)) {
+      syncValue(sectionName, field, raw)
+    }
+  }
+
+  /** 下拉/资源点选 = 明确确认，直接校验并同步 */
+  const onPickValue = (sectionName: string, field: UnitFieldDef, value: string) => {
+    const key = `${sectionName}.${field.key}`
+    setDrafts((prev) => ({ ...prev, [key]: { raw: value, content: session.content, dirty: true, settled: true } }))
+    if (!validateFormValue(field, value)) syncValue(sectionName, field, value)
+  }
+
+  /** 失焦：草稿仍停留在这个内容上才结算（同步/标错） */
+  const onBlurInput = (sectionName: string, field: UnitFieldDef) => {
+    const key = `${sectionName}.${field.key}`
+    setDrafts((prev) => {
+      const d = prev[key]
+      if (!d || d.content !== session.content) return prev
+      return { ...prev, [key]: { ...d, settled: true } }
+    })
+  }
+
+  /** 关闭面板：把「完整且合法」的未同步草稿刷进编辑会话（幂等；中间态/非法草稿不生效） */
+  const flushDraftsAndClose = () => {
+    let content = session.content
+    let changed = false
+    for (const [key, d] of Object.entries(drafts)) {
+      if (d.content !== session.content || !d.dirty) continue
+      const dot = key.indexOf('.')
+      const sectionName = key.slice(0, dot)
+      const field = findUnitGroup(sectionName)?.fields.find((f) => f.key === key.slice(dot + 1))
+      if (!field) continue
+      const complete = field.type === 'number' ? isCompleteNumber(d.raw) : true
+      if (!complete || validateFormValue(field, d.raw)) continue
+      content = applyUnitFormValue(content, sectionName, field.key, d.raw.trim(), { zhToEn, enToZh })
+      changed = true
+    }
+    if (changed) updateEditorContent(content)
+    onClose()
+  }
+
+  const addTurret = () => {
+    updateEditorContent(appendTurretSection(session.content, nextTurretSectionName(session.content)))
   }
 
   // 必填字段缺失检测（打开即提示，不等待编辑）
@@ -143,44 +209,60 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
     return missing
   }, [formState])
 
-  const fileDir = dirOf(session.path)
-
   return (
     <div className="m-unitform" role="dialog" aria-label="单位表单">
       <header className="m-screen-header">
-        <button className="m-btn" onClick={onClose} aria-label="返回编辑器">
+        <button className="m-btn" onClick={flushDraftsAndClose} aria-label="返回编辑器">
           <AppIcon name="close" size={16} />
         </button>
         <h1 className="m-screen-title">单位表单 · {session.name}</h1>
       </header>
-      <p className="m-unitform-hint">修改即时同步到代码，返回后点保存写入文件</p>
+      <p className="m-unitform-hint">合法修改即时同步到代码，返回后点保存写入文件</p>
       <div className="m-scroll">
         {missingRequired.length > 0 && (
           <div className="m-unitform-missing">
             缺少必填字段：{missingRequired.map((m) => `${m.groupLabel}.${m.key}`).join('、')}——单位可能无法正常注册
           </div>
         )}
-        {UNIT_FORM_GROUPS.map((group) => {
-          const values = formState[group.section] ?? []
+        {sectionKeys.map(({ group, sectionName }) => {
+          const values = formState[sectionName] ?? []
           if (values.length === 0) return null
+          const isTurretInstance = group.section === 'turret'
           return (
-            <div key={group.section} className="m-unitform-group">
+            <div key={sectionName} className="m-unitform-group">
               <div className="m-unitform-group-title">
-                {group.label} <span className="m-unitform-section">[{group.section}]</span>
+                {isTurretInstance ? `${group.label} · ${sectionName}` : group.label}{' '}
+                <span className="m-unitform-section">[{sectionName}]</span>
+                {isTurretInstance && (
+                  <button className="m-btn" style={{ marginLeft: 'auto' }} onClick={() => setConfirmRemove(sectionName)} aria-label={`删除 ${sectionName}`}>
+                    <AppIcon name="delete" size={14} />
+                  </button>
+                )}
               </div>
               {values.map((v) => {
-                const field = findUnitGroup(group.section)?.fields.find((f) => f.key === v.key)
+                const field = findUnitGroup(sectionName)?.fields.find((f) => f.key === v.key)
                 if (!field) return null
-                const key = `${group.section}.${field.key}`
-                const errEntry = errors[key]
-                const err = errEntry && errEntry.content === session.content ? errEntry.msg : ''
-                const draftEntry = draft?.[key]
-                const draftValue = draftEntry && draftEntry.content === session.content ? draftEntry.value : undefined
+                const key = `${sectionName}.${field.key}`
+                const draftEntry = drafts[key]
+                const draftActive = draftEntry !== undefined && draftEntry.content === session.content
                 // 文件中不存在的字段显示空（placeholder 提示默认值），不误导为已设置
-                const value = draftValue !== undefined ? draftValue : v.present ? v.value : ''
+                const value = draftActive ? draftEntry.raw : v.present ? v.value : ''
+                // 错误来源：number 完整值非法即时提示；其余类型失焦后才严格提示
+                //（输入过程中允许未完成状态，不被逐字校验弹回）；或打开面板时文件里已有的非法值
+                let err = ''
+                if (draftActive) {
+                  const e = validateFormValue(field, draftEntry.raw)
+                  const complete = field.type === 'number' ? isCompleteNumber(draftEntry.raw) : false
+                  if (e && (complete || draftEntry.settled)) err = e
+                  else if (!e && field.type === 'number' && !complete && draftEntry.settled) err = '数值未输入完成，尚未写入代码'
+                } else if (v.present) {
+                  const e = validateFormValue(field, v.value)
+                  if (e) err = `文件中已有非法值：${e}`
+                }
                 const isResourcePicker = picking === key
                 const pool =
                   field.resourceExts?.includes('ogg') || field.resourceExts?.includes('wav') ? resources.audios : resources.images
+                const duplicated = (v.dupLines?.length ?? 0) > 1
                 return (
                   <div key={key} className={`m-unitform-field${err ? ' has-error' : ''}`}>
                     <div className="m-unitform-label">
@@ -192,7 +274,11 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
                     </div>
                     <div className="m-unitform-input-row">
                       {field.type === 'enum' || field.type === 'boolean' ? (
-                        <select value={value} onChange={(e) => commit(group.section, field, e.target.value)}>
+                        <select
+                          value={value}
+                          aria-label={`${field.label}（${field.key}）`}
+                          onChange={(e) => onPickValue(sectionName, field, e.target.value)}
+                        >
                           <option value="">（未设置）</option>
                           {Object.entries(field.options ?? {}).map(([k, label]) => (
                             <option key={k} value={k}>
@@ -202,11 +288,16 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
                         </select>
                       ) : (
                         <input
-                          type={field.type === 'number' ? 'number' : 'text'}
+                          // number 也用 text + inputMode：浏览器 number 控件会把「1.」「-」等
+                          // 中间态吞成空串，导致草稿丢失（表单审计 P2）
+                          type="text"
                           value={value}
                           inputMode={field.type === 'number' ? 'decimal' : undefined}
                           placeholder={field.defaultValue ? `默认 ${field.defaultValue}` : ''}
-                          onChange={(e) => commit(group.section, field, e.target.value)}
+                          aria-label={`${field.label}（${field.key}）`}
+                          aria-invalid={err ? true : undefined}
+                          onChange={(e) => onChangeInput(sectionName, field, e.target.value)}
+                          onBlur={() => onBlurInput(sectionName, field)}
                         />
                       )}
                       {field.type === 'resource' && (
@@ -215,6 +306,11 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
                         </button>
                       )}
                     </div>
+                    {duplicated && (
+                      <div className="m-unitform-desc">
+                        ⚠ 文件中有 {v.dupLines!.length} 处 {field.key}（第 {v.dupLines!.join('、')} 行），游戏使用最后一处；修改已应用到生效行，建议清理其余重复
+                      </div>
+                    )}
                     {err && <div className="m-unitform-error">{err}</div>}
                     {!err && field.description && <div className="m-unitform-desc">{field.description}</div>}
                     {isResourcePicker && (
@@ -232,14 +328,14 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
                           <div className="m-unitform-picker-empty">项目内没有匹配的资源文件</div>
                         ) : (
                           pool.map((f) => {
-                            const abs = `${session.rootPath}/${f}`
-                            const rel = relativePath(fileDir, abs)
+                            // 资源与单位统一到项目根坐标再算相对路径（同目录 → body.png，不再 ../../..）
+                            const rel = unitResourceRelPath(session.path, session.rootPath, f)
                             return (
                               <button
                                 key={f}
                                 className="m-unitform-picker-item"
                                 onClick={() => {
-                                  commit(group.section, field, rel)
+                                  onPickValue(sectionName, field, rel)
                                   setPicking(null)
                                 }}
                               >
@@ -256,7 +352,25 @@ export function UnitFormPanel({ session, onClose }: UnitFormPanelProps) {
             </div>
           )
         })}
+        <div className="m-unitform-group">
+          <button className="m-btn" onClick={addTurret}>
+            <AppIcon name="plus" size={14} /> 添加炮塔
+          </button>
+        </div>
       </div>
+      {confirmRemove && (
+        <ConfirmModal
+          title={`删除 ${confirmRemove}？`}
+          message="将删除整个炮塔节（含节内全部字段）。代码仍需点保存才写入文件。"
+          confirmText="删除"
+          danger
+          onCancel={() => setConfirmRemove(null)}
+          onConfirm={() => {
+            updateEditorContent(removeUnitSection(session.content, confirmRemove, { zhToEn }))
+            setConfirmRemove(null)
+          }}
+        />
+      )}
     </div>
   )
 }

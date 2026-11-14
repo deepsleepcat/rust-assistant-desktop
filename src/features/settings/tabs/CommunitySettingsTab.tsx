@@ -16,6 +16,11 @@ export function CommunitySettingsTab() {
   const [communityCheck, setCommunityCheck] = useState<string | null>(null)
   const [communityChecking, setCommunityChecking] = useState(false)
   const communityUser = communityAuth.user
+  const signedIn = communityAuth.status === 'signed_in'
+  const accountStatus = signedIn ? communityUser?.display_name || communityUser?.username || '已登录'
+    : communityAuth.status === 'loading' ? '正在配对'
+    : communityAuth.status === 'checking' ? '正在检查会话'
+    : communityAuth.status === 'error' ? '会话检查失败' : '未登录'
   const [communityEmail, setCommunityEmail] = useState('')
   const [communityVerificationCode, setCommunityVerificationCode] = useState('')
   const [communityVerificationBusy, setCommunityVerificationBusy] = useState(false)
@@ -60,6 +65,11 @@ export function CommunitySettingsTab() {
     <div className="setting-section">
       <div className="setting-title">云仓库账号</div>
       <div className="setting-row">
+        <span className="label">账号状态</span>
+        <span role="status">{accountStatus}</span>
+        {!signedIn && <span className="desc">本地编辑可用</span>}
+      </div>
+      <div className="setting-row">
         <span className="label">服务器连接</span>
         <button
           className="btn"
@@ -86,17 +96,25 @@ export function CommunitySettingsTab() {
           浏览器登录
           <div className="desc">登录页面将在浏览器中打开，应用不会接收或保存密码。</div>
         </span>
-        {communityAuth.status !== 'loading' && <button className="btn primary" onClick={() => void loginCommunity()}>
+        {communityAuth.status !== 'loading' && <button className="btn primary" disabled={communityAuth.status === 'checking'} onClick={() => void loginCommunity()}>
           {communityAuth.status === 'signed_in' ? '重新登录' : '在浏览器中登录'}
         </button>}
-        {communityAuth.status === 'loading' && communityAuth.pairing && <>
-          <code>配对码：{communityAuth.pairing.userCode}</code>
-          <button className="btn primary" onClick={() => void checkCommunityPairing()}>手动检查</button>
+        {communityAuth.status === 'loading' && <>
+          {communityAuth.pairing && <>
+            <code>配对码：{communityAuth.pairing.userCode}</code>
+            <button className="btn primary" onClick={() => void checkCommunityPairing()}>手动检查</button>
+          </>}
           <button className="btn" onClick={() => void cancelCommunityPairing()}>取消配对</button>
         </>}
         {communityAuth.status === 'error' && <span className="setting-error-inline">{communityAuth.error}</span>}
       </div>
       {communityUser && <div className="local-note">当前账号：{communityUser.display_name ?? communityUser.username}，会话已安全保存在本机</div>}
+      <div className="setting-row">
+        <span className="label">邮箱绑定与认证</span>
+        <span className="desc">{!signedIn ? '登录后可绑定邮箱并完成认证'
+          : communityUser?.email_verified === true ? `${communityUser.email ? `${communityUser.email}，` : ''}已认证`
+          : communityUser?.email_verified === false ? '邮箱未认证' : '暂未获取邮箱认证状态'}</span>
+      </div>
       {communityUser && communityUser.email_verified === false && <div className="setting-row community-auth-row">
         <span className="label">
           完成邮箱认证

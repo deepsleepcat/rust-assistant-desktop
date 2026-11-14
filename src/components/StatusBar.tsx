@@ -26,11 +26,18 @@ export function StatusBar() {
   return (
     <footer className="statusbar" aria-label="应用状态">
       <span className="sb-item sb-surface">{surfaceLabel(activeSurface)}</span>
-      <span className="sb-item sb-left" title={project?.rootPath}>
-        {activeSurface === 'editor' ? (project ? truncateMiddle(project.rootPath, 70) : '未打开项目') : '铁锈工坊'}
+      {/* 编辑面有活动标签时显示当前文件完整路径（从编辑器顶行挪入），否则显示项目根路径 */}
+      <span
+        className="sb-item sb-left"
+        title={activeSurface === 'editor' && activeTab ? activeTab.path : project?.rootPath}
+      >
+        {activeSurface === 'editor'
+          ? activeTab
+            ? truncateMiddle(activeTab.path, 70)
+            : project ? truncateMiddle(project.rootPath, 70) : '未打开项目'
+          : '铁锈工坊'}
       </span>
       {activeSurface === 'editor' && <>
-        <span className="sb-item"><span className="sb-pill">Rust 配置</span></span>
         <span className="sb-item">{activeTab ? (activeTab.hasBom ? 'UTF-8 BOM' : 'UTF-8') : '—'}</span>
         <span className="sb-item">行 {editorPos.line}，列 {editorPos.col}</span>
         {dirtyCount > 0 && <span className="sb-item sb-dirty">未保存 {dirtyCount}</span>}

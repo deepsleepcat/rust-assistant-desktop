@@ -55,7 +55,7 @@ export interface GitStatusEntry {
 }
 
 /** 执行 git（cwd=项目根；失败抛错） */
-async function runGit(root: string, args: string[]): Promise<string> {
+async function runGitOnce(root: string, args: string[]): Promise<string> {
   const r = await execFileAsync('git', args, {
     cwd: root,
     timeout: GIT_TIMEOUT,
@@ -64,6 +64,39 @@ async function runGit(root: string, args: string[]): Promise<string> {
     encoding: 'utf8',
   })
   return r.stdout
+}
+
+/** 报错是否为 index.lock 占用（git 崩溃/被杀后会残留锁文件，挡住后续所有写操作） */
+function isLockError(err: unknown): boolean {
+  const e = err as Partial<{ stderr: unknown; message: unknown }> | null
+  const text = `${typeof e?.stderr === 'string' ? e.stderr : ''} ${typeof e?.message === 'string' ? e.message : ''}`
+  return text.includes('index.lock')
+}
+
+/** 清理残留锁：只清「已经存在 ≥10 秒」的锁——活着的 git 进程随时可能在写，
+ * 新鲜的锁（≤10s）不碰，留给正常流程释放。 */
+async function removeStaleIndexLock(root: string): Promise<boolean> {
+  const lock = path.join(root, '.git', 'index.lock')
+  try {
+    const st = await fs.stat(lock)
+    if (Date.now() - st.mtimeMs < 10_000) return false
+    await fs.rm(lock, { force: true })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 执行 git：遇到残留 index.lock 自动清理后重试一次 */
+async function runGit(root: string, args: string[]): Promise<string> {
+  try {
+    return await runGitOnce(root, args)
+  } catch (err) {
+    if (isLockError(err) && (await removeStaleIndexLock(root))) {
+      return await runGitOnce(root, args)
+    }
+    throw err
+  }
 }
 
 /** git 是否可用 */
@@ -165,9 +198,10 @@ export async function statusFiles(root: string): Promise<GitStatusEntry[]> {
   return entries
 }
 
-/** 两个提交间的文件差异文本（b 为 'working' 时对比工作区；'staged' 时对比暂存区） */
+/** 两个提交间的文件差异文本（b 为 'working' 时对比工作区；'staged' 时对比暂存区）。
+ * a 允许 'HEAD' 字面量（Git 面板差异展开用；空仓库无 HEAD 时 git 自身报错透传）。 */
 export async function diffBetween(root: string, a: string, b: string, file?: string): Promise<string> {
-  if (!isValidCommit(a)) throw new Error('无效的提交哈希')
+  if (a !== 'HEAD' && !isValidCommit(a)) throw new Error('无效的提交哈希')
   const args = ['diff', '--no-color']
   if (b === 'working') {
     args.push(a, '--')
@@ -209,13 +243,15 @@ export async function conflictFiles(root: string): Promise<string[]> {
   return out
 }
 
-/** 回滚单个文件到指定提交（只影响工作区该文件；提交缺省 = HEAD） */
+/** 回滚单个文件到指定提交（只恢复工作区，不动暂存区；提交缺省 = HEAD）。
+ * 用 git restore --worktree 而非 checkout <commit> -- <file>：后者同时恢复
+ * 暂存区，会把用户已暂存的内容一并覆盖（与界面文案「只影响工作区」矛盾）。 */
 export async function restoreFile(root: string, file: string, commit = 'HEAD'): Promise<{ ok: boolean; message?: string }> {
   if (!isValidRelPath(file)) return { ok: false, message: '无效的文件路径' }
   if (commit !== 'HEAD' && !isValidCommit(commit)) return { ok: false, message: '无效的提交哈希' }
   try {
-    // 文件可能尚未跟踪（?? 状态）：checkout 会失败——先尝试，失败给出提示
-    await runGit(root, ['checkout', commit, '--', file])
+    // 文件可能尚未跟踪（?? 状态）：restore 会失败——先尝试，失败给出提示
+    await runGit(root, ['restore', '--worktree', `--source=${commit}`, '--', file])
     return { ok: true }
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message.split('\n')[0] : String(err) }
@@ -266,9 +302,27 @@ export function sanitizeCommitMessage(message: string): string {
   return message.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').replace(/\s+/g, ' ').trim().slice(0, 2000)
 }
 
-/** 统一结果包装（写操作不抛错，错误取首行给 UI 直显） */
+/** 统一结果包装（写操作不抛错，错误取 git stderr 首行给 UI 直显）。
+ * 不能用 err.message：execFile 的 message 是「Command failed: <整条命令及全部参数>」，
+ * 暂存几百个文件时会把所有文件名原样 dump 进提示框。 */
 function toResult(err: unknown): { ok: false; message: string } {
-  return { ok: false, message: err instanceof Error ? err.message.split('\n')[0] : String(err) }
+  const e = err as Partial<{ stderr: unknown; code: unknown; message: string }> | null
+  // 首选 git stderr 首行（如「fatal: pathspec … did not match」）
+  let msg = ''
+  if (e && typeof e.stderr === 'string' && e.stderr.trim()) {
+    msg = e.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? ''
+  }
+  if (!msg && e && typeof e.code === 'string' && e.code) {
+    // spawn 层失败（没到 git 进程）：命令行超长 / 超时等，给可读文案
+    if (e.code === 'ENAMETOOLONG') return { ok: false, message: '命令行过长：文件太多，请改用「全部暂存」' }
+    if (e.code === 'ETIMEDOUT') return { ok: false, message: 'git 命令超时（15 秒）' }
+    return { ok: false, message: `git 命令执行失败（${e.code}）` }
+  }
+  if (!msg) msg = (e?.message ?? String(err)).split('\n')[0]
+  // 锁文件还新鲜（≤10s 内创建，可能真有 git 在跑，自动清理不敢碰）
+  if (msg.includes('index.lock')) return { ok: false, message: 'git 正被另一个操作占用，请等几秒重试；反复出现请重启应用' }
+  // 兜底：message 形如「Command failed: git add -- <全部参数>」，只留通用文案
+  return { ok: false, message: msg.startsWith('Command failed:') ? 'git 命令执行失败' : msg }
 }
 
 /** 暂存指定文件（未跟踪文件也会加入；路径过白名单校验） */
@@ -283,10 +337,12 @@ export async function stageFiles(root: string, paths: string[]): Promise<{ ok: b
   }
 }
 
-/** 暂存全部改动（含新增与删除；项目根即仓库根，等价 git add -A） */
+/** 暂存全部改动（含新增与删除），范围限定项目根目录。
+ * 必须带 `-- .`：项目允许位于父仓库的子目录中，裸 `git add -A` 会把
+ * 仓库里项目目录之外的文件也一并暂存进来。 */
 export async function stageAllFiles(root: string): Promise<{ ok: boolean; message?: string }> {
   try {
-    await runGit(root, ['add', '-A'])
+    await runGit(root, ['add', '-A', '--', '.'])
     return { ok: true }
   } catch (err) {
     return toResult(err)
@@ -380,14 +436,23 @@ export async function initRepo(root: string): Promise<{ ok: boolean; message?: s
 }
 
 /** 丢弃单文件工作区改动（从暂存区恢复；未跟踪文件直接删除）。
- * 与 restoreFile 的区别：只动工作区，不覆盖暂存区内容。 */
+ * 与 restoreFile 的区别：只动工作区，不覆盖暂存区内容。
+ * checkout -- 失败不一定意味着未跟踪：合并冲突（unmerged）的已跟踪文件同样
+ * 会失败——必须先经 statusDetailed 确认该文件确为未跟踪才允许 fs.rm，否则
+ * 会把冲突中的已跟踪文件直接删掉。 */
 export async function discardFileWorktree(root: string, file: string): Promise<{ ok: boolean; message?: string }> {
   if (!isValidRelPath(file)) return { ok: false, message: '无效的文件路径' }
   try {
     await runGit(root, ['checkout', '--', file])
     return { ok: true }
   } catch {
-    // checkout -- 失败的多半是未跟踪文件：确认在根内后直接删除
+    const st = await statusDetailed(root).catch(() => [])
+    const entry = st.find((e) => e.path === file)
+    if (!entry?.untracked) {
+      // 已跟踪文件（含冲突/已暂存状态）：不能删，把拒绝原因交界面
+      return { ok: false, message: '该文件已被 git 跟踪（或处于冲突中），不能直接丢弃——请先解决冲突或使用回滚' }
+    }
+    // 未跟踪文件：确认在根内后直接删除
     const abs = path.resolve(root, file)
     const base = path.resolve(root)
     if (abs !== base && !abs.startsWith(base + path.sep)) return { ok: false, message: '无效的文件路径' }

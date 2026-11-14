@@ -13,7 +13,7 @@ import { search } from '@codemirror/search'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { editorShortcutKeymap, remainingSearchKeymap } from './shortcutKeymap'
 import { rustConfigLanguageSupport, smartEnterBindings } from './rustLanguage'
-import { rustHoverExtension } from './rustHover'
+import { rustDoubleClickHelp, rustHoverExtension } from './rustHover'
 import { bilingualLabels } from './bilingualLabels'
 import { rustCompletionSource, setCompletionChineseMode, setCompletionTracker } from './completion'
 import { foldGutter, foldKeymap } from '@codemirror/language'
@@ -217,6 +217,7 @@ export function EditorMirror({ value, onChange, onCursor, onSave, onUndo, onRedo
         rustConfigLanguageSupport(),
         lintCompartment.current.of(rustLintExtension({ rootPath, semanticCheckers, targetVersionName, file: fileName, translationMap: chineseMode ? translationMap : null })),
         rustHoverExtension,
+        rustDoubleClickHelp,
         bilingualLabels,
         // aboveCursor：补全框显示在光标上方——中文输入时系统输入法候选窗
         // 在光标正下方，框在下方会被完全挡住（表现为「中文补全不可用」；

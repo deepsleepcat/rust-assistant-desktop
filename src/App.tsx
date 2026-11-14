@@ -1,7 +1,7 @@
 /**
  * 应用根组件：组装桌面壳、五个工作面、主题、快捷键与全局弹层。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useWorkspaceStore } from './stores/workspace'
 import { getBridge, isElectron } from './services/bridge'
 import { Backdrop } from './components/Backdrop'
@@ -81,6 +81,18 @@ export function App() {
   // 工作面切换不丢编辑器标签/光标/项目状态；编辑器节点始终挂载。
   const activeSurface = useWorkspaceStore((s) => s.activeSurface)
   const desktopPreferences = useDesktopPreferences()
+
+  // 启动画面最短展示时长：本地初始化太快时动画只播一瞬就切走（表现为「启动动画没了」）。
+  // ready 置位后补足到 600ms 再进主界面；initError 重试成功时不额外等待（已挂载超过时限）。
+  const bootedAt = useRef(0)
+  const [bootDone, setBootDone] = useState(false)
+  useEffect(() => {
+    if (bootedAt.current === 0) bootedAt.current = Date.now()
+    if (!ready) return
+    const remain = Math.max(0, 600 - (Date.now() - bootedAt.current))
+    const t = setTimeout(() => setBootDone(true), remain)
+    return () => clearTimeout(t)
+  }, [ready])
 
   // 初始化：读取本地设置与工作区（失败时展示错误面板与重试入口；initPromise 已重置可重试）
   const [initError, setInitError] = useState<string | null>(null)
@@ -173,7 +185,7 @@ export function App() {
     return () => clearTimeout(t)
   }, [toast, dismissToast])
 
-  if (!ready) {
+  if (!ready || !bootDone) {
     return <StartupScreen initError={initError} onRetry={runInit} />
   }
 

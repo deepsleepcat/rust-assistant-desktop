@@ -232,7 +232,6 @@ body.ra-compact .community-account-btn span { display: none; }
 .statusbar { position: relative; z-index: 2; height: var(--statusbar-h); flex-shrink: 0; display: flex; align-items: center; gap: 14px; padding: 0 10px; border-top: 1px solid var(--divider); background: var(--surface-1); color: var(--text-secondary); font-size: 12px; }
 .statusbar .sb-left { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .statusbar .sb-right { display: flex; gap: 12px; }
-.statusbar .sb-pill { padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-0); }
 
 /* 弹窗、命令面板、设置：Material 浮层 */
 .modal-overlay, .command-overlay { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; padding: 32px; background: var(--overlay); }

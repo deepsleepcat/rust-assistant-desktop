@@ -14,6 +14,12 @@ export function findKeyValueSeparator(line: string): number {
   return -1
 }
 
+/** 游戏只把整行首个非空白字符为 # 的行当注释；值内 # 始终属于值。 */
+export function findConfigCommentStart(line: string): number {
+  const trimmed = line.trimStart()
+  return trimmed.startsWith('#') ? line.length - trimmed.length : -1
+}
+
 /** 按顶层逗号分段；括号内逗号（包括中文逗号）属于参数内容。 */
 export function splitTopLevelConfigValue(value: string): string[] {
   const parts: string[] = []

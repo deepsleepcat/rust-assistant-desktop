@@ -1,8 +1,20 @@
 /**
  * 单位表单同步（M14，任务 4）测试：解析/写回/默认值/校验。
+ * 「表单审计第一轮修复回归」覆盖：等号分隔符、多炮塔独立节、重复键生效值、
+ * 值内 # 语义、三引号块跳过、资源路径坐标统一、炮塔节增删。
  */
 import { describe, expect, it } from 'vitest'
-import { applyUnitFormValue, fillDefaults, isUnitFile, parseUnitForm, validateFormValue } from '../src/features/editor/unitForm/unitFormSync'
+import {
+  appendTurretSection,
+  applyUnitFormValue,
+  fillDefaults,
+  isUnitFile,
+  nextTurretSectionName,
+  parseUnitForm,
+  removeUnitSection,
+  unitResourceRelPath,
+  validateFormValue,
+} from '../src/features/editor/unitForm/unitFormSync'
 import { findUnitField, UNIT_FORM_GROUPS } from '../src/features/editor/unitForm/unitFormFields'
 
 const SAMPLE = `[core]
@@ -49,15 +61,23 @@ describe('fillDefaults', () => {
     expect(core.find((v) => v.key === 'name')?.present).toBe(true)
     expect(core.find((v) => v.key === 'price')?.present).toBe(false)
     expect(core.find((v) => v.key === 'price')?.value).toBe('300')
-    // 五组全有
-    expect(Object.keys(state).length).toBe(UNIT_FORM_GROUPS.length)
+    // 无炮塔节时不生成 turret 实例；其余四组全有
+    expect(Object.keys(state).sort()).toEqual(['attack', 'core', 'graphics', 'movement'])
+  })
+
+  it('炮塔节按实际节名逐实例补默认值', () => {
+    const state = fillDefaults(parseUnitForm('[core]\nname: x\n[turret_1]\nx: 5\n[turret_2]\n'))
+    expect(state['turret_1']?.find((v) => v.key === 'x')?.value).toBe('5')
+    expect(state['turret_1']?.find((v) => v.key === 'projectile')?.present).toBe(false)
+    expect(state['turret_2']?.find((v) => v.key === 'x')?.value).toBe('0')
+    expect(state['turret_3']).toBeUndefined()
   })
 })
 
 describe('applyUnitFormValue', () => {
-  it('已存在键整行替换（保留注释）', () => {
+  it('已存在键整行替换：值内 # 属于值，不再当行内注释保留', () => {
     const out = applyUnitFormValue('[core]\nmaxHp: 500 # 血\n', 'core', 'maxHp', '800')
-    expect(out).toBe('[core]\nmaxHp: 800 # 血\n')
+    expect(out).toBe('[core]\nmaxHp: 800\n')
   })
 
   it('节存在键缺失：追加到节尾（节内有其他内容不破坏）', () => {
@@ -65,7 +85,7 @@ describe('applyUnitFormValue', () => {
     expect(out).toBe('[core]\nname: x\n\n[graphics]\nimage: a.png\nshadowOffsetX: 2\n')
   })
 
-  it('节不存在：文件尾新建节', () => {
+  it('节不存在：按传入节名在文件尾创建', () => {
     const out = applyUnitFormValue('[core]\nname: x\n', 'movement', 'moveSpeed', '2.0')
     expect(out).toContain('\n[movement]\nmoveSpeed: 2.0')
   })
@@ -124,12 +144,12 @@ describe('validateFormValue', () => {
 })
 
 describe('M14 审查修复回归', () => {
-  it('[turret_1] 前缀节解析与写回（官方真实节名）', () => {
+  it('[turret_1] 节独立解析与写回（官方真实节名）', () => {
     const content = '[core]\nname: t\n[turret_1]\nx: -14\ny: 5\nprojectile: 1\n'
     const state = parseUnitForm(content)
-    expect(state['turret']?.find((v) => v.key === 'x')?.value).toBe('-14')
+    expect(state['turret_1']?.find((v) => v.key === 'x')?.value).toBe('-14')
     // 写回 turret_1 的 x（不是新建 [turret] 节）
-    const out = applyUnitFormValue(content, 'turret', 'x', '10')
+    const out = applyUnitFormValue(content, 'turret_1', 'x', '10')
     expect(out).toContain('[turret_1]')
     expect(out).toContain('x: 10')
     expect(out).not.toContain('\n[turret]\n')
@@ -161,9 +181,9 @@ describe('M14 审查修复回归', () => {
 })
 
 describe('M14 第二轮审查回归', () => {
-  it('parse 剥离行内注释（maxHp: 500 # 血 → 500）', () => {
+  it('值内 # 保留为值的一部分（引擎只把整行 # 当注释）', () => {
     const state = parseUnitForm('[core]\nmaxHp: 500 # 血\n')
-    expect(state['core']?.find((v) => v.key === 'maxHp')?.value).toBe('500')
+    expect(state['core']?.find((v) => v.key === 'maxHp')?.value).toBe('500 # 血')
   })
 
   it('中文文件替换键保留中文键名（不混入英文键）', () => {
@@ -173,8 +193,8 @@ describe('M14 第二轮审查回归', () => {
     expect(out).not.toContain('maxHp: 800')
   })
 
-  it('无炮塔节时新建 [turret_1]（官方节名）', () => {
-    const out = applyUnitFormValue('[core]\nname: x\n', 'turret', 'x', '10')
+  it('炮塔节不存在时按传入节名创建（turret_1）', () => {
+    const out = applyUnitFormValue('[core]\nname: x\n', 'turret_1', 'x', '10')
     expect(out).toContain('[turret_1]')
     expect(out).not.toContain('[turret]\n')
   })
@@ -196,5 +216,82 @@ describe('M14 第二轮审查回归', () => {
     const opts = Object.keys(field.options ?? {})
     expect([...opts].sort()).toEqual(['air', 'bottom', 'experimentals', 'ground', 'ground2', 'top', 'underwater', 'wreaks'].sort())
     expect(opts).not.toContain('water')
+  })
+})
+
+describe('表单审计第一轮修复回归', () => {
+  it('等号分隔符可解析，写回沿用原分隔符（不再重复添加字段）', () => {
+    const source = '[core]\nname = tank\nmaxHp = 500\n'
+    const state = parseUnitForm(source)
+    expect(state['core']?.find((v) => v.key === 'maxHp')?.value).toBe('500')
+    const edited = applyUnitFormValue(source, 'core', 'maxHp', '800')
+    expect(edited).toContain('maxHp = 800')
+    expect(edited).not.toContain('maxHp: 800')
+    expect(edited).not.toContain('maxHp = 500')
+  })
+
+  it('多炮塔节独立解析与写回（改 turret_2 不影响 turret_1）', () => {
+    const source = '[core]\nname: tank\n[turret_1]\nx: 1\n[turret_2]\nx: 2\nprojectile: secondary\n'
+    const state = parseUnitForm(source)
+    expect(state['turret_1']?.find((v) => v.key === 'x')?.value).toBe('1')
+    expect(state['turret_2']?.find((v) => v.key === 'x')?.value).toBe('2')
+    expect(state['turret_2']?.find((v) => v.key === 'projectile')?.value).toBe('secondary')
+    const edited = applyUnitFormValue(source, 'turret_2', 'projectile', 'edited')
+    expect(edited).toContain('[turret_1]\nx: 1\n[turret_2]\nx: 2\nprojectile: edited')
+    expect(edited).not.toContain('projectile: secondary')
+  })
+
+  it('重复键显示游戏生效值（最后一处），写回更新生效行', () => {
+    const source = '[core]\nname: tank\nmaxHp: 100\nmaxHp: 200\n'
+    const v = parseUnitForm(source)['core']?.find((x) => x.key === 'maxHp')
+    expect(v?.value).toBe('200')
+    expect(v?.dupLines).toEqual([3, 4])
+    const edited = applyUnitFormValue(source, 'core', 'maxHp', '500')
+    expect(edited).toContain('maxHp: 100\nmaxHp: 500')
+    expect(edited).not.toContain('maxHp: 200')
+  })
+
+  it('值内 # 不被截断，编辑后不带回旧值', () => {
+    const source = '[core]\nname: tank #variant\n'
+    expect(parseUnitForm(source)['core']?.[0].value).toBe('tank #variant')
+    expect(applyUnitFormValue(source, 'core', 'name', 'new')).toBe('[core]\nname: new\n')
+  })
+
+  it('三引号多行字符串块内不解析键值', () => {
+    const source = '[core]\nname: tank\ndisplayDescription: """\nx: 999\nmaxHp: 1\n"""\nprice: 300\n'
+    const state = parseUnitForm(source)
+    // 块内的 x/maxHp 不属于任何已映射字段，但 price 必须在块外正常解析
+    expect(state['core']?.find((v) => v.key === 'price')?.value).toBe('300')
+    expect(state['core']?.some((v) => v.key === 'maxHp')).toBe(false)
+  })
+
+  it('三引号块内不误匹配写回目标行', () => {
+    const source = '[core]\nname: tank\ndisplayDescription: """\nmaxHp: 1\n"""\nmaxHp: 500\n'
+    const edited = applyUnitFormValue(source, 'core', 'maxHp', '800')
+    expect(edited).toContain('"""\nmaxHp: 1\n"""')
+    expect(edited).toContain('maxHp: 800')
+    expect(edited).not.toContain('maxHp: 500')
+  })
+
+  it('资源路径统一到项目根坐标：同目录资源写相对文件名（不再 ../../..）', () => {
+    // 单位与资源同目录（正斜杠绝对路径）
+    expect(unitResourceRelPath('/app/projects/demo/units/tank/tank.ini', '/app/projects/demo', 'units/tank/body.png')).toBe('body.png')
+    // 跨目录
+    expect(unitResourceRelPath('/app/projects/demo/units/tank.ini', '/app/projects/demo', 'images/body.png')).toBe('../images/body.png')
+  })
+
+  it('资源路径兼容 Windows 反斜杠与大小写差异', () => {
+    expect(unitResourceRelPath('D:\\proj\\demo\\units\\tank.ini', 'd:/proj/demo', 'units/tank.png')).toBe('tank.png')
+    expect(unitResourceRelPath('/app/Demo/units/tank.ini', '/app/demo', 'units/tank.png')).toBe('tank.png')
+  })
+
+  it('炮塔节名递增、追加与删除', () => {
+    expect(nextTurretSectionName('[core]\nname: x\n')).toBe('turret_1')
+    expect(nextTurretSectionName('[turret_1]\nx: 0\n[turret_2]\nx: 0\n')).toBe('turret_3')
+    const added = appendTurretSection('[core]\nname: x\n', 'turret_1')
+    expect(added).toBe('[core]\nname: x\n\n[turret_1]\nx: 0\ny: 0\n')
+    const removed = removeUnitSection(added, 'turret_1')
+    expect(removed).toBe('[core]\nname: x\n')
+    expect(removeUnitSection('[core]\nname: x\n', 'turret_9')).toBe('[core]\nname: x\n')
   })
 })

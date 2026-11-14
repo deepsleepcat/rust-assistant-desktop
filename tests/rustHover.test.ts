@@ -6,7 +6,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveKeyEn, resolveLogicFunctionEn } from '../src/features/editor/rustHover'
+import { EditorState } from '@codemirror/state'
+import type { EditorView } from '@codemirror/view'
+import { resolveKeyEn, resolveLogicFunctionEn, rustTooltipAt } from '../src/features/editor/rustHover'
 import { findLogicBoolean, loadCodeData } from '../src/services/codeData'
 
 describe('resolveKeyEn（hover 键位置中文回译）', () => {
@@ -29,6 +31,74 @@ describe('resolveKeyEn（hover 键位置中文回译）', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  async function help(source: string, token: string, offset = 0) {
+    vi.stubGlobal('document', { createElement: () => ({ className: '', innerHTML: '' }) })
+    const view = { state: EditorState.create({ doc: source }) } as EditorView
+    const pos = source.indexOf(token, offset)
+    const tooltip = await rustTooltipAt(view, pos + Math.min(1, token.length))
+    return { tooltip, html: tooltip?.create(view).dom.innerHTML, pos }
+  }
+
+  it.each(['true', 'false', 'True', 'FALSE', '真', '假', '是', '否'])('布尔值 %s 在后续行使用正确文档坐标', async (token) => {
+    const source = `[core]\nname: test\n[hiddenAction_ai]\nai_isHighPriority: ${token}`
+    const { tooltip, html, pos } = await help(source, token)
+    expect(tooltip).toMatchObject({ pos, end: pos + token.length })
+    expect(html).toMatch(/真|假/)
+  })
+
+  it.each(['self.isControlledByAI', 'self.isControlledByAI()', 'self.血量()'])('识别无括号与中文逻辑函数 %s', async (token) => {
+    const source = `[hiddenAction_ai]\nautoTrigger: if ${token}`
+    const { tooltip, pos } = await help(source, token)
+    expect(tooltip).toMatchObject({ pos, end: pos + token.replace(/\(\)$/, '').length })
+  })
+
+  it('不在注释和完整标识符中的 true 子串上显示解释', async () => {
+    for (const source of ['# autoTrigger: true', '  ; autoTrigger: true', 'autoTrigger: trueValue']) {
+      expect((await help(source, 'true')).tooltip).toBeNull()
+    }
+  })
+
+  it('自由值和引号字符串中的逻辑词保持为用户数据', async () => {
+    for (const source of ['name: true', 'image: true.png', 'autoTrigger: "true"', "autoTrigger: 'true'", 'autoTrigger: " # true"', 'autoTrigger: "true']) {
+      expect((await help(source, 'true')).tooltip).toBeNull()
+    }
+  })
+
+  it('后续行枚举值范围排除缩进空格并使用文档坐标', async () => {
+    const source = '[movement]\nmovementType:   LAND  '
+    const { tooltip, html, pos } = await help(source, 'LAND')
+    expect(tooltip).toMatchObject({ pos, end: pos + 4 })
+    expect(html).toContain('陆地')
+    expect((await help(`${source}# true`, 'LAND')).tooltip).toBeNull()
+  })
+
+  it('空格后的颜色仍有色卡，且颜色字段中的其他文字不当作布尔', async () => {
+    const source = '[effect_test]\ncolor: #8E8E8E # true'
+    const { tooltip, html, pos } = await help(source, '#8E8E8E')
+    expect(tooltip).toMatchObject({ pos, end: pos + 7 })
+    expect(html).toContain('#8E8E8E')
+    expect((await help(source, 'true')).tooltip).toBeNull()
+  })
+
+  it('行内井号不截断逻辑值，后续词仍按实际文档位置提供释义', async () => {
+    const source = '[hiddenAction_ai]\nautoTrigger: false # true'
+    const { tooltip, pos } = await help(source, 'true')
+    expect(tooltip).toMatchObject({ pos, end: pos + 4 })
+  })
+
+  it('缩进节头范围不包含行尾注释', async () => {
+    const source = '  [core] # true'
+    expect((await help(source, 'core')).tooltip).toMatchObject({ pos: 2, end: 8 })
+    expect((await help(source, 'true')).tooltip).toBeNull()
+  })
+
+  it('数据异步加载期间文档改变时丢弃旧位置', async () => {
+    const view = { state: EditorState.create({ doc: 'autoTrigger: true' }) }
+    const pending = rustTooltipAt(view as EditorView, 14)
+    view.state = EditorState.create({ doc: 'autoTrigger: false' })
+    expect(await pending).toBeNull()
   })
 
   it('英文键原样返回', () => {

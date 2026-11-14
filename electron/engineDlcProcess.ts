@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { spawn, execSync, type ChildProcess } from 'node:child_process'
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process'
 import { windowsJobCommand, SYSTEM_POWERSHELL } from './engineDlcWindowsJob'
 import { isAnyPlatformAbsolute } from './paths'
 
@@ -37,7 +37,8 @@ function trackDescendants(rootPid: number): { pids: Set<number>; stop: () => voi
         seen.add(pid)
         let output: string
         try {
-          output = execSync(`pgrep -P ${pid}`, { encoding: 'utf8', stdio: 'pipe' })
+          // 数组参数直接 spawn（不经 shell）：pid 恒为数字，但免插值形式对注入免疫
+          output = execFileSync('pgrep', ['-P', String(pid)], { encoding: 'utf8', stdio: 'pipe' })
         } catch { continue }
         for (const line of output.trim().split('\n').filter(Boolean)) {
           const childPid = Number(line)

@@ -223,4 +223,41 @@ describe('git 写操作（feat/git-visual-center）', () => {
       fs.rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('写操作错误信息：直显 git stderr 首行，不 dump 整条命令与参数', async () => {
+    if (!(await gitAvailable())) return
+    // 有效但不存在的路径 → git 报错「pathspec … did not match」：取 stderr 首行而非「Command failed: git add -- …」
+    const r = await stageFiles(repo, ['不存在/路径.ini'])
+    expect(r.ok).toBe(false)
+    expect(r.message).toContain('pathspec')
+    expect(r.message).not.toContain('Command failed')
+    expect(r.message).not.toContain('git add')
+    // 未跟踪文件 stageAllFiles 也能全部暂存（UI「全部暂存」按钮的正解路径）
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'a')
+    fs.writeFileSync(path.join(repo, 'b.txt'), 'b')
+    expect((await stageAllFiles(repo)).ok).toBe(true)
+    expect(run(repo, ['diff', '--cached', '--name-only']).split('\n').filter(Boolean).length).toBe(2)
+  })
+
+  it('index.lock：残留锁（≥10s）自动清理重试；新鲜锁拒绝并提示', async () => {
+    if (!(await gitAvailable())) return
+    fs.writeFileSync(path.join(repo, 'c.txt'), 'c')
+    // 残留锁：把 mtime 倒回 1 小时前，模拟上次 git 崩溃留下的死锁
+    const stale = path.join(repo, '.git', 'index.lock')
+    fs.writeFileSync(stale, '')
+    const hourAgo = new Date(Date.now() - 3_600_000)
+    fs.utimesSync(stale, hourAgo, hourAgo)
+    expect((await stageAllFiles(repo)).ok).toBe(true)
+    expect(fs.existsSync(stale)).toBe(false)
+    expect(run(repo, ['diff', '--cached', '--name-only'])).toContain('c.txt')
+    // 新鲜锁：刚刚创建，可能真有 git 在跑——不自动清，返回人话提示
+    fs.writeFileSync(path.join(repo, 'd.txt'), 'd')
+    fs.writeFileSync(stale, '')
+    const r = await stageAllFiles(repo)
+    expect(r.ok).toBe(false)
+    expect(r.message).toContain('占用')
+    expect(fs.existsSync(stale)).toBe(true)
+    // 收尾：清掉锁让 afterEach 删目录不受影响
+    fs.rmSync(stale, { force: true })
+  })
 })

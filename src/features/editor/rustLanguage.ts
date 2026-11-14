@@ -45,8 +45,8 @@ const rustConfigLanguage = StreamLanguage.define({
   startState: () => ({}),
   token(stream) {
     const line = stream.string
-    const rest = line.slice(stream.pos)
-    const classified = classifyLine(rest)
+    // 按完整行分类，避免把 key: 后的颜色值或冒号再次当作注释/键。
+    const classified = classifyLine(line)
     if (classified.kind === 'comment') {
       stream.skipToEnd()
       return 'comment'
@@ -56,11 +56,12 @@ const rustConfigLanguage = StreamLanguage.define({
       return 'section'
     }
     if (classified.kind === 'keyvalue') {
-      const sep = firstSepIndex(rest)
-      // 消费到分隔符（含分隔符），返回按字段类型区分的标签
-      stream.pos += sep
-      stream.next()
-      return keyKind(classified.key ?? '')
+      const sep = firstSepIndex(line)
+      if (stream.pos <= sep) {
+        // 消费到分隔符（含分隔符），返回按字段类型区分的标签
+        stream.pos = sep + 1
+        return keyKind(classified.key ?? '')
+      }
     }
     stream.skipToEnd()
     return 'plain'

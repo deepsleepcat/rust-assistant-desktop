@@ -5,15 +5,10 @@
  * - 颜色值（#RRGGBB）→ 色卡预览
  * 数据来自 codeData（code.json / section.json），与补全、lint 同源。
  */
-import { hoverTooltip } from '@codemirror/view'
-import type { EditorView } from '@codemirror/view'
-import { findKeyValueSeparator, splitTopLevelConfigValue } from '../../services/configSyntax'
-import { findCodeByCode, findLogicBoolean, findSectionsByQuery, findValueTypes, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getPluginEnumExplanation, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, parseValueList, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
-
-/** 行内注释剥离（值后面以空格开头 # 的注释部分），颜色值 #000000 不受影响 */
-function stripComment(line: string): string {
-  return line.replace(/[ \t]+#.*$/, '')
-}
+import { activateHover, closeHoverTooltip, EditorView, hoverTooltip } from '@codemirror/view'
+import type { Tooltip } from '@codemirror/view'
+import { findConfigCommentStart, findKeyValueSeparator, splitTopLevelConfigValue } from '../../services/configSyntax'
+import { findCodeByCode, findLogicBoolean, findSectionsByQuery, findValueTypes, getDialectWords, getKeyZhToEnDict, getLogicIdentifierZhToEnDict, getPluginEnumExplanation, getValueZhDict, getZhToEnDict, loadCodeData, normalizeSectionName, parseValueList, versionNumberToName, zhToEnKeySegments } from '../../services/codeData'
 
 /**
  * 键位置中文回译（导出供测试）：中文模式下键是中文译名（名称/主体图像），
@@ -61,19 +56,21 @@ function colorCard(hex: string): string {
 }
 
 /** 悬停工具：查键/节/颜色，构造 tooltip DOM（异步加载代码表数据） */
-export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: number, _side: number) => {
+export async function rustTooltipAt(view: EditorView, pos: number): Promise<Tooltip | null> {
+  const doc = view.state.doc
   await loadCodeData()
   // 数据加载期间文档可能被改短：越界 pos 直接放弃（lineAt 会抛 RangeError）
-  if (pos > view.state.doc.length) return null
+  if (view.state.doc !== doc || pos < 0 || pos > doc.length) return null
   const line = view.state.doc.lineAt(pos)
-  const lineText = stripComment(line.text)
+  const lineText = line.text
   const inLine = pos - line.from
+  if (findConfigCommentStart(lineText) >= 0 || /^\s*;/.test(lineText)) return null
 
   // 1) 节头悬停：[core] 的中文名（区间只到 ]，行尾注释不纳入）
   const secMatch = SECTION_RE.exec(lineText)
   if (secMatch) {
     const secStart = lineText.indexOf('[')
-    const secEnd = secStart + lineText.indexOf(']', secStart) + 1
+    const secEnd = lineText.indexOf(']', secStart) + 1
     if (inLine >= secStart && inLine <= secEnd) {
       const secName = secMatch[1].trim()
       // 编号/命名节（[turret_1]/[turret_main]）：归一化到已知基础节名，才有中文名；
@@ -104,6 +101,9 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
     const keyStart = 0
     const keyEnd = kv[0].length
     const valStart = lineText.length - kv[1].length
+    const key = resolveKeyEn(kv[0].trim())
+    const code = findCodeByCode(key)
+    const isLogicValue = code?.type.split(',').some((type) => /bool|logic/i.test(type)) ?? false
 
     // 值区间：颜色色卡 + 逻辑布尔函数（self.xxx() / 关键字）
     if (inLine >= valStart) {
@@ -111,8 +111,8 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       if (colorMatch && inLine >= valStart + colorMatch.index && inLine <= valStart + colorMatch.index + colorMatch[0].length) {
         const hex = colorMatch[0]
         return {
-          pos: valStart + colorMatch.index,
-          end: valStart + colorMatch.index + hex.length,
+          pos: line.from + valStart + colorMatch.index,
+          end: line.from + valStart + colorMatch.index + hex.length,
           create: () => {
             const dom = document.createElement('div')
             dom.className = 'cm-hover-doc'
@@ -125,17 +125,21 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       // 中文显示层会把 self.hp() 显示为 self.血量()，因此 self. 后允许已翻译的汉字 token；
       // 真正的函数表仍只用回译后的英文名查询，未知中文不猜测。
       const valueText = lineText.slice(valStart)
-      for (const m of valueText.matchAll(/self\.([a-zA-Z_一-鿿][a-zA-Z0-9_一-鿿]*)\(|(?<![\w.])if\b|(?<![\w.])(?:and|or|not|true|false)\b/g)) {
+      if (isLogicValue) for (const m of valueText.matchAll(/"(?:\\.|[^"\\])*(?:"|$)|'(?:\\.|[^'\\])*(?:'|$)|(?<![\w.一-鿿])self\.([a-zA-Z_一-鿿][a-zA-Z0-9_一-鿿]*)|(?<![\w.一-鿿])(?:if|and|or|not|true|false|真|假|是|否)(?![\w一-鿿])/gi)) {
+        // Strings are data even when they contain known logical tokens.
+        if (m[0].startsWith('"') || m[0].startsWith("'")) continue
         const fn = m[1] ?? m[0]
-        const fnEn = m[1] ? resolveLogicFunctionEn(fn) : fn
+        const booleanAliases: Record<string, string> = { 真: 'true', 是: 'true', 假: 'false', 否: 'false' }
+        const fnEn = m[1] ? resolveLogicFunctionEn(fn) : booleanAliases[fn] ?? fn.toLowerCase()
         const start = valStart + (m.index ?? 0)
         const end = valStart + (m.index ?? 0) + m[0].length
         if (inLine >= start && inLine <= end) {
-          const lb = findLogicBoolean(fnEn)
+          const dialect = m[1] ? getDialectWords(fnEn).find((item) => item.word.toLowerCase() === fnEn.toLowerCase()) : undefined
+          const lb = findLogicBoolean(fnEn) ?? (dialect ? { description: dialect.explanation, example: '' } : undefined)
           if (!lb) continue
           return {
-            pos: start,
-            end,
+            pos: line.from + start,
+            end: line.from + end,
             create: () => {
               const dom = document.createElement('div')
               dom.className = 'cm-hover-doc'
@@ -150,8 +154,6 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
       }
       // 枚举值中文解释：只对当前字段允许的 list 值提示，避免资源路径中普通英文
       // 被误识别为枚举。带参数枚举用括号前基础值查 value_zh，原参数串仍完整保留。
-      const key = resolveKeyEn(kv[0].trim())
-      const code = findCodeByCode(key)
       const types = code ? findValueTypes(code.type) : []
       const allowed = new Set(types.flatMap((type) => parseValueList(type.list)).map((value) => value.toLowerCase()))
       const allowedBases = new Set([...allowed].map((value) => {
@@ -169,8 +171,8 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
         const zh = valueZh.get(raw.toLowerCase()) ?? valueZh.get(base.toLowerCase()) ?? getPluginEnumExplanation(key, base)
         if (!zh || (!allowed.has(raw.toLowerCase()) && !allowedBases.has(base.trim().toLowerCase()))) return null
         return {
-          pos: start,
-          end,
+          pos: line.from + start,
+          end: line.from + end,
           create: () => {
             const dom = document.createElement('div')
             dom.className = 'cm-hover-doc'
@@ -180,12 +182,13 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
           },
         }
       }
-      const whole = enumTooltip(fullValue, valStart, lineText.length)
+      const valueOffset = valStart + valueText.length - valueText.trimStart().length
+      const whole = enumTooltip(fullValue, valueOffset, valueOffset + fullValue.length)
       if (whole) return whole
       // 逗号分隔的多枚举值：括号内逗号属于参数，不切断当前枚举项。
-      const segmentRange = topLevelSegmentAt(fullValue, Math.max(0, inLine - valStart))
-      const segStart = valStart + segmentRange.start
-      const segEnd = valStart + segmentRange.end
+      const segmentRange = topLevelSegmentAt(fullValue, Math.max(0, inLine - valueOffset))
+      const segStart = valueOffset + segmentRange.start + segmentRange.text.length - segmentRange.text.trimStart().length
+      const segEnd = valueOffset + segmentRange.end - (segmentRange.text.length - segmentRange.text.trimEnd().length)
       const segment = enumTooltip(segmentRange.text.trim(), segStart, segEnd)
       if (segment && inLine >= segStart && inLine <= segEnd) return segment
     }
@@ -228,6 +231,30 @@ export const rustHoverExtension = hoverTooltip(async (view: EditorView, pos: num
     }
   }
   return null
+}
+
+export const rustHoverExtension = hoverTooltip(rustTooltipAt)
+
+/** Explicit activation keeps double-click help independent of hover timers. */
+export const rustDoubleClickHelp = EditorView.domEventHandlers({
+  blur(_event, view) {
+    view.dispatch({ effects: closeHoverTooltip(rustHoverExtension) })
+  },
+  keydown(event, view) {
+    if (event.key === 'Escape') view.dispatch({ effects: closeHoverTooltip(rustHoverExtension) })
+    return false
+  },
+  dblclick(event, view) {
+    const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
+    if (pos === null) return false
+    view.dispatch({ effects: closeHoverTooltip(rustHoverExtension) })
+    activateHover(view, pos, 1, {
+      tooltip: rustHoverExtension,
+      until: (transaction) => transaction.docChanged || !!transaction.selection,
+    })
+    // CodeMirror still owns the normal double-click word selection.
+    return false
+  },
 })
 
 function escapeHtml(s: string): string {

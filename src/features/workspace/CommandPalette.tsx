@@ -1,14 +1,17 @@
 /**
- * 命令面板（Ctrl+K）：Codex 风格的命令搜索。
+ * 命令面板（Ctrl+K）：Codex 风格的命令搜索 + 项目文件搜索（feat/git-visual-center：
+ * 左栏搜索框并入此处——输入即搜文件，结果排在命令前面，回车打开文件）。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useWorkspaceStore } from '../../stores/workspace'
-import { IconClose, IconFolder, IconGear } from '../../components/icons'
+import { FileTypeIcon, IconClose, IconFolder, IconGear } from '../../components/icons'
 import { AppIcon } from '../../components/AppIcon'
 import { useEscapeHandler } from '../../utils/modalStack'
 import { DEFAULT_LAYOUT, DEFAULT_SETTINGS } from '../../utils/settings'
 import { formatShortcut, resolveShortcuts } from '../../utils/shortcuts'
+import { getBridge } from '../../services/bridge'
+import type { ProjectSearchResult } from '../../types/bridge'
 
 interface CommandItem {
   id: string
@@ -39,6 +42,12 @@ export function CommandPalette() {
   const [query, setQuery] = useState('')
   const [index, setIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  // feat/git-visual-center：项目文件搜索（并入标题栏搜索框，替代左栏搜索框）
+  const project = useWorkspaceStore((s) => s.projects.find((p) => p.id === s.activeProjectId) ?? null)
+  const showHiddenFiles = useWorkspaceStore((s) => s.settings.showHiddenFiles)
+  const [fileHits, setFileHits] = useState<ProjectSearchResult['entries'] | null>(null)
+  const searchSeqRef = useRef(0)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 全局 Escape 关闭：与 Modal 一致，焦点在任何位置都能按 Esc 关闭面板。
   // 面板常驻挂载但只在打开时占栈（enabled）——否则会永久吞掉全局 Escape
@@ -51,6 +60,32 @@ export function CommandPalette() {
     const t = setTimeout(() => inputRef.current?.focus(), 10)
     return () => clearTimeout(t)
   }, [open])
+
+  // 文件搜索：180ms 防抖（与原左栏搜索同口径，走受限主进程递归扫描）。
+  // setState 全部在定时器回调里：effect 体内同步 setState 会触发 react-hooks 规则。
+  const rootPath = project?.rootPath ?? ''
+  useEffect(() => {
+    const value = query.trim()
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    const request = ++searchSeqRef.current
+    searchTimerRef.current = setTimeout(() => {
+      if (request !== searchSeqRef.current) return
+      if (!open || !rootPath || !value) { setFileHits(null); return }
+      void getBridge()
+        .project.searchFiles(rootPath, value, showHiddenFiles)
+        .then((result) => {
+          if (request !== searchSeqRef.current) return
+          setFileHits(result.entries)
+        })
+        .catch(() => {
+          if (request !== searchSeqRef.current) return
+          setFileHits(null)
+        })
+    }, value ? 180 : 0)
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    }
+  }, [open, query, rootPath, showHiddenFiles])
 
   const commands = useMemo<CommandItem[]>(
     () => [
@@ -129,11 +164,23 @@ export function CommandPalette() {
     [importModProject, setSettingsOpen, setModDialog, packModProject, checkModProject, activeTabId, closeTab, setOpen, leftCollapsed, settingsKey, gitPanelOpen],
   )
 
+  // 文件结果排在命令前面：输入时先看到能直接打开的文件
+  const merged = useMemo<CommandItem[]>(() => {
+    const fileItems: CommandItem[] = (fileHits ?? []).slice(0, 8).map((entry) => ({
+      id: `file:${entry.path}`,
+      title: entry.name,
+      hint: entry.relativePath,
+      icon: <FileTypeIcon name={entry.name} />,
+      run: () => { setOpen(false); void useWorkspaceStore.getState().openFile(entry.path) },
+    }))
+    return [...fileItems, ...commands]
+  }, [fileHits, commands, setOpen])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return commands
-    return commands.filter((c) => c.title.toLowerCase().includes(q) || (c.en ?? '').toLowerCase().includes(q) || (c.hint ?? '').toLowerCase().includes(q))
-  }, [commands, query])
+    if (!q) return merged
+    return merged.filter((c) => c.title.toLowerCase().includes(q) || (c.en ?? '').toLowerCase().includes(q) || (c.hint ?? '').toLowerCase().includes(q))
+  }, [merged, query])
 
   if (!open) return null
 
@@ -144,7 +191,7 @@ export function CommandPalette() {
           ref={inputRef}
           className="command-input"
           value={query}
-          placeholder="输入命令名称…"
+          placeholder="搜索文件与命令…"
           onChange={(e) => {
             setQuery(e.target.value)
             setIndex(0)
@@ -168,7 +215,7 @@ export function CommandPalette() {
         />
         <div className="command-list">
           {filtered.length === 0 ? (
-            <div className="command-empty">没有匹配的命令</div>
+            <div className="command-empty">{query.trim() && project ? '没有匹配的文件或命令' : '没有匹配的命令'}</div>
           ) : (
             filtered.map((c, i) => (
               <div

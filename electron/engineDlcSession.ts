@@ -27,8 +27,10 @@ export interface DlcSessionRequest {
   unitFile: string
   unitContent?: string
   projectRoot: string
-  view?: { direction?: number; animationState?: string; showWreck?: boolean; team?: number; position?: { x: number; y: number } }
+  view?: { direction?: number; animationState?: string; showWreck?: boolean; team?: number; position?: { x: number; y: number }; frame?: number }
   size?: { width: number; height: number }
+  /** 输出格式：rgba(默认，炮塔拖动) / png+base64（单帧预览复用常驻会话） */
+  outputFormat?: 'png' | 'rgba'
 }
 
 /** 更新请求：视图增量 + 可选炮塔位置覆盖（拖动编辑用；DLC 内部解 INI 逆映射） */
@@ -39,7 +41,7 @@ export interface DlcSessionUpdateRequest {
   turretOverridesReset?: boolean
 }
 
-/** 校验后的会话帧（pixels 是可直接 structured-clone 的 Uint8Array） */
+/** 校验后的会话帧（pixels 是可直接 structured-clone 的 Uint8Array；PNG 模式用 pngBase64） */
 export interface DlcSessionFrame {
   ok: true
   status: 'rendered' | 'stale' | 'superseded'
@@ -58,6 +60,8 @@ export interface DlcSessionFrame {
   pixels: Uint8Array
   bytes: number
   sha256?: string
+  /** PNG 输出模式（单帧预览复用常驻会话）：base64 PNG，pixels 为空数组 */
+  pngBase64?: string
 }
 
 export type DlcSessionResult = { ok: true; frame: DlcSessionFrame } | { ok: false; reason: string }
@@ -71,6 +75,8 @@ interface HostRecord {
   waiters: Map<string, (message: Record<string, unknown>) => void>
   nextId: number
   idleTimer: NodeJS.Timeout | null
+  /** 空闲超时毫秒数；<=0 表示常驻不自杀（全局预热会话用） */
+  idleTimeoutMs: number
   closed: boolean
   stderr: string
   stderrBytes: number
@@ -95,8 +101,10 @@ export class EngineDlcSessionManager {
     return !!host && !host.closed
   }
 
-  /** 打开（若已有会话则先关旧开新；request 已由 IPC 层校验） */
-  async open(owner: number, nodeRuntime: string, sessionHostPath: string, dlcDir: string, dlcId: string, request: DlcSessionRequest): Promise<DlcSessionResult> {
+  /** 打开（若已有会话则先关旧开新；request 已由 IPC 层校验）。
+   *  opts.idleTimeoutMs <=0 时禁用空闲自杀（全局常驻预热会话），默认 120s；
+   *  opts.keepOnOpenError=true 时打开失败不杀宿主（预热失败后仍可 reopen 复用 JVM）。 */
+  async open(owner: number, nodeRuntime: string, sessionHostPath: string, dlcDir: string, dlcId: string, request: DlcSessionRequest, opts?: { idleTimeoutMs?: number; keepOnOpenError?: boolean }): Promise<DlcSessionResult> {
     await this.close(owner)
     let workDir: string
     try {
@@ -147,6 +155,7 @@ export class EngineDlcSessionManager {
       waiters: new Map(),
       nextId: 0,
       idleTimer: null,
+      idleTimeoutMs: opts?.idleTimeoutMs ?? IDLE_TIMEOUT_MS,
       closed: false,
       stderr: '',
       stderrBytes: 0,
@@ -186,10 +195,12 @@ export class EngineDlcSessionManager {
         projectRoot: request.projectRoot,
         view: request.view,
         size: request.size,
+        ...(request.outputFormat ? { outputFormat: request.outputFormat } : {}),
       },
     })
     if (!opened.ok) {
-      await this.close(owner)
+      // 预热场景（keepOnOpenError）：宿主+JVM 保持存活，之后用 reopen 在同一进程打开真实单位
+      if (!opts?.keepOnOpenError) await this.close(owner)
       return opened
     }
     return opened
@@ -201,6 +212,25 @@ export class EngineDlcSessionManager {
     if (!host || host.closed) return fail('引擎会话未打开')
     this.touchIdle(owner)
     return this.request(owner, { type: 'update', request })
+  }
+
+  /** 同一 JVM 进程内切换单位/内容（全局常驻会话复用；host 侧走 reopen 信封）。
+   *  host 内无存活会话时（如预热 OPEN 失败）会自动退化为全新 open。 */
+  async reopen(owner: number, request: DlcSessionRequest): Promise<DlcSessionResult> {
+    const host = this.hosts.get(owner)
+    if (!host || host.closed) return fail('引擎会话未打开')
+    this.touchIdle(owner)
+    return this.request(owner, {
+      type: 'reopen',
+      request: {
+        unitFile: request.unitFile,
+        unitContent: request.unitContent,
+        projectRoot: request.projectRoot,
+        view: request.view,
+        size: request.size,
+        ...(request.outputFormat ? { outputFormat: request.outputFormat } : {}),
+      },
+    })
   }
 
   /** 关闭并杀进程树（幂等） */
@@ -256,7 +286,8 @@ export class EngineDlcSessionManager {
     const host = this.hosts.get(owner)
     if (!host || host.closed) return
     if (host.idleTimer) clearTimeout(host.idleTimer)
-    host.idleTimer = setTimeout(() => this.killOwner(owner, '空闲超时'), IDLE_TIMEOUT_MS)
+    if (host.idleTimeoutMs <= 0) return // 常驻会话：不因空闲自杀
+    host.idleTimer = setTimeout(() => this.killOwner(owner, '空闲超时'), host.idleTimeoutMs)
     host.idleTimer.unref?.()
   }
 
@@ -290,7 +321,7 @@ export class EngineDlcSessionManager {
     if (response.type === 'error') return fail(String(response.message ?? '引擎会话错误').slice(0, 400))
     if (response.type === 'fatal') return fail(String(response.message ?? '引擎会话致命错误').slice(0, 400))
     if (response.type === 'opened' || response.type === 'frame') {
-      return this.validateFrame(response.frame)
+      return this.validateFrame(owner, response.frame)
     }
     return fail(`引擎会话返回了未知消息类型：${String(response.type)}`)
   }
@@ -331,8 +362,9 @@ export class EngineDlcSessionManager {
     }
   }
 
-  /** 帧再校验：尺寸/字节数越界一律拒绝并杀会话（不把可疑缓冲交给渲染层） */
-  private validateFrame(raw: unknown): DlcSessionResult {
+  /** 帧再校验：尺寸/字节数越界一律拒绝并杀会话（不把可疑缓冲交给渲染层）。
+   *  PNG 模式（单帧预览复用会话）返回 pngBase64；RGBA 模式返回 pixels。 */
+  private validateFrame(owner: number, raw: unknown): DlcSessionResult {
     if (!raw || typeof raw !== 'object') return fail('引擎会话帧格式无效')
     const frame = raw as Record<string, unknown>
     const size = frame.size as { width?: unknown; height?: unknown } | undefined
@@ -340,6 +372,15 @@ export class EngineDlcSessionManager {
     const height = size && typeof size.height === 'number' ? size.height : NaN
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > MAX_FRAME_SIDE || height > MAX_FRAME_SIDE) {
       return fail('引擎会话帧尺寸越界')
+    }
+    // PNG 输出模式：pngBase64 直接透传（长度上限与单帧通道口径一致），pixels 置空
+    if (typeof frame.pngBase64 === 'string') {
+      const pngBytes = Math.floor((frame.pngBase64.length * 3) / 4)
+      if (frame.pngBase64.length === 0 || pngBytes < 33 || pngBytes > 16 * 1024 * 1024) {
+        this.killOwner(owner, 'PNG 大小越界')
+        return fail('引擎会话 PNG 大小越界')
+      }
+      return { ok: true, frame: this.sanitizedFrame(frame, width, height, new Uint8Array(0), frame.pngBase64) }
     }
     const pixelsBase64 = frame.pixelsBase64
     if (typeof pixelsBase64 !== 'string') {
@@ -362,7 +403,7 @@ export class EngineDlcSessionManager {
     return { ok: true, frame: this.sanitizedFrame(frame, width, height, new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.length)) }
   }
 
-  private sanitizedFrame(frame: Record<string, unknown>, width: number, height: number, pixels: Uint8Array): DlcSessionFrame {
+  private sanitizedFrame(frame: Record<string, unknown>, width: number, height: number, pixels: Uint8Array, pngBase64?: string): DlcSessionFrame {
     const result: Record<string, unknown> = {
       ok: true,
       status: frame.status === 'superseded' || frame.status === 'stale' ? frame.status : 'rendered',
@@ -371,6 +412,7 @@ export class EngineDlcSessionManager {
       pixels,
       bytes: pixels.length,
     }
+    if (pngBase64 !== undefined) result.pngBase64 = pngBase64
     for (const key of ['latestGeneration', 'stride', 'pixelFormat', 'rowOrder', 'premultipliedAlpha', 'coordinateMapping', 'worldBounds', 'turrets', 'animation', 'timing', 'sha256'] as const) {
       if (frame[key] !== undefined && frame[key] !== null) result[key] = frame[key]
     }

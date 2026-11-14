@@ -17,7 +17,7 @@ export function TitleBar() {
           aria-label="打开命令面板"
         >
           <AppIcon name="search" size={14} />
-          <span>搜索命令、打开项目…</span>
+          <span>搜索文件与命令…</span>
           {shortcuts.commandPalette && <span className="hint"><kbd>{formatShortcut(shortcuts.commandPalette)}</kbd></span>}
         </button>
       </div>

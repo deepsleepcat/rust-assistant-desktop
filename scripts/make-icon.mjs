@@ -14,6 +14,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+/* global Image, document -- page.evaluate 回调运行在浏览器上下文，以下全局由宿主页面提供 */
+
 const CANDIDATES = [
   'C:/Users/mao/AppData/Local/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',

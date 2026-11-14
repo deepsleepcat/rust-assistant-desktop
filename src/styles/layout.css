@@ -173,7 +173,6 @@
 body.ra-compact .titlebar-search { width: min(220px, 40vw); }
 body.ra-compact .titlebar-project { display: none; }
 body.ra-compact .titlebar-search .hint { display: none; }
-body.ra-compact .statusbar .sb-pill { display: none; }
 body.ra-compact .statusbar .sb-item:last-child { display: none; }
 
 /* ── M29 编辑器大纲面板：高度由外层（SplitHandle/outlineHeight，内联 px）控制，

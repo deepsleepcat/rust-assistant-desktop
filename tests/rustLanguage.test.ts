@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { classifyLine, collectLocalVariables, findSectionOfLine, isUnclosedSection, keyOfLine, smartEnterInsert } from '../src/features/editor/rustLanguage'
+import { EditorState } from '@codemirror/state'
+import { syntaxTree } from '@codemirror/language'
+import { highlightTree, tagHighlighter, tags } from '@lezer/highlight'
+import { classifyLine, collectLocalVariables, findSectionOfLine, isUnclosedSection, keyOfLine, rustConfigLanguageSupport, smartEnterInsert } from '../src/features/editor/rustLanguage'
 
 describe('Rust 配置行分类（高亮规则）', () => {
   it('注释行', () => {
@@ -106,5 +109,63 @@ describe('局部变量收集（${}）', () => {
 
   it('无变量返回空数组', () => {
     expect(collectLocalVariables(['[core]', 'name: x'])).toEqual([])
+  })
+})
+
+function highlightedTokens(doc: string): Array<{ text: string; kind: string }> {
+  const state = EditorState.create({ doc, extensions: rustConfigLanguageSupport() })
+  const tokens: Array<{ text: string; kind: string }> = []
+  highlightTree(syntaxTree(state), tagHighlighter([
+    { tag: tags.comment, class: 'comment' },
+    { tag: tags.propertyName, class: 'key' },
+    { tag: tags.heading, class: 'section' },
+  ]), (from, to, kind) => tokens.push({ text: doc.slice(from, to), kind }))
+  return tokens
+}
+
+describe('Rust 配置实际分词高亮', () => {
+  it.each(['color:#8E8E8E', 'color: #8E8E8E', 'color = #FF8E8E8E', '颜色：#8E8E8E'])(
+    '颜色值不误判为注释：%s', (source) => {
+      expect(highlightedTokens(source)).toEqual([{ text: source.slice(0, source.search(/[:=：]/) + 1), kind: 'key' }])
+    },
+  )
+
+  it('值中的冒号、等号和节名保持普通文本', () => {
+    expect(highlightedTokens('name: value: nested=1\ntext: [core]')).toEqual([
+      { text: 'name:', kind: 'key' },
+      { text: 'text:', kind: 'key' },
+    ])
+  })
+
+  it('真实注释行和节头继续高亮，后续颜色行不受影响', () => {
+    expect(highlightedTokens('# color:#8E8E8E\n  # 注释: x\n[core]\ncolor:#8E8E8E')).toEqual([
+      { text: '# color:#8E8E8E', kind: 'comment' },
+      { text: '  # 注释: x', kind: 'comment' },
+      { text: '[core]', kind: 'section' },
+      { text: 'color:', kind: 'key' },
+    ])
+  })
+})
+
+describe('Rust 配置井号遵循游戏词法', () => {
+  it.each([
+    'name: # 文本',
+    'name:#文本',
+    'color:#8E8E8E #尾文本',
+    'color: #FF8E8E8E #尾文本',
+    'name: "has # inside" #尾文本',
+    "name: 'has # inside'",
+    'path: path.png#fragment',
+    'autoTrigger: true #尾文本',
+  ])('值内井号及后续文本保持普通高亮：%s', (line) => {
+    expect(highlightedTokens(line)).toEqual([
+      { text: line.slice(0, line.search(/[:=]/) + 1), kind: 'key' },
+    ])
+  })
+
+  it('带 BOM 的整行井号注释仍高亮', () => {
+    expect(highlightedTokens('\ufeff  # comment: value')).toEqual([
+      { text: '\ufeff  # comment: value', kind: 'comment' },
+    ])
   })
 })

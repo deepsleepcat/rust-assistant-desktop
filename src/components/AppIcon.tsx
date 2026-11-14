@@ -7,7 +7,7 @@ import type { CSSProperties } from 'react'
 
 export type AppIconName =
   | 'search' | 'settings' | 'refresh' | 'close' | 'save' | 'delete'
-  | 'add' | 'file' | 'folder' | 'font' | 'layout' | 'plus' | 'rename' | 'tools'
+  | 'add' | 'file' | 'folder' | 'file-plus' | 'folder-plus' | 'font' | 'layout' | 'plus' | 'rename' | 'tools'
   | 'palette' | 'text' | 'check' | 'cross' | 'warn' | 'zoom' | 'box' | 'tower'
   | 'sparkle' | 'download' | 'import' | 'archive' | 'star' | 'info' | 'copy'
   // M8 图标库扩充（570+Icons-CN）
@@ -27,6 +27,8 @@ const ICONS: Record<AppIconName, string> = {
   add: './icons/add.svg',
   file: './icons/file.svg',
   folder: './icons/folder.svg',
+  'file-plus': './icons/file-plus.svg',
+  'folder-plus': './icons/folder-plus.svg',
   font: './icons/font.svg',
   layout: './icons/layout.svg',
   plus: './icons/plus.svg',

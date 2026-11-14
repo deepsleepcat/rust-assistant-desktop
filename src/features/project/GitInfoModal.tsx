@@ -307,6 +307,7 @@ export function GitInfoModal({ rootPath, onClose }: Props) {
         } catch (err) {
           notify(`拉取失败：${err instanceof Error ? err.message : String(err)}`)
         } finally {
+          lease()
           setCloudPulling(null)
         }
       },
